@@ -1,4 +1,7 @@
 ' $Log$
+' Revision 1.5  2005/03/23 00:56:44  dan
+' *** empty log message ***
+'
 ' Revision 1.4  2005/03/18 19:37:14  dan
 ' Almost there!
 '
@@ -694,7 +697,7 @@ ArrConst(RandomDelay[],0);
 
 for index :=0 to (attNumberOfBlocks% -1) do
 	BlockIndex%:=0;
-   ArrConst(RandomBlock[],0);
+	ArrConst(RandomBlock[],0);
 	while BlockIndex% < 30 do
 		RandomNumber:=round(29*rand());
 		if RandomBlock[RandomNumber] = 0 then 
@@ -834,6 +837,12 @@ func IdleProcessing%()
 
 					PrintLog("stateAcquire - acquired target. tNow=" + str$(tNow) + " Enter stateHoldFixation\n");
 					ChangeStateTo(stateHoldFixation%, tNow);
+
+					if (ContrastState[nTrialsStarted%-1]>0) then
+						SampleKey("H");
+					else
+						SampleKey("L");
+					endif
 	
 				endif
 
@@ -1141,6 +1150,7 @@ var Distractors$:="";
 SampleStart(0); 'Start sampling
 SampleKey("0");
 GetAttentionScriptParameters();
+DetermineContrastChanges();
 
 ' Stimulus is always used
 Distractors$ := " -s " + GetGratingParameters$("Stimulus");
