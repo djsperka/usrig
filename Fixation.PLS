@@ -1,4 +1,7 @@
 ; $Log$
+; Revision 1.3  2005/03/11 01:13:12  dan
+; Almost there!
+;
 ; Revision 1.2  2005/02/19 01:42:45  dan
 ; Changes for new Fixation script.
 ;
@@ -8,7 +11,7 @@
 
             SET    1,1,0           ; Get rate & scaling OK
 
-E0:         DIGOUT [00000001]
+E0:     '0  DIGOUT [00000001]
             DELAY  s(0.996)-1
             HALT                   ; End of this sequence section
 
