@@ -1,4 +1,7 @@
 ; $Log$
+; Revision 1.2  2005/07/27 21:50:14  dan
+; Changed 'a' trigger to invert sense of the line it controls.
+;
 ; Revision 1.1  2005/07/26 01:03:52  dan
 ; Mods to config.s2s for tuning script. Tuning script first add here.
 ;
@@ -25,7 +28,7 @@
 0013            DELAY  s(0.996)-1
 0014            HALT   
 
-0015 Ea:     'a DIGOUT [....1..1]      ;Signals the tuned parameter to advance
+0015 Ea:     'a DIGOUT [....i..1]      ;Signals the tuned parameter to advance
 0016            DELAY  s(0.996)-1
 0017            HALT   
 
@@ -36,7 +39,7 @@
 0037            DELAY  s(0.989)-1
 0038            HALT   
 
-0039 EX:     'X DIGOUT [00000001]      ;Clears all
+0039 EX:     'X DIGOUT [0000.001]      ;Clears all except for the toggled "advance" trigger
 0040            DELAY  s(0.996)-1
 0041            HALT                   ;End of this sequence section
 
