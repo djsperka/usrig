@@ -1,4 +1,7 @@
 ' $Log$
+' Revision 1.8  2005/08/23 22:40:10  dan
+' Added plot of tuning curves. Not entirely tested yet, and there are holes esp if there are multiple electrodes, but it'll do for now.
+'
 ' Revision 1.7  2005/08/23 18:54:08  dan
 ' *** empty log message ***
 '
@@ -1051,6 +1054,7 @@ func IdleProcessing%()
 			if tTrigger > tLast and vTrigger = 0 then
 				' Fixation point is up
 				PrintLog("stateWaitForStimOn: stim is up.\n");
+				tStimOn := tTrigger;
 				tLastTrigger := tTrigger;
 				ChangeStateTo(stateHoldFixation%, tTrigger);
 			endif
@@ -1106,7 +1110,7 @@ func IdleProcessing%()
 					Reward%();
 	
 					' Process spikes
-					PlotSpikes(tStimOn, tNow, 1, nTrialsConpleted%);
+					PlotSpikes(tStimOn, tNow, 1, GetPlotXCoord(nTrialsCompleted%-1));
 
 					' Now wait until stim is off
 					ChangeStateTo(stateWaitForStimOff%, tNow);
@@ -1167,21 +1171,50 @@ func IdleProcessing%()
 end;
 
 
-proc PlotSpikes(t1, t2, vOnOff%, nTrials%)
-	var count%;
+func GetPlotXCoord(nTrials%)
+	var x;
+
+	docase 
+		case tunType$ = tunTypeContrast$ then
+
+			x := nTrials% * (tunContrastMaxContrast - tunContrastMinContrast) / tunContrastNSteps%;
+
+		case tunType$ = tunTypeOrientation$ then
+
+			x := nTrials% * (tunOriMaxOrientation - tunOriMinOrientation) / tunOriNSteps%;
+
+		case tunType$ = tunTypeSpatial$ then
+
+			x := nTrials% * (tunSpatialMaxSF - tunSpatialMinSF) / tunSpatialNSteps%;
+	
+		case tunType$ = tunTypeTemporal$ then
+
+			x := nTrials% * (tunTemporalMaxTF - tunTemporalMinTF) / tunTemporalNSteps%;
+
+		else
+
+			Message("Error - unknown value for tunType$: " + tunType$);
+			Halt;
+
+	endcase;
+
+
+	return x;
+end;
+
+proc PlotSpikes(t1, t2, vOnOff%, x)
+	var rate;
 	var index%;
 	for index% := 1 to NumberOfElectrodes% do
-		count% := Count(index%, t1, t2);
-		if count% > -1 then
+		rate := View(DataWindow%).Count(index%, t1, t2)/(t2-t1);
+		if rate >= 0 then
 			if vOnOff% = 1 then
 				' this is signal
-
+				View(TuningWindow%[index%-1]).XYAddData(index%, x, rate);
+			endif
+			' NOTE: IGNORING BACKGROUND HERE FOR THE TIME BEING. 
+	        endif 
 	next
-
-
-
-
-
 end;
 
 
