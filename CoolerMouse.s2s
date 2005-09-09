@@ -1,4 +1,7 @@
 ' $Log$
+' Revision 1.5  2005/09/09 23:01:13  dan
+' Fixed bug in VSG ready/confirm cycle, where the confirm trigger could be missed, leading to a stuck script, no stimuli, etc.
+'
 ' Revision 1.4  2005/08/25 23:20:39  dan
 ' Handling for fixation point change.
 '
@@ -213,7 +216,7 @@ end;
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-var cmFixationDuration := 1;
+var cmFixationDuration := 1.5;
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
@@ -382,7 +385,7 @@ func IdleProcessing%()
 		case iState% = stateVSGWaitConfirm% then
 
 			' Waiting for VSG to confirm it is ready. The downward side of the pulse is expected...
-			tTrigger := NextTime(ReadyChannel%, tLast, vTrigger);
+			tTrigger := NextTime(ReadyChannel%, tLastTrigger, vTrigger);
 			if tTrigger > tLastTrigger and vTrigger = 1 then
 				PrintLog("state stateVSGWaitConfirm: Got trailing edge of trigger\n");
 				tLastTrigger := tTrigger;
