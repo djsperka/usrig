@@ -1,4 +1,7 @@
 ' $Log$
+' Revision 1.8  2005/09/09 23:06:25  dan
+' Fixed bug in VSG ready/confirm cycle, where the confirm trigger could be missed, leading to a stuck script, no stimuli, etc.
+'
 ' Revision 1.7  2005/05/03 00:06:04  dan
 ' Corrected bug in automatic file saving.
 '
@@ -787,7 +790,7 @@ func IdleProcessing%()
 		case iState% = stateVSGWaitConfirm% then
 
 			' Waiting for VSG to confirm it is ready. The downward side of the pulse is expected...
-			tTrigger := NextTime(ReadyChannel%, tLast, vTrigger);
+			tTrigger := NextTime(ReadyChannel%, tLastTrigger, vTrigger);
 			if tTrigger > tLastTrigger and vTrigger = 1 then
 				PrintLog("state stateVSGWaitConfirm: Got trailing edge of trigger\n");
 				tLastTrigger := tTrigger;
