@@ -1,4 +1,7 @@
 ' $Log$
+' Revision 1.9  2005/09/21 19:36:55  dan
+' DoSampleKey correctly sends for both Fixation and Calibration runs.
+'
 ' Revision 1.8  2005/05/03 00:06:04  dan
 ' Corrected bug in automatic file saving.
 '
@@ -635,8 +638,13 @@ func IdleProcessing%()
 
 			nTrialsStarted% += 1;
 			iStimIndex% := (iStimIndex% + 1) mod 8;
-			DoSampleKey();	' will sample key "H" after setting seq var
-'			SampleKey("H");
+
+			' calibration run does not require a separate trigger - the setting of the seqvar does the trick. 
+			if fixCalibrationFlag% = 1 then
+				DoSampleKey();
+			else
+				SampleKey("H");
+			endif
 			iState% := stateWaitForStim%;
 '			PrintLog("State 0 - Start new trial - stimulus trigger sent\n");
 			UpdateToolbarText();
