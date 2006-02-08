@@ -1,4 +1,7 @@
 ' $Log$
+' Revision 1.12  2006/02/08 22:15:10  dan
+' Multiple repeats will now plot x coords correctly. Now does modulo division so subsequent repeats plot at same x coords as the first.
+'
 ' Revision 1.11  2005/12/07 22:16:14  dan
 ' *** empty log message ***
 '
@@ -1185,23 +1188,27 @@ end;
 
 func GetPlotXCoord(nTrials%)
 	var x;
-
+	var n%;
 	docase 
 		case tunType$ = tunTypeContrast$ then
 
-			x := nTrials% * (tunContrastMaxContrast - tunContrastMinContrast) / tunContrastNSteps%;
+			n% := nTrials% mod tunContrastNSteps%;
+			x := n% * (tunContrastMaxContrast - tunContrastMinContrast) / tunContrastNSteps%;
 
 		case tunType$ = tunTypeOrientation$ then
 
-			x := nTrials% * (tunOriMaxOrientation - tunOriMinOrientation) / tunOriNSteps%;
+			n% := nTrials% mod tunOriNSteps%;
+			x := n% * (tunOriMaxOrientation - tunOriMinOrientation) / tunOriNSteps%;
 
 		case tunType$ = tunTypeSpatial$ then
 
-			x := nTrials% * (tunSpatialMaxSF - tunSpatialMinSF) / tunSpatialNSteps%;
+			n% := nTrials% mod tunSpatialNSteps%;
+			x := n% * (tunSpatialMaxSF - tunSpatialMinSF) / tunSpatialNSteps%;
 	
 		case tunType$ = tunTypeTemporal$ then
 
-			x := nTrials% * (tunTemporalMaxTF - tunTemporalMinTF) / tunTemporalNSteps%;
+			n% := nTrials% mod tunTemporalNSteps%;
+			x := n% * (tunTemporalMaxTF - tunTemporalMinTF) / tunTemporalNSteps%;
 
 		else
 
@@ -1209,7 +1216,7 @@ func GetPlotXCoord(nTrials%)
 			Halt;
 
 	endcase;
-
+	PrintLog("Plot x " + str$(x) + "\n");
 
 	return x;
 end;
