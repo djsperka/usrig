@@ -1,4 +1,7 @@
 ; $Log$
+; Revision 1.4  2006/04/24 22:09:41  dan
+; Modify sequencer "X" to only modify F/S bits. Change script to use release version of Tuning.exe app.
+;
 ; Revision 1.3  2006/04/15 03:32:19  dan
 ; Log progression implemented for contrast, sf, tf.
 ; Changed limits on sf, tf dialogs.
@@ -47,7 +50,7 @@ EJ:     'J  DIGOUT [.......1]      ;Administers juice
             DELAY  s(0.989)-1
             HALT   
 
-EX:     'X  DIGOUT [0000.001]      ;Clears all except for the toggled "advance" trigger
+EX:     'X  DIGOUT [.....001]      ;Clears all except for the toggled "advance" trigger
             DELAY  s(0.996)-1
             HALT                   ;End of this sequence section
 
