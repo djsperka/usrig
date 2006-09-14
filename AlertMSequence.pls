@@ -1,12 +1,4 @@
-; $Log$
-; Revision 1.3  2006/09/13 18:43:05  dan
-; Added "J" key back! Why I removed it I have no idea - but this is why no reward was happening.....
-;
-; Revision 1.2  2006/09/01 21:57:25  dan
-; *** empty log message ***
-;
-; Revision 1.1  2006/04/11 01:29:25  dan
-; *** empty log message ***
+; $Id$
 ;
 ;
 
