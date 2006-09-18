@@ -1,4 +1,7 @@
 ' $Log$
+' Revision 1.20  2006/09/18 19:13:02  dan
+' Add logic in Stop function to check that stim app is done before running ClearTrigger.
+'
 ' Revision 1.19  2006/09/08 02:13:43  dan
 ' Changed maxTF to 64.
 '
@@ -1524,7 +1527,10 @@ func Stop%()
 	SampleStop();
 
 	ProgKill(StimHandle%);
-'	ProgRun(bin$ + "\\ClearTrigger",0);
+	while ProgStatus(StimHandle%) > 0 do
+		Yield();
+	wend
+	ProgRun(bin$ + "\\ClearTrigger",0);
 
 	' Write parameter file
 	WriteParameterFile();

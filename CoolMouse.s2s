@@ -1,6 +1,6 @@
 ' $Log$
-' Revision 1.8  2006/09/18 18:39:32  dan
-' Fix auto naming to name coolmouse files automatically with A_cm_###, even though we don't really need these files.
+' Revision 1.9  2006/09/18 19:13:30  dan
+' Add logic in Stop function to check that stim app is done before running ClearTrigger.
 '
 ' Revision 1.7  2006/02/08 22:34:17  dan
 ' Allow modification of xy axes during data aquisition
@@ -867,6 +867,9 @@ func Stop%()
 	Yield(.1);
 	SampleStop();
 	ProgKill(StimHandle%);
+	while ProgStatus(StimHandle%) > 0 do
+		Yield();
+	wend
 	ProgRun(bin$ + "\\ClearTrigger",0);
 
 end;
