@@ -1,0 +1,84 @@
+var dataPathRoot$;		' base path for data storage
+var dataDataSet$;		' folder under data path where data files placed
+var dataCellName$;		' part of base name for all data files
+var dataDataSetTextItem%;	' 
+
+proc GetDataParameters()
+	var stmp$;
+	var key$;
+
+'	key$:="AlertRig\\Data";
+	key$ := thisRigName$ + "\\Data";
+
+	Profile(key$, "PathRoot", "C:\\Experiments", dataPathRoot$);
+	Profile(key$, "DataSet", "", dataDataSet$);
+	Profile(key$, "CellName", "", dataCellName$);
+	return;
+end;
+
+proc SaveDataParameters()
+	var stmp$;
+	var key$;
+
+'	key$:="AlertRig\\Data";
+	key$ := thisRigName$ + "\\Data";
+
+	Profile(key$, "PathRoot", dataPathRoot$);
+	Profile(key$, "DataSet", dataDataSet$);
+	Profile(key$, "CellName", dataCellName$);
+	return;
+end;
+
+func DataParametersDialog%()
+	var i%;
+	GetDataParameters();
+	DlgCreate("Data Storage Parameters", 25, 10, 50);
+	DlgText("Data root path: " + dataPathRoot$, 0, 1);
+	dataDataSetTextItem% := DlgText("Data set name: " + dataDataSet$, 0, 2);
+	DlgString(1, "Cell name:", 10, "", 0, 3);
+        DlgButton(2, "New Data Set", NewDataSet%);
+	i% := DlgShow(dataCellName$);
+	if (i% = 1) then
+		if Len(dataDataSet$) = 0 then
+			Message("Must specify a data set (try the button!)");
+		else
+			if Len(dataCellName$) = 0 then
+				Message("Must specify a cell name");
+			else
+				FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3, 1);
+				SaveDataParameters();
+			endif;
+		endif;
+	endif;
+	return i%;
+end;
+
+
+func NewDataSet%()
+	var d$;
+	var i%;
+	var dirs$[100];	' if there are ever more than 100 datasets in a single day there will be trouble
+	d$ := Date$(2, 2, 3, 3, "-");
+	PrintLog("NewDataSet: date string = " + d$ + "\n");
+
+	' Change current dir to data path root, then get list of subdirs with this date string
+	PrintLog("NewDataSet: dataPathRoot$=" + dataPathRoot$ + "\n");
+	FilePathSet(dataPathRoot$, 0, 1);
+	i% := FileList(dirs$, -2, d$ + "-??");
+        PrintLog("NewDataSet: found " + str$(i%) + " dirs\n");
+
+	' form new dataset name. The first will have "-01" appended, the second "-02", etc. 
+	dataDataSet$ := Print$("%s-%02d", d$, i%+1);
+	PrintLog("NewDataSet: dataset= " + dataDataSet$ + "\n");
+	DlgValue$(dataDataSetTextItem%, "Data set name: " + dataDataSet$);
+	return 1;
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' Data parameters END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
