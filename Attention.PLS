@@ -1,20 +1,4 @@
-; $Log$
-; Revision 1.5  2008/11/06 02:02:06  devel
-; Modified expt to use an extra white fixation point before red/green fix pt. Teh red/green fix pt is accompanied by a "lollipop", the config for which was added to dialogs. Timing dialog split out to separate dialog. Added Yield after "-" SampleText so that the "X" key doesn't occur at the same time (extraction gets tricky).
-;
-; Revision 1.4  2008-09-19 21:57:31  devel
-; Add key for turning stim off "s"
-;
-; Revision 1.3  2008-02-13 23:18:44  devel
-; Beta version for Farran's Attention Task.
-;
-; Revision 1.2  2005/03/18 19:37:14  dan
-; Almost there!
-;
-; Revision 1.1  2004/10/01 20:06:10  dan
-; Modified directory locations for executables (../bin) and sequencer files (script dir)
-;
-;
+; $Id$
 
             SET      1.000 1 0     ;Get rate & scaling OK
 
