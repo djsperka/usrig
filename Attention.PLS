@@ -1,5 +1,8 @@
 ; $Log$
-; Revision 1.4  2008/09/19 21:57:31  devel
+; Revision 1.5  2008/11/06 02:02:06  devel
+; Modified expt to use an extra white fixation point before red/green fix pt. Teh red/green fix pt is accompanied by a "lollipop", the config for which was added to dialogs. Timing dialog split out to separate dialog. Added Yield after "-" SampleText so that the "X" key doesn't occur at the same time (extraction gets tricky).
+;
+; Revision 1.4  2008-09-19 21:57:31  devel
 ; Add key for turning stim off "s"
 ;
 ; Revision 1.3  2008-02-13 23:18:44  devel
@@ -31,19 +34,27 @@ EQ:     'q  DIGOUT [1111...1]      ;exit program
             DELAY  s(0.996)-1
             HALT   
 
-EF:     'F  DIGOUT [......11]      ;Signals the fixation point on
+EF:     'F  DIGOUT [...0.011]      ;Signals the fixation point on
             DELAY  s(0.996)-1
             HALT   
 
-E1:     'f  DIGOUT [......01]      ;Signals the fixation point off
+E1:     'f  DIGOUT [...1.111]      ;Signals the fixation point off
             DELAY  s(0.996)-1
             HALT   
 
-EG:     'G  DIGOUT [.....1.1]      ;Signals the fixation point on
+EG:     'G  DIGOUT [...0.101]      ;Signals the fixation point on
             DELAY  s(0.996)-1
             HALT   
 
-EH:     'g  DIGOUT [.....0.1]      ;Signals the fixation point off
+EH:     'g  DIGOUT [...0.001]      ;Signals the fixation point off
+            DELAY  s(0.996)-1
+            HALT   
+
+EW:     'W  DIGOUT [...1.001]      ;Signals the fixation point on
+            DELAY  s(0.996)-1
+            HALT   
+
+EY:     'w  DIGOUT [...0.001]      ;Signals the fixation point off
             DELAY  s(0.996)-1
             HALT   
 
@@ -55,19 +66,19 @@ ET:     's  DIGOUT [....0..1]      ;Signals the stimuli off (answer points remai
             DELAY  s(0.996)-1
             HALT   
 
-E2:     'X  DIGOUT [00000001]      ;Signals all off
+E2:     'X  DIGOUT [00010111]      ;Signals all off
             DELAY  s(0.996)-1
             HALT   
 
-EC:     'C  DIGOUT [...1...1]      ;stimulus contrast UP
+EC:     'C  DIGOUT [..1....1]      ;stimulus contrast UP
             DELAY  s(0.996)-1
             HALT   
 
-EN:     'c  DIGOUT [..1....1]      ;stimulus contrast DOWN
+EN:     'c  DIGOUT [.1.....1]      ;stimulus contrast DOWN
             DELAY  s(0.996)-1
             HALT   
 
-ED:     'D  DIGOUT [.1.....1]      ;distractor contrast UP
+ED:     'D  DIGOUT [.11....1]      ;distractor contrast UP
             DELAY  s(0.996)-1
             HALT   
 
