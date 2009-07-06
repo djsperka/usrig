@@ -1,3 +1,31 @@
+' $Id$
+
+' This file provides functionality to fetch, save and modify data parameters for Alert Rig scripts. 
+' The parameters controlled here are stored in the registry (under the Spike2 key HKCU/Software/CED/Spike2/)
+' using the name of the rig (ENCLOSING SCRIPTS MUST HAVE A VAR NAMED thisRigName$ WITH A VALID VALUE!!!), 
+' e.g. AlertRig. The entire key is (using this example):
+' HKCU/Software/CED/Spike2/AlertRig/Data
+'
+' Requires "RigName.s2s" be #included, or that the var "thisRigName$" be initialized. 
+'
+' Usage should be as follows:
+'
+' 1. Retrieve parameters from registry:
+'
+' GetDataParameters();  
+'
+' 2. Open dialog to modify values:
+'
+' if DataParametersDialog() = 1 then
+'    ...continue....
+' else
+'    ...user hit Cancel...
+' endif
+'
+' There is no need to directly call SaveDataParameters(), as it is called automatically
+' when the user hits OK in the DataParametersDialog. 
+
+
 var dataPathRoot$;		' base path for data storage
 var dataDataSet$;		' folder under data path where data files placed
 var dataCellName$;		' part of base name for all data files
@@ -82,3 +110,112 @@ end;
 '
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+'	Configuration Selection START
+'
+'	These functions and vars handle the current configuration and the list of possible
+'	configurations. SelectConfigurationDialog% prompts user to select current configuration.
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+
+var CurrentConfiguration$;
+var ConfigurationList$;
+
+proc GetConfigurationParameters()
+	Profile(thisRigName$, "ConfigurationList", "", ConfigurationList$);
+	Profile(thisRigName$, "CurrentConfiguration", "default", CurrentConfiguration$);
+end;
+
+proc SaveConfigurationParameters()
+	Profile(thisRigName$, "ConfigurationList", ConfigurationList$);
+	Profile(thisRigName$, "CurrentConfiguration", CurrentConfiguration$);
+end;
+	
+func SelectConfigurationDialog%()
+	var s$;
+	var i%;
+	var iReturn% := 0;
+	GetConfigurationParameters();
+	s$ := CurrentConfiguration$;
+
+	DlgCreate("Select configuration", 25, 10);
+	DlgString(1, "Configuration:", 20, "", 0, 0, ConfigurationList$);
+	i% := DlgShow(s$);
+
+
+	if i% = 1 then
+
+		i% := CheckDup(s$, ConfigurationList$);
+		if i% = 0 then
+			' New config, add to Config list, set it to current
+			if Len(ConfigurationList$)>0 then
+				ConfigurationList$ := ConfigurationList$ + "|" + s$;
+				CurrentConfiguration$ := s$;
+			else
+				ConfigurationList$ := s$;
+				CurrentConfiguration$ := s$;
+			endif;
+		else
+			CurrentConfiguration$ := s$;
+		endif
+		SaveConfigurationParameters();
+		iReturn% := 1;
+
+	else
+		iReturn% := 0;
+	endif
+
+	return iReturn%;
+end;
+
+func CheckDup(value$, list$)
+	var items$[20];
+	var nitems%:=0;
+	var i%;
+
+	' Extract list into an array
+	ReadSetup("", "", "", "", "|");
+	nitems% := ReadStr(list$, items$);
+
+	var s1tmp$, s2tmp$;
+	s1tmp$ := UCase$(value$);
+	for i% := 0 to nitems%-1 do
+		s2tmp$ := UCase$(items$[i%]);
+		if s1tmp$ = s2tmp$ then
+			return 1;
+		endif
+	next
+
+	return 0;
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+'	Configuration Selection END
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+'	Get Current configuration START
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+func GetCurrentConfiguration$()
+	var s$;
+	Profile(thisRigName$, "CurrentConfiguration", "default", s$);
+	return s$;
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+'	Get Current configuration END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
