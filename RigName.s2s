@@ -11,13 +11,36 @@
 ' best #include it near the top, before any other code or scripts that 
 ' need it are run. 
 
-var thisRigName$ := "AlertRig";
-var rignametmp$;
-rignametmp$ := System$("RIG");
-if Len(rignametmp$) > 0 then
-    thisRigName$ := rignametmp$;
-    PrintLog("Env var RIG found, using rig name %s.\n", thisRigName$);
-else
-    PrintLog("Env var RIG not found, using rig name %s.\n", thisRigName$);    
-endif
 
+var thisRigName$ := "AlertRig";     ' Will hold the rig name
+var iRigNameInitialized% := 0;
+InitRigName%();
+
+
+func InitRigName%()
+    if iRigNameInitialized% <> 0 then
+        return 0;
+    else
+        var rignametmp$;
+        rignametmp$ := System$("RIG");
+        if Len(rignametmp$) > 0 then
+            thisRigName$ := rignametmp$;
+            PrintLog("Env var RIG found, using rig name %s.\n", thisRigName$);
+        else
+            PrintLog("Env var RIG not found, using rig name %s.\n", thisRigName$);    
+        endif
+        iRigNameInitialized% := 1;
+    endif
+    return 0;
+end
+
+
+' GetRigName$
+'
+' Returns the current rig name. Will call the init function, so there is no need to call 
+' InitRigName%() directly, it will be taken care of the first time this is called. 
+
+func GetRigName$()
+    InitRigName%();
+    return thisRigName$;
+end
