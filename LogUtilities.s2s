@@ -1,0 +1,81 @@
+' $Id$
+'
+' This file contains procs for printing messages to the log window. 
+
+var logLevel% := 0;         ' debug level. If 0, only status, info messages are written. 
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' 
+' LogInit
+' 
+' Set the debug level. If level is set to 0, then LogInfo and LogStatus messages are written, 
+' but LogDebug messages are not. If negative, then no messages are written. If 1, LogStatus, 
+' LogInfo AND LogDebug messages are written. 
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+proc LogInit(ilevel%)
+    logLevel% := ilevel%;
+    return;
+end
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' 
+' LogStatus
+' 
+' Utility to write msg to log window. Will not write if rgDebug is not set. 
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+proc LogStatus(stateName$, msg$)
+    if logLevel% > 0 then
+        if stateName$ = "" then
+            LogInfo(msg$);
+        else
+            PrintLog("S:    " + stateName$ + "  " + msg$ + "\n");
+        endif
+    endif
+end
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' 
+' LogError
+' 
+' Like LogStatus, a utility to write msg to log window. 
+' Unlike LogStatus, LogError will write no matter what - regardless of rgDebug value.
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+proc LogError(stateName$, msg$)
+    if logLevel% < 0 then 
+        return;
+    else
+        PrintLog("ERROR===============================================\n");
+        if stateName$ = "" then
+            PrintLog(msg$ + "\n");
+        else
+            PrintLog("S:    " + stateName$ + " " + msg$ + "\n");
+        endif
+        PrintLog("====================================================\n");
+    endif
+end
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' 
+' LogInfo
+' 
+' Like LogStatus, a utility to write msg to log window if debug level is greater than 0. 
+' Unlike LogStatus, LogError will write no matter what - regardless of rgDebug value.
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc LogInfo(msg$)
+    if logLevel% < 0 then return;
+    else 
+        if logLevel% > 0 then
+            PrintLog("INFO " + msg$ + "\n");
+        endif
+    endif
+    return;
+end
