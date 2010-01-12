@@ -1,0 +1,48 @@
+#include "TrialBlockGen.s2s"
+
+var nTypes% := 4;
+var nTrialsPerBlock% := 2;
+var nBlocksRequired% := 2;
+var ntrials%;
+var i%;
+var r%;
+var status% := 0;
+var index%;
+
+
+status% := tbgTestDialog%();
+while status% <> 0 do
+    
+    tbgInit(nTypes%, nTrialsPerBlock%, nBlocksRequired%);
+
+    ntrials% := tbgGetTrialIndex%(index%);
+    while ntrials% <> 0 do
+            
+        if ntrials% = 1 then
+            r% := Rand(3, 0); 'PrintLog(" r=" + str$(r%) + " ");
+            if r% <> 1 then
+                PrintLog("%d ", index%);
+                tbgTrialIndexCompleted(index%);
+            else 
+                ' This is a trial that failed. Test that we still get full blocks.
+                PrintLog("%dX ", index%);
+            endif
+            PrintLog("\n");
+            Yield();
+            ntrials% := tbgGetTrialIndex%(index%);
+        endif
+    wend
+        
+    status% := tbgTestDialog%();
+    
+wend
+
+func tbgTestDialog%()
+    var s% := 0;
+    DlgCreate("TBG Test");
+    DlgInteger(1, "NTypes", 0, 100);
+    DlgInteger(2, "Trials per block", 0, 100);
+    DlgInteger(3, "Blocks required", 0, 100);
+    s% := DlgShow(nTypes%, nTrialsPerBlock%, nBlocksRequired%);
+    return s%;
+end

@@ -1,0 +1,53 @@
+#include "TrialListGen.s2s"
+
+var nTypes% := 4;
+var nTrialsPerBlock% := 2;
+var nBlocksRequired% := 2;
+var minListSize% := 1;
+var maxListSize% := 1;
+var trialList%[16];
+var ntrials%;
+var i%;
+var r%;
+var status% := 0;
+
+
+status% := tlgTestDialog%();
+while status% <> 0 do
+    
+    tlgInit(nTypes%, nTrialsPerBlock%, nBlocksRequired%, minListSize%, maxListSize%);
+
+    ntrials% := tlgGetTrialList%(trialList%[]);
+    PrintLog("Trial list is length %d\n", ntrials%);
+    while ntrials% > 0 do
+        PrintLog("%d: ", ntrials%);
+        for i% := 0 to ntrials%-1 do
+            r% := Rand(3, 0); 'PrintLog(" r=" + str$(r%) + " ");
+            if r% <> 1 then
+                PrintLog("%d ", trialList%[i%]);
+                tlgTrialIndexCompleted(trialList%[i%]);
+            else 
+                ' This is a trial that failed. Test that we still get full blocks.
+                PrintLog("%dX ", trialList%[i%]);
+            endif
+        next
+        PrintLog("\n");
+        Yield();
+        ntrials% := tlgGetTrialList%(trialList%[]);
+    wend
+    
+    status% := tlgTestDialog%();
+    
+wend
+
+func tlgTestDialog%()
+    var s% := 0;
+    DlgCreate("TLG Test");
+    DlgInteger(1, "NTypes", 0, 100);
+    DlgInteger(2, "Trials per block", 0, 100);
+    DlgInteger(3, "Blocks required", 0, 100);
+    DlgInteger(4, "Min list size", 0, 100);
+    DlgInteger(5, "Max list size", 0, 100);
+    s% := DlgShow(nTypes%, nTrialsPerBlock%, nBlocksRequired%, minListSize%, maxListSize%);
+    return s%;
+end

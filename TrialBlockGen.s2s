@@ -1,0 +1,82 @@
+'$Id$
+'
+' Trial block generator
+'
+' Utility to generate blocks of trials that satisfy the following requirement: trials of 
+' each type must be balanced at the end of each block. For example, an experiment has 
+' 8 different trial types. The experimenter wants to run 10 trials of each type, but would 
+' like to do them in blocks so that every trial type will have 2 (4, 6) occurences before
+' any of them has 3 (5, 7). This way, if the experiment is stopped before all trials have 
+' run there is some guarantee that there is a good distribution of trial types. 
+'
+' To use this utility, a script must first call tbgInit() with the following parameters:
+'
+' nTypes%       number of trial types. The trial block generator will only provide an index
+'               in [0, nTypes%-1]. The user must interpret the index appropriately -- the 
+'               indices represent different trial types, but the trial list generator doesn't 
+'               know anything about them. 
+'
+' nTrialsPerBlock%      number of trials in a complete block. This many trials of each type 
+'                       must be completed before a new block is started.
+'
+' nBlocksRequired%      number of blocks that should be completed
+'
+'
+' Usage:
+'
+' 1. include in another script: #include "TrialBlockGen.s2s"
+' 2. initialize first - before calling any other routines here: tbgInit()
+' 3. call tbgGetTrialIndex%(index%) to get a trial. This function returns 1 if an index was 
+'    generated (the parameter index% is set to the index value) or 0 if all blocks are
+'    complete. 
+' 4. As trials are completed, call tbgTrialCompleted(trialIndex%), where trialIndex% is the 
+'    index of the completed trial (duh). This function increments counters, checks for 
+'    completed blocks and initializes new blocks as needed. You are not required to call 
+'    tbgTrialCompleted(trialIndex%) for each trial. For example, if you want complete blocks
+'    of trials where the subject gives a correct response you can call tbgTrialCompleted%()
+'    for just those trials. 
+'
+' Remember - tbgGetTrialIndex%() will return 0 when all blocks are complete. You MUST call 
+' tbgTrialCompleted for SOME trials, however, otherwise tbgGetTrialIndex will return 
+' trial indices FOREVER. 
+'
+
+#include "TrialListGen.s2s"
+
+var tbgNTrialTypes%:= 0;                ' must be supplied in tbgInit()
+var tbgNTrialsPerBlock% := 0;
+var tbgNBlocksRequired% := 0;
+var tbgInitialized% := 0;
+var tbgTrialList%[1];
+
+proc tbgInit(nTypes%, nTrialsPerBlock%, nBlocksRequired%)
+    tlgInit(nTypes%, nTrialsPerBlock%, nBlocksRequired%, 1, 1);
+    return;
+end
+
+func tbgGetTrialIndex%(&index%)
+    var s%;
+    s% := tlgGetTrialList%(tbgTrialList%[]);
+    if s% = 1 then
+        index% := tbgTrialList%[0];
+    endif
+    return s%;
+end
+
+func tbgTrialIndexHowManyCompleted%(trialIndex%)
+    return tlgTrialIndexHowManyCompleted%(trialIndex%);
+end
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' tbgTrialIndexCompleted(trialIndex%)
+' 
+' Call this function after a trial of trial index 'trialIndex%' has been 
+' successfully completed. 
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+proc tbgTrialIndexCompleted(trialIndex%)
+    tlgTrialIndexCompleted(trialIndex%);
+    return;
+end
