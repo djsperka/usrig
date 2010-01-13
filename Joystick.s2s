@@ -117,20 +117,51 @@ end
 func GetJoystickPosition%()
     var v;
     var pos% := JSError%;
-    if GetJoystickVoltage%(v) = 0 then
+    
+    ' Check if debugging (initialized with channel < 0). If so, present a dialog to get 
+    ' joystick position
+    
+    if jsIsInitialized% <> 0 and jsChannelNumber% < 0 then
         
-        docase
-        case v <= jsLeftHigh then
-            pos% := JSLeft%;
-        case v < jsCenterLow then
-            pos% := JSUndefined%;
-        case v <= jsCenterHigh then
-            pos% := JSCenter%;
-        case v < jsRightLow then
-            pos% := JSUndefined%;
-        else
-            pos% := JSRight%;
-        endcase
+        pos% := JoystickPositionDialog%();
+        
+    else
+            
+        if GetJoystickVoltage%(v) = 0 then
+            
+            docase
+            case v <= jsLeftHigh then
+                pos% := JSLeft%;
+            case v < jsCenterLow then
+                pos% := JSUndefined%;
+            case v <= jsCenterHigh then
+                pos% := JSCenter%;
+            case v < jsRightLow then
+                pos% := JSUndefined%;
+            else
+                pos% := JSRight%;
+            endcase
+        endif
+        
+    endif
+    
+    return pos%;
+end
+
+
+func JoystickPositionDialog%()
+    var val%;
+    var pos%;
+    DlgCreate("Joystick Position");
+    DlgButton(100, "Undefined");
+    DlgButton(101, "Left");
+    DlgButton(102, "Center");
+    DlgButton(103, "Right");
+    val% := DlgShow();
+    if val% = 0 or val% = 1 then
+        pos% := JSError%;
+    else
+        pos% := val% - 100;
     endif
     return pos%;
 end
