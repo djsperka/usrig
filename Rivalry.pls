@@ -19,6 +19,11 @@ EV:     'r  DIGOUT [.....1.1]
             DELAY  10
             HALT   
 
+; toggle stimulus request
+EZ:     'z  DIGOUT [....i..1]
+            DELAY  10
+            HALT   
+
 ; Stimulus off request
 EX:     'X  DIGOUT [.....001]
             DELAY  10
