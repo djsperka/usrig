@@ -1,0 +1,84 @@
+' $Id$
+'
+' ChannelUtilities.s2s
+' 
+' Utility functions for manipulating channels, getting info from them. 
+
+
+
+
+' FindEdge% 
+'
+' Tests whether an event channel has an edge. Should only be used for event channels!
+' Returns -1 if no event is found, 0 if a rising edge is found, 1 if a falling edge is found. 
+
+func FindEdge%(channel%, tLast, &tTrigger)
+    var vTrigger;
+    var s% := -1;
+	tTrigger := NextTime(channel%, tLast, vTrigger);
+    if tTrigger > tLast then
+        docase
+        case vTrigger = 0 then
+            s% := 0;
+        case vTrigger = 1 then
+            s% := 1;
+        endcase
+    endif
+    return s%;
+end
+
+        
+' FindRisingEdge%
+' 
+' Tests whether an event channel has a RISING edge. Returns 0 if one is found after the time tLast. 
+' If a falling edge is found first, then another search is done to find a rising edge. Should only
+' be used with an event channel. 
+'
+' The return values on success for this function and FindFallingEdge% match the value set by NextTime
+' when an edge event is found. That value corresponds to the logical value of the channel BEFORE the
+' transition. Thus, when a rising edge is found, the value of the channel before the transition was
+' 0, so the return value from this function is 0. 
+
+func FindRisingEdge%(channel%, tLast, &tTrigger)
+    var vTrigger;
+    var tTemp;
+    var s% := -1;
+    
+    tTemp := tLast;
+    repeat
+        tTrigger := NextTime(channel%, tTemp, vTrigger);
+        tTemp := tTrigger;
+    until tTrigger < 0 or (tTrigger >= 0 and vTrigger = 0);
+    if tTrigger >=0 and vTrigger = 0 then
+        s% := 0;
+    endif
+    return s%
+end
+
+    
+' FindFallingEdge%
+' 
+' Tests whether an event channel has a FALLING edge. Returns 1 if one is found after the time tLast. 
+' If a rising edge is found first, then another search is done to find a falling edge. Should only
+' be used with an event channel. 
+'
+' The return values on success for this function and FindRisingEdge% match the value set by NextTime
+' when an edge event is found. That value corresponds to the logical value of the channel BEFORE the
+' transition. Thus, when a falling edge is found, the value of the channel before the transition was
+' 1, so the return value from this function is 1. 
+
+func FindFallingEdge%(channel%, tLast, &tTrigger)
+    var vTrigger;
+    var tTemp;
+    var s% := -1;
+    
+    tTemp := tLast;
+    repeat
+        tTrigger := NextTime(channel%, tTemp, vTrigger);
+        tTemp := tTrigger;
+    until tTrigger < 0 or (tTrigger >= 0 and vTrigger = 1);
+    if tTrigger >=0 and vTrigger = 1 then
+        s% := 1;
+    endif
+    return s%
+end
