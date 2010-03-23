@@ -19,6 +19,11 @@ EV:     'r  DIGOUT [.....1.1]
             DELAY  10
             HALT   
 
+; Fixation point request
+EF:     'F  DIGOUT [...1...1]
+            DELAY  10
+            HALT   
+
 ; toggle stimulus request
 EZ:     'z  DIGOUT [....i..1]
             DELAY  10
