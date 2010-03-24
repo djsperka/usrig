@@ -30,7 +30,7 @@ EZ:     'z  DIGOUT [....i..1]
             HALT   
 
 ; Stimulus off request
-EX:     'X  DIGOUT [.....001]
+EX:     'X  DIGOUT [...0.001]
             DELAY  10
             HALT   
 
