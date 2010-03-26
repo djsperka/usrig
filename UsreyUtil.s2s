@@ -5,7 +5,12 @@
 #include "LogUtilities.s2s"
 
 
-GetDataParameters();
+if GetRigName$() = "AcuteRig" then
+    GetAcuteDataParameters();
+else
+    GetDataParameters();
+endif
+
 
 
 
@@ -38,6 +43,7 @@ GetDataParameters();
 var dataPathRoot$;		' base path for data storage
 var dataDataSet$;		' folder under data path where data files placed
 var dataCellName$;		' part of base name for all data files
+var dataAcuteDistanceToScreenMM$ := "9999";   ' screen distance, acute rig only!
 var dataDataSetTextItem%;	' 
 
 func GetDataPathRoot$()
@@ -52,6 +58,19 @@ func GetDataCellName$()
     return dataCellName$;
 end
 
+func GetCurrentDataPath$(iSlashes%)
+    var s$;
+    s$ := dataPathRoot$ + "\\" + dataDataSet$;
+    if iSlashes% <> 0 then
+        s$ += "\\";
+    endif
+    return s$;
+end
+
+func GetAcuteDistanceToScreenMM$()
+    return dataAcuteDistanceToScreenMM$;
+end
+
 proc GetDataParameters()
 	var stmp$;
 	var key$;
@@ -62,7 +81,6 @@ proc GetDataParameters()
 	Profile(key$, "PathRoot", "C:\\Experiments", dataPathRoot$);
 	Profile(key$, "DataSet", "", dataDataSet$);
 	Profile(key$, "CellName", "", dataCellName$);
-	return;
 end;
 
 proc SaveDataParameters()
@@ -84,7 +102,7 @@ func DataParametersDialog%()
 	DlgText("Data root path: " + dataPathRoot$, 0, 1);
 	dataDataSetTextItem% := DlgText("Data set name: " + dataDataSet$, 0, 2);
 	DlgString(1, "Cell name:", 10, "", 0, 3);
-        DlgButton(2, "New Data Set", NewDataSet%);
+    DlgButton(2, "New Data Set", NewDataSet%);
 	i% := DlgShow(dataCellName$);
 	if (i% = 1) then
 		if Len(dataDataSet$) = 0 then
@@ -95,6 +113,60 @@ func DataParametersDialog%()
 			else
 				FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3, 1);
 				SaveDataParameters();
+			endif;
+		endif;
+	endif;
+	return i%;
+end;
+
+proc GetAcuteDataParameters()
+	var stmp$;
+	var key$;
+
+'	key$:="AlertRig\\Data";
+	key$ := GetRigName$() + "\\Data";
+
+	Profile(key$, "PathRoot", "C:\\Experiments", dataPathRoot$);
+	Profile(key$, "DataSet", "", dataDataSet$);
+	Profile(key$, "CellName", "", dataCellName$);
+	Profile(key$, "AcuteDistanceToScreenMM", dataAcuteDistanceToScreenMM$, dataAcuteDistanceToScreenMM$);
+end;
+
+proc SaveAcuteDataParameters()
+	var stmp$;
+	var key$;
+
+	key$ := GetRigName$() + "\\Data";
+
+	Profile(key$, "PathRoot", dataPathRoot$);
+	Profile(key$, "DataSet", dataDataSet$);
+	Profile(key$, "CellName", dataCellName$);
+	Profile(key$, "AcuteDistanceToScreenMM", dataAcuteDistanceToScreenMM$);
+	return;
+end;
+
+func AcuteDataParametersDialog%()
+	var i%;
+    var itemp%;
+	GetAcuteDataParameters();
+    itemp% := val(dataAcuteDistanceToScreenMM$);
+	DlgCreate("Data Storage Parameters", 25, 10, 50);
+	DlgText("Data root path: " + dataPathRoot$, 0, 1);
+	dataDataSetTextItem% := DlgText("Data set name: " + dataDataSet$, 0, 2);
+	DlgString(1, "Cell name:", 10, "", 0, 3);
+    DlgButton(102, "New Data Set", NewDataSet%);
+    DlgInteger(2, "Dist to Screen (MM):", 1, 10000, 0, 4);
+	i% := DlgShow(dataCellName$, itemp%);
+	if (i% = 1) then
+		if Len(dataDataSet$) = 0 then
+			Message("Must specify a data set (try the button!)");
+		else
+			if Len(dataCellName$) = 0 then
+				Message("Must specify a cell name");
+			else
+				FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3, 1);
+                dataAcuteDistanceToScreenMM$ := str$(itemp%);
+				SaveAcuteDataParameters();
 			endif;
 		endif;
 	endif;
@@ -121,7 +193,6 @@ func NewDataSet%()
 	DlgValue$(dataDataSetTextItem%, "Data set name: " + dataDataSet$);
 	return 1;
 end;
-
 
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
