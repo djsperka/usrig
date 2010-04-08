@@ -41,3 +41,132 @@ func IsOutsideCircle%(x, y, xCenter, yCenter, r)
 end
 
 
+' GetParameterProgression%(n%, result[], indices%[], firstval, lastval, ilog%, irandom%)
+'
+' n% : Number of values to generate
+' result[] : Values placed here
+' indices%[] : indices - these are shuffled when irandom% <> 0
+' firstval : first value 
+' lastval : last value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' irandom% : randomize order when this <> 0
+'
+' Generates a progression of n% values starting at firstval and ending 
+' at lastval. If ilog% is 0 the progression is linear, otherwise it is 
+' log. For log progressions both firstval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. When irandom% = 0, the order of the indices is 
+' 0, 1, ... n%-1, so you can safely ignore indices%[] in that case. 
+' 
+' Returns 0 on success, nonzero value otherwise. 
+
+func GetParameterProgression%(n%, result[], indices%[], firstval, lastval, ilog%, irandom%)
+    var status% := 0;
+    docase
+    case Len(result[]) < n% or Len(indices%[]) < n% then
+        status% := 1;
+    case n% < 2 then
+        status% := 1;
+    case ilog% <> 0 and (firstval <= 0 or lastval<= 0) then
+        status% := 1;
+    else
+        var stepsize;
+        var i%;
+        for i% := 0 to n%-1 do
+            indices%[i%] := i%;
+        next
+        if ilog% <> 0 then
+            var firstlog, lastlog;
+            ' Generate log progression
+            firstlog := log(firstval);
+            lastlog := log(lastval);
+            stepsize := (lastlog - firstlog)/(n%-1);
+            for i% := 0 to n%-1 do
+                result[i%] := pow(10, firstlog + i% * stepsize);
+            next;
+        else
+            ' Generate linear progression
+            stepsize := (lastval - firstval)/(n%-1);
+            for i% := 0 to n%-1 do
+                result[i%] := firstval + i% * stepsize;
+            next;
+        endif
+        
+        if irandom% <> 0 then
+            Shuffle%(n%, indices%[]);
+        endif
+        
+    endcase
+    return status%;
+end
+
+' Shuffle%(n%, list%[])
+'
+' n% : Number of elements of list%[] to shuffle.
+' list%[] : array to be shuffled. 
+'
+' Shuffle will randomly shuffle the first n% elements of the array list%[]. 
+' 
+' Returns 0 on success or 1 on error (n% < 1 or list%[] does not have at least n% elements)
+
+func Shuffle%(n%, list%[])
+    var status% := 0;
+    var i%, si%, tmp%;
+    if n% < 1 or Len(list%[]) < n% then
+        status% := 1;
+    else
+        ' populate the list%[] array with indices. 
+        for i% := 0 to n%-1 do
+            list%[i%] := i%;
+        next;
+        
+        ' Step thru the indices from 0 to n%-2. At each index, we consider the array starting at the 
+        ' current index and ending at the end of the array. If there are M elements in that array, 
+        ' draw a random number between 0 and M-1. Swap the index at that position with the index at 
+        ' position 0. Step to the next index and repeat. 
+        for i% := 0 to n%-2 do
+            si% := Rand(n%-i%, i%);
+            tmp% := list%[i%];
+            list%[i%] := list%[si%];
+            list%[si%] := tmp%;
+        next;
+    endif
+    return status%;
+end
+
+        
+func GetRealArrayAsString$(r[], indices%[])
+    var s$;
+    var i%;
+    docase
+    case Len(r[]) = 0 then
+        return;
+    case Len(r[]) = 1 then
+        s$ := str$(r[indices%[0]]);
+    else
+        s$ := str$(r[indices%[0]]);
+        for i% := 1 to Len(r[])-1 do
+            s$ += "," + str$(r[indices%[i%]]);
+        next        
+    endcase
+    return s$;
+end
+
+
+func GetIntegerArrayAsString$(a%[], indices%[])
+    var s$;
+    var i%;
+    docase
+    case Len(a%[]) = 0 then
+        return;
+    case Len(a%[]) = 1 then
+        s$ := str$(a%[indices%[0]]);
+    else
+        s$ := str$(a%[indices%[0]]);
+        for i% := 1 to Len(a%[])-1 do
+            s$ += "," + str$(a%[indices%[i%]]);
+        next        
+    endcase
+    return s$;
+end
