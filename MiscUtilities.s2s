@@ -43,7 +43,7 @@ end
 
 ' GetParameterProgression%(n%, result[], indices%[], firstval, lastval, ilog%, irandom%)
 '
-' n% : Number of values to generate
+' n% : Number of values to gdraw from
 ' result[] : Values placed here
 ' indices%[] : indices - these are shuffled when irandom% <> 0
 ' firstval : first value 
@@ -100,6 +100,28 @@ func GetParameterProgression%(n%, result[], indices%[], firstval, lastval, ilog%
     endcase
     return status%;
 end
+
+func GetRepeatedParameterProgression%(n%, nr%, result[], indices%[], firstval, lastval, ilog%, irandom%)
+    var status% := 0;
+    docase
+    case Len(result[]) < n%*nr% or Len(indices%[]) < n%*nr% then
+        status% := 1;
+    case n% < 2 or nr% < 1 then
+        status% := 1;
+    else
+        var ir%;
+        var is%;
+        for ir% := 0 to nr%-1 do
+            is% := GetParameterProgression%(n%, result[ir%*n%:n%], indices%[ir%*n%:n%], firstval, lastval, ilog%, irandom%);
+            if is% <> 0 then
+                PrintLog("GetRepeatedParameterProgression%()", "Error (" + str$(is%) + ")during repeat# " + str$(ir%));
+                status% := is%;
+            endif
+        next
+    endcase
+    return status%;
+end
+
 
 ' Shuffle%(n%, list%[])
 '
