@@ -1,16 +1,26 @@
 ' $Id$
-'
-' ChannelUtilities.s2s
-' 
-' Utility functions for manipulating channels, getting info from them. 
+
+'****h* Spike2Util/ChannelUtilities
+' FUNCTION
+' Utility functions for getting information from data acquisition channels.
+'****
 
 
-
-
-' FindEdge% 
-'
-' Tests whether an event channel has an edge. Should only be used for event channels!
-' Returns -1 if no event is found, 0 if a rising edge is found, 1 if a falling edge is found. 
+'****f* Spike2Util/ChannelUtilities/FindEdge%
+' NAME
+' FindEdge%(channel%, tLast, &tTrigger)
+' SYNOPSIS
+' Finds the next edge after a given time for an event level channel.
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tTrigger - if an edge is found, this is set to the time at which it is found
+' RETURN VALUE
+' Returns -1 if no edge is found. Returns 0 (1) if an edge is found and it is a 
+' rising (falling) edge. 
+' SEE ALSO
+' FindFallingEdge, FindRisingEdge
+'****
 
 func FindEdge%(channel%, tLast, &tTrigger)
     var vTrigger;
@@ -39,6 +49,24 @@ end
 ' transition. Thus, when a rising edge is found, the value of the channel before the transition was
 ' 0, so the return value from this function is 0. 
 
+'****f* Spike2Util/ChannelUtilities/FindRisingEdge%
+' NAME
+' FindRisingEdge%(channel%, tLast, &tTrigger)
+' SYNOPSIS
+' Finds the next rising edge after a given time for an event level channel.
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tTrigger - if an edge is found, this is set to the time at which it is found
+' RETURN VALUE
+' Returns -1 if no edge is found. Returns 0 if a rising edge is found.
+' NOTES
+' See Spike2's "NextTime" function. The return value here is the same as the 
+' value for the 'val' parameter in NextTime when a rising edge is found. 
+' SEE ALSO
+' FindEdge, FindFallingEdge
+'****
+
 func FindRisingEdge%(channel%, tLast, &tTrigger)
     var vTrigger;
     var tTemp;
@@ -66,6 +94,24 @@ end
 ' when an edge event is found. That value corresponds to the logical value of the channel BEFORE the
 ' transition. Thus, when a falling edge is found, the value of the channel before the transition was
 ' 1, so the return value from this function is 1. 
+
+'****f* Spike2Util/ChannelUtilities/FindFallingEdge%
+' NAME
+' FindFallingEdge%(channel%, tLast, &tTrigger)
+' SYNOPSIS
+' Finds the next falling edge after a given time for an event level channel.
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tTrigger - if an edge is found, this is set to the time at which it is found
+' RETURN VALUE
+' Returns -1 if no edge is found. Returns 1 if a falling edge is found.
+' NOTES
+' See Spike2's "NextTime" function. The return value here is the same as the 
+' value for the 'val' parameter in NextTime when a falling edge is found. 
+' SEE ALSO
+' FindEdge, FindRisingEdge
+'****
 
 func FindFallingEdge%(channel%, tLast, &tTrigger)
     var vTrigger;

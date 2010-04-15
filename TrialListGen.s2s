@@ -1,9 +1,19 @@
 ' $Id $
+
+'****h* Spike2Util/TrialListGen
+' FUNCTION
 '
-'
-' Trial list generator
-'
-' Utility to generate lists of trials that follow a block format. To use you must first 
+' Utility to generate lists of trials that follow a block format. A block of trials is 
+' defined here as a set of trial indices (numbered from 0...nTypes%) which are ordered so 
+' that all trial types occur a certain number of times (the block size) before any of the 
+' trial types has another occurrence. Thus, you can expect that trial types will complete
+' an entire block before more trial types are presented. This means that your trial types
+' will be randomized, but you can control the balance in their occurrence. If you choose a
+' block size of 4 and you require 10 blocks, you will get 40 trials of each type. But at any
+' point you are guaranteed that the number of occurrences of each trial type is within 4
+' of all other types. 
+' 
+' To use you must first 
 ' call tlgInit with the following information:
 '
 ' nTypes%       number of trial types. The trial list generator will only provide a list
@@ -19,7 +29,6 @@
 ' minListSize%      minimum size of trial list returned by each call to tlgGetTrialList%
 '
 ' maxListSize%      maximum size of trial list returned by each call to tlgGetTrialList%
-'
 '
 ' This utility is designed to generate sets of trials -- called trial lists -- which will 
 ' satisfy the requirements outlined in the parameters described above. The caller must provide
@@ -42,7 +51,10 @@
 ' Remember - tlgGetTrialList() will return 0 when all blocks are complete. You MUST call 
 ' tlgTrialCompleted for SOME trials, however, otherwise tlgTrialList will return 
 ' trial lists FOREVER. 
-'
+'****
+
+
+
 
 const tlgMaxPossibleChoices% := 5000;    ' This should be more than NTrialTypes% * NTrialsPerBlock can ever be! 
 var tlgPossibleChoices%[tlgMaxPossibleChoices%];    ' used in tlgGetNextTrial%() only
@@ -57,18 +69,21 @@ var tlgMinListSize% := 0;
 var tlgMaxListSize% := 0;
 var tlgInitialized% := 0;
 
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'
+
+'****f* Spike2Util/TrialListGen/tlgInit
+' NAME
 ' tlgInit(nTypes%, nTrialsPerBlock%, nBlocksRequired%, minListSize%, maxListSize%)
-'
-' this should be called once, before calling any other tlg* functions or procs. 
-' nTypes% is the number of trial types. 
-' nTrialsPerBlock% is the number of trials for each type needed to complete a "block". 
-' nBlocksRequired% is the number of "blocks" before we don't serve any more trial lists. 
-' minListSize%, maxListSize% is the range of list sizes which will be returned by 
-' tlgGetTrialList%(). 
-'
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' SYNOPSIS
+' Initializes trial list generator. Must be called once before any other tlg* functions
+' are called. 
+' INPUTS
+' nTypes% : the number of trial types
+' nTrialsPerBlock% : the number of trials for each type needed to complete a "block"
+' nBlocksRequired% : the number of "blocks" before we don't serve any more trial lists
+' minListSize%, maxListSize% : the range of list sizes which will be returned by 
+'                               tlgGetTrialList%(). 
+'****
+
 
 proc tlgInit(nTypes%, nTrialsPerBlock%, nBlocksRequired%, minListSize%, maxListSize%)
     tlgNTrialTypes% := nTypes%;
@@ -81,14 +96,12 @@ proc tlgInit(nTypes%, nTrialsPerBlock%, nBlocksRequired%, minListSize%, maxListS
 end
 
 
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'
+'****fi Spike2Util/TrialListGen/tlgInitBlock
+' NAME
 ' tlgInitBlock()
-'
-' Called internally (don't call this from anywhere outside this file!) to initialize the 
-' counters for a block. 
-'
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' SYNOPSIS
+' Called internally to initialize a new block.
+'****
 
 proc tlgInitBlock()
     var index%;
@@ -111,6 +124,20 @@ end
 ' successfully completed. 
 '
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+'****f* Spike2Util/TrialListGen/tlgTrialIndexCompleted
+' NAME
+' tlgTrialIndexCompleted(trialIndex%)
+' SYNOPSIS
+' Marks a trial of a given index as completed. 
+' INPUTS
+' trialIndex% : trial index which was completed
+' NOTES
+' This function should be called whenever a trial is completed, or when you wish
+' a trial to be marked as complete for the purposes of the block/list generator. 
+' You may set any criteria to define a "complete" trial in this sense - the trial 
+' list generator does not care. 
+'****
 
 proc tlgTrialIndexCompleted(trialIndex%)
     var index%;
@@ -136,11 +163,21 @@ proc tlgTrialIndexCompleted(trialIndex%)
 end
 
 
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'
+'****f* Spike2Util/TrialListGen/tlgGetTrialList%
+' NAME
 ' tlgGetTrialList%(trialList%[])
-'
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' SYNOPSIS
+' Gets a list of trial indices. 
+' INPUTS
+' trialList%[] : list of trial indices
+' RETURN VALUE
+' Returns 0 if all blocks are complete, otherwise returns the number of trial indices
+' in trialList%[].
+' NOTES
+' The return value may be any number between the min and max number of trials you 
+' specified when you called tlgInit. If there are trials left, but there are fewer
+' than the minimum value, then that number will be returned.
+'****
 
 func tlgGetTrialList%(trialList%[])
     var n%;
@@ -170,9 +207,13 @@ end
 '
 ' tlgGetNextTrial%(last%)
 '
-' This func is called internally by tlgGetTrialList. Do not call it from anywhere outside
-' this file!
 ' 
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'****fi Spike2Util/TrialListGen/tlgGetNextTrial%
+' NAME
+' tlgGetNextTrial%(last%)
+' SYNOPSIS
 ' Generates a trial index. The index generated will NOT be the same as last%.
 ' It is ASSUMED that all blocks are NOT completed yet! 
 ' Given that, this func uses one of two methods:
@@ -186,8 +227,14 @@ end
 '
 ' Remember that when choices are made here we do NOT increment the counters in
 ' tlgTrialsCompletedThisBlock%[]. That is done in tlgTrialCompleted. 
-'
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' INPUTS
+' last% : last index chosen
+' RETURN VALUE
+' Next index value to be used.
+' NOTES
+' This func is called internally by tlgGetTrialList. Do not call it from anywhere outside
+' this file!
+'****
 
 func tlgGetNextTrial%(last%)
     var count% := 0;

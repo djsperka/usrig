@@ -1,5 +1,10 @@
+' $Id: '
+
+'****h* Spike2Util/Directories
+' FUNCTION
 ' Local file system variables. This file should be included prior to 
 ' using #include if you want to use util$ in other #include. 
+'****
 
 var bin$;       ' Location of executable vsg programs
 var script$;    ' Location of scripts
@@ -11,13 +16,20 @@ script$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2);	' folder conta
 util$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\..\\Spike2Util";
 stim$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\stim";
 
-' Use these functions to get directory names. The values returned do NOT have (have) trailing slashes if the 
-' parameter iSlashes% is 0 (1). 
-'
-' GetScriptDir$() - return folder containing rig scripts
-' GetBinDir$() - returns folder containing VSG executables
-' GetConfigDir$() - return config dir (unused)
 
+'****f* Spike2Util/Directories/GetScriptDir$
+' NAME
+' GetScriptDir$(islashes%)
+' SYNOPSIS
+' Gets the path name to the folder containing the main script (not this file). 
+' INPUTS
+' islashes% : If 0 returns the path without trailing slash, otherwise the trailing
+'             slash is appended. 
+' RETURN VALUE
+' String pathname. 
+' SEE ALSO
+' GetBinDir, GetUtilitiesDir, GetStimDir
+'****
 
 func GetScriptDir$(iSlashes%)
     if iSlashes% = 0 then
@@ -27,6 +39,20 @@ func GetScriptDir$(iSlashes%)
     endif
 end
 
+'****f* Spike2Util/Directories/GetBinDir$
+' NAME
+' GetBinDir$(islashes%)
+' SYNOPSIS
+' Gets the path name to the folder containing executables. 
+' INPUTS
+' islashes% : If 0 returns the path without trailing slash, otherwise the trailing
+'             slash is appended. 
+' RETURN VALUE
+' String pathname. 
+' SEE ALSO
+' GetScriptDir, GetUtilitiesDir, GetStimDir
+'****
+
 func GetBinDir$(iSlashes%)
     if iSlashes% = 0 then
         return bin$;
@@ -35,6 +61,20 @@ func GetBinDir$(iSlashes%)
     endif
 end
 
+'****f* Spike2Util/Directories/GetUtilitiesDir$
+' NAME
+' GetUtilitiesDir$(islashes%)
+' SYNOPSIS
+' Gets the path name to the util folder (obsolete).
+' INPUTS
+' islashes% : If 0 returns the path without trailing slash, otherwise the trailing
+'             slash is appended. 
+' RETURN VALUE
+' String pathname. 
+' SEE ALSO
+' GetBinDir, GetScriptDir, GetStimDir
+'****
+
 func GetUtilitiesDir$(iSlashes%)
     if iSlashes% = 0 then
         return util$;
@@ -42,6 +82,21 @@ func GetUtilitiesDir$(iSlashes%)
         return util$ + "\\";
     endif
 end
+
+
+'****f* Spike2Util/Directories/GetStimDir$
+' NAME
+' GetStimDir$(islashes%)
+' SYNOPSIS
+' Gets the path name to the folder containing stimuli files. 
+' INPUTS
+' islashes% : If 0 returns the path without trailing slash, otherwise the trailing
+'             slash is appended. 
+' RETURN VALUE
+' String pathname. 
+' SEE ALSO
+' GetBinDir, GetUtilitiesDir, GetStimDir
+'****
 
 func GetStimDir$(iSlashes%)
     if iSlashes% = 0 then

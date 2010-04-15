@@ -1,10 +1,24 @@
-' IsInsideCircle
-'
-' Test whether a point (x, y) is inside a circle defined by the center
-' (xCenter, yCenter) and radius r. 
-'
+' $Id$
+
+'****h* Spike2Util/MiscUtilities
+' FUNCTION
+' Miscellaneous utilities useful in experimental scripts. 
+'****
+
+
+'****f* Spike2Util/MiscUtilities/IsInsideCircle%
+' NAME
+' IsInsideCircle%(x, y, xCenter, yCenter, r)
+' SYNOPSIS
+' Test whether a point is inside a circle.
+' INPUTS
+' x,y		- point to be tested
+' xCenter,yCenter	- center of circle
+' r				- radius of the circle
+' RETURN VALUE
 ' Returns 1 if (x, y) is inside (or on the circumference of) the circle, 
 ' 0 if its outside the circle. 
+'****
 
 func IsInsideCircle%(x, y, xCenter, yCenter, r)
     if ((x-xCenter)*(x-xCenter) + (y-yCenter)*(y-yCenter)) > (r*r) then
@@ -16,20 +30,18 @@ end
 
 
 
-' IsOutsideCircle
-'
-' Test whether a point (x, y) is outside a circle defined by the center
-' (xCenter, yCenter) and radius r. 
-'
-' Returns 1 if (x, y) is outside (or on the circumference of) the circle, 
-' 0 if its outside the circle. 
-'
-' Note: You might think that it'd be wise to make this function simply 
-' return 1-IsInsideCircle with the same args. Testing shows that the 
-' overhead of the extra function call costs us - about 50% worse performance - 
-' than the direct case. Yeah, yeah, yeah, there's the extra programmer
-' overhead of making sure these two functions are consistent...... 
-
+'****f* Spike2Util/MiscUtilities/IsOutsideCircle%
+' NAME
+' IsOutsideCircle%
+' SYNOPSIS
+' Test whether a point is outside a circle.
+' INPUTS
+' x,y		- point to be tested
+' xCenter,yCenter	- center of circle
+' r				- radius of the circle
+' RETURN VALUE
+' Returns 1 if (x, y) is outside the circle, 0 otherwise.
+'****
 
 func IsOutsideCircle%(x, y, xCenter, yCenter, r)
 '    return 1 - IsInsideCircle(x, y, xCenter, yCenter, r);
@@ -41,25 +53,36 @@ func IsOutsideCircle%(x, y, xCenter, yCenter, r)
 end
 
 
-' GetParameterProgression%(n%, result[], indices%[], firstval, lastval, ilog%, irandom%)
-'
-' n% : Number of values to gdraw from
-' result[] : Values placed here
-' indices%[] : indices - these are shuffled when irandom% <> 0
-' firstval : first value 
-' lastval : last value
+
+'****f* Spike2Util/MiscUtilities/GetParameterProgression%
+' NAME
+' GetParameterProgression%
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a starting
+' value to an ending value. The progression can be linear or logarithmic, and 
+' the order of the parameters can be randomized.
+' INPUTS
+' n% : Number of values to generate
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' firstval : first/starting parameter value 
+' lastval : last/ending parameter value
 ' ilog% : Generate linear (log) progression if ilog = 0 (1). 
-' irandom% : randomize order when this <> 0
-'
-' Generates a progression of n% values starting at firstval and ending 
-' at lastval. If ilog% is 0 the progression is linear, otherwise it is 
-' log. For log progressions both firstval and lastval must be > 0. 
+' irandom% : randomize order of indices%[] when this <> 0
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both firstval and lastval must be > 0. 
 '
 ' The array indices%[] is the order you should follow when accessing the 
-' values in result[]. When irandom% = 0, the order of the indices is 
-' 0, 1, ... n%-1, so you can safely ignore indices%[] in that case. 
-' 
-' Returns 0 on success, nonzero value otherwise. 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' SEE ALSO
+' GetRepeatedParameterProgression
+'****
 
 func GetParameterProgression%(n%, result[], indices%[], firstval, lastval, ilog%, irandom%)
     var status% := 0;
@@ -101,6 +124,40 @@ func GetParameterProgression%(n%, result[], indices%[], firstval, lastval, ilog%
     return status%;
 end
 
+'****f* Spike2Util/MiscUtilities/GetRepeatedParameterProgression%
+' NAME
+' GetRepeatedParameterProgression%(n%, nr%, result[], indices%[], firstval, lastval, ilog%, irandom%)
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a starting
+' value to an ending value. The progression can be linear or logarithmic, and 
+' the order of the parameters can be randomized. In addition, the set may be repeated
+' any number of times. 
+' n% : Number of values to generate
+' nr% : Number of repeats to generate
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' firstval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' irandom% : randomize order of indices%[] when this <> 0
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both firstval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' 
+' The indices always complete a set of n% values (0...n%-1) before starting another set. 
+' SEE ALSO
+' GetParameterProgression
+'****
+
+
 func GetRepeatedParameterProgression%(n%, nr%, result[], indices%[], firstval, lastval, ilog%, irandom%)
     var status% := 0;
     docase
@@ -122,15 +179,17 @@ func GetRepeatedParameterProgression%(n%, nr%, result[], indices%[], firstval, l
     return status%;
 end
 
-
+'****f* Spike2Util/MiscUtilities/Shuffle%
+' NAME
 ' Shuffle%(n%, list%[])
-'
-' n% : Number of elements of list%[] to shuffle.
-' list%[] : array to be shuffled. 
-'
-' Shuffle will randomly shuffle the first n% elements of the array list%[]. 
-' 
-' Returns 0 on success or 1 on error (n% < 1 or list%[] does not have at least n% elements)
+' SYNOPSIS
+' Shuffles a list of values. 
+' INPUTS
+' n% : the number of elements in list%[] to shuffle
+' list%[] : array of values
+' RETURN VALUE
+' Returns 0 on success, 1 otherwise (n% < 1 or length of list%[] less than n%). 
+'****
 
 func Shuffle%(n%, list%[])
     var status% := 0;
@@ -157,6 +216,23 @@ func Shuffle%(n%, list%[])
     return status%;
 end
 
+
+
+'****f* Spike2Util/MiscUtilities/GetRealArrayAsString
+' NAME
+' GetRealArrayAsString$(r[], indices%[])
+' SYNOPSIS
+' Converts the elements of r[] (indexed by indices%[], as from GetParameterProgression)
+' to a comma-separated list. 
+' INPUTS
+' r[] : array of values
+' indices%[] : indices for accessing r[]
+' RETURN VALUE
+' Returns a string containing comma-separated list of values from the array.
+' NOTES
+' The arrays r[] and indices%[] are like those returned from GetParameterProgression. 
+'****
+
         
 func GetRealArrayAsString$(r[], indices%[])
     var s$;
@@ -175,6 +251,20 @@ func GetRealArrayAsString$(r[], indices%[])
     return s$;
 end
 
+'****f* Spike2Util/MiscUtilities/GetIntegerArrayAsString%
+' NAME
+' GetIntegerArrayAsString$(a%[], indices%[])
+' SYNOPSIS
+' Converts the elements of a%[] (indexed by indices%[], as from GetParameterProgression)
+' to a comma-separated list. 
+' INPUTS
+' a%[] : array of values
+' indices%[] : indices for accessing r[]
+' RETURN VALUE
+' Returns a string containing comma-separated list of values from the array.
+' NOTES
+' The arrays a%[] and indices%[] are like those returned from GetParameterProgression. 
+'****
 
 func GetIntegerArrayAsString$(a%[], indices%[])
     var s$;
