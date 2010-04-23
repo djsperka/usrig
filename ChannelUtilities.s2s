@@ -128,3 +128,28 @@ func FindFallingEdge%(channel%, tLast, &tTrigger)
     endif
     return s%
 end
+
+
+'****f* Spike2Util/ChannelUtilities/FindEvent%
+' NAME
+' FindEvent%(channel%, tLast, &tTrigger)
+' SYNOPSIS
+' Finds the next event after a given time for an event channel.
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tTrigger - if an edge is found, this is set to the time at which it is found
+' RETURN VALUE
+' Returns -1 if no event is found. Returns 1 if an event is found.
+' SEE ALSO
+' FindFallingEdge, FindRisingEdge, FindEdge
+'****
+
+func FindEvent%(channel%, tLast, &tTrigger)
+    var s% := -1;
+	tTrigger := NextTime(channel%, tLast);
+    if tTrigger > tLast then
+        s% := 1;
+    endif
+    return s%;
+end
