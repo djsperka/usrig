@@ -1,0 +1,81 @@
+'$Id$
+
+'****h* Spike2Util/TrialGenInterface
+' FUNCTION
+' Trial generator interface
+'
+' This is a set of functions that provide a common interface to the trial generator functions. 
+' The trial list generator functions tlg (TrialListGen.s2s) are NOT covered by this interface.
+' You do not need to use these functions. They are merely a convenience for scripts where you 
+' might be using different models for generating trials, depending on settings chosen at run-
+' time. In such a case you'd have to maintain a set of if statements for each call to the 
+' trial generator's funcions. That list of if statements is maintained here, and so you can 
+' call trialgen* functions and they will behave as expected, depending on which of the trial 
+' generators you initialized. 
+'
+' The initialization of the trial generator automatically configures this module. Only one
+' trial generator can be used at a time! Each call to a trial generator init function will
+' reset the functions which will be called from here. 
+
+
+const trialgenBlockType% := 1;
+const trialgenBlockAltType% := 2;
+const trialgenUnknownType% := -1;
+var trialgenType% := trialgenUnknownType%;
+
+#include "TrialBlockGen.s2s"
+#include "TrialBlockAltGen.s2s"
+#include "LogUtilities.s2s"
+
+
+func trialgenSetType%(type%)
+    var status% := 0;
+    docase 
+    case type% = trialgenBlockType% or type% = trialgenBlockAltType% then
+        trialgenType% := type%;
+    else
+        status% := -1;
+        LogError("trialgenSetType", "Unknown trial generator type: " + str$(type%));
+    endcase
+    return status%;
+end
+
+func trialgenGetTrialIndex%(&index%)
+    var status% := 0;
+    docase
+    case trialgenType% = trialgenBlockType% then
+        status% := tbgGetTrialIndex%(index%);
+    case trialgenType% = trialgenBlockAltType% then
+        status% := tbaltgGetTrialIndex%(index%);
+    else
+        LogError("trialgenGetTrialIndex", "Unknown trial generator type: " + str$(trialgenType%));
+        status% := -1;
+    endcase
+    return status%;
+end
+
+func trialgenTrialIndexHowManyCompleted%(index%)
+    var status% := 0;
+    docase
+    case trialgenType% = trialgenBlockType% then
+        status% := tbgTrialIndexHowManyCompleted%(index%);
+    case trialgenType% = trialgenBlockAltType% then
+        status% := tbaltgTrialIndexHowManyCompleted%(index%);
+    else
+        LogError("trialgenTrialIndexHowManyCompleted", "Unknown trial generator type: " + str$(trialgenType%));
+        status% := -1;
+    endcase
+    return status%;
+end
+
+proc trialgenTrialIndexCompleted(index%)
+    docase
+    case trialgenType% = trialgenBlockType% then
+        tbgTrialIndexCompleted(index%);
+    case trialgenType% = trialgenBlockAltType% then
+        tbaltgTrialIndexCompleted%(index%);
+    else
+        LogError("trialgenTrialIndexCompleted", "Unknown trial generator type: " + str$(trialgenType%));
+    endcase
+    return;
+end
