@@ -8,7 +8,7 @@ var i%;
 var r%;
 var status% := 0;
 var index%;
-
+var noFail% := 0;
 
 status% := tbaltgTestDialog%();
 while status% <> 0 do
@@ -20,7 +20,7 @@ while status% <> 0 do
             
         if ntrials% = 1 then
             r% := Rand(3, 0); 'PrintLog(" r=" + str$(r%) + " ");
-            if r% <> 1 then
+            if r% <> 1 or noFail% = 1 then
                 PrintLog("%d (%d)", index%, tbaltgTrialIndexCompleted%(index%));
             else 
                 ' This is a trial that failed. Test that we still get full blocks.
@@ -42,6 +42,7 @@ func tbaltgTestDialog%()
     DlgInteger(1, "NTypes", 0, 100);
     DlgInteger(2, "Trials per block", 0, 100);
     DlgInteger(3, "Blocks required", 0, 100);
-    s% := DlgShow(nTypes%, nTrialsPerBlock%, nBlocksRequired%);
+    DlgCheck(4, "No Failures?");
+    s% := DlgShow(nTypes%, nTrialsPerBlock%, nBlocksRequired%, noFail%);
     return s%;
 end
