@@ -62,7 +62,7 @@ ER:     'R  DIGOUT [.......1]
             DIGOUT [.......0]           ; downward pulse delivers juice
             DELAY  5
             DIGOUT [.......1]
-            DELAY  200
+            DELAY  100
             DBNZ   V1,ER                ; decrement V1, more juice unless V1==0
             HALT                   ;End of this sequence section
 
