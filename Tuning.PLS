@@ -2,6 +2,8 @@
 ;
 
             SET      1.000 1 0     ;Get rate & scaling OK
+            DIGOUT [00000001]
+            HALT
 
 E0:     '0  DIGOUT [00000001]
             DELAY  s(0.996)-1
