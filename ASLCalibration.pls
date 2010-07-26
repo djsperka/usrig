@@ -2,6 +2,7 @@
 
             SET      1.000 1 0          ;1ms per seq step, DAC scale=1, DAC offset=0
             DIGOUT [00000001]           ; zero out all trigger lines
+            HALT
 
 E0:     '0  DIGOUT [00000001]           ; zero all trig lines
             DELAY  10
