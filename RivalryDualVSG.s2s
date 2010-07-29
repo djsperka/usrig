@@ -10,7 +10,7 @@
 #include "UsreyDAQ.s2s"
 
 ' Special for testing. Set to 1 to choose trial type each trial.
-var rivChooseTrialTypes% := 1;
+var rivChooseTrialTypes% := 0;
 
 ' Local config variables
 
@@ -1051,7 +1051,8 @@ func Start%()
     
     ' Fetch the offset filename
     key$ := GetRegistryKey$(1) + "\\Rivalry";
-    offsetFilename$ := GetDataPathRoot$() + "\\" + GetDataSetName$() + "\\" + GetStringRegistryValue$(key$, "OffsetFile", "file_not_found");
+    offsetFilename$ := GetStringRegistryValue$(GetRegistryKey$(1), "OffsetFile", "file_not_found");
+
     
     ' Parse the grating coordinates for display in the xy window
     ParseGratingParameters%(rivLeftGrating$, rivLeftGratingX, rivLeftGratingY, rivLeftGratingD, h, contrast%, sf, tf, ori, cv$, pattern$, aperture$);
