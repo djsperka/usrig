@@ -1,5 +1,8 @@
 ; $Log$
-; Revision 1.1  2004/10/01 19:41:01  dan
+; Revision 1.2  2010/08/20 01:21:00  devel
+; Force initial state of digout lines to 0x1
+;
+; Revision 1.1  2004-10-01 19:41:01  dan
 ; From production
 ;
 ;
@@ -12,7 +15,7 @@
             SET      1.000 1 0
             VAR    V2=127
 
-E0:         DIGOUT [00100001]
+E0:         DIGOUT [00000001]
             HALT   
 
 ET:     'T  DIGOUT [...0100.]
