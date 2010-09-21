@@ -1,0 +1,66 @@
+'$Id$
+
+var dlguNPorts%;    ' set to number of ports used in WMCNPortDialog%()
+
+' Input arrays represent the analog input ports on the 1401 - wmports%[] are for wavemark, contports%[] are for
+' continuous record.
+' Will generate a dialog with checkboxes for each port. The port numbers start at 0 and go up to the size of 
+' wmports%[] and contports%[]. 
+
+func WMPortDialog%(title$, wmports%[])
+    var n%;
+    var i%;
+    n% := Len(wmports%[]);
+    
+	DlgCreate(title$);
+    for i% := 1 to n% do
+        DlgCheck(i%, "Port " + str$(i%-1), 5, i%);
+    next;
+	i% := DlgShow(wmports%[]);
+    return i%;
+end
+
+
+' Assume that length of wmports and cnports is the same. 
+' Will allow selection of ports in first column. If selected, port is 
+' wavemark if the "continuous" checkbox is UNCKECKED. 
+' Continuous checkbox cannot be checked without checking wm checkbox. 
+
+func WMCNPortDialog%(title$, wmports%[], cnports%[])
+    var n%;
+    var i%;
+    n% := max(Len(wmports%[]), Len(cnports%[]));
+    dlguNPorts% := n%;
+	DlgCreate(title$);
+    for i% := 1 to n% do
+        DlgCheck(i%, "Port " + str$(i%-1), 5, i%);
+        DlgCheck(i%+n%, "Continuous?", 20, i%);
+    next;
+    DlgAllow(0xffff, 0, WMCNPortDialogChanged%);
+	i% := DlgShow(wmports%[0:n%], cnports%[0:n%]);
+    return i%;
+end
+
+func WMCNPortDialogChanged%(item%)
+    var j%;
+    docase
+    case item% = 0 then
+        for j% := 1 to dlguNPorts% do
+            if DlgValue(j%)=0 then
+                DlgValue(j% + dlguNPorts%, 0);
+            endif
+        next
+    case item% > 0 and item% <= dlguNPorts% then
+        if DlgValue(item%) = 0 and DlgValue(item%+dlguNPorts%) = 1 then
+            DlgValue(item%+dlguNPorts%, 0);
+        endif
+    case item% > dlguNPorts% then
+        if DlgValue(item%) = 1 and DlgValue(item%-dlguNPorts%) = 0 then
+            DlgValue(item%-dlguNPorts%, 1);
+        endif
+    endcase
+    return 1;
+end
+
+        
+    
