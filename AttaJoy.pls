@@ -34,7 +34,7 @@ ES:     'S  DIGOUT [....1..1]      ; stim on
             DELAY  10
             HALT   
 
-ET:     's  DIGOUT [....0..1]      ; stim off
+EU:     's  DIGOUT [....0..1]      ; stim off
             DELAY  10
             HALT   
 
@@ -67,5 +67,14 @@ ER:     'R  DIGOUT [.......1]
             DBNZ   V1,ER                ; decrement V1, more juice unless V1==0
             HALT                   ;End of this sequence section
 
+; Reward
+ET:     'T  DELAY  V2                   ; wait this many ms (clock ticks, actually)
+EV:         DIGOUT [.......1]
+            DIGOUT [.......0]           ; downward pulse delivers juice
+            DELAY  5
+            DIGOUT [.......1]
+            DELAY  100
+            DBNZ   V1,EV                ; decrement V1, more juice unless V1==0
+            HALT                   ;End of this sequence section
 
 
