@@ -58,6 +58,23 @@ func trialgenGetTrialIndex%(&index%)
     return status%;
 end
 
+func trialgenGetTrialIndexAndBlock%(&index%, &block%)
+    var status% := 0;
+    docase
+    case trialgenType% = trialgenBlockType% then
+        status% := tbgGetTrialIndexAndBlock%(index%, block%);
+    case trialgenType% = trialgenBlockAltType% then
+        status% := tbaltgGetTrialIndexAndBlock%(index%, block%);
+    case trialgenType% = trialgenWeightedType% then
+        status% := tgwGetTrialIndexAndBlock%(index%, block%);
+    else
+        LogError("trialgenGetTrialIndexAndBlock", "Unknown trial generator type: " + str$(trialgenType%));
+        status% := -1;
+    endcase
+    return status%;
+end
+    
+
 func trialgenTrialIndexHowManyCompleted%(index%)
     var status% := 0;
     docase
