@@ -1,0 +1,97 @@
+' $Id: '
+
+#include "LogUtilities.s2s"
+
+
+LogInit(1);
+
+'****h* Spike2Util/BatchUtilities
+' FUNCTION
+' This module holds functions useful for running batch processing. 
+'****
+
+
+'****fi Spike2Util/BatchUtilities/ProcessListFile%
+' NAME
+' ProcessListFile%(listfile$, func%)
+' SYNOPSIS
+' Opens the file listfile$ and processes each file found in order. 
+' The listfile should contain a list of filenames (full or relative paths) to be processed. 
+' Blank lines and lines beginning with # are ignored. The filenames can be followed by additional
+' arguments which are passed to the processing function (see below). 
+'
+' The function func% takes two arguments: func%(window%, args$). The first argument is the window
+' of the data file (which has been opened). The second argument is any additional args found
+' on the line in the list file. If there are no additional args the args$ variable will be an 
+' empty string. 
+' RETURN VALUE
+' Number of files processed. 
+'****
+
+
+func ProcessListFile%(listfile$, func proc%(h%, arg$))
+    var nfiles% := -1;
+    var hList%;
+    var hData%;
+    var sFilename$;
+    var sArgs$;
+    var process%;
+    var sCurrentDir$;
+    var sListfileDir$;
+    
+    ' Get current dir
+    sCurrentDir$ := FilePath$();
+    
+    ' Open list file
+    
+    if Len(listfile$) > 0 then
+        hList% := FileOpen(listfile$, 8);
+    else
+        hList% := FileOpen("", 8, 0, "Select list file");
+    endif
+
+    if hList% < 0 then
+        LogError("ProcessListFile", "Cannot open listfile (" + listfile$ + ")");
+        return -1;
+    endif
+    
+    ' Get drive and path of list file, and save current dir. Change dir to list file dir. 
+    
+    sListfileDir$ := View(hList%).FileName$(1) + View(hList%).FileName$(2);
+    LogStatus("ProcessListFile", "Change current directory to " + sListfileDir$);
+    FilePathSet(sListfileDir$);
+    
+    process% := 0;
+    while GetNextFilename%(hList%, sFilename$, sArgs$) > 0 and process% = 0 do
+        hData% := FileOpen(sFilename$, 0, 0);
+        if hData% < 0 then
+            LogError("ProcessListFile", "Cannot open data file " + sFilename$)
+        else
+            LogStatus("ProcessListFile", "File " + sFilename$ + ", args \"" + sArgs$ + "\". Start processing...");
+            process% := proc%(hData%, sArgs$);
+            nfiles% += 1;
+            LogStatus("ProcessListFile", "File " + sFilename$ + ", processing complete, status " + str$(process%));
+            View(hData%);
+            FileClose();
+        endif
+    wend
+    LogStatus("ProcessListFile", "Done with listfile " + listfile$);
+    View(hList%).FileClose();
+    LogStatus("ProcessListFile", "Restore current directory to " + sCurrentDir$);
+    FilePathSet(sCurrentDir$);
+
+    return nfiles%;
+end
+    
+        
+func GetNextFilename%(h%, &sFile$, &sInit$)
+    var i% := 0;
+    while i% = 0 do
+        i% := View(h%).Read(sFile$, sInit$);
+        if i% > 0 and InStr(sFile$, "#") = 1 then
+                i% := 0;    ' Comment line
+        endif        
+    wend
+    return i%;
+end
+
