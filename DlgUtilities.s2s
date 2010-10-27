@@ -36,7 +36,7 @@ func WMCNPortDialog%(title$, wmports%[], cnports%[])
         DlgCheck(i%, "Port " + str$(i%-1), 5, i%);
         DlgCheck(i%+n%, "Continuous?", 20, i%);
     next;
-    DlgAllow(0xffff, 0, WMCNPortDialogChanged%);
+'    DlgAllow(0xffff, 0, WMCNPortDialogChanged%);
 	i% := DlgShow(wmports%[0:n%], cnports%[0:n%]);
     return i%;
 end
@@ -46,19 +46,11 @@ func WMCNPortDialogChanged%(item%)
     docase
     case item% = 0 then
         for j% := 1 to dlguNPorts% do
-            if DlgValue(j%)=0 then
-                DlgValue(j% + dlguNPorts%, 0);
-            endif
+'            DlgValue(j%, wmports%[j%]);
+'            DlgValue(j%+n%, cnports%[j%]);
         next
-    case item% > 0 and item% <= dlguNPorts% then
-        if DlgValue(item%) = 0 and DlgValue(item%+dlguNPorts%) = 1 then
-            DlgValue(item%+dlguNPorts%, 0);
-        endif
-    case item% > dlguNPorts% then
-        if DlgValue(item%) = 1 and DlgValue(item%-dlguNPorts%) = 0 then
-            DlgValue(item%-dlguNPorts%, 1);
-        endif
     endcase
+    
     return 1;
 end
 
