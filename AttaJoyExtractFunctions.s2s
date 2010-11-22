@@ -33,9 +33,11 @@ const axTTG% := 1;
 const axCTNone% := -1;
 const axCTC% := 0;
 const axCTD% := 1;
+const axPTNone% := 0;
+const axPTPulse% := 1;
 var axttype% := axTTNone%;
 var axctype% := axCTNone%;
-
+var axptype% := axPTNone%;
 const axChanFixpt% := 21;
 const axChanStim% := 23;
 const axChanChg% := 24;
@@ -107,6 +109,8 @@ func AttaX%(h%, args$)
             endcase
         case axIState% = axstateFixpt% then
             docase
+            case sFound$ = "P" then
+                axptype% := axPTPulse%;
             case sFound$ = "S" then
                 if AttaXGetTimeFor%(sFound$, tFound, axTStim) <> 0 then
                     axIState% := axstateError%;
@@ -164,13 +168,14 @@ func AttaX%(h%, args$)
         ' Flush trial if end found
         if axIState% = axstateEndTrial% then
             var s$;
-            s$ := Print$("%d %f %f %d %f %f %f\n", axttype%, axTFixpt, axTStim, axctype%, axTChange, axTEndTrial, axTResponse);
+            s$ := Print$("%d %d %f %f %d %f %f %f\n", axttype%, axptype%, axTFixpt, axTStim, axctype%, axTChange, axTEndTrial, axTResponse);
             'PrintLog(s$);
             ' TODO: Write to file
             if htxt% >= 0 then
                 View(htxt%).Print("%s", s$);
             endif
             axttype% := axTTNone%;
+            axptype% := axPTNone%;
             axctype% := axCTNone%;
             axTFixpt := -1;
             axTStim := -1;
