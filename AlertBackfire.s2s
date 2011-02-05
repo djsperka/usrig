@@ -1,4 +1,7 @@
 ' $Log$
+' Revision 1.5  2011/02/05 00:26:58  devel
+' Adapt correlation processes for multiple electrodes.
+'
 ' Revision 1.4  2011/02/04 23:50:34  devel
 ' Allow configuration of multiple electrodes.
 '
@@ -233,7 +236,7 @@ var WaveformChannel%;		' Channel number for electrode waveform
 var PulseChannel%;
 var DataWindow%;	' time view
 var XYWindow%;		' window with eye pos shown
-var EvtCrlWindow%;' correlation 
+var EvtCrlWindow%[10];' correlation 
 var iStimChannel%;	' channel number for stimulus in xy window
 var iStimWindowChannel%;' channel number for stimulus window in xy window
 var iMonitorChannel%;	' channel number for monitor position display in xy window
@@ -329,6 +332,7 @@ var tLastProcess := 0;
 ' Run real time analysis here. 
 func IdleProcessing%()
 	var iStatus% := 1;	' this is return value. value of 1 (0) continues (stops) processing
+    var i%;
 	tNow := MaxTime();
 
 	xEye := ChanMeasure(XChannel%,2,tNow-.001,tNow-.006)*DegreesPerVoltX;
@@ -342,7 +346,10 @@ func IdleProcessing%()
 
 	' Process for correlation diagram, every 5 seconds
 	if tNow - tLastProcess > 5 then
-		View(EvtCrlWindow%).Process(tLastProcess, tNow);
+        for i% := 0 to fixNWavemarks%-1 do
+            'EvtCrlWindow%[i%] := SetEvtCrl(i%+1, 100, 0.001, 0, PulseChannel%);
+            View(EvtCrlWindow%[i%]).Process(tLastProcess, tNow);
+        next
 		tLastProcess := tNow;
 	endif
 
@@ -646,15 +653,22 @@ end;
 
 
 proc InitializeWindows()
-
+    var i%;
+    
 	'Open the data sampling window
 	DataWindow% := FileNew(0,4);
 	Window(0, 50, 100, 100);
 	View(DataWindow%).WindowVisible(1);
+    
+    for i% := 0 to fixNWavemarks%-1 do
+        EvtCrlWindow%[i%] := SetEvtCrl(i%+1, 100, 0.001, 0, PulseChannel%);
+        Window(50, 0, 100, 50);
+        WindowVisible(1);
+	next
 
-	EvtCrlWindow% := SetEvtCrl(ElectrodeChannel%, 100, 0.001, 0, PulseChannel%);
-	Window(50, 0, 100, 50);
-	WindowVisible(1);
+'	EvtCrlWindow% := SetEvtCrl(ElectrodeChannel%, 100, 0.001, 0, PulseChannel%);
+'	Window(50, 0, 100, 50);
+'	WindowVisible(1);
 
 	'Open an XY view to display eye position
 	XYWindow% := FileNew(12);
