@@ -25,10 +25,16 @@ InitRigName%();
 ' SYNOPSIS
 ' Initializes the rig name to be used. 
 ' NOTES
+' Modified djs 5-17-11
 ' This func should never be called directly by a script. It is called automatically
 ' at the point where it is included in another script file.
 ' First checks for an env variable "RIG", and it it is found its value is used
-' as the rig name. If not found, the default value (set as the initial value of thisRigName$)
+' as the rig name. 
+' If not found check for a reg key "RigName" at the root of the tree controlled by
+' Spike2 (\\HKCU\Software\CED\Spike2). If that is found, use it. 
+' This is so that the env variable may override the reg setting (provide backwards 
+' compatibility), but will make it easier to export to another machine. 
+' If neither is found, the default value 'AlertRig' is used. 
 ' is used. 
 '****
 
@@ -37,13 +43,19 @@ func InitRigName%()
         return 0;
     else
         var rignametmp$;
+        var rigproftmp$;
         rignametmp$ := System$("RIG");
-        if Len(rignametmp$) > 0 then
+       	Profile("", "RigName", "", rigproftmp$);
+        docase
+        case Len(rignametmp$) > 0 then
             thisRigName$ := rignametmp$;
             PrintLog("Env var RIG found, using rig name %s.\n", thisRigName$);
+        case len(rigproftmp$) > 0 then
+            thisRigName$ := rigproftmp$;
+            PrintLog("Registry value RigName found, using rig name %s.\n", thisRigName$);
         else
             PrintLog("Env var RIG not found, using rig name %s.\n", thisRigName$);    
-        endif
+        endcase
         iRigNameInitialized% := 1;
     endif
     return 0;
