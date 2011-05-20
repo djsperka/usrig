@@ -197,3 +197,47 @@ func FindPulseUp%(channel%, tLast, &tRise, &tFall)
     return s%
 end
 
+
+
+'****f* Spike2Util/ChannelUtilities/FindPulseDown%
+' NAME
+' FindPulseDown%(channel%, tLast, &tDown, &tUp)
+' SYNOPSIS
+' Finds a pulse (up then down) after a given time for an event channel. The channel is assumed to have
+' only pulse type data. This function will only look for a rising then falling edge. In particular we
+' assume that there will NOT be more than one rising edge before a subsequent falling edge is found.
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tDown - if a pulse is found, this is set to the fall time
+' tUp - if a pulse is found, this is set to the rise time
+' RETURN VALUE
+' Returns -1 if no pulse is found. Returns 1 if a pulse is found.
+' SEE ALSO
+' FindFallingEdge, FindRisingEdge, FindEdge, FindEvent
+'****
+
+func FindPulseDown%(channel%, tLast, &tDown, &tUp)
+    var vTrigger;
+    var tTemp;
+    var t0, t1;
+    var s% := -1;
+    var status% := -1;
+    
+    tDown := -1;
+    tUp := -1;
+    tTemp := tLast;
+    
+    status% := FindFallingEdge%(channel%, tTemp, tDown);
+    if status% = 1 then
+        ' Found a falling edge at tDown... Look for rising edge
+        status% := FindRisingEdge%(channel%, tDown, tUp);
+        if status% = 0 then
+            s% := 1;
+        endif
+    endif
+    
+    return s%  
+    
+end
+
