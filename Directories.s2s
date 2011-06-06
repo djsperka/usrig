@@ -10,8 +10,16 @@ var bin$;       ' Location of executable vsg programs
 var script$;    ' Location of scripts
 var util$;      ' Location of Spike2 utilities scripts. 
 var stim$;      ' Location of stimulus files (sparse noise, e.g.)
+var tmp$;
 
-bin$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\bin";	' Location of executables is ..\bin, relative to script dir
+Profile("", "RemoteBin", "", tmp$);
+if Len(tmp$) > 0 then
+    PrintLog("Found RemoteBin key in registry. Using \"" + tmp$ + "\" to run executables.\n");
+    bin$ := tmp$;
+else
+    bin$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\bin";	' Location of executables is ..\bin, relative to script dir
+endif
+
 script$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2);	' folder containing this script
 util$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\..\\Spike2Util";
 stim$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\stim";
