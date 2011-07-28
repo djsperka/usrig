@@ -71,6 +71,7 @@ func FindRisingEdge%(channel%, tLast, &tTrigger)
     var vTrigger;
     var tTemp;
     var s% := -1;
+    var numEdges%;  ' This is intended to catch events where there is more than one edge in the bin; these are artifactual edges
     
     tTemp := tLast;
     repeat
@@ -78,7 +79,15 @@ func FindRisingEdge%(channel%, tLast, &tTrigger)
         tTemp := tTrigger;
     until tTrigger < 0 or (tTrigger >= 0 and vTrigger = 0);
     if tTrigger >=0 and vTrigger = 0 then
-        s% := 0;
+        numEdges% := ChanMeasure(channel%,4,tTemp,tTemp+BinSize(channel%));
+        'if numEdges% = 1 then ' OK, just the one edge
+        if numEdges% < 2 then ' Hack until we figure out why it's couting zero edges sometimes.
+            s% := 0;
+            'printlog("Number of edges is %d, tTrigger is %f tLast is %f and read channel is %d and binsize is %f\n",numEdges%,tTrigger,tLast,channel%,BinSize(channel%));
+        else
+            s% := 50;  ' Multiple edges (or, oddly, zero).  It really doesn't matter how many, this is a false event and we will ignore it
+            'printlog("Number of edges is %d, tTrigger is %f tLast is %f and read channel is %d and binsize is %f\n",numEdges%,tTrigger,tLast,channel%,BinSize(channel%));
+        endif
     endif
     return s%
 end
@@ -117,6 +126,7 @@ func FindFallingEdge%(channel%, tLast, &tTrigger)
     var vTrigger;
     var tTemp;
     var s% := -1;
+    var numEdges%;  ' This is intended to catch events where there is more than one edge in the bin; these are artifactual edges
     
     tTemp := tLast;
     repeat
@@ -124,7 +134,13 @@ func FindFallingEdge%(channel%, tLast, &tTrigger)
         tTemp := tTrigger;
     until tTrigger < 0 or (tTrigger >= 0 and vTrigger = 1);
     if tTrigger >=0 and vTrigger = 1 then
-        s% := 1;
+        numEdges% := ChanMeasure(channel%,4,tTemp,tTemp);
+        'if numEdges% = 1 then ' OK, just the one edge
+        if numEdges% < 2 then ' Hack until we figure out why it's returning 0 instead of one sometimes
+            s% := 1;
+        else
+            s% := 50;  ' Multiple edges.  It really doesn't matter how many, this is a false event and we will ignore it
+        endif
     endif
     return s%
 end
@@ -177,7 +193,7 @@ func FindPulseUp%(channel%, tLast, &tRise, &tFall)
     var vTrigger;
     var tTemp;
     var t0, t1;
-    var s% := -1;
+    var s% := -1;  ' Return will be -1 if no pulse found
     var status% := -1;
     
     tRise := -1;
@@ -189,9 +205,21 @@ func FindPulseUp%(channel%, tLast, &tRise, &tFall)
         ' Found a rising edge at tRise... Look for falling edge
         status% := FindFallingEdge%(channel%, tRise, tFall);
         if status% = 1 then
-            s% := 1;
+            ' Found both a rising and falling edge.  If the pulse lasted at least one millisecond, it's real
+            printlog("tRise is %f and tFall is %f\n",tRise,tFall);
+            if tFall-tRise > 0.001 then
+                s% := 1;  ' Return 1 if pulse is found and real
+            else
+                s% := 0;  ' Return 0 if pulse is found but not real
+                printlog("False pulse of duration %f found at time = %f\n",tFall-tRise,tRise);
+            endif;
         endif
-        
+    else
+        if status% = 50 then  ' We found a false pulse that is "zero width"
+            tFall := tRise;
+            s% := 0;  ' Return 0 for zero-width false pulse
+            printlog("False pulse of zero width found at time = %f\n",tRise);
+        endif
     endif
     
     return s%
@@ -221,7 +249,7 @@ func FindPulseDown%(channel%, tLast, &tDown, &tUp)
     var vTrigger;
     var tTemp;
     var t0, t1;
-    var s% := -1;
+    var s% := -1;  ' Return will be -1 if no pulse found
     var status% := -1;
     
     tDown := -1;
@@ -233,7 +261,19 @@ func FindPulseDown%(channel%, tLast, &tDown, &tUp)
         ' Found a falling edge at tDown... Look for rising edge
         status% := FindRisingEdge%(channel%, tDown, tUp);
         if status% = 0 then
-            s% := 1;
+            ' Found both a falling and rising edge.  If the pulse lasted at least one millisecond, it's real
+            if tUp-tDown > 0.001 then
+                s% := 1;  ' Return 1 if pulse is found and real
+            else
+                s% := 0;  ' Return 0 if pulse is found but not real
+                printlog("False pulse of duration %f found at time = %f\n",tUp-tDown,tDown);
+            endif;
+        endif
+    else
+        if status% = 50 then  ' We found a false pulse that is "zero width"
+            tUp := tDown;
+            s% := 0;  ' Return 0 for zero-width false pulse
+            printlog("False pulse of zero width found at time = %f\n",tDown);
         endif
     endif
     
