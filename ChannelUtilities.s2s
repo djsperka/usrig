@@ -1,16 +1,132 @@
 ' $Id$
 
+#include "LogUtilities.s2s"
+
+var chuTMinPulseTime := 0.0001;
+
 '****h* Spike2Util/ChannelUtilities
 ' FUNCTION
 ' Utility functions for getting information from data acquisition channels.
 '****
 
 
+'****f* Spike2Util/ChannelUtilities/SetMinPulseWidth
+' NAME
+' SetMinPulseWidth(t)
+' SYNOPSIS
+' Sets the minimum width of a pulse for either edge to be recognized by FindEdge%. If 
+' consecutive edges are found that are within this time of one another, then both are 
+' ignored by FindEdge, FindRisingEdge and 
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tTrigger - if an edge is found, this is set to the time at which it is found
+' RETURN VALUE
+' Returns -1 if no edge is found. Returns 0 (1) if an edge is found and it is a 
+' rising (falling) edge. 
+' SEE ALSO
+' FindFallingEdge, FindRisingEdge, SetMinPulseWidth
+'****
+
+proc SetMinPulseWidth(t)
+    chuTMinPulseTime := t;
+    return;
+end
+
+
 '****f* Spike2Util/ChannelUtilities/FindEdge%
 ' NAME
 ' FindEdge%(channel%, tLast, &tTrigger)
 ' SYNOPSIS
-' Finds the next edge after a given time for an event level channel.
+' Finds the next edge after a given time for an event level channel. Edge found is tested 
+' to make sure that it does not have multiple events at the same time, or that the next
+' edge is at least chuTMinPulseTime away.
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tTrigger - if an edge is found, this is set to the time at which it is found
+' RETURN VALUE
+' Returns -1 if no edge is found. Returns 0 (1) if an edge is found and it is a 
+' rising (falling) edge. 
+' SEE ALSO
+' FindFallingEdge, FindRisingEdge, SetMinPulseWidth
+'****
+
+func FindEdge%(channel%, tLast, &tTrigger)
+    var tLook;
+    var edgeType%;
+    var edgeTypePending%;
+    var tT;
+    var isDone% := 0;
+    var iStatus% := -1;
+    tLook := tLast;
+    repeat
+        edgeType% := FindEdgePrivate%(channel%, tLook, tT);
+        docase
+        case edgeType% = -1 then
+            iStatus% := -1;
+            isDone% := 1;
+        case edgeType% = 0 or edgeType% = 1 then
+            tLook := tT;
+            edgeTypePending% := edgeType%;
+            edgeType% := FindEdgePrivate%(channel%, tLook, tT);
+            docase
+            case edgeType% = -1 then
+                ' the original edge found was the last one for this channel. Its OK. 
+                isDone% := 1;
+                iStatus% := edgeTypePending%;
+                tTrigger := tLook;
+            case edgeType% = 0 or edgeType% = 1 then
+                ' up followed by down, or vice-versa?
+                if edgeType% = (1 - edgeTypePending%) then
+                    ' Check if its too close or not....
+                    if (tT - tLook) > chuTMinPulseTime then
+                        iStatus% := edgeTypePending%;
+                        tTrigger := tLook;
+                        isDone% := 1;
+                    else
+                        ' Found the correct edge, but its too close.
+                        LogError("FindEdge", "Skipping narrow pulse on channel " + str$(channel%) + " at t=" + str$(tLook));
+                        tLook := tT;
+                    endif
+                else
+                    ' Wrong edge type. Skip. 
+                    LogError("FindEdge", "Skipping zero width pulse on channel " + str$(channel%) + " at t=" + str$(tLook));
+                    tLook := tT;
+                endif
+            else
+                LogError("FindEdge", "Unknown return value (" + str$(edgeType%) + ")from FindEdgePrivate at t=" + str$(tLook));
+                iStatus% := -1;
+                isDone% := 1;
+            endcase
+        else
+            LogError("FindEdge", "Unknown return value (" + str$(edgeType%) + ")from FindEdgePrivate at t=" + str$(tLook));
+            iStatus% := -1;
+            isDone% := 1;
+        endcase
+    until isDone% = 1;
+    return iStatus%;
+end
+
+    
+    
+
+            
+                
+                    
+                    
+                   
+                        
+
+
+
+'****f* Spike2Util/ChannelUtilities/FindEdgePrivate%
+' NAME
+' FindEdgePrivate%(channel%, tLast, &tTrigger)
+' SYNOPSIS
+' Finds the next edge after a given time for an event level channel. Used internally; DO NOT CALL THIS
+' DIRECTLY!
+'
 ' INPUTS
 ' channel% - channel number
 ' tLast - time to start search after. Events at this time are IGNORED. 
@@ -22,7 +138,7 @@
 ' FindFallingEdge, FindRisingEdge
 '****
 
-func FindEdge%(channel%, tLast, &tTrigger)
+func FindEdgePrivate%(channel%, tLast, &tTrigger)
     var vTrigger;
     var s% := -1;
 	tTrigger := NextTime(channel%, tLast, vTrigger);
@@ -71,24 +187,12 @@ func FindRisingEdge%(channel%, tLast, &tTrigger)
     var vTrigger;
     var tTemp;
     var s% := -1;
-    var numEdges%;  ' This is intended to catch events where there is more than one edge in the bin; these are artifactual edges
     
     tTemp := tLast;
     repeat
-        tTrigger := NextTime(channel%, tTemp, vTrigger);
+        s% := FindEdge%(channel%, tTemp, tTrigger);
         tTemp := tTrigger;
-    until tTrigger < 0 or (tTrigger >= 0 and vTrigger = 0);
-    if tTrigger >=0 and vTrigger = 0 then
-        numEdges% := ChanMeasure(channel%,4,tTemp,tTemp+BinSize(channel%));
-        'if numEdges% = 1 then ' OK, just the one edge
-        if numEdges% < 2 then ' Hack until we figure out why it's couting zero edges sometimes.
-            s% := 0;
-            'printlog("Number of edges is %d, tTrigger is %f tLast is %f and read channel is %d and binsize is %f\n",numEdges%,tTrigger,tLast,channel%,BinSize(channel%));
-        else
-            s% := 50;  ' Multiple edges (or, oddly, zero).  It really doesn't matter how many, this is a false event and we will ignore it
-            'printlog("Number of edges is %d, tTrigger is %f tLast is %f and read channel is %d and binsize is %f\n",numEdges%,tTrigger,tLast,channel%,BinSize(channel%));
-        endif
-    endif
+    until s% = -1 or s% = 0;
     return s%
 end
 
@@ -126,22 +230,12 @@ func FindFallingEdge%(channel%, tLast, &tTrigger)
     var vTrigger;
     var tTemp;
     var s% := -1;
-    var numEdges%;  ' This is intended to catch events where there is more than one edge in the bin; these are artifactual edges
     
     tTemp := tLast;
     repeat
-        tTrigger := NextTime(channel%, tTemp, vTrigger);
+        s% := FindEdge%(channel%, tTemp, tTrigger);
         tTemp := tTrigger;
-    until tTrigger < 0 or (tTrigger >= 0 and vTrigger = 1);
-    if tTrigger >=0 and vTrigger = 1 then
-        numEdges% := ChanMeasure(channel%,4,tTemp,tTemp);
-        'if numEdges% = 1 then ' OK, just the one edge
-        if numEdges% < 2 then ' Hack until we figure out why it's returning 0 instead of one sometimes
-            s% := 1;
-        else
-            s% := 50;  ' Multiple edges.  It really doesn't matter how many, this is a false event and we will ignore it
-        endif
-    endif
+    until s% = -1 or s% = 1;
     return s%
 end
 
@@ -190,7 +284,6 @@ end
 '****
 
 func FindPulseUp%(channel%, tLast, &tRise, &tFall)
-    var vTrigger;
     var tTemp;
     var t0, t1;
     var s% := -1;  ' Return will be -1 if no pulse found
@@ -205,20 +298,7 @@ func FindPulseUp%(channel%, tLast, &tRise, &tFall)
         ' Found a rising edge at tRise... Look for falling edge
         status% := FindFallingEdge%(channel%, tRise, tFall);
         if status% = 1 then
-            ' Found both a rising and falling edge.  If the pulse lasted at least one millisecond, it's real
-            printlog("tRise is %f and tFall is %f\n",tRise,tFall);
-            if tFall-tRise > 0.001 then
-                s% := 1;  ' Return 1 if pulse is found and real
-            else
-                s% := 0;  ' Return 0 if pulse is found but not real
-                printlog("False pulse of duration %f found at time = %f\n",tFall-tRise,tRise);
-            endif;
-        endif
-    else
-        if status% = 50 then  ' We found a false pulse that is "zero width"
-            tFall := tRise;
-            s% := 0;  ' Return 0 for zero-width false pulse
-            printlog("False pulse of zero width found at time = %f\n",tRise);
+            s% := 1;  ' Return 1 if pulse is found and real
         endif
     endif
     
@@ -246,7 +326,6 @@ end
 '****
 
 func FindPulseDown%(channel%, tLast, &tDown, &tUp)
-    var vTrigger;
     var tTemp;
     var t0, t1;
     var s% := -1;  ' Return will be -1 if no pulse found
@@ -258,26 +337,13 @@ func FindPulseDown%(channel%, tLast, &tDown, &tUp)
     
     status% := FindFallingEdge%(channel%, tTemp, tDown);
     if status% = 1 then
-        ' Found a falling edge at tDown... Look for rising edge
+        ' Found a falling edge at tFall... Look for rising edge
         status% := FindRisingEdge%(channel%, tDown, tUp);
         if status% = 0 then
-            ' Found both a falling and rising edge.  If the pulse lasted at least one millisecond, it's real
-            if tUp-tDown > 0.001 then
-                s% := 1;  ' Return 1 if pulse is found and real
-            else
-                s% := 0;  ' Return 0 if pulse is found but not real
-                printlog("False pulse of duration %f found at time = %f\n",tUp-tDown,tDown);
-            endif;
-        endif
-    else
-        if status% = 50 then  ' We found a false pulse that is "zero width"
-            tUp := tDown;
-            s% := 0;  ' Return 0 for zero-width false pulse
-            printlog("False pulse of zero width found at time = %f\n",tDown);
+            s% := 1;  ' Return 1 if pulse is found and real
         endif
     endif
     
-    return s%  
-    
+    return s%
 end
 
