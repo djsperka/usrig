@@ -1,0 +1,41 @@
+#include "ChannelUtilities.s2s"
+
+var ch% := 1;
+var t0 := -1;
+var status%;
+var tLast;
+var tTrigger;
+var nE%;
+var e%;
+var tUp, tDn;
+
+if ViewKind() <> 0 then
+    Message("Current view must be a time view.");
+    halt;
+endif
+
+DlgCreate("PulseTest");
+DlgChan(1, "Channel", 0x4);
+DlgReal(2, "Start time", -1, 1000000);
+status% := DlgShow(ch%, t0);
+if status% = 0 then
+    halt;
+endif
+
+PrintLog("Channel " + str$(ch%) + " t0 " + str$(t0) + " binsize " + str$(BinSize(ch%)) + "\n");
+
+tLast := t0;
+e% := FindPulseUp%(ch%, tLast, tUp, tDn);
+while  e% = 1 do
+    PrintLog("Pulse up %f - %f\n", tUp, tDn);
+    tLast := tDn;
+    e% := FindPulseUp%(ch%, tLast, tUp, tDn);
+wend
+
+tLast := t0;
+e% := FindPulseDown%(ch%, tLast, tDn, tUp);
+while  e% = 1 do
+    PrintLog("Pulse dn %f - %f\n", tDn, tUp);
+    tLast := tDn;
+    e% := FindPulseDown%(ch%, tLast, tDn, tUp);
+wend
