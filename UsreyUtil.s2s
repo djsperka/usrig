@@ -6,11 +6,13 @@
 #include "ElectrodeUtilities.s2s"
 
 
-if GetRigName$() = "AlertRig" then
-    GetDataParameters();
-else
-    GetAcuteDataParameters();
-endif
+GetDataParameters();
+
+'if GetRigName$() = "AlertRig" then
+'    GetDataParameters();
+'else
+'    GetAcuteDataParameters();
+'endif
 
 
 
@@ -44,7 +46,8 @@ endif
 var dataPathRoot$;		' base path for data storage
 var dataDataSet$;		' folder under data path where data files placed
 var dataCellName$;		' part of base name for all data files
-var dataAcuteDistanceToScreenMM$ := "9999";   ' screen distance, acute rig only!
+' removed see below var dataAcuteDistanceToScreenMM$ := "9999";   ' screen distance, acute rig only UPDATE: w
+var dataDistanceToScreenMM$ := "9999";          ' moved from UsreyDAQ to here 
 var dataDataSetTextItem%;	' 
 
 func GetDataPathRoot$()
@@ -69,7 +72,11 @@ func GetCurrentDataPath$(iSlashes%)
 end
 
 func GetAcuteDistanceToScreenMM$()
-    return dataAcuteDistanceToScreenMM$;
+    return GetDistanceToScreenMM$();
+end
+
+func GetDistanceToScreenMM$()
+    return dataDistanceToScreenMM$;
 end
 
 proc GetDataParameters()
@@ -82,6 +89,7 @@ proc GetDataParameters()
 	Profile(key$, "PathRoot", "C:\\Experiments", dataPathRoot$);
 	Profile(key$, "DataSet", "", dataDataSet$);
 	Profile(key$, "CellName", "", dataCellName$);
+	Profile(key$, "DistanceToScreenMM", dataDistanceToScreenMM$, dataDistanceToScreenMM$);
 end;
 
 proc SaveDataParameters()
