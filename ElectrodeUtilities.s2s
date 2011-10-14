@@ -109,3 +109,37 @@ proc SaveElectrodeParameters()
     SetStringRegistryValue(key$, "ContinuousPorts", GetContinuousPorts$());    
 end;
 
+
+func CreateElectrodeSamplingConfiguration(iStartWM%, iStartCont%)
+    var iStatus% := -1;
+    var i%;
+    var ichan%;
+    
+    ' Starting channel number is iStartWM% unless iStartWM<=0, in which case we start at channel 1.
+    ichan% := iStartWM%;
+    if ichan% < 1 then 
+        ichan% := 1;
+    endif
+    
+    for i% := 0 to NumWavemarkPorts%-1 do
+		SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(ichan%, "WMrk " + str$(WavemarkPorts%[i%])); 
+        ichan% += 1;
+	next
+    
+    ' Starting channel for continuous channels is iStartCont%, unless iStartCont% is <= 0, in which case we start
+    ' at NumWavemarkPorts + 1.
+    ichan% := iStartCont%;
+    if ichan% < 1 or ichan% <= NumWavemarkPorts% then
+        ichan% := NumWavemarkPorts% + 1;
+    endif
+    
+    
+    for i% := 0 to NumContinuousPorts%-1 do
+        SampleWaveform(ichan%, ContinuousPorts%[i%], 20000);
+        SampleTitle$(ichan% + 1, "Cont " + str$(ContinuousPorts%[i%]));
+        ichan% += 1;
+    next
+    
+    return iStatus%;
+end
