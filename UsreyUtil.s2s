@@ -43,9 +43,9 @@ GetDataParameters();
 ' when the user hits OK in the DataParametersDialog. 
 
 
-var dataPathRoot$;		' base path for data storage
-var dataDataSet$;		' folder under data path where data files placed
-var dataCellName$;		' part of base name for all data files
+var dataPathRoot$ := "C:\\Experiments";		' base path for data storage
+var dataDataSet$ := "None";         		' folder under data path where data files placed
+var dataCellName$ := "a";           		' part of base name for all data files
 ' removed see below var dataAcuteDistanceToScreenMM$ := "9999";   ' screen distance, acute rig only UPDATE: w
 var dataDistanceToScreenMM$ := "9999";          ' moved from UsreyDAQ to here 
 var dataDataSetTextItem%;	' 
@@ -79,41 +79,44 @@ func GetDistanceToScreenMM$()
     return dataDistanceToScreenMM$;
 end
 
+proc SetDistanceToScreenMM(idist%)
+    dataDistanceToScreenMM$ := str$(idist%);
+    return;
+end
+
 proc GetDataParameters()
-	var stmp$;
 	var key$;
-
-'	key$:="AlertRig\\Data";
 	key$ := GetRigName$() + "\\Data";
-
-	Profile(key$, "PathRoot", "C:\\Experiments", dataPathRoot$);
-	Profile(key$, "DataSet", "", dataDataSet$);
-	Profile(key$, "CellName", "", dataCellName$);
-	Profile(key$, "DistanceToScreenMM", dataDistanceToScreenMM$, dataDistanceToScreenMM$);
+    dataPathRoot$ := GetStringRegistryValue$(key$, "PathRoot", dataPathRoot$);
+	dataDataSet$ := GetStringRegistryValue$(key$, "DataSet", dataDataSet$);
+	dataCellName$ := GetStringRegistryValue$(key$, "CellName", dataCellName$);
+    dataDistanceToScreenMM$ := GetStringRegistryValue$(key$, "DistanceToScreenMM", dataDistanceToScreenMM$);
 end;
 
 proc SaveDataParameters()
-	var stmp$;
 	var key$;
-
 	key$ := GetRigName$() + "\\Data";
-
-	Profile(key$, "PathRoot", dataPathRoot$);
-	Profile(key$, "DataSet", dataDataSet$);
-	Profile(key$, "CellName", dataCellName$);
+    SetStringRegistryValue(key$, "PathRoot", dataPathRoot$);
+	SetStringRegistryValue(key$, "DataSet", dataDataSet$);
+	SetStringRegistryValue(key$, "CellName", dataCellName$);
+    SetStringRegistryValue(key$, "DistanceToScreenMM", dataDistanceToScreenMM$);
 	return;
 end;
 
 func DataParametersDialog%()
 	var i%;
+    var idist%;
 	GetDataParameters();
 	DlgCreate("Data Storage Parameters", 25, 10, 50);
 	DlgText("Data root path: " + dataPathRoot$, 0, 1);
 	dataDataSetTextItem% := DlgText("Data set name: " + dataDataSet$, 0, 2);
 	DlgString(1, "Cell name:", 10, "", 0, 3);
-    DlgButton(2, "New Data Set", NewDataSet%);
-	i% := DlgShow(dataCellName$);
+    DlgInteger(2, "Dist to Screen (MM):", 1, 10000, 0, 4);
+    DlgButton(3, "New Data Set", NewDataSet%);
+    idist% := val(GetDistanceToScreenMM$());
+	i% := DlgShow(dataCellName$, idist%);
 	if (i% = 1) then
+        SetDistanceToScreenMM(idist%);
 		if Len(dataDataSet$) = 0 then
 			Message("Must specify a data set (try the button!)");
 		else
@@ -130,29 +133,11 @@ func DataParametersDialog%()
 end;
 
 proc GetAcuteDataParameters()
-	var stmp$;
-	var key$;
-
-'	key$:="AlertRig\\Data";
-	key$ := GetRigName$() + "\\Data";
-
-	Profile(key$, "PathRoot", "C:\\Experiments", dataPathRoot$);
-	Profile(key$, "DataSet", "", dataDataSet$);
-	Profile(key$, "CellName", "", dataCellName$);
-	Profile(key$, "DistanceToScreenMM", dataDistanceToScreenMM$, dataDistanceToScreenMM$);
+    GetDataParameters();
 end;
 
 proc SaveAcuteDataParameters()
-	var stmp$;
-	var key$;
-
-	key$ := GetRigName$() + "\\Data";
-
-	Profile(key$, "PathRoot", dataPathRoot$);
-	Profile(key$, "DataSet", dataDataSet$);
-	Profile(key$, "CellName", dataCellName$);
-	Profile(key$, "DistanceToScreenMM", dataDistanceToScreenMM$);
-	return;
+    SaveDataParameters();
 end;
 
 func AcuteDataParametersDialog%()
