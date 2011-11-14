@@ -252,7 +252,7 @@ InitJoystick(rivChanJoy%);
 
 ' Make sure Juicer information has been set, and set sequencer variable for juicer
 ' Quit if no juicer information has been set!
-JuicerType% := SetJuicerSequencerVariable%();
+JuicerType% := GetJuicerType%();
 if JuicerType% = 0 then
     message("You did not select a juicer open state in Config/DAQ!  Quitting!");
     Halt;
@@ -1421,6 +1421,9 @@ func Start%()
     
     ' Start sampling
    	SampleStart(0);
+    
+    ' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
 
     ' Generate command line
     cmdLine$ := "cmd /k " + GetBinDir$(1) + "rivalry -S -d " + GetDistanceToScreenMM$() + " -b gray -r " + offsetFilename$ + " -s " + rivLeftGrating$ + " -s " + rivRightGrating$;
