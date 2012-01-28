@@ -183,10 +183,10 @@ end
 ' NAME
 ' Shuffle%(n%, list%[])
 ' SYNOPSIS
-' Shuffles a list of values. 
+' Shuffles a list of INDICES.  Overwrites any values in list%[], up to and including index n%-1.
 ' INPUTS
-' n% : the number of elements in list%[] to shuffle
-' list%[] : array of values
+' n% : the number of elements in list%[] to turn to shuffled indices
+' list%[] : array of values, overwritten with shuffled indices from 0:n%-1 in locations 0:n%-1
 ' RETURN VALUE
 ' Returns 0 on success, 1 otherwise (n% < 1 or length of list%[] less than n%). 
 '****
@@ -216,6 +216,64 @@ func Shuffle%(n%, list%[])
     return status%;
 end
 
+
+'****f* Spike2Util/MiscUtilities/ShuffleList%
+' NAME
+' Shuffle%(list%[])
+' SYNOPSIS
+' Shuffles a list of integer VALUES. 
+' INPUTS
+' list%[] : array of values, entire array is shuffled
+' RETURN VALUE
+' Returns 0 (no obvious error cases identified)
+'****
+
+
+func ShuffleList%(list%[])
+    var status% := 0;
+    var i%, si%, tmp%;
+
+    ' Step thru the indices from 0 to n%-2. At each index, we consider the array starting at the 
+    ' current index and ending at the end of the array. If there are M elements in that array, 
+    ' draw a random number between 0 and M-1. Swap the index at that position with the index at 
+    ' position 0. Step to the next index and repeat. 
+    for i% := 0 to Len(list%[])-2 do
+        si% := Rand(Len(list%[])-i%, i%);
+        tmp% := list%[i%];
+        list%[i%] := list%[si%];
+        list%[si%] := tmp%;
+    next;
+    return status%;  'this does nothing right now, because it can't really break.
+end
+
+
+'****f* Spike2Util/MiscUtilities/ShuffleList
+' NAME
+' Shuffle(list[])
+' SYNOPSIS
+' Shuffles a list of float VALUES. 
+' INPUTS
+' list[] : array of values, entire array is shuffled
+' RETURN VALUE
+' Returns 0 (no obvious error cases identified)
+'****
+
+func ShuffleList(list[])
+    var status% := 0;
+    var i%, si%, tmp;
+
+    ' Step thru the indices from 0 to n%-2. At each index, we consider the array starting at the 
+    ' current index and ending at the end of the array. If there are M elements in that array, 
+    ' draw a random number between 0 and M-1. Swap the index at that position with the index at 
+    ' position 0. Step to the next index and repeat. 
+    for i% := 0 to Len(list[])-2 do
+        si% := Rand(Len(list[])-i%, i%);
+        tmp := list[i%];
+        list[i%] := list[si%];
+        list[si%] := tmp;
+    next;
+    return status%;  'this does nothing right now, because it can't really break.
+end
 
 
 '****f* Spike2Util/MiscUtilities/GetRealArrayAsString
@@ -349,3 +407,84 @@ func GetIntegerArrayAsStringSep$(a%[], indices%[], sep$)
     endcase
     return s$;
 end
+
+
+'****f* Spike2Util/MiscUtilities/GridStimuli%
+' NAME
+' GridStimuli(Values1[],Values2[],Indices1%[],Indices2%[],IsRandom%,NRepeats%)
+' SYNOPSIS
+' Fills Indices1%[] and Indices2%[] with index values that allow for a 2-parameter
+' tuning curve (values for curves 1 and 2 in Values1[], Values2[])
+' INPUTS
+' Values1[] : Values for first tuning curve
+' Values2[] : Values for second tuning curve
+' Indices1%[] : Will be filled with indices to Values1 to create 2-parameter tuning curve 
+' Indices2%[] : Will be filled with indices to Values2 to create 2-parameter tuning curve 
+' IsRandom% : If 1, randomize order (within each repeat)
+' NRepeats% : Number of repeats
+' RETURN VALUE
+' Returns a success value, 0 = success, 1 = failure.
+'****
+
+func GridStimuli(Values1[],Values2[],j%,k%,&Indices1%[],&Indices2%[],IsRandom%,NRepeats%)
+    var status% := 0;
+    var i%;
+    'var j%;
+    'var k%;
+    var n%;
+    var totlen%;
+    var temp%[1000];  'this is plenty big
+    var list%[10000]; 'must be greater than total stimuli, if you go past 10000 total stimuli you're insane
+    var tempI1%[10000];
+    var tempI2%[10000];
+    var I1%[10000];
+    var I2%[10000];
+    var blocklen%;
+    var offset%;
+    
+    'j% := Len(Values1[]);  'e.g., j% = 5
+    'k% := Len(Values2[]);  'e.g., k% = 3
+    totlen% := j%*k%*NRepeats%;
+    blocklen% := j%*k%;
+    'Check to make sure that the Indices variables are long enough
+    if totlen% > len(Indices1%[]) or totlen% > len(Indices2%[]) then
+        status% := 1;
+    else
+        'if they are long enough, fill them
+        'first, create a list of consecutive indices to put into Indices2%[] 
+        for i% := 0 to k%-1 do
+            temp%[i%] := i%;  'e.g., temp%[] = [0 1 2]
+        next;
+        
+        'Do this for each repeat
+        for n% := 0 to NRepeats%-1 do 
+            
+            'next, fill Indices1%[] with duplicate values for each repeat of k% 
+            'and Indices2%[] with the list made above
+            for i% := 0 to j%-1 do
+                ArrConst(I1%[(k%*i%):k%],i%);           'e.g., [0 0 0 1 1 1 2 2 2 3 3 3 4 4 4]
+                ArrConst(I2%[(k%*i%):k%],temp%[0:k%]);  'e.g., [0 1 2 0 1 2 0 1 2 0 1 2 0 1 2]
+            next;
+            
+            'next, randomize if requested
+            if IsRandom% <> 0 then
+                Shuffle%(blocklen%,list%[]);  'get a shuffled list of indices in list%[]
+                printlog("\n");
+                ArrConst(tempI1%[0:blocklen%],I1%[0:blocklen%]);  'save current values
+                ArrConst(tempI2%[0:blocklen%],I2%[0:blocklen%]);
+                for i% := 0 to blocklen%-1 do
+                    I1%[i%] := tempI1%[list%[i%]];
+                    I2%[i%] := tempI2%[list%[i%]];
+                next;
+            endif;
+            
+            'put the whole shebang into the real variable
+            ArrConst(Indices1%[offset%:blocklen%],I1%[0:blocklen%]);
+            ArrConst(Indices2%[offset%:blocklen%],I2%[0:blocklen%]);
+            
+            offset% := offset% + j%*k%;  'increment offset
+           
+        next;
+    endif;
+    return status%;
+end;
