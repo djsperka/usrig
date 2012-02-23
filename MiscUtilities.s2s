@@ -179,6 +179,145 @@ func GetRepeatedParameterProgression%(n%, nr%, result[], indices%[], firstval, l
     return status%;
 end
 
+
+
+
+
+
+
+'****f* Spike2Util/MiscUtilities/GetRepeatedSymmetricParameterProgression%
+' NAME
+' GetRepeatedSymmetricParameterProgression%(n%, nr%, result[], indices%[], centerval, lastval, ilog%, irandom%)
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a center
+' value to an ending value on each side. E.g. - if n% is 3, centerval is 1 and lastval is 1.5, linear progression
+' would return [1 1.25 1.5] AND [0.5 0.75 1], which would then concatenate to [0.5 0.75 1 1.25 1.5]
+' The progression can be linear or logarithmic (logarithmic not yet implemented), and 
+' the order of the parameters can be randomized. In addition, the set may be repeated
+' any number of times. 
+' n% : Number of values to generate
+' nr% : Number of repeats to generate
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' centerval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' irandom% : randomize order of indices%[] when this <> 0
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both centerval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' 
+' The indices always complete a set of n% values (0...n%-1) before starting another set. 
+' SEE ALSO
+' GetParameterProgression
+'****
+
+
+func GetRepeatedSymmetricParameterProgression%(n%, nr%, result[], indices%[], centerval, lastval, ilog%, irandom%)
+    var status% := 0;
+    docase
+    case Len(result[]) < ((2*n%)-1)*nr% or Len(indices%[]) < ((2*n%)-1)*nr% then
+        status% := 1;
+    case n% < 2 or nr% < 1 then
+        status% := 1;
+    else
+        var ir%;
+        var is%;
+        for ir% := 0 to nr%-1 do
+            is% := GetSymmetricParameterProgression%(n%, result[ir%*((2*n%)-1):((2*n%)-1)], indices%[ir%*((2*n%)-1):((2*n%)-1)], centerval, lastval, ilog%, irandom%);
+            if is% <> 0 then
+                PrintLog("GetRepeatedSymmetricParameterProgression%()", "Error (" + str$(is%) + ")during repeat# " + str$(ir%));
+                status% := is%;
+            endif
+        next
+    endcase
+    return status%;
+end
+
+
+'****f* Spike2Util/MiscUtilities/GetSymmetricParameterProgression%
+' NAME
+' GetSymmetricParameterProgression%
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a center
+' value to an ending value, and from that center value to an ending value on the opposite "side". 
+' E.g. - if n% is 3, centerval is 1 and lastval is 1.5, linear progression
+' would return [1 1.25 1.5] AND [0.5 0.75 1], which would then concatenate to [0.5 0.75 1 1.25 1.5]
+' The progression can be linear or logarithmic (not yet implemented), and 
+' the order of the parameters can be randomized.
+' INPUTS
+' n% : Number of values to generate
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' centerval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' irandom% : randomize order of indices%[] when this <> 0
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both centerval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' SEE ALSO
+' GetRepeatedParameterProgression
+'****
+
+func GetSymmetricParameterProgression%(n%, result[], indices%[], centerval, lastval, ilog%, irandom%)
+    var status% := 0;
+    docase
+    case Len(result[]) < ((2*n%)-1) or Len(indices%[]) < ((2*n%)-1) then
+        status% := 1;
+    case n% < 2 then
+        status% := 1;
+    case ilog% <> 0 and (centerval <= 0 or lastval<= 0) then
+        status% := 1;
+    else
+        var stepsize;
+        var i%;
+        for i% := 0 to ((2*n%)-1) do
+            indices%[i%] := i%;
+        next
+        if ilog% <> 0 then   'not yet implemented
+'            var firstlog, lastlog;
+'            ' Generate log progression
+'            firstlog := log(firstval);
+'            lastlog := log(lastval);
+'            stepsize := (lastlog - firstlog)/(n%-1);
+'            for i% := 0 to n%-1 do
+'                result[i%] := pow(10, firstlog + i% * stepsize);
+'            next;
+        else
+            ' Generate linear progression
+            stepsize := (lastval - centerval)/(n%-1);  'if centerval 1, lastval 3, n=3, then stepsize = 1
+            for i% := 1-n% to n%-1 do   'if n% = 3, i% = -2:2
+                result[i%+n%-1] := centerval + i% * stepsize;  'result[] will fill 0:4,  vals will be [-1:3] - perfect.
+            next;
+        endif
+        
+        if irandom% <> 0 then
+            Shuffle%(((2*n%)-1), indices%[]);
+        endif
+        
+    endcase
+    return status%;
+end
+
+
+
 '****f* Spike2Util/MiscUtilities/Shuffle%
 ' NAME
 ' Shuffle%(n%, list%[])
