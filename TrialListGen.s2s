@@ -203,12 +203,21 @@ func tlgGetTrialList%(trialList%[])
     var last% := -1;
 
     ' check that tlg was initialized
-    if tlgInitialized% = 0 then Message("WARNING: Trial list generator is NOT initialized! Call tlgInit()."); endif
+    if tlgInitialized% = 0 then 
+        Message("WARNING: Trial list generator is NOT initialized! Call tlgInit()."); 
+    endif
     
     ' Are we all done? 
-    if tlgNBlocksCompleted% = tlgNBlocksRequired% then
+    if tlgNBlocksCompleted% = tlgNBlocksRequired% then  
         return 0;
     endif
+    
+    'Check for error rather than allow infinite loop
+    if tlgNBlocksCompleted% > tlgNBlocksRequired% then  
+        Message("WARNING: Number of blocks to complete is less than number of blocks already completed!"); 
+        return 0;
+    endif
+    
 
     ' Since the current block is not done, we will generate a trial list. First, decide
     ' how many trials will be in the list
