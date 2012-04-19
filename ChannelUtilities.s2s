@@ -18,14 +18,9 @@ var chuTMinPulseTime := 0.000001;
 ' consecutive edges are found that are within this time of one another, then both are 
 ' ignored by FindEdge, FindRisingEdge and 
 ' INPUTS
-' channel% - channel number
-' tLast - time to start search after. Events at this time are IGNORED. 
-' tTrigger - if an edge is found, this is set to the time at which it is found
+' t - pulse width min time (s)
 ' RETURN VALUE
-' Returns -1 if no edge is found. Returns 0 (1) if an edge is found and it is a 
-' rising (falling) edge. 
-' SEE ALSO
-' FindFallingEdge, FindRisingEdge, SetMinPulseWidth
+' none
 '****
 
 proc SetMinPulseWidth(t)
@@ -86,13 +81,14 @@ func FindEdge%(channel%, tLast, &tTrigger)
                         isDone% := 1;
                     else
                         ' Found the correct edge, but its too close.
-                        LogError("FindEdge", "Skipping narrow pulse on channel " + str$(channel%) + " at t=" + str$(tLook));
+                        LogWarn("FindEdge", "Skipping narrow pulse on channel " + str$(channel%) + " at " + str$(tLook) + "-" + str$(tT));
                         tLook := tT;
                     endif
                 else
-                    ' Wrong edge type. Skip. 
-                    LogError("FindEdge", "Skipping zero width pulse on channel " + str$(channel%) + " at t=" + str$(tLook));
-                    tLook := tT;
+                    ' Wrong edge type. Assume this is a zero width pulse (we got two edges of same type in a row!)
+                    ' Set tLook to be 
+                    LogWarn("FindEdge", "Skipping zero width pulse on channel " + str$(channel%) + " at t=" + str$(tLook));
+                    tLook := tLook + chuTMinPulseTime;
                 endif
             else
                 LogError("FindEdge", "Unknown return value (" + str$(edgeType%) + ")from FindEdgePrivate at t=" + str$(tLook));
