@@ -651,3 +651,70 @@ func GridStimuli(Values1[],Values2[],j%,k%,&Indices1%[],&Indices2%[],IsRandom%,N
     endif;
     return status%;
 end;
+
+
+
+'****f* Spike2Util/MiscUtilities/ArrFind%
+' NAME
+' ArrFind%(myArray%[],item%)
+' SYNOPSIS
+' returns the index of the first element matching item% in myArray%[]
+' or -1 if myArray%[] doesn't contain item%
+' INPUTS
+' myArray%[] - an integer array
+' item% - the value to find in the array
+'****
+
+
+func ArrFind%(myArray%[],item%)
+    'returns the index of item% in myArray%[]
+    'or -1 if myArray%[] doesn't contain item%
+    var result%;
+    var tempArray%[Len(myArray%[])];
+    ArrConst(tempArray%[],myArray%[]);
+    ArrSub(tempArray%[],item%);
+    abs(tempArray%[]);
+    result% := min(tempArray%[]);
+    if tempArray%[result%]>0 then
+        result% := -1;
+    endif
+    return result%;
+end
+
+
+'****f* Spike2Util/MiscUtilities/ArrFindFloat%
+' NAME
+' ArrFindFloat%(myArray[],item)
+' SYNOPSIS
+' returns the index of the first element (nearly) matching item in myArray[]
+' or -1 if myArray[] doesn't contain item
+' INPUTS
+' myArray[] - a float array
+' item - the value to find in the array
+'
+' Note that for the float version, there are always going to be precision issues.
+' Rather than search for values that are exactly equal, we will get values that are
+' merely "close".  How close is arbitrary.  But really, you're not going to do this
+' on data or values that could be anything; you're going to do this on values that 
+' are more or less, but their position in the array needs to be determined.  So "close"
+' really only needs to be at the precision value of the stored numbers.
+' Here, I've made the precision value very arbitrarily small; testing suggests that for 
+' both integers (in float arrays) and various precision of decimals, this works.
+'****
+
+
+func ArrFindFloat%(myArray[],item)
+    'returns the index of item in myArray[]
+    'or -1 if myArray[] doesn't contain item
+    var result%;
+    var tempArray[Len(myArray[])];
+    var precision := 0.000000000000001;
+    ArrConst(tempArray[],myArray[]);
+    ArrSub(tempArray[],item);
+    abs(tempArray[]);
+    result% := min(tempArray[]);
+    if tempArray[result%]>precision then
+        result% := -1;
+    endif
+    return result%;
+end
