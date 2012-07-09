@@ -718,3 +718,112 @@ func ArrFindFloat%(myArray[],item)
     endif
     return result%;
 end
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DealStimuliToBlocks - This function is designed to deal stimuli (or alternatively stimulus
+' codes or other tokens) into a number of blocks.  Useful for counterbalancing.
+'
+' Inputs: result[] - a vector which will be filled with the resulting blocked stimuli
+'         nTotal% - the total number of stimuli in the entire sequence, cannot be more than
+'                   the length of result[]
+'         nExistingBlocks% - the number of blocks created in previous calls to DealStimuliToBlocks
+'                            should be 1 if this is the first call
+'         nSteps% - the number of steps in the stimuli/codes/tokens to be placed into result[]
+'                   it is an error for this value to be less than 2, because that would be stupid
+'         firstVal - the first value in the stimuli/codes/tokens to be placed into result[]
+'         lastVal - the last value in the stimuli/codes/tokens to be placed into result[]
+'         iLog% - if 1, do progression in log, if 0, do linear
+'
+' Returns: nFinalBlocks%, the number of blocks in the current result[], or a negative error code
+'
+' Note that nTotal%/(nExistingBlocks%*nSteps%) MUST be an integer or the logic doesn't work - will
+' return an error.
+'
+' For instance, imagine that you wish to counterbalance 3 spatial frequencies (0.5, 0.6, 0.7), 
+' 3 orientations (0, 90, 180) and two conditions (left, right).  This is 3x3x2 = 18 stimuli, 
+' which means that nTotal% would be 18.  We can represent L/R as -1 and 1 by making nSteps% = 2,
+' firstVal = -1 and lastVal = 1.  nExistingBlocks% would start at 1.  resultLR[] would be:
+' [-1 -1 -1 -1 -1 -1 -1 -1 -1  1  1  1  1  1  1  1  1  1]  (this is left/right)
+' and nFinalBlocks% will return 2.
+'
+' Next, we'll do spatial frequency.  We call the same function but fill resultSF[].  nTotal% is
+' unchanged (18) but nExistingBlocks% is now 2, nSteps% is 3, firstVal is 0.5 and lastVal is 0.7.
+' We get:
+' [0.5 0.5 0.5 0.6 0.6 0.6 0.7 0.7 0.7 0.5 0.5 0.5 0.6 0.6 0.6 0.7 0.7 0.7]  (this is SF)
+' and nFinalBlocks% will return 6.
+'
+' Finally, we'll do orientation.  We call the same function but fill resultOR[].  nTotal% is
+' unchanged (18) but nExistingBlocks% is now 6, nSteps% is 3, firstVal is 0 and lastVal is 180.
+' We get:
+' [0 90 180 0 90 180 0 90 180 0 90 180 0 90 180 0 90 180]  (This is orientation)
+' and nFinalBlocks% will return 18
+'
+' Putting these all together:
+' [-1  -1  -1  -1  -1  -1  -1  -1  -1  1   1   1   1   1   1   1   1   1  ]  (resultLR[])
+' [0.5 0.5 0.5 0.6 0.6 0.6 0.7 0.7 0.7 0.5 0.5 0.5 0.6 0.6 0.6 0.7 0.7 0.7]  (resultSF[])
+' [0   90  180 0   90  180 0   90  180 0   90  180 0   90  180 0   90  180]  (resultOR[])
+'
+' You can see that the three vectors are counterbalanced.
+'
+' To call these in a randomized block, just call Shuffle%() once to get indices for each block.
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+func DealStimuliToBlocks%(&result[],nTotal%,nExistingBlocks%,nSteps%,firstVal,lastVal,iLog%)
+    var nFinalBlocks%;
+    var firstlog, lastlog, stepsize;
+    var i%; 'loop through each current block
+    var j%; 'loop through tuning curve steps
+    var k%; 'loop through repeats at the lowest level
+    var l%; 'index to result
+    var nRepeats%; 'the number of repeats at the lowest level
+    
+    if nTotal% mod (nExistingBlocks%*nSteps%) > 0 then
+        message("The total number of steps and blocks does not evenly divide the total size of the vector to create!");
+        return -1;
+    endif;
+    
+    nRepeats% := nTotal%/(nExistingBlocks%*nSteps%);
+    
+    if ilog% <> 0 then
+        if firstval <= 0 or lastval <= 0 then
+            message("Attempt to perform log spacing on 0 or negative value!");
+            return -1;
+        endif;
+        ' Generate log progression
+        firstlog := log(firstval);
+        lastlog := log(lastval);
+        stepsize := (lastlog - firstlog)/(nSteps%-1);
+    else
+        ' Generate linear progression
+        stepsize := (lastval - firstval)/(nSteps%-1);
+    endif;
+    
+    for i% := 1 to nExistingBlocks% do
+    
+        if ilog% <> 0 then
+            for j% := 0 to nSteps%-1 do
+                for k% := 1 to nRepeats% do
+                    result[l%] := pow(10, firstlog + j% * stepsize);
+                    l% += 1;
+                next;
+            next;
+        else
+            for j% := 0 to nSteps%-1 do
+                for k% := 1 to nRepeats% do
+                    result[l%] := firstval + j% * stepsize;
+                    l% += 1;
+                next;    
+            next;
+        endif
+    
+    next
+    
+    
+    nFinalBlocks% := nExistingBlocks%*nSteps%;
+    return nFinalBlocks%;
+end
