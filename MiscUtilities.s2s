@@ -789,7 +789,14 @@ func DealStimuliToBlocks%(&result[],nTotal%,nExistingBlocks%,nSteps%,firstVal,la
     
     nRepeats% := nTotal%/(nExistingBlocks%*nSteps%);
     
-    if ilog% <> 0 then
+    docase
+    case nSteps% = 1 then  'if there is only one step, we've got several things to do - first, avoid divide by zero in other case blocks!
+        iLog% := 0;  'set iLog% to zero because there you can't meaningfully log-space a single value
+        if firstval <> lastval then  'make sure firstval = lastval, otherwise which do you pick?
+            message("First value and last value must be the same if nSteps% is 1!");
+            return -1;
+        endif;
+    case iLog% <> 0 then
         if firstval <= 0 or lastval <= 0 then
             message("Attempt to perform log spacing on 0 or negative value!");
             return -1;
@@ -801,11 +808,11 @@ func DealStimuliToBlocks%(&result[],nTotal%,nExistingBlocks%,nSteps%,firstVal,la
     else
         ' Generate linear progression
         stepsize := (lastval - firstval)/(nSteps%-1);
-    endif;
+    endcase;
     
     for i% := 1 to nExistingBlocks% do
     
-        if ilog% <> 0 then
+        if iLog% <> 0 then
             for j% := 0 to nSteps%-1 do
                 for k% := 1 to nRepeats% do
                     result[l%] := pow(10, firstlog + j% * stepsize);
