@@ -1337,7 +1337,7 @@ func IdleProcessing%()
         if tNow - tStateStart > attMissPenalty then
             
             PrintLog("stateMiss: penalty time is done.\n");
-            ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);
+            ChangeStateTo(stateTrialCompletedPause%, tNow);  'can't look for trigger in this case
             
         endif
         
@@ -1900,8 +1900,8 @@ Proc CreateContrastList(&c$,cList%[],&vList%[],&udList%[])
                 if (Rand()*100 < attNoGoTrialPercentage) then 'NoGo trial
                     vList%[totalCount%] := 1;  'all no-go trials are valid
                     udList%[totalCount%] := -1;  '"down" contrast, which now indicates no-go
-                    cList%[totalCount%] := attContrastList[attNContLevels%];  'fill cList%[] with the base contrast
-                    c$ := c$ + "0," + Str$(attContrastBase%) + "," + Str$(attContrastList[attNContLevels%]) + ",";  'fill c$ with no-go trial
+                    cList%[totalCount%] := attContrastBase%;  'fill cList%[] with the base contrast
+                    c$ := c$ + Str$(attContrastBase%) + "," + Str$(attContrastBase%) + "," + "0,";  'fill c$ with no-go trial
                 else    
                     
                     if (Rand()*100 < attCatchTrialPercentage) then 'catch trial
