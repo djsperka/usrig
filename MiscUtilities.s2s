@@ -653,6 +653,34 @@ func GridStimuli(Values1[],Values2[],j%,k%,&Indices1%[],&Indices2%[],IsRandom%,N
 end;
 
 
+'InterleaveStrings$ will interleave two comma separated strings
+'e.g. InterleaveStrings$("5,6,7","1,1,1") will return "5,1,6,1,7,1"
+
+func InterleaveStrings$(x$,y$)
+    var xy$;
+    var xind%;
+    var yind%;
+    xind% := InStr(x$,",");
+    while xind% > 0 do
+        xy$ += Left$(x$,xind%);
+        yind% := InStr(y$,",");
+        xy$ += Left$(y$,yind%);
+        x$ := DelStr$(x$,1,xind%);
+        y$ := DelStr$(y$,1,yind%);
+        'get next xind
+        xind% := InStr(x$,",");
+    wend;
+    'Then there will be one value left in each string with no comma
+    xy$ += x$;
+    xy$ += ",";
+    xy$ += y$;
+    return xy$;
+    
+    
+end;
+
+
+
 
 '****f* Spike2Util/MiscUtilities/ArrFind%
 ' NAME
