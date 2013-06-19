@@ -2621,10 +2621,17 @@ func GetInitialPhase%(phaseAtCC%,tempFreq,dur)
     'temporal frequency in Hz
     'duration in seconds
     var Po%;
-    Po% := phaseAtCC% - (360*((tempFreq*dur)mod 1));
+    var deg;
+    var deg%;
+    
+    deg := (360*((tempFreq*dur)mod 1));
+    deg% := round(deg);  'this corrects to nearest degree, non-explicit conversion of real to int results in a floor operation
+    Po% := phaseAtCC% - deg%;
+    'Po% := phaseAtCC% - (360*((tempFreq*dur)mod 1));
     if Po% < 0 then
         Po% := 360 + Po%;
     endif;
+    'printlog("Requested initial phase is %d\n",Po%);
     return Po%;
     
 end
