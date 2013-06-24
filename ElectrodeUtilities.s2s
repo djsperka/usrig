@@ -1,5 +1,7 @@
 ' $Id$
 
+var UsePlexon%;
+
 #include "DlgUtilities.s2s"
 #include "UsreyUtil.s2s"
 
@@ -7,6 +9,7 @@ var WavemarkPorts%[16];
 var NumWavemarkPorts%;
 var ContinuousPorts%[16];
 var NumContinuousPorts%;
+
 
 GetElectrodeParameters();
 
@@ -98,6 +101,7 @@ proc GetElectrodeParameters()
     NumWavemarkPorts% := ReadStr(s$, WavemarkPorts%[]);
     s$ := GetStringRegistryValue$(key$, "ContinuousPorts", "");
     NumContinuousPorts% := ReadStr(s$, ContinuousPorts%[]);
+    Profile(key$, "UsePlexon", 0, UsePlexon%);
 end;
 
 proc SaveElectrodeParameters()
@@ -106,7 +110,8 @@ proc SaveElectrodeParameters()
     var i%;
 	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
     SetStringRegistryValue(key$, "WavemarkPorts", GetWavemarkPorts$());
-    SetStringRegistryValue(key$, "ContinuousPorts", GetContinuousPorts$());    
+    SetStringRegistryValue(key$, "ContinuousPorts", GetContinuousPorts$());
+    Profile(key$, "UsePlexon", UsePlexon%);    
 end;
 
 
