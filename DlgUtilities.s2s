@@ -37,8 +37,9 @@ func WMCNPortDialog%(title$, wmports%[], cnports%[])
         DlgCheck(i%, "Wavemark", 10, i%);
         DlgCheck(i%+n%, "Continuous", 24, i%);
     next;
-'    DlgAllow(0xffff, 0, WMCNPortDialogChanged%);
-	i% := DlgShow(wmports%[0:n%], cnports%[0:n%]);
+    DlgCheck((2*n%)+1, "Use Plexon", 10, n%+1);
+    DlgAllow(0xffff, 0, WMCNPortDialogChanged%);
+	i% := DlgShow(wmports%[0:n%], cnports%[0:n%], UsePlexon%);
     return i%;
 end
 
@@ -50,6 +51,13 @@ func WMCNPortDialogChanged%(item%)
 '            DlgValue(j%, wmports%[j%]);
 '            DlgValue(j%+n%, cnports%[j%]);
         next
+        for j% := 1 to (2*dlguNPorts%) do
+            DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
+        next;
+    case item% = (2*dlguNPorts%)+1 then
+        for j% := 1 to (2*dlguNPorts%) do
+            DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
+        next;
     endcase
     
     return 1;
