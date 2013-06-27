@@ -185,3 +185,47 @@ func CreateElectrodeSamplingConfiguration2(iStartWM%, iStartCont%)
     
     return iStatus%;
 end
+
+
+
+'This function sets up the sampling on the Micro 1401 mark II for the 18 WaveMark/24 LFP max configuration
+'It creates 13 WaveMarks.  Two eye position channels are expected to be set up by the calling script
+func CreatePlexonSamplingConfiguration1824Micro()
+    var iStatus% := -1;
+    var i%;
+    
+    for i% := 0 to 12 do
+		SampleWaveMark(i%+1, i%, 2000, 34, 15, 28571); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(i%+1, "WMrk " + str$(i%+1)); 
+	next
+    
+    SampleUsPerTime(2.5);  'set same sample period for both units
+    SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end
+
+
+'This function sets up the sampling on the Power1401  for the 18 WaveMark/24 LFP max configuration
+'It creates 5 WaveMarks and 24 Waveform channels - note that eye channels are on the Micro
+func CreatePlexonSamplingConfiguration1824Power()
+    var iStatus% := -1;
+    var i%;
+    
+    for i% := 0 to 4 do
+		SampleWaveMark(i%+1, i%, 2000, 34, 15, 28571); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(i%+1, "WMrk " + str$(i%+14)); 
+	next
+    
+    for i% := 0 to 23 do
+		SampleWaveform(i%+6,i%+5,2484.5);  'chan, port, sampling rate
+		SampleTitle$(i%+6, "LFP " + str$(i%+1)); 
+	next
+    
+    SampleUsPerTime(2.5);  'set same sample period for both units
+    SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end
