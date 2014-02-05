@@ -183,8 +183,6 @@ end
 
 
 
-
-
 '****f* Spike2Util/MiscUtilities/GetRepeatedSymmetricParameterProgression%
 ' NAME
 ' GetRepeatedSymmetricParameterProgression%(n%, nr%, result[], indices%[], centerval, lastval, ilog%, irandom%)
@@ -315,6 +313,162 @@ func GetSymmetricParameterProgression%(n%, result[], indices%[], centerval, last
     endcase
     return status%;
 end
+
+
+
+
+
+
+'****f* Spike2Util/MiscUtilities/GetParameterProgressionWithConstant%
+' NAME
+' GetParameterProgressionWithConst%
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a starting
+' value to an ending value. Also includes a specified number of insertions of a
+' constant value.  The progression can be linear or logarithmic, and 
+' the order of the parameters (with constants) can be randomized.  If the order is
+' not randomized, all constants will occur at the end.
+' INPUTS
+' n% : Number of parameter values to generate
+' nc% : Number of constant values to include
+' c: Value of the constant
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' firstval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' irandom% : randomize order of indices%[] when this <> 0
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both firstval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' SEE ALSO
+' GetRepeatedParameterProgression
+'****
+
+func GetParameterProgressionWithConstant%(n%, nc%, c, result[], indices%[], firstval, lastval, ilog%, irandom%)
+    var status% := 0;
+    var nn%;
+    
+    nn% := n% + nc%;  'total number of stimuli
+    docase
+    case Len(result[]) < nn% or Len(indices%[]) < nn% then
+        status% := 1;
+    case nn% < 2 then
+        status% := 1;
+    case ilog% <> 0 and (firstval <= 0 or lastval<= 0) then
+        status% := 1;
+    else
+        var stepsize;
+        var i%;
+        for i% := 0 to nn%-1 do
+            indices%[i%] := i%;
+        next
+        if ilog% <> 0 then
+            var firstlog, lastlog;
+            ' Generate log progression
+            firstlog := log(firstval);
+            lastlog := log(lastval);
+            stepsize := (lastlog - firstlog)/(n%-1);
+            for i% := 0 to n%-1 do
+                result[i%] := pow(10, firstlog + i% * stepsize);
+            next;
+        else
+            ' Generate linear progression
+            stepsize := (lastval - firstval)/(n%-1);
+            for i% := 0 to n%-1 do
+                result[i%] := firstval + i% * stepsize;
+            next;
+        endif
+        
+        'add in constants
+        for i% := n% to nn%-1 do
+            result[i%] := c;
+        next
+        
+        if irandom% <> 0 then
+            Shuffle%(nn%, indices%[]);
+        endif
+        
+    endcase
+    return status%;
+end
+
+'****f* Spike2Util/MiscUtilities/GetRepeatedParameterProgressionWithConstant%
+' NAME
+' GetRepeatedParameterProgressionWithConstant%(n%, nc%, c, nr%, result[], indices%[], firstval, lastval, ilog%, irandom%)
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a starting
+' value to an ending value. The progression can be linear or logarithmic, and 
+' the order of the parameters can be randomized. In addition, the set may be repeated
+' any number of times. 
+' n% : Number of values to generate
+' nc% : Number of constant values to include
+' c: Value of the constant
+' nr% : Number of repeats to generate
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' firstval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' irandom% : randomize order of indices%[] when this <> 0
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both firstval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' 
+' The indices always complete a set of n% values (0...n%-1) before starting another set. 
+' SEE ALSO
+' GetParameterProgression
+'****
+
+
+func GetRepeatedParameterProgressionWithConstant%(n%, nc%, c, nr%, result[], indices%[], firstval, lastval, ilog%, irandom%)
+    var status% := 0;
+    var nn%;
+    
+    nn% := n% + nc%;
+    docase
+    case Len(result[]) < nn%*nr% or Len(indices%[]) < nn%*nr% then
+        status% := 1;
+    case nn% < 2 or nr% < 1 then
+        status% := 1;
+    else
+        var ir%;
+        var is%;
+        for ir% := 0 to nr%-1 do
+            is% := GetParameterProgressionWithConstant%(n%, nc%, c, result[ir%*nn%:nn%], indices%[ir%*nn%:nn%], firstval, lastval, ilog%, irandom%);
+            if is% <> 0 then
+                PrintLog("GetRepeatedParameterProgression%()", "Error (" + str$(is%) + ")during repeat# " + str$(ir%));
+                status% := is%;
+            endif
+        next
+    endcase
+    return status%;
+end
+
+
+
+
+
+
+
+
+
 
 
 
