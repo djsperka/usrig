@@ -46,6 +46,13 @@ end
 
 func WMCNPortDialogChanged%(item%)
     var j%;
+    var enable%;
+    if DlgValue((2*dlguNPorts%)+1) = 1 or DlgValue((2*dlguNPorts%)+2) = 1 then
+        enable% := 0;
+    else
+        enable% := 1;
+    endif
+    
     docase
     case item% = 0 then
         for j% := 1 to dlguNPorts% do
@@ -53,15 +60,18 @@ func WMCNPortDialogChanged%(item%)
 '            DlgValue(j%+n%, cnports%[j%]);
         next
         for j% := 1 to (2*dlguNPorts%) do
-            DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
+            'DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
+            DlgEnable(enable%,j%);
         next;
     case item% = (2*dlguNPorts%)+1 then
         for j% := 1 to (2*dlguNPorts%) do
-            DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
+            'DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
+            DlgEnable(enable%,j%);
         next;
     case item% = (2*dlguNPorts%)+2 then
         for j% := 1 to (2*dlguNPorts%) do
-            DlgEnable(1-DlgValue((2*dlguNPorts%)+2), j%);
+            'DlgEnable(1-DlgValue((2*dlguNPorts%)+2), j%);
+            DlgEnable(enable%,j%);
         next;
     endcase
     
