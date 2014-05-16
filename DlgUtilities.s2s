@@ -38,8 +38,9 @@ func WMCNPortDialog%(title$, wmports%[], cnports%[])
         DlgCheck(i%+n%, "Continuous", 24, i%);
     next;
     DlgCheck((2*n%)+1, "Use Plexon", 10, n%+1);
+    DlgCheck((2*n%)+2, "Use Plexon 7/15", 24, n%+1);
     DlgAllow(0xffff, 0, WMCNPortDialogChanged%);
-	i% := DlgShow(wmports%[0:n%], cnports%[0:n%], UsePlexon%);
+	i% := DlgShow(wmports%[0:n%], cnports%[0:n%], UsePlexon%, UsePlexon7WM15CN%);
     return i%;
 end
 
@@ -57,6 +58,10 @@ func WMCNPortDialogChanged%(item%)
     case item% = (2*dlguNPorts%)+1 then
         for j% := 1 to (2*dlguNPorts%) do
             DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
+        next;
+    case item% = (2*dlguNPorts%)+2 then
+        for j% := 1 to (2*dlguNPorts%) do
+            DlgEnable(1-DlgValue((2*dlguNPorts%)+2), j%);
         next;
     endcase
     

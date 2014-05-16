@@ -1,6 +1,7 @@
 ' $Id$
 
 var UsePlexon%;
+var UsePlexon7WM15CN%;
 
 #include "DlgUtilities.s2s"
 #include "UsreyUtil.s2s"
@@ -221,6 +222,35 @@ func CreatePlexonSamplingConfiguration1824Power()
     for i% := 0 to 23 do
 		SampleWaveform(i%+6,i%+5,2484.5);  'chan, port, sampling rate
 		SampleTitle$(i%+6, "LFP " + str$(i%+1)); 
+	next
+    
+    SampleUsPerTime(2.5);  'set same sample period for both units
+    SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end
+
+
+'This function sets up the sampling on a Power1401 for the 7 WaveMark/15 LFP configuration
+'Two eye position channels are expected to be set up by the calling script on ports 14 and 15
+func CreateElectrodeSamplingConfiguration7WM15CN()
+    var iStatus% := -1;
+    var i%;
+    
+    for i% := 0 to 6 do
+		SampleWaveMark(i%+1, i%, 2000, 34, 15, 28571); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(i%+1, "WMrk " + str$(i%+1)); 
+	next
+    
+    for i% := 0 to 6 do  'these are the pre-eyecoil channels, do not use ports 14/15
+		SampleWaveform(i%+8,i%+7,2484.5);  'chan, port, sampling rate
+		SampleTitle$(i%+8, "LFP " + str$(i%+1)); 
+	next
+    
+    for i% := 7 to 14 do
+		SampleWaveform(i%+8,i%+9,2484.5);  'chan, port, sampling rate
+		SampleTitle$(i%+8, "LFP " + str$(i%+1)); 
 	next
     
     SampleUsPerTime(2.5);  'set same sample period for both units
