@@ -551,6 +551,15 @@ func IdleProcessing%()
 
             tLastTrigger := tTrigger;
             ChangeStateTo(stateTrialCompleted%, tNow);
+        else
+            if tunType$ = tunTypeDanish$ and tunUseMaintainMode% >= 2 and View(DataWindow%).FindRisingEdge%(FrameChannel%, tLast, tTrigger) then
+                ' Advance, in specific case that we are doing danishes and maintaining the core - there will not be a falling edge on the stim channel in this case
+                SafeSampleKey("a");
+
+                tLastTrigger := tTrigger;
+                ChangeStateTo(stateTrialCompleted%, tNow);
+            endif
+            
         endif
         
     case iState% = stateWaitForStimOffDSS% then
