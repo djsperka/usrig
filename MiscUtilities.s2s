@@ -1170,3 +1170,25 @@ proc HighestValue(nVals%,template$,&myout$)
     next
     'return myout$;      
 end
+
+'A simple function to expand and shuffle
+func ShuffleAndExpand(nVals%,nRepeats%,&indices%[],random%)
+    if len(indices%[]) < nVals%*nRepeats% then
+        return 0;  'not enough space to perform requested operation in indices%[]
+    endif;
+    
+    var tempInds%[nVals%];  'make temp list of indices 0:n-1
+    var i%;
+    'fill tempinds with indices 0:n-1
+    for i% := 0 to nVals%-1 do
+        tempInds%[i%] := i%; 
+    next;
+    
+    for i% := 0 to nRepeats%-1 do
+        if random% = 1 then
+            Shuffle%(nVals%,tempInds%[]);
+        endif;
+        ArrConst(indices%[i%*nVals%:nVals%],tempInds%[0:nVals%])
+    next
+    return 1;
+end
