@@ -346,3 +346,41 @@ func CreateElectrodeSamplingConfiguration15WF15WF2k()
     
     return iStatus%;  'this is useless!
 end
+
+
+'This function sets up the sampling on a Power1401 for the 24 WaveForm configuration
+'Two eye position channels are expected to be set up by the calling script on ports 14 and 15
+func CreateElectrodeSamplingConfiguration24WF()
+    var iStatus% := -1;
+    var i%;
+    
+    SampleChannels(34);  'we need some extra channels    
+    
+    'do not use ports 14/15
+    'do not use channels 23-32
+    
+    'This does 14 of 24 30kHz waveforms
+    for i% := 0 to 13 do  'these are the pre-eyecoil channels, do not use ports 14/15
+		SampleWaveform(i%+1,i%,30000);  'chan, port, sampling rate
+		SampleTitle$(i%+1, "Raw " + str$(i%+1)); 
+	next
+    
+    
+    'This does 8 of 24 30kHz waveforms
+    for i% := 0 to 7 do
+		SampleWaveform(i%+15,i%+16,2000);  'chan, port, sampling rate
+		SampleTitle$(i%+15, "Raw " + str$(i%+15)); 
+	next
+    
+    'This does final 2 of 15 30kHz waveforms
+    for i% := 0 to 1 do
+		SampleWaveform(i%+33,i%+24,2000);  'chan, port, sampling rate
+		SampleTitle$(i%+33, "Raw " + str$(i%+23)); 
+	next
+    
+    'SampleUsPerTime(2.5);  'set same sample period for both units
+    'SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end
