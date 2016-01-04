@@ -87,7 +87,12 @@ proc GratingDialog(type$)
                 SaveGratingParameters(type$, gr$);
             endif
         else
-            message("Warning!|No grating parameters are defined for Stimulus grating!\nYou can set initial parameters from Tuning!");
+            'since we can no longer populate a Stimulus grating in a new configuration using Tuning, we have to just take the default value.
+            gr$ := GetDefaultGratingParameters$("Stimulus");
+            if GratingParametersDialog%(type$, gr$, disable%, ndisable%, x, y, w, h, iw, ih, contrast%, sf, tf, orientation, phase, cv$, p$, ap$) = 1 then
+                SaveGratingParameters(type$, gr$);
+            endif
+            'message("Warning!|No grating parameters are defined for Stimulus grating!\nYou can set initial parameters from Tuning!");
         endif
     endif
     
