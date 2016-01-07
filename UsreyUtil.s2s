@@ -86,7 +86,8 @@ end
 
 proc GetDataParameters()
 	var key$;
-	key$ := GetRigName$() + "\\Data";
+	'key$ := GetRigName$() + "\\Data";
+    key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\Data";
     dataPathRoot$ := GetStringRegistryValue$(key$, "PathRoot", dataPathRoot$);
 	dataDataSet$ := GetStringRegistryValue$(key$, "DataSet", dataDataSet$);
 	dataCellName$ := GetStringRegistryValue$(key$, "CellName", dataCellName$);
@@ -97,7 +98,8 @@ end;
 
 proc SaveDataParameters()
 	var key$;
-	key$ := GetRigName$() + "\\Data";
+	'key$ := GetRigName$() + "\\Data";
+    key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\Data";
     SetStringRegistryValue(key$, "PathRoot", dataPathRoot$);
 	SetStringRegistryValue(key$, "DataSet", dataDataSet$);
 	SetStringRegistryValue(key$, "CellName", dataCellName$);
@@ -455,7 +457,8 @@ var TotalDate$;
 
 proc GetDailyTotals()
 	var key$;
-	key$ := "AlertRig\\Daily";
+	'key$ := "AlertRig\\Daily";
+    key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\Daily";
 	Profile(key$, "TotalDate", "", TotalDate$);
 	Profile(key$, "TotalTrials", 0, TotalTrials%);
 	Profile(key$, "TotalRewards", 0, TotalRewards%);
@@ -469,7 +472,8 @@ end;
 
 proc SaveDailyTotals()
 	var key$;
-	key$ := "AlertRig\\Daily";
+	'key$ := "AlertRig\\Daily";
+    key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\Daily";
 	Profile(key$, "TotalDate", TotalDate$);
 	Profile(key$, "TotalTrials", TotalTrials%);
 	Profile(key$, "TotalRewards", TotalRewards%);
