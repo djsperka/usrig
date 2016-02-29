@@ -12,13 +12,22 @@ var util$;      ' Location of Spike2 utilities scripts.
 var stim$;      ' Location of stimulus files (sparse noise, e.g.)
 var tmp$;
 
-Profile("", "RemoteBin", "", tmp$);
-if Len(tmp$) > 0 then
-    PrintLog("Found RemoteBin key in registry. Using \"" + tmp$ + "\" to run executables.\n");
-    bin$ := tmp$;
+'Profile("", "RemoteBin", "", tmp$);
+'if Len(tmp$) > 0 then
+'    PrintLog("Found RemoteBin key in registry. Using \"" + tmp$ + "\" to run executables.\n");
+'    bin$ := tmp$;
+'else
+'    bin$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\bin";	' Location of executables is ..\bin, relative to script dir
+'endif
+
+if System$("PROCESSOR_ARCHITECTURE") = "AMD64" then
+    bin$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\bin64";
+    PrintLog("64-bit platform detected, using bin$=" + bin$);
 else
-    bin$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\bin";	' Location of executables is ..\bin, relative to script dir
+    bin$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\bin";
+    PrintLog("32-bit platform detected, using bin$=" + bin$);
 endif
+
 
 script$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2);	' folder containing this script
 util$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\..\\Spike2Util";
