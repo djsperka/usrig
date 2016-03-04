@@ -58,7 +58,7 @@ EN:     'N  MOVI   V2,1
 
 
 EQ:     'Q  MOVI   V2,1
-            DIGOUT [0100000.]
+            DIGOUT [0001000.]
             MOVI   V2,0
             HALT                   ;End of this sequence section
 
