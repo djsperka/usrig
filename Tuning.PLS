@@ -149,3 +149,13 @@
 0105            DIGOUT [.....0..]      ;Signals the stimuli off
 0106            MOVI   V2,0            ;Log that sequencer is not in use
 0107            HALT                   ;End of this sequence section
+
+
+; LED commands for fixation LED
+LEDON:  'L  MOVI   V2,1            ;Log that sequencer is in use
+            DIGLOW [1.......]      ;Turn on LED - don't know which digout yet
+            JUMP   LDONE           ;Jump over LEDOFF to a HALT
+LEDOFF: 'M  MOVI   V2,1            ;Log that sequencer is in use
+            DIGLOW [0.......]      ;Turn off LED - don't know which digout yet
+LDONE:      MOVI   V2,0            ;Log that sequencer is not in use
+            HALT                   ;End of this sequence section
