@@ -3176,6 +3176,14 @@ func Start%()
         cmdLineM$ := OpenerM$ + ProgName$ + RemoteArgM$ + " -F " + fileM$;
         cmdLineS$ := OpenerS$ + ProgName$ + RemoteArgS$ + " -F " + fileS$;
         
+        'djs hack 4-22-2016
+        ' The -l ### arg (l as in ell, not one) specifies a delay, in ms, prior to fixstim issuing the ready pulse. 
+        ' I send it to the SLAVE so it waits until after sampling has started. This is not guaranteed to work - if the 
+        ' MASTER dallies long enough before issuing the trigger to start sampling, then this delay on the SLAVE may not 
+        ' be enough. A more robust, and complex, way to make it work would be to look for the MASTER ready pulse, and when
+        ' received, THEN start the slave fixstim program. Sounds like a lot of hassle to me. 
+        cmdLineS$ += " -l 500";
+        
         'cmdLineM$ := OpenerM$ + ProgName$ + FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + " -V 128 " + Verbose$;
         'cmdLineM$ := cmdLineM$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$;
         'cmdLineS$ := OpenerS$ + ProgName$ + " -c 192.168.1.2:7000 " + FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + " -n -V 128 " + Verbose$;
