@@ -284,6 +284,53 @@ func CreatePlexonSamplingConfiguration1824Power()
 end
 
 
+
+'This function sets up the sampling on the Master 1401 for the xx WaveMark/xx LFP max configuration
+'It creates xx WaveMarks.  Two eye position channels are expected to be set up by the calling script
+func CreateJoePlexon1SamplingConfigurationMaster()
+    var iStatus% := -1;
+    var i%;
+    
+    for i% := 0 to 12 do
+		SampleWaveMark(i%+1, i%, 2000, 34, 15, 28571); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(i%+1, "WMrk " + str$(i%+1)); 
+	next
+    
+    SampleUsPerTime(2.5);  'set same sample period for both units
+    SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end
+
+
+'This function sets up the sampling on the Slave Power1401 for the xx WaveMark/xx LFP max configuration
+'It creates xx WaveMarks and xx Waveform channels - note that eye channels are on the Master
+func CreateJoePlexon1SamplingConfigurationSlave()
+    var iStatus% := -1;
+    var i%;
+    
+    for i% := 0 to 4 do
+		SampleWaveMark(i%+1, i%, 2000, 34, 15, 28571); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(i%+1, "WMrk " + str$(i%+14)); 
+	next
+    
+    for i% := 0 to 23 do
+		SampleWaveform(i%+6,i%+5,2484.5);  'chan, port, sampling rate
+		SampleTitle$(i%+6, "LFP " + str$(i%+1)); 
+	next
+    
+    SampleUsPerTime(2.5);  'set same sample period for both units
+    SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end
+
+
+
+
+
 'This function sets up the sampling on a Power1401 for the 7 WaveMark/15 LFP configuration
 'Two eye position channels are expected to be set up by the calling script on ports 14 and 15
 func CreateElectrodeSamplingConfiguration7WM15CN()
