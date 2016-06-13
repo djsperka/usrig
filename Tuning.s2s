@@ -3088,12 +3088,14 @@ func Start%()
         tunLagMasterIsLagged% := -1; 'set this to a negative value to avoid any accidental counterfeit from the default value of this variable
     endif;
     docase
-    case tunUseConstantLag% = 1 and tunLagMasterIsLagged% <> 1 then  'master is constant, master does not have a lag tuning curve
-        MConstantLag$ := " -lagflag " + Str$(tunConstantLagFrames%);
-        SConstantLag$ := "";
-    case tunUseConstantLag% = 2 and tunLagMasterIsLagged% <> 0 then  'slave is constant, slave does not have a lag tuning curve
-        MConstantLag$ := "";
-        SConstantLag$ := " -lagflag " + Str$(tunConstantLagFrames%);
+    'case tunUseConstantLag% = 1 and tunLagMasterIsLagged% <> 1 then  'master is constant, master does not have a lag tuning curve
+    case tunUseConstantLag% = 1 and tunLagMasterIsLagged% = -1 then  'master is constant, nobody is lagged
+        MConstantLag$ := " -E " + Str$(tunConstantLagFrames%);
+        SConstantLag$ := " -E 0";  'Must use lag on both screens, per Dan, set non-lagged to 0
+    'case tunUseConstantLag% = 2 and tunLagMasterIsLagged% <> 0 then  'slave is constant, slave does not have a lag tuning curve
+    case tunUseConstantLag% = 2 and tunLagMasterIsLagged% = -1 then  'slave is constant, nobody is lagged
+        MConstantLag$ := " -E 0";  'Must use lag on both screens, per Dan, set non-lagged to 0
+        SConstantLag$ := " -E " + Str$(tunConstantLagFrames%);
     else  'don't use it, this includes both tunUseConstantLag% = 0 and instances where the lag tuning and constant lag are on the same monitor
         MConstantLag$ := "";
         SConstantLag$ := "";
@@ -3174,13 +3176,14 @@ func Start%()
     case tunType$ = tunTypeLag$ then
         'tunDoRivalry will be 1
         if tunLagMasterIsLagged% = 1 then
-            TunCurveMArg$ := " -lagflag "; 'do not know flag
-            TunCurveSArg$ := "-N ";  'no tuning curve
+            TunCurveMArg$ := " -E "; 'lag is -E!
+            TunCurveSArg$ := " -E ";  'must use lag on both screens, just make it 0 for slave
+            SValues$ := "0";  'lag 0 for slave
         else
-            TunCurveMArg$ := " -N "; 'no tuning curve
-            TunCurveSArg$ := " -lagflag ";
+            TunCurveMArg$ := " -E "; 'must use lag on both screens, just make it 0 for master
+            TunCurveSArg$ := " -E ";
             SValues$ := MValues$;
-            MValues$ := "";
+            MValues$ := "0";  'lag 0 for master
         endif;
         'won't do ClearMasterOrSlave... because there's no point in running lag tuning with an empty screen on the other side
         
