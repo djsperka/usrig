@@ -1,0 +1,1117 @@
+' $Id$
+
+const qfCVSID$ := "$Id$";
+
+
+'This script is designed to be very simple - it will present a fixation point and
+'a stimulus, and will reward every so often as long as the animal keeps fixating.
+'The fixation and the stimulus will stay on until the experimenter turns them off.
+
+'Include everything, we might use it!
+#include "../../Spike2Util/ChannelUtilities.s2s"
+#include "../../Spike2Util/UsreyUtil.s2s"
+#include "../../Spike2Util/LogUtilities.s2s"
+#include "../../Spike2Util/MiscUtilities.s2s"
+#include "UsreyDAQ.s2s"
+#include "TuningDialogs.s2s"
+#include "UsreyGratings.s2s"
+#include "UsreyFixationPoint.s2s"
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' QuickFix script VARIABLES
+'
+
+
+
+' Overall script control vars
+var Pause% := 0;
+var UseTwo1401s% := 0;
+
+' Channel numbers and handles
+var StimHandle%;			' handle for stimulus application
+var StimHandleSlave%;       ' handle for slave stimulus application
+var DataWindow%;		    ' handle for data window
+var XChannel%;              ' handle for eye X channel
+var YChannel%;              ' handle for eye Y channel
+var FrameChannel%;
+var FrameSlaveChannel%;
+var FixationPointChannel%;
+var FixationPointSlaveChannel%;
+var StimChannel%;
+var StimSlaveChannel%;
+var ReadyChannel%;
+var ReadySlaveChannel%;
+var XYWindow%;
+var iStimChannel%;	' channel number for stimulus in xy window
+var iStimWindowChannel%;' channel number for stimulus window in xy window
+var iMonitorChannel%;	' channel number for monitor position display in xy window
+var SequencerPeriodMS;
+
+' Set standard channel positions
+XChannel% := 25;
+YChannel% := 26;
+ReadyChannel% := 40;
+FrameChannel% := 41;
+FixationPointChannel% := 42;
+StimChannel% := 43;
+ReadySlaveChannel% := 44;
+FrameSlaveChannel% := 45;
+FixationPointSlaveChannel% := 46;
+StimSlaveChannel% := 47;
+
+
+
+' Display of animal's fixation
+var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
+var windowX[36], windowY[36];
+
+
+' Dialog box return variable
+var iScript%;
+
+
+' State logic variables
+var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
+var tLast:=-1;		' last time we checked for a trigger. 
+var xEye, yEye;		' eye positions
+var tLastUpdate:=-1;	' last time view was updated
+var vTrigger;		' set by NextTime to indicate trigger transition
+var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
+var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
+var tTrigger:=-1;	' temp var for newly discovered trigger times
+var tStimOn:=-1;	' time that stim was turned on. Used to measure spike rates 
+var tStimSequence := -1;    ' time that stim sequence started; followed by pulses on frame channels
+var tInterTrialTime := 0;	' Time spent waiting between trials (i.e. after screen is blank, but before fix point is presented)
+var tRise, tFall;
+var tic;  'Set a tick value equal to the duration of one clock tick in seconds, used to prevent finding
+          'the same "pulse" twice
+var pulseFound%;
+var pulseFoundSlave%;
+var tOpt;
+
+
+' State constants for state logic
+const stateStartTrial%:=0;		' Start trial state
+const stateWaitForFixPtOn%:=1;		' Waiting for fixation point return trigger (on)
+const stateWaitForBlank%:=2;		' Waiting for fixation point return trigger (off)
+const stateWaitForStimOn%:=3;		' Wait for stimulus return trigger (on)
+const stateWaitForStimOff%:=4;		' Wait for stimulus return trigger (off)
+const stateWaitForAcquisition%:=5;	' Waiting for subject to acquire fixation point
+const stateHoldFixation%:=6;		' Holding fixation point
+const stateAbort%:=7;			' Failed trial state
+const stateMaintainFixation%:=8;	' Maintaining fixation (stim off period)
+const stateInterTrialInterval%:=9;	' time out after failed trial
+const stateVSGWait%:=10;		' wait for vsg to send ready signal #1
+const stateVSGWaitConfirm%:=11;		' wait for vsg to send ready signal #2
+const stateTrialCompleted%:=12;		' trial has been completed successfully
+const stateDone%:=13;	
+const stateWaitForStimTrigger% := 14; ' Rising edge indicating start of stim sequence
+const stateWaitForStimOffDSS%:=15;		' Wait for stimulus return trigger (off) during DSS sequence
+const stateInterTrialIntervalFixAlreadyUp%:=16;  'use intertrial interval after giving fixation reward in maintain fixation mode
+const stateWaitStimulusOnsetDelay%:=17;  'if there is a stimulus onset delay, wait for the correct time
+const stateStartOpto%:=18;
+const stateWaitOptoPrestim%:=19;
+const stateCheckTurnOnOpto%:=20;
+const stateCheckTurnOffOpto%:=21;
+const stateTurnOffOpto%:=22;
+const stateWaitOptoPoststim%:=23;
+const statePulsedOpto%:=24;
+const stateWaitPulsedOpto%:=25;
+const stateRequestStimulus%:=26;
+var iState% := stateVSGWait%;	' present state
+
+
+'Script variables
+var qfRewardTime; 
+var qfDoRivalry%;
+var nRewardsGiven%;
+var qfBackgroundColor$ := "gray";	' background color for stim, for now, don't put this in a dialog
+
+
+'
+' QuickFix script VARIABLES END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' QuickFix script EXECUTION
+'
+
+
+' Init logging
+LogInit(1);
+
+' Run basic dialog
+iScript% := qfDialog%();
+if iScript% = 1 then
+    LogInfo("QuickFix dialog complete, proceed with DAQ. DoRivalry = " + str$(qfDoRivalry%));
+else
+	LogInfo("User cancel - exit gracefully\n");
+	Halt;
+endif;
+
+' Fetch electrode information. 
+if UsePlexon% = 1 or JoePlexon1% = 1 or JoePlexon2% = 1 then
+    UseTwo1401s% := 1;
+else
+    UseTwo1401s% := 0;
+endif;
+
+
+'Set up electrodes - several options
+'docase
+'case UsePlexon% = 1 then
+'    tunNWavemarks% := 13;  '13 wavemarks on the micro for plexon
+'    tunNContinuous% := 0;  'no continuous on the micro for plexon
+'    var i%;
+'    for i% := 0 to 12 do
+'        tunWavemarkPorts%[i%] := i%;
+'    next;
+'case UsePlexon7WM15CN% = 1 then 
+'    tunNWavemarks% := 7;  '7 wavemarks
+'    tunNContinuous% := 15;  '15 continuous
+'    for i% := 0 to 7 do
+'        tunWavemarkPorts%[i%] := i%;
+'    next;
+'else
+'    tunNWavemarks% := GetWavemarkPorts%(tunWavemarkPorts%[]);
+'    tunNContinuous% := GetContinuousPorts%(tunContinuousPorts%[]);
+'endcase;
+
+
+'If we are not linking the two 1401s together, just use the standard order of operations:
+'1) create sampling configuration, 2) Initialize windows, 3) Initialize/run toolbar.
+'However, if we are linking the 1401s we have to do this in a different order, because we have to open up the second
+'instance of Spike 2 BEFORE setting up the sampling configuration/windows on the first instance.  Doing this in the
+'wrong order results in a non-fatal error in the second Spike2 instance indicating that the file which is preparing
+'to be recorded in the first instance cannot be accessed, despite no explicit attempt to access any such thing.
+'Hence, for the dual-1401 setups, we first initialize the toolbar, which has a specialty button "Start Plexon".  StartPlexon%()
+'launches the second instance and the associated script, and both scripts move forward independently to create their own
+'sampling configuration, initialize their own windows and are ready to have sampling started.  Note well that sampling
+'must be started on the POWER 1401/SLAVE 1401 (the second, non-dominant instance of Spike2) FIRST and on the 
+'MICRO 1401/MASTER 1401 (the first,  dominant instance of Spike 2) SECOND.  Starting sampling on the Micro will run 
+'the VSG program (Fixstim) which gives the sampling trigger and sets the experiment in motion.
+if UseTwo1401s% = 0 then
+    CreateSampleConfiguration();
+
+    ' Get display windows ready
+    InitializeWindows();
+    
+    tic := View(DataWindow%).BinSize(ReadyChannel%);
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+else
+    InitializeToolbar();
+endif;
+
+
+
+'
+' QuickFix script EXECUTION END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' QuickFix script IDLE FUNCTION
+'
+
+func IdleProcessing%()
+	var iStatus% := 1;	
+    var xval;
+    var yval;
+    var xind%;
+    var yind%;
+    
+	tNow := View(DataWindow%).MaxTime();
+    
+    ' First time through (tLast<0) just update tLast. Crosstalk on vsg dig outputs leads to erroneous
+    ' triggers. Maybe this will help. 
+    if tLast < 0 then
+        tLast := 1;
+        return 1;
+    endif
+    
+    
+	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+	yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+
+	' Don't update display every time....
+	if tNow-tLastUpdate > .005 then
+		View(XYWindow%).XYAddData(1,xEye,yEye);
+		tLastUpdate := tNow;
+	endif
+
+	docase 
+    case iState% = stateVSGWait% then
+        ' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
+        pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
+        
+        if tunDoRivalry% = 0 then
+            if pulseFound% = 1 then
+                LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
+                Yield(1.0);
+                tLastTrigger := tFall;
+                ChangeStateTo(stateStartTrial%, tFall);
+            else
+                if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
+                    LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
+                    tLastTrigger := tFall;
+                endif;
+            endif;
+        else
+            pulseFoundSlave% := View(DataWindow%).FindPulseUp%(ReadySlaveChannel%, tLastTrigger+tic, tRise, tFall);
+            if pulseFound% = 1 and pulseFoundSlave% = 1 then
+                LogStatus("VSGWait", "Got SLAVE Ready Pulse from VSG at " + str$(tRise));
+                Yield(1.0);
+                tLastTrigger := tFall;
+                ChangeStateTo(stateStartTrial%, tFall);
+            else
+                ' TODO - do this for slave also
+                if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
+                    LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
+                    tLastTrigger := tFall;
+                endif;
+            endif;
+        endif
+
+    case iState% = stateStartTrial% then
+
+        ' Start trial. Put up fixation point.
+        LogStatus("StartTrial", "Request fixpt");
+        SampleText("Fix On");
+        SafeSampleKey("F");
+        ChangeStateTo(stateWaitForFixPtOn%, tNow);
+        
+        
+    case iState% = stateWaitForFixPtOn% then
+        if View(DataWindow%).FindRisingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 0 then
+            ' Fixation point is up
+            LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateRequestStimulus%, tTrigger);
+            DrawStim(1);	' actually this draws the location of the fixpt.
+        endif
+        
+        
+    case iState% = stateRequestStimulus% then
+
+        ' Start trial. Put up stimulus.
+        LogStatus("StartTrial", "Request stimulus");
+        SampleText("Stim On");
+        SafeSampleKey("S");  'request stimulus
+        ChangeStateTo(stateWaitForStimTrigger%, tNow);
+        
+        
+    case iState% = stateWaitForStimTrigger% then
+
+        if View(DataWindow%).FindRisingEdge%(StimChannel%, tStateStart, tTrigger) = 0 then
+            ' Stimulus point is up
+            LogStatus("WaitForStimTrigger", "Stim sequence started at " + str$(tTrigger));
+            tStimOn := tTrigger;
+            tStimSequence := tTrigger;      ' TODO remove tStimOn ref above - see stateWaitForStimOn
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateWaitForAcquisition%, tTrigger);
+        endif    
+        
+        
+    case iState% = stateWaitForAcquisition% then
+
+        ' Waiting for eye to fall inside of fixation window
+        if Looking%(xEye, yEye) = 1 then
+            LogStatus("WaitForAcquisition", "Eye in fixation window; wait through reward delay");
+            ChangeStateTo(stateHoldFixation%, tNow);
+            SampleText("Fixation Acquired");
+        else 
+            'if not fixating, just wait until the animal is fixating!
+        endif  
+        
+        
+    case iState% = stateHoldFixation% then
+
+        if Looking%(xEye, yEye) = 0 then
+            LogStatus("HoldFixation", "Fixation broken, aborting trial.");
+            SampleText("Fixation Broken");
+            ChangeStateTo(stateWaitForAcquisition%, tNow);
+        else 
+            if tNow - tStateStart > qfRewardTime then  
+
+                ' Give reward
+                nRewardsGiven% += 1;
+                SampleText("Reward - Count is " + Str$(nRewardsGiven%));
+                LogStatus("HoldFixation", "Giving Reward.");
+           
+                ' Reward
+                DefaultReward();
+                
+                ' Restart state with new time
+                ChangeStateTo(stateHoldFixation%, tNow);  'must look at Fixation channel in this case              
+            endif
+        endif
+
+    else
+        
+        ' Unknown state!
+        Message("Unknown state=" + str$(iState%));
+        halt;
+
+	endcase;
+    
+    
+    'Sanity check to make sure that the program hasn't been abandoned
+    if tNow > 3600 then
+        Stop%();
+    endif;
+    
+
+	tLast := tNow;
+	return iStatus%;
+end;
+
+
+
+'
+' QuickFix script IDLE FUNCTION END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' QuickFix script FUNCTIONS
+'
+
+
+'========  qfDialog%  ========
+'Super simple dialog box
+func qfDialog%()
+    var iReturn% := 0;
+    var i%;
+    
+    GetQFParameters();
+    
+    'Set up simple dialog box - just use automatic placement
+    DlgCreate("QuickFix Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
+    DlgReal(1, "Fixation time for reward (s):", 0.1, 1000);
+    if JuicerType% = 1 then
+        DlgInteger(2, "Juicer open dur. (ms):", 1, 2000);
+    else  'JuicerResult should only be 2, other values should not allow access to dialog box
+        DlgInteger(2, "Num. juicer pulses:", 1, 20);
+    endif;
+    DlgCheck(3, "Use Dual VSG");
+    
+    
+         
+    
+    
+    'Run dialog box
+    if JuicerType% = 1 then
+        i%:=DlgShow(qfRewardTime, JuiceRewardMS%, qfDoRivalry%);
+    else
+        i%:=DlgShow(qfRewardTime, JuicePerReward%, qfDoRivalry%);
+    endif;
+        
+    
+    if i% = 1 then
+		SaveQFParameters();
+        SaveDAQParameters();  'Saving DAQ parameters because juicer variable can change
+        iReturn% := 1;
+    endif;
+    
+    return iReturn%;
+    
+end
+
+
+'========  GetQFParameters  ========
+proc GetQFParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\QuickFix";
+    
+	qfRewardTime := GetFloatRegistryValue(key$, "RewardTime", qfRewardTime);
+    qfDoRivalry% := GetIntRegistryValue%(key$, "DoRivalry", qfDoRivalry%);
+    
+end;
+
+
+'========  SaveQFParameters  ========
+proc SaveQFParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\QuickFix";
+    
+	SetFloatRegistryValue(key$, "RewardTime", qfRewardTime);
+    SetIntRegistryValue(key$, "DoRivalry", qfDoRivalry%);
+
+end;
+
+
+
+'========  CreateSampleConfiguration  ========
+proc CreateSampleConfiguration()
+	var i%;
+    
+'    var masterTxt$;
+'    var slaveTxt$;
+'    
+'    docase
+'    case UseTwo1401s% = 1 and UsePlexon% = 1 then
+'        masterTxt$ := "MICRO";
+'        slaveTxt$ := "POWER";
+'    case UseTwo1401s% = 1 and UsePlexon% = 0 then  'this would be for any two-1401 scenario for Joe
+'        masterTxt$ := "MASTR";
+'        slaveTxt$ := "SLAVE";
+'    else
+'        'do not need to set these variables
+'    endcase
+    
+	SampleClear(); 'Set standard sampling state
+    SampleChannels(64);  '32 does not work, we need more!
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    
+    ' Set path for new data files, and for those saved automatically
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+      
+    SampleAutoFile(1);  'Enable automatic file naming
+    
+    ' Text marks make extraction easier
+    SampleTextMark(200);  'Channel 30 is textmark channel
+    
+
+	'Channel recording definitions
+    
+   	SampleEvent(FrameChannel%, 0, 2, 3600);
+	SampleComment$(FrameChannel%,"Frame");
+	SampleTitle$(FrameChannel%,"Frame");
+
+	SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+	SampleComment$(ReadyChannel%,"Ready");
+	SampleTitle$(ReadyChannel%,"Ready");
+    
+	SampleEvent(FixationPointChannel%, 2, 2, 3600); 'Trigger channel, level
+	SampleComment$(FixationPointChannel%,"Fixpt");
+	SampleTitle$(FixationPointChannel%,"Fixpt");
+	
+	SampleEvent(StimChannel%, 3, 2, 3600); 'Trigger channel, level
+	SampleComment$(StimChannel%,"Stim");
+	SampleTitle$(StimChannel%,"Stim");
+    
+	SampleEvent(FrameSlaveChannel%, 4, 2, 3600);
+	SampleComment$(FrameSlaveChannel%,"Frame-Slave");
+	SampleTitle$(FrameSlaveChannel%,"Frame-Slave");
+    
+	SampleEvent(ReadySlaveChannel%, 5, 2, 3600); 'Trigger channel, level
+	SampleComment$(ReadySlaveChannel%,"Ready-Slave");
+	SampleTitle$(ReadySlaveChannel%,"Ready-Slave");
+    
+	SampleEvent(FixationPointSlaveChannel%, 6, 2, 3600); 'Trigger channel, level
+	SampleComment$(FixationPointSlaveChannel%,"Fixpt-Slave");
+	SampleTitle$(FixationPointSlaveChannel%,"Fixpt-Slave");
+	
+	SampleEvent(StimSlaveChannel%, 7, 2,3600); 'Trigger channel, level
+	SampleComment$(StimSlaveChannel%,"Stim-Slave");
+	SampleTitle$(StimSlaveChannel%,"Stim-Slave");
+    
+    
+    
+    ' Set up channels for sampling electrodes.
+    docase
+    case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
+        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
+    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
+        CreateElectrodeSamplingConfiguration7WM15CN(); 
+    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
+        CreateElectrodeSamplingConfiguration15WF15WF2k();
+    case UsePlexon24WF% = 1 then
+        CreateElectrodeSamplingConfiguration24WF(); 
+    case JoePlexon1% = 1 then
+        CreateJoePlexon1SamplingConfigurationMaster();
+    case JoePlexon2% = 1 then
+        message("Electrode Configuration JoePlexon2 is not yet implemented!");
+        halt;
+    else
+        ' Electrodes: wavemark/continuous
+        ' 12/6/2010
+        ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
+        ' and M waveform channels. 
+        for i% := 0 to tunNWavemarks%-1 do
+            SampleWaveMark(i% + 1, tunWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+            SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%])); 
+        next
+        for i% := 0 to tunNContinuous%-1 do
+            SampleWaveform(tunNWavemarks% + i% + 1, tunContinuousPorts%[i%], 20000);
+            SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
+        next
+    endcase;
+    
+        
+	SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+	SampleTitle$(XChannel%,"Eye X");
+	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+	SampleTitle$(YChannel%,"Eye Y");
+    
+	SampleSequencer(script$ + "Tuning.pls");
+	docase
+    case UsePlexon% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
+        SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
+    case JoePlexon1% = 1 or JoePlexon2% = 1 then
+        SampleOptimise(0,1,4,0,0,0,0);  'copying the micro settings...not necessarily the be-all end-all, just trying to see if anything works
+    case UsePlexon15WF15WF2k% = 1 or UsePlexon24WF% = 1 then 
+        SampleOptimise(2,2,9,1,50,0,1);  'for big-data, need to set for burst mode, Power1401-3 setting is not clear because help does not list it.  9?  8 for micro1401-3?
+    else
+        SampleOptimise(2,2,2,2,50);  'otherwise: full optimize timing, channels may have different rates, Power1401 (lowest common denominator, so eh), low usPerTime of 2, high usPerTime of 50
+    endcase;
+	SampleMode(1); 'Continuous sampling
+    
+end;
+
+
+
+'========  InitializeWindows - prepare windows for display.  ========
+proc InitializeWindows()
+    var i%;
+    var WindowStep;
+    
+    ' Make spike2 use all of monitor 1
+    View(App()).Window(0, 0, 100, 100, 1);
+    
+	'Open the data sampling window
+    DataWindow% := FileNew(0,4);
+    if DataWindow% < 0 then
+        PrintLog("FileNew Error: %s\n", Error$(DataWindow%));
+    endif
+
+	Window(0,48,50,95);
+    XRange(0, 30);
+	View(DataWindow%).WindowVisible(1);
+    
+    
+	'Open an XY view to display eye position
+	XYWindow% := FileNew(12);
+	XRange(-30,30);
+	YRange(-2,-30,30);
+	XYDrawMode(0,5,0);
+	WindowVisible(1);
+	Window(0, 0, 50, 47);
+	XYColour(1,16);
+	XYSize(1,-1);
+
+
+	'Calcuate the fixation window
+	var index%;
+	var twopi;
+	twopi := 2.0*4.0*ATan(1.0);
+	
+	for index% := 0 to 35 do
+		FixWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
+		FixWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
+	next;
+
+	'Create a new channel in the XY view to display the fixation window
+	iStimWindowChannel% := XYSetChan(0);
+	XYColour(2,13);
+	XYDrawMode(2,2,1);
+	XYJoin(2,1);
+	'Draw the fixation window
+	XYAddData(2, FixWindowX[], FixWindowY[]);
+
+	'Create a new channel in the XY view to display the fixation point
+	iStimChannel% := XYSetChan(0);
+
+	'Create a new channel in the XY view to show the monitor's location
+	iMonitorChannel% := XYSetChan(0);
+	XYColour(4,13);
+	XYDrawMode(4,3,1);
+	XYJoin(4,2);
+	XYAddData(4,-9,-7);  'size of monitor is hard coded as 9x7 degrees - this is probably not super accurate...
+	XYAddData(4,9,-7);
+	XYAddData(4,9,7);
+	XYAddData(4,-9,7);
+
+end;
+
+
+
+
+
+'========  InitializeToolbar - prepare toolbar buttons.  ========
+
+' Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+
+proc InitializeToolbar()
+
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+    if UseTwo1401s% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
+        ToolbarSet(1,"Sample start",Start%);
+    endif;
+	ToolbarSet(2,"Sample stop", Stop%);
+	ToolbarSet(3,"Juice", Juice%);
+	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
+	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
+    'ToolbarSet(6,"Exp Parameters",AttentionScriptDialog%);
+    'ToolbarSet(6,"Select Wavemarks",SelectWavemarkDialog%);
+	ToolbarSet(7,"Quit",Quit%);
+	ToolbarEnable(2,0);
+	ToolbarEnable(4,0);
+	ToolbarEnable(5,0);
+	Toolbar("Go",0x3ff);
+
+end;
+
+
+
+
+'========  Start  ========
+func Start%()
+	var cmdLine$;
+    var cmdLineM$;
+    var cmdLineS$;
+    var tailM$, tailS$;
+    var fileM$, fileS$;
+    var Opener$;
+    var OpenerM$;
+    var OpenerS$;
+    var ProgName$;
+    var RemoteArg$:="";     'Extra arg needed if vsg is not on local machine...
+    var RemoteArgM$:="";     'Extra arg needed if vsg is not on local machine...
+    var RemoteArgS$:="";     'Extra arg needed if vsg is not on local machine...
+    var XHairArg$:="";  'Note that all variables are used to construct cmdLine$, if unused, must be empty
+    var BGColor$;
+    var Dist2Screen$;
+    var TriggerPort$;
+    var Verbose$:=" -v ";  'For now, verbose is always on
+    var RefrLock$:="";
+    var OffsetFile$:="";
+    var StimDur$:="";
+    var MGrat$:=" -s ";
+    var SGrat$:=" -s ";
+    var DGrat$:="";
+    var MGratParam$:="";
+	var SGratParam$:="";
+    var DGratParam$:="";  'for donut stimulus, uses Distractor1
+    var MasterIndicator$:="";  'Do not use Master Indicator
+    var SlaveIndicator$:="";  'or Slave Indicator for fixstim, set if needed
+    var MValues$:="";
+    var SValues$:="";   
+    var S2Values$:="";  'won't be used except for Box O' Donuts 
+    var key$;
+    var i%;
+
+    
+	
+	'start sampling
+    if UseTwo1401s% = 1 then
+        SampleStart(1);  'set sampling to start on a trigger
+    else
+    	SampleStart(0); 'Start sampling now
+    endif;
+    
+    ' djs Set sequencer variable 5 if this is rivalry
+    if tunDoRivalry% = 1 then
+        SampleSeqVar(5, 1);
+    else
+        SampleSeqVar(5, 0);
+    endif
+    
+	' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");
+    
+    SequencerPeriodMS := SampleSeqClock(1);  'Get the clock period of the sequencer, in MS, must do this after starting sampling
+    
+    
+    'Begin building the command line argument
+    Opener$ := "cmd /k " + bin$;
+    OpenerM$ := Opener$;
+    OpenerS$ := Opener$;
+    
+    ' Get remote args if needed
+    if GetUseRemoteStimulus%() = 1 then
+        RemoteArg$  := " " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
+        RemoteArgM$ := " " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
+        RemoteArgS$ := " " + GetSlaveStimulusIP$() + " " + GetSlaveStimulusPort$() + " fixstim ";
+    endif;
+    
+    
+    'Get grating parameters, do this first so we can clear the SGratParam$ if Slave monitor is unused
+    ' Stimulus is always used
+    MGratParam$ := GetGratingParameters$("Stimulus");
+    ' Slave Stimulus is not always used, but get it anyway
+    SGratParam$ := GetGratingParameters$("SlaveStimulus");
+    
+    
+    'Set rivalry options
+    if qfDoRivalry% = 0 then
+        RefrLock$ := "";  'do not lock frame refresh
+        if GetUseRemoteStimulus%() = 1 then
+            ProgName$ := "\\remote.exe "; 'set program name for one VSG
+        else
+            ProgName$ := "\\fixstim.exe "; 'set program name for one VSG
+        endif;
+        
+        'I don't really like doing this (in principle these should start empty and be filled if they are being
+        'used), but I'd have to do another if statement, so this cuts down on total code
+        SGrat$ := "";  'clear Slave grating indicator, we won't use it
+        SGratParam$ := "";  'clear slave grating parameters, we won't use them
+        
+    else  'for rivalry we need some extra commands that must be empty for a non-rivalry call
+    
+        ProgName$ := "\\remote.exe ";
+        
+        ' Fetch the offset filename
+        key$ := GetRegistryKey$(1) + "\\Rivalry";
+        OffsetFile$ := GetStringRegistryValue$(GetRegistryKey$(1), "OffsetFile", "file_not_found");
+        OffsetFile$ := " -r " + OffsetFile$;
+        
+        ' Fetch the stimulus duration (in dualstim, stimoff is done by counting frames because of VSG frame synching)
+        StimDur$ := " -t " + Str$(tunFixationDuration) + " ";  'add stimulus duration in seconds
+        
+        ' Set monitor indicators, required for Dualstim
+        MasterIndicator$ := " -M ";  'master monitor indicator
+        SlaveIndicator$ := " -V ";  'slave monitor indicator
+    endif;
+    
+   
+    'Set background color
+    BGColor$ := " -b " + qfBackgroundColor$;
+    
+    'Set distance to screen
+    Dist2Screen$ := " -d " + GetDistanceToScreenMM$();
+    
+    'Set trigger port
+    TriggerPort$ := " -p 2 ";  'This one's hard-coded for now
+    
+    'Turn on verbose
+    Verbose$ := " -v ";
+    
+    
+     
+    'Get default tuning curve values - these may get changed!
+    TunCurveMArg$ := " -E ";  'this is a lag tuning curve, set no lag
+    MValues$ := "0";  
+    if tunDoRivalry% = 1 then
+        TunCurveSArg$ := " -E ";  'Set slave to run same tuning curve...
+        SValues$ := "0";  '...with same values as Master tuning curve 
+    endif;
+    
+   
+
+    'Build command line, any values that are unnecessary will be empty, so the build should work no matter what type of command line is required
+    if tunDoRivalry% = 0 then
+        cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$; 'prelim stuff
+        cmdLine$ := cmdLine$ + RefrLock$ + OffsetFile$ + StimDur$;  'Dual VSG stuff
+        cmdLine$ := cmdLine$ + MasterIndicator$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$;  'Master grating stuff
+        cmdLine$ := cmdLine$ + SlaveIndicator$ + SGrat$ + SGratParam$ + TunCurveSArg$ + SValues$;  'Slave grating stuff
+        
+        ' Initial text marks
+        ' djs Always version 3. NO difference if maintainmode is used or not. 
+        SampleText("Tuning,3," + str$(Len(cmdLine$)));
+        SampleText(qfCVSID$);
+        for i% := 1 to Len(cmdLine$) step 100 do
+            SampleText(Mid$(cmdLine$, i%, 100));
+        next
+
+    else
+        fileM$ := GetDataPathRoot$() + "\\tunMaster.txt";
+        fileS$ := GetDataPathRoot$() + "\\tunSlave.txt";         ' Will change this below, once file has been created, to the "slave" version
+        tailM$ := FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + " -V 128,FS " + Verbose$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$;
+        tailS$ := FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + " -V 128,FS " + Verbose$ + SGrat$ + SGratParam$ + TunCurveSArg$ + SValues$ + TunCurveS2Arg$ + S2Values$;
+        
+        if createCmdTextFile%(fileM$, tailM$) <> 1 or createCmdTextFile%(fileS$, tailS$) <> 1 then
+            Message("ERROR!|Cannot create tunMaster.txt or tunSlave.txt");
+            halt;
+        endif
+        fileS$ := GetDataPathRootSlave$() + "\\tunSlave.txt";         ' Will change this below, once file has been created, to the "slave" version
+        LogInfo("Master tuning parameters file: " + fileM$);
+        LogInfo("Slave tuning parameters file: " + fileS$);
+        
+        cmdLineM$ := OpenerM$ + ProgName$ + RemoteArgM$ + " -F " + fileM$;
+        cmdLineS$ := OpenerS$ + ProgName$ + RemoteArgS$ + " -F " + fileS$;
+        
+        'djs hack 4-22-2016
+        ' The -l ### arg (l as in ell, not one) specifies a delay, in ms, prior to fixstim issuing the ready pulse. 
+        ' I send it to the SLAVE so it waits until after sampling has started. This is not guaranteed to work - if the 
+        ' MASTER dallies long enough before issuing the trigger to start sampling, then this delay on the SLAVE may not 
+        ' be enough. A more robust, and complex, way to make it work would be to look for the MASTER ready pulse, and when
+        ' received, THEN start the slave fixstim program. Sounds like a lot of hassle to me. 
+        cmdLineS$ += " -l 500";
+        
+        'cmdLineM$ := OpenerM$ + ProgName$ + FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + " -V 128 " + Verbose$;
+        'cmdLineM$ := cmdLineM$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$;
+        'cmdLineS$ := OpenerS$ + ProgName$ + " -c 192.168.1.2:7000 " + FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + " -n -V 128 " + Verbose$;
+        'cmdLineS$ := cmdLineS$ + SGrat$ + SGratParam$ + TunCurveSArg$ + SValues$ + TunCurveS2Arg$ + S2Values$;
+        
+        PrintLog("Master: " + cmdLineM$ + "\n");
+        PrintLog("tunMaster.txt: %s\n", tailM$);
+        PrintLog("Slave: " + cmdLineS$ + "\n");
+        PrintLog("tunSlave.txt: %s\n", tailS$);
+        
+        ' Initial text marks
+        
+
+        ' djs Always version 3. NO difference if maintainmode is used or not. 
+        SampleText("Tuning,3," + str$(Len(tailM$)) + "," + str$(Len(tailS$)));
+        
+        SampleText(qfCVSID$);
+        
+        for i% := 1 to Len(tailM$) step 100 do
+            SampleText(Mid$(tailM$, i%, 100));
+        next
+        for i% := 1 to Len(tailS$) step 100 do
+            SampleText(Mid$(tailS$, i%, 100));
+        next
+        
+    endif
+        
+    
+	'Begin the stimulus program. It will take a few seconds for the VSG to initialize.
+	PrintLog(cmdLine$+"\n");
+    
+    if tunDoRivalry% = 0 then
+        StimHandle% := ProgRun(cmdLine$, 1);
+        if StimHandle% <0 then Message("Could not start stimulus."); halt; endif
+    else
+        StimHandle% := ProgRun(cmdLineM$, 1);       
+        StimHandleSlave% := ProgRun(cmdLineS$, 1);
+    endif
+    
+	
+	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);
+	ToolbarEnable(1,0);
+	'ToolbarEnable(6,0);
+	ToolbarEnable(7,0);
+	View(DataWindow%);
+	Yield(5);
+return 1;
+end;
+
+
+
+
+'========  StartPlexon  ========
+func StartPlexon%()
+    
+    'Start the Power1401!  This is a bit cumbersome, and I'm not sure it's transferable, but it's a start, perhaps.
+    var fp$;  'to hold current file path
+    var fp2$;  'to hold destination file path
+    fp$ := FilePath$();  'get current file path
+    printlog("%s\n",fp$);  'and tell the world what it was
+    var fpok%;
+    fpok% := FilePathSet("F:/work/AlertRig/Spike2Scripts");  'change the file path (Henry)
+    if fpok% <> 0 then
+        fpok% := FilePathSet("E:/work/AlertRig/Spike2Scripts");  'change the file path (Joe)
+    endif
+    if fpok% <> 0 then
+        message("Failed to find expected file structure in StartPlexon%()!  Quitting!");
+        halt;
+    endif
+        
+    fp2$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp2$);  'by telling the world about it (hint: it works)
+    
+    'Must run this BEFORE the PROGRUN command, because both this sequence AND SetPlexon...
+    'access the same directory, and this was causing conflicts because they were running
+    'simultaneously.  Here, CreateSampleConfiguration is done accessing the directory before
+    'SetPlexon... is started, and everything is kosher.
+    CreateSampleConfiguration();    
+    
+    docase
+    case UsePlexon% = 1 then
+        progrun("sonview.exe /M /u2 SetPlexonRecording1824OnPower1401.s2s");  'run the program, .s2s file is now on default path by design
+    case JoePlexon1% = 1 then
+        progrun("sonview.exe /M /u2 SetJoePlexon1RecordingOnSlave.s2s");  'run the program, .s2s file is now on default path by design
+    case JoePlexon2% = 1 then
+        message("Program to start slave 1401 not yet written for Joe2!  Quitting!");
+        halt; 
+        'This is what we should call the program, then we can just uncomment this line
+        'progrun("sonview.exe /M /u2 SetPlexonRecording1824OnPower1401.s2s");  'run the program, .s2s file is now on default path by design
+    endcase
+    
+    FilePathSet(fp$);  'change the file path back to what it was
+    fp$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp$); 'and tell the world to verify
+    
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+
+    ' Get display windows ready
+    InitializeWindows();    
+    
+    return 1; 'stay in toolbar
+    
+end
+
+
+
+
+'========  Stop  ========
+func Stop%()
+
+    
+	' Disable idle process func
+	ToolbarSet(0,"");
+   
+    
+    ' Tell stim app to shut down.
+    ' DJS - removed the 'X' sample key here. 
+    ' In general this X cannot be seen by the vsg application if neither stim is up,
+    ' which is the case at the end of an expt for example. In dual stim configuration,
+    ' that leads to the script hanging, because the sequencer is waiting for the vsg
+    ' app to set its "ready" bits, which will never get set.... 
+    ' extraneous X? 
+    ' HOWEVER, for the QuickFix script, the stimulus is never turned off until the user clicks the stop button.
+    ' So this is the only "X" around.
+    SafeSampleKey("X");
+    Yield(1);
+	SafeSampleKey("Q");
+	SampleStop();
+    
+    if tunDoRivalry% = 0 then
+        ProgKill(StimHandle%);
+        while ProgStatus(StimHandle%) > 0 do
+            Yield();
+        wend
+    else
+        ProgKill(StimHandle%);
+        while ProgStatus(StimHandle%) > 0 do
+            Yield();
+        wend
+        ProgKill(StimHandleSlave%);
+        while ProgStatus(StimHandleSlave%) > 0 do
+            Yield();
+        wend
+    endif
+    
+     
+	' Write parameter file
+	'WriteParameterFile();  'probably not much to write here...
+
+	' Increment daily totals and save then
+'	TotalTrials% += nTrialsStarted%;
+'	TotalRewards% += nTrialsCompleted%;
+'	SaveDailyTotals(); 
+
+end;
+
+
+'========  Juice  ========
+func Juice%()  'note that this function is only used for Toolbar-based juice delivery
+    if JuicerType% = 1 then  'open-high juicer, dispense based on ms
+        DeliverReward();
+    else
+        if JuicerType% = 2 then  'open-low juicer, dispense based on number of hits
+            DeliverRewardNumber();
+        endif;
+    endif;
+    return 1;
+end;
+
+
+
+'========  Pause Stimuli  ========
+func PauseStimuli%();
+Pause% := 1;
+ToolbarEnable(4,0);
+ToolbarEnable(5,1);
+return 1;
+end
+
+
+'========  Resume Stimuli  ========
+func ResumeStimuli%();
+Pause% := 0;
+ToolbarEnable(4,1);
+ToolbarEnable(5,0);
+return 1;
+end
+
+
+
+'========  Quit  ========
+' Used to hard-quit from toolbar. This will close data files without saving!!! 
+' It is important that this function be disabled once sampling is started!!!
+
+func Quit%()
+	FileClose(-1,-1);
+	return 0;
+end;
+
+
+
+
+'========  createCmdTextFile  ========
+func createCmdTextFile%(filename$, cmd$)
+    if FileOpen(filename$, 8, 1) > 0 then
+        Print(cmd$);
+        FileClose();
+        return 1;
+    else
+        return -1;
+    endif
+    return -1;
+end
+
+
+
+'========  ChangeStateTo  ========
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+	if tStart > 0 then tStateStart := tStart; endif;
+end;
+
+
+
+
+'========  DrawStim  ========
+proc DrawStim(iDraw%)
+
+	if iDraw% > 0 then
+		var xstim, ystim;
+		xstim := FixationX;
+		ystim := FixationY;
+
+		' Draw stimulus in xy window
+		View(XYWindow%).XYAddData(iStimChannel%, xstim, ystim);
+	else 
+		' erase the stim and the window from xy view
+		View(XYWindow%).XYDelete(iStimChannel%);
+	endif
+
+end;
+
+
+
+'========  DrawStim  ========
+func Looking%(EyePosX,EyePosY)
+	'Determine if the eye position is within the fixation window
+    if tunAlwaysLooking% = 1 then return 1; endif;
+	if (Pow(EyePosX-FixationX,2) + Pow(EyePosY-FixationY,2)) <= Pow(WindowRadius,2) then return 1; else return 0; endif
+end;
+
+
+
+'
+' QuickFix script FUNCTIONS END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
