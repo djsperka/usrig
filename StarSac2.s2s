@@ -59,6 +59,20 @@ const MAXEYETRACECOLORS% := 12;
 var starEyeTraceColors%[MAXEYETRACECOLORS%];    ' These are used to draw colors
 
 
+' Optogenetics variables - since we will only be using wraparound and not pulsed (at least, that's my understanding) much of this might be unnecessary
+var starPreStimOptoTime;
+var starPostStimOptoTime;
+var starMaxOptoTime;
+var starOptoVoltageOut;
+var starProbOfOpto;
+'var starRecOptoBox% := 0;      'record the output from the opto box?
+var starDoOpto%;                     ' New, 1 if doing optogenetics
+'var starRecStimulator% := 0;   'record the stimulator?
+var voltageInteger%;
+var starDoOptoThisTrial% ;  'will keep track of trial-by-trial opto
+var optoIsOn%;  'Keeps track of if the laser is actually on
+var starOptoOffMidStimTime;  'used to turn off the opto laser mid-stimulus, if required by the timing
+
 
 proc GetStarStimScriptParameters()
 	var key$;
@@ -119,7 +133,7 @@ end;
 func StarStimScriptDialog%()
 	var i%;
 	GetStarStimScriptParameters();
-	DlgCreate("StarStim Script Parameters", 25, 10);
+	DlgCreate("StarSac2 Script Parameters", 25, 10);
 	DlgReal(1, "Fixation duration min(s):", .01, 10);
 	DlgReal(2, "Fixation duration max(s):", .01, 10);
 	DlgReal(3, "Acquisition time(s):", .01, 10);
@@ -128,21 +142,45 @@ func StarStimScriptDialog%()
 	DlgInteger(6, "Number of targets:", 1, 99);
     DlgInteger(7, "Number of blocks", 1, 50);
     DlgInteger(8, "Num each targ per block", 1, 10);
-    DlgCheck(9, "Use stimulus position?");
-    DlgReal(10, "Target X", -20.0, 20.0);
-    DlgReal(11, "Target Y", -20.0, 20.0);
-    'DlgReal(12, "Rotation(deg)", 0.0, 360.0);
-    DlgCheck(12, "Keep fixpt on?");
-    DlgReal(13, "Min small reward time", 0, 10);
-    DlgReal(14, "Max small reward time", 0, 10);
-    DlgInteger(15, "Juice per small reward", 0, 10, 0, 0, 1);
+    DlgCheck(9, "Use opto?");
+    DlgCheck(10, "Use stimulus position?");
+    DlgReal(11, "Target X", -20.0, 20.0);
+    DlgReal(12, "Target Y", -20.0, 20.0);
+    'DlgReal(13, "Rotation(deg)", 0.0, 360.0);
+    DlgCheck(13, "Keep fixpt on?");
+    DlgReal(14, "Min small reward time", 0, 10);
+    DlgReal(15, "Max small reward time", 0, 10);
+    DlgInteger(16, "Juice per small reward", 0, 10, 0, 0, 1);
     DlgButton(101, "SmallArea", StarStimSmallAreaDialog%);
+    DlgButton(102, "Opto Parameters", StarStimOptoDialog%, 20,9);
     DlgAllow(0xffff, 0, StarStimScriptDialogChanged%);
 	i%:=DlgShow(starFixationDurationMin, starFixationDurationMax, starAcquisitionTime, starInterTrialTime, starAnswerTime, starNumTargets%, 
-    starNumBlocks%, starNumPerBlock%, starUseStimulusXY%, starTargetX, starTargetY,
+    starNumBlocks%, starNumPerBlock%, starDoOpto%, starUseStimulusXY%, starTargetX, starTargetY,
     starKeepFixptOn%, starMinSmallRewardDelta, starMaxSmallRewardDelta, starJuicePerSmallReward%);
 	if i% = 1 then
 		SaveStarStimScriptParameters();
+        
+        'Set starOptoOffMidStimTime, which will allow us to cut the opto off mid-trial if required
+        if (starMaxOptoTime - starPreStimOptoTime) < starAnswerTime then
+            starOptoOffMidStimTime := starMaxOptoTime - starPreStimOptoTime;
+        else
+            starOptoOffMidStimTime := starAnswerTime + .1;  'this will simply prevent starOptoOffMidStimTime from having any effect if the requested time is true wraparound
+        endif;
+        
+        'Adjust starPostStimOptoTime, which must not allow the opto time to go past the max time
+        if (starPreStimOptoTime + starPostStimOptoTime + starAnswerTime) > starMaxOptoTime then
+            starPostStimOptoTime := starMaxOptoTime - starAnswerTime - starPreStimOptoTime;
+        endif;
+        
+        'Make sure that the pre-opto time is shorter than the min fixation time (if doing opto)
+        '(otherwise the request to turn on the opto might come before the fixation point)
+        if starDoOpto% = 1 and starFixationDurationMin <= starPreStimOptoTime then
+            message("The minimum fixation duration must be longer than the pre-stim opto time!  Quitting!");
+            halt;
+        endif;
+        
+        
+        
 	endif;
 	return i%;
 end;
@@ -187,6 +225,85 @@ func StarStimSmallAreaDialogChanged%(item%)
     endcase
     return 1;
 end
+
+
+
+
+proc GetStarStimOptoParameters()
+	var stmp$;
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\StarStim\\Opto";
+    
+    starPreStimOptoTime := GetFloatRegistryValue(key$, "PreStimOptoTime", starPreStimOptoTime);
+    starPostStimOptoTime := GetFloatRegistryValue(key$, "PostStimOptoTime", starPostStimOptoTime);
+    starOptoVoltageOut := GetFloatRegistryValue(key$, "OptoVoltageOut", starOptoVoltageOut);
+    starMaxOptoTime := GetFloatRegistryValue(key$, "MaxOptoTime", starMaxOptoTime);
+    starProbOfOpto := GetFloatRegistryValue(key$, "ProbOfOpto", starProbOfOpto);    
+    
+    
+    'starRecOptoBox% := GetIntRegistryValue%(key$, "RecOptoBox", starRecOptoBox%);
+    'starRecStimulator% := GetIntRegistryValue%(key$, "RecStimulator", starRecStimulator%);
+
+end;
+
+proc SaveStarStimOptoParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\StarStim\\Opto";
+    SetFloatRegistryValue(key$, "PreStimOptoTime", starPreStimOptoTime);
+    SetFloatRegistryValue(key$, "PostStimOptoTime", starPostStimOptoTime);
+    SetFloatRegistryValue(key$, "OptoVoltageOut", starOptoVoltageOut);
+    SetFloatRegistryValue(key$, "MaxOptoTime", starMaxOptoTime);
+    SetFloatRegistryValue(key$, "ProbOfOpto", starProbOfOpto); 
+    
+    'SetIntRegistryValue(key$, "RecOptoBox", starRecOptoBox%);
+    'SetIntRegistryValue(key$, "RecStimulator", starRecStimulator%);
+end;
+
+
+func StarStimOptoDialog%()
+	var iReturn% := 1;
+	var i%;
+    var labels$[4];
+    var stimdur;
+    var tempNPulses%;
+    var tempCount%;
+    stimdur := dlgvalue(4);  'get stimulus duration value from calling (main) dialog, limit opto period based on this
+    
+    labels$[0] := "Opto Off First";
+    labels$[1] := "Opto On First";
+    labels$[2] := "Random First";
+    labels$[3] := "Opto On All Blocks";
+	GetStarStimOptoParameters();
+	DlgCreate("Optogenetics Parameters");
+    DlgReal(1, "Opto Voltage Out (V)",0.0002,5,50,1); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+    DlgReal(2, "PreStimulus Opto On (s)",0,10,50,2);
+    DlgReal(3, "PostStimulus Opto On (s)",0,10,50,3);
+    DlgText("If max opto dur is less than post opto on, opto will turn off during stimulus",2,4);
+    DlgReal(4, "Maximum Opto Duration (s)",0,10,50,5);
+    DlgReal(5, "Probability of Opto on each trial (0-100)",0,100,50,7);
+
+    
+    'DlgCheck(6, "Record control box voltage");
+    'DlgCheck(7, "Record stimulator");
+     
+    
+    i% := DlgShow(starOptoVoltageOut,starPreStimOptoTime,starPostStimOptoTime,starMaxOptoTime,starProbOfOpto);
+    ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
+
+    'starMaximalDiam := starAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
+	if i% = 1 then
+		SaveStarStimOptoParameters();    
+	endif;
+    
+	return iReturn%;
+end;
+
+
+
+
+
+
 
 ' Window handles and channel numbers
 var XChannel%,YChannel%;		' Channel number assigned to eye x and y
@@ -274,7 +391,9 @@ const stateAbortTime%				:= 12;
 const stateInterTrial%		 		:= 13;
 
 const stateVSGWait%					:= 14;		' wait for vsg to send ready signal #1
-const stateVSGWaitConfirm%			:= 15;		' waif for vsg to send ready signal #2
+const stateVSGWaitConfirm%			:= 15;		' wait for vsg to send ready signal #2
+const stateWaitThroughPreOpto%      := 16;      ' wait for pre-opto to finish, if opto trial
+const stateWaitForPostOpto%         := 17;      ' wait for post-opto to finish, and turn off laser
 
 
 var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
@@ -309,6 +428,8 @@ var fixBrokenThisTrial% := 0;   ' only valid for a few states TODO
 ' Run real time analysis here. 
 func IdleProcessing%()
 	var iStatus% := 1;	' this is return value. value of 1 (0) continues (stops) processing
+    var tOpt;
+    var tPostStimStart;  'will be useful for turning off "wraparound" opto after reward
 	tNow := View(DataWindow%).MaxTime();
 
 	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
@@ -341,6 +462,19 @@ func IdleProcessing%()
         starFixationDuration := Rand(starFixationDurationMax-starFixationDurationMin, starFixationDurationMin);
         LogStatus("StartTrial", "Start trial " + str$(nTrialsStarted%) + " Fix time " + str$(starFixationDuration));
         SafeSampleKey("F");
+        
+        'determine if we are doing opto on this trial
+        if starDoOpto% = 1 then
+            if rand(100,0) < starProbOfOpto then
+                starDoOptoThisTrial% := 1;
+                starFixationDuration := starFixationDuration - starPreStimOptoTime;  'update fixation duration to not include pre-opto time
+                SampleText("Opto This Trial",tNow)
+            else
+                starDoOptoThisTrial% := 0;
+                SampleText("No Opto This Trial",tNow)
+            endif;
+        endif;
+        
         ChangeStateTo(stateWaitForFixPtOn%, tNow);
 
     case iState% = stateWaitForFixPtOn% then
@@ -384,6 +518,18 @@ func IdleProcessing%()
         DrawFix(0);
         DrawTarget(0);
         SafeSampleKey("X");
+        
+        'There are multiple places that can lead to an abort with opto laser still on
+        if optoIsOn% = 1 then
+            'turn off opto
+            SafeSampleKey("o");  'turn it off
+            tOpt := View(DataWindow%).MaxTime();
+            'printlog("OptoOff at %f\n",tOpt);
+            SampleText("OptoOff",tOpt);
+            optoIsOn% := 0;
+        endif;
+        
+        
         ChangeStateTo(stateWaitForFixPtOff%, tNow);
 
     case iState% = stateWaitForFixPtOff% then
@@ -410,14 +556,43 @@ func IdleProcessing%()
             endif
             
             if tNow - tStateStart >= starFixationDuration then
-                
-                LogStatus("HoldFixation", "Request target at " + str$(tNow));
-                ChangeStateTo(stateShowStim%, tNow);
+                if starDoOptoThisTrial% = 0 then
+                    LogStatus("HoldFixation", "Request target at " + str$(tNow));
+                    ChangeStateTo(stateShowStim%, tNow);
+                else
+                    LogStatus("HoldFixation", "Request opto on at " + str$(tNow));
+                    ChangeStateTo(stateWaitThroughPreOpto%, tNow);
+                    
+                    SafeSampleKey("O");  'turn on opto
+                    tOpt := View(DataWindow%).MaxTime();
+                    'printlog("OptoOn at %f\n",tOpt);
+                    SampleText("OptoOn",tOpt);
+                    optoIsOn% := 1;
+                    
+                endif;
 
             endif
 
         endif
+        
+        
+    case iState% = stateWaitThroughPreOpto% then
+        
+        if InFixationWindow%(xEye, yEye) <= 0 then
+            
+            LogStatus("HoldFixation", "Broken fixation at " + str$(tNow));
+            ChangeStateTo(stateAbort%, tNow);
+            fixBrokenThisTrial% := 1;
 
+        else
+            
+            if tNow - tStateStart >= starPreStimOptoTime then
+                LogStatus("HoldFixation", "Request target at " + str$(tNow));
+                ChangeStateTo(stateShowStim%, tNow);
+            endif;
+        endif;
+        
+        
     case iState% = stateShowStim% then
         
         ' Record stim pos
@@ -493,13 +668,28 @@ func IdleProcessing%()
             
             LogStatus("WaitForAnswer", "Got answer at " + str$(tNow));
             ChangeStateTo(stateSuccess%, tNow);
+            tPostStimStart := tNow;
 
         else
-
+            
+            'Turn off opto mid stream, if required
+            if tNow - tStateStart >= starOptoOffMidStimTime  and optoIsOn% = 1 then
+                LogStatus("WaitForAnswer", "Turning off laser at " + str$(tNow));
+                'do not change state
+                'turn off opto
+                SafeSampleKey("o");  'turn it off
+                tOpt := View(DataWindow%).MaxTime();
+                'printlog("OptoOff at %f\n",tOpt);
+                SampleText("OptoOff",tOpt);
+                optoIsOn% := 0;
+            endif;
+            
+            
             if tNow - tStateStart >= starAnswerTime then
                 
                 LogStatus("WaitForAnswer", "Timeout at " + str$(tNow));
                 ChangeStateTo(stateFailure%, tNow);
+                tPostStimStart := tNow;
 
             endif
 
@@ -513,9 +703,13 @@ func IdleProcessing%()
         SafeSampleKey("X");
         Yield();
         Reward%();
-        Yield(0.05);
-        AdvanceTarget();
-        ChangeStateTo(stateWaitForStimOff%, tNow);
+        if optoIsOn% = 1 then
+            ChangeStateTo(stateWaitForPostOpto%, tNow);
+        else
+            ChangeStateTo(stateWaitForStimOff%, tNow);
+            Yield(0.05);
+            AdvanceTarget();
+        endif;
 
     case iState% = stateFailure% then
 
@@ -527,10 +721,28 @@ func IdleProcessing%()
         else
             SafeSampleKey("X");
         endif
+        if optoIsOn% = 1 then
+            ChangeStateTo(stateWaitForPostOpto%, tNow);
+        else
+            ChangeStateTo(stateWaitForStimOff%, tNow);
+            Yield(0.05);
+            AdvanceTarget();
+        endif;
         
-        Yield(0.05);
-        AdvanceTarget();
-        ChangeStateTo(stateWaitForStimOff%, tNow);
+        
+    case iState% = stateWaitForPostOpto% then
+        if tNow - tPostStimStart > starPostStimOptoTime then
+            'turn off opto
+            SafeSampleKey("o");  'turn it off
+            tOpt := View(DataWindow%).MaxTime();
+            'printlog("OptoOff at %f\n",tOpt);
+            SampleText("OptoOff",tOpt);
+            optoIsOn% := 0;
+            AdvanceTarget();  'must do this here, didn't get done in previous state (wanted to avoid the yield, get opto off promptly...)
+            ChangeStateTo(stateWaitForStimOff%, tNow);
+        endif;
+        
+        
 
     case iState% = stateWaitForStimOff% then
 
@@ -665,6 +877,17 @@ proc CreateSampleConfiguration()
 	SampleSequencer(script$ + "Tuning.pls");
 	SampleOptimise(2, 2, 2, 2, 50);  'Set optimise mode (do this last)
 	SampleMode(1); 'Continuous sampling
+    
+    
+'    'Add a digital marker channel for pulsing optogenetics
+'    'Do it for every opto, easy enough to add this into the wraparound calls in the PLS
+'    'Will record a '1' for laser on and a '0' for laser off
+'    if starDoOpto% = 1 then
+'        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+'        SampleTitle$(DigitalLaserChannel%,"Laser On");
+'    endif
+    
+    
 end;
 
 
@@ -955,6 +1178,16 @@ func Start%()
 	CommandLine$ := "cmd /k " + GetBinDir$(1) + "remote " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() +  " starstim " + TargetArg$ + Extras$;
     
     
+    if starDoOpto% = 1 then
+        'set sequencer variable 4 for opto voltage
+        'Please note that the input for this has to be a 32-bit variable. Use vdac32% to get the right value.
+        voltageInteger% := vdac32%(starOptoVoltageOut, 1, 0);
+        SampleSeqVar(4,voltageInteger%);
+        printlog("Voltage integer is %d\n",voltageInteger%);
+    endif;
+    
+    
+    
     ' Record initial text marks
     SampleText("StarStim,1");
     SampleText(starCVSID$);
@@ -1051,7 +1284,11 @@ func Stop%()
 	while ProgStatus(StimHandle%) > 0 do
 		Yield();
 	wend
-
+    
+    'turn off opto just in case it might be on (it shouldn't, but...)
+    if starDoOpto% = 1 then
+        SafeSampleKey("o");
+    endif;
 
 	WriteParameterFile();
 
@@ -1207,7 +1444,24 @@ proc WriteParameterFile()
 	Print("Fixation time(s)       : %f\n", starFixationDuration);
 	Print("Answer time (s)        : %f\n", starAnswerTime);
 	Print("Inter trial time (s)   : %f\n", starInterTrialTime);
-
+    
+    
+    if starDoOpto% = 1 then
+        Print("\nOptogenetics parameters\n");
+        Print("-------------------------\n\n");
+'        if tunLaserDiode% = 1 then
+'            Print("Laser Diode recorded\n");
+'        endif;
+        Print("Opto Voltage Out: %f\n", starOptoVoltageOut);
+        Print("Pre Stim Opto Time: %f\n", starPreStimOptoTime);
+        Print("Post Stim Opto Time: %f\n", starPostStimOptoTime);
+        Print("Max Opto Time: %f\n", starMaxOptoTime);
+        Print("Probability Of Opto: %f\n", starProbOfOpto);
+        
+    endif;    
+    
+    
+    
 	' close parfile
 	FileClose(0);
 
@@ -1215,4 +1469,37 @@ end;
 
 
 
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' The vdac32% function converts a value in user DAC units into an integer value
+'  (the result of the function) suitable for passing into a sequencer variable
+'  for use in the DAC, ADDAC, RAMP and OFFSET sequencer instructions. It mimics
+'  the vdac32() expression in the text sequence compiler.
+'
+' out     is the output value that you want to generate, in user DAC units.
+' scale   is the user DAC units corresponding to one volt on the actual DAC
+'         (or two volts for a ten-volt system). This is exactly the same as
+'         the DACscale field used with the SET or SDAC directives.
+' offset  is the user DAC units corresponding to zero volts output. This is
+'         exactly the same as the DACOffset field in SET or SDAC.
+'
+' If you want to use this function to calculate the slope for a ramp, use
+'  vdac32%(volts/sticks%(time)) for maximum accuracy.
+'
+func vdac32%(out, scale, offset)
+var v32;                                ' Real variable for the calculation
+out := out - offset;                    ' First compensate for offset
+v32 := ((out * (6553.6 / scale)) * 65536.0);   ' Floating point result
+var v32%;                               ' Integer value for the result
+if v32 > 2147483647.0 then              ' 2147483647 is the largest positive
+    v32% := 2147483647;                 '  integer value
+else
+    if v32 < -2147483647.0 then         ' -2147483648 is the lowest negative value
+        v32% := -2147483647;            '  but we have to stay one above that
+    else
+        v32% := round(v32);             ' We can be sure this will not overflow
+    endif;
+endif;
+return v32%;
+end
 
