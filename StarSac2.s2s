@@ -99,6 +99,8 @@ proc GetStarStimScriptParameters()
     starJuicePerSmallReward% := GetIntRegistryValue%(key$, "JuicePerSmallReward", starJuicePerSmallReward%);
     starMinSmallRewardDelta := GetFloatRegistryValue(key$, "MinSmallRewardDelta", starMinSmallRewardDelta);
     starMaxSmallRewardDelta := GetFloatRegistryValue(key$, "MaxSmallRewardDelta", starMaxSmallRewardDelta);
+    starDoOpto% := GetIntRegistryValue%(key$, "DoOpto", starDoOpto%);
+    
 end;
  	
 proc SaveStarStimScriptParameters()
@@ -126,6 +128,7 @@ proc SaveStarStimScriptParameters()
     SetIntRegistryValue(key$, "JuicePerSmallReward", starJuicePerSmallReward%);
     SetFloatRegistryValue(key$, "MinSmallRewardDelta", starMinSmallRewardDelta);
     SetFloatRegistryValue(key$, "MaxSmallRewardDelta", starMaxSmallRewardDelta);
+    SetIntRegistryValue(key$, "DoOpto", starDoOpto%);
 end;
 
 
@@ -133,6 +136,7 @@ end;
 func StarStimScriptDialog%()
 	var i%;
 	GetStarStimScriptParameters();
+    GetStarStimOptoParameters();
 	DlgCreate("StarSac2 Script Parameters", 25, 10);
 	DlgReal(1, "Fixation duration min(s):", .01, 10);
 	DlgReal(2, "Fixation duration max(s):", .01, 10);
@@ -188,12 +192,12 @@ end;
 func StarStimScriptDialogChanged%(item%)
     docase
     case item% = 0 then
-        DlgEnable(1-starUseStimulusXY%, 10, 11);
-        DlgEnable(starKeepFixptOn%, 13, 14, 15);
-    case item% = 9 then
-        DlgEnable(1-DlgValue(9), 10, 11);
-    case item% = 12 then
-        DlgEnable(DlgValue(12), 13, 14, 15);
+        DlgEnable(1-starUseStimulusXY%, 11, 12);
+        DlgEnable(starKeepFixptOn%, 14, 15, 16);
+    case item% = 10 then
+        DlgEnable(1-DlgValue(10), 11, 12);
+    case item% = 13 then
+        DlgEnable(DlgValue(13), 14, 15, 16);
     endcase
     return 1;
 end
@@ -430,6 +434,7 @@ func IdleProcessing%()
 	var iStatus% := 1;	' this is return value. value of 1 (0) continues (stops) processing
     var tOpt;
     var tPostStimStart;  'will be useful for turning off "wraparound" opto after reward
+    var tStimOn;  'tLast does not work to find stim off if we have intervening steps in the state logic, which we do.
 	tNow := View(DataWindow%).MaxTime();
 
 	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
@@ -636,6 +641,7 @@ func IdleProcessing%()
         ' Check if stim target has come on finally.
         if View(DataWindow%).FindRisingEdge%(StimChannel%, tLast, tTrigger) = 0 then
             ChangeStateTo(stateWaitForAnswer%, tNow);
+            tStimOn := tNow;
             iStarPosColor% := GetEyeTraceColor%(starTargetOrder%[iTargetPoint%]);
             iStarPosChannel% := View(StarWindow%).XYSetChan(0, 0, 0, 1, iStarPosColor%);
             if iStarPosChannel% > 0 then
@@ -738,6 +744,7 @@ func IdleProcessing%()
             'printlog("OptoOff at %f\n",tOpt);
             SampleText("OptoOff",tOpt);
             optoIsOn% := 0;
+            Yield(0.05);
             AdvanceTarget();  'must do this here, didn't get done in previous state (wanted to avoid the yield, get opto off promptly...)
             ChangeStateTo(stateWaitForStimOff%, tNow);
         endif;
@@ -753,7 +760,7 @@ func IdleProcessing%()
         endif
         
         ' Wait for stim to be off
-        if View(DataWindow%).FindFallingEdge%(StimChannel%, tLast, tTrigger) = 1 then
+        if View(DataWindow%).FindFallingEdge%(StimChannel%, tStimOn, tTrigger) = 1 then
 
             if starKeepFixptOn% = 1 and fixBrokenThisTrial% = 0 then
                 DrawTarget(0);
