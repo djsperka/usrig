@@ -3236,14 +3236,32 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
             fixColor%[totalCount%] := attColor%;  'this is the color of the fixation point, which is the same regardless of attention/valid/etc.  It's kind of ground truth and everything builds from there.            
             
             if j% <= attEasyTrialsPerBlock% then  'Note that Easy trials will now only happen if the attend directions are blocked
-                attDirection% := attColor%;  'no tricks here, we won't rotate cue circles on "easy" trials
+                
+                'if we are cue-swapping, select set of cue circles, this will hopefully make cue circles swap on easy trials
+                if attSwapCueCircle% = 1 then
+                    cueCircleRotation% := Floor(Rand(attNumPatches%,0));  '0 for no rotation, 1 for cycle forward 1, etc.
+                endif
+                rotList%[totalCount%] := cueCircleRotation%;            
+                'determine stimulus being attended (i.e., which stimulus has the same cue circle color as the fixation point)
+                if attColor% = 6 then 'on a no-change trial, just set direction to the arbitrary 6
+                    attDirection% := 6;  
+                else 'on a regular trial, add rotation
+                    attDirection% := attColor% + cueCircleRotation%;  'add in the rotation
+                    if attDirection% > attNumPatches% then  'get the modulus if necessary
+                        attDirection% := attDirection% mod attNumPatches%; 
+                    endif
+                endif;
+                
+                
+                'attDirection% := attColor%;  'no tricks here, we won't rotate cue circles on "easy" trials (well, now we will)
                 vList%[totalCount%] := 1;  'all easy trials are valid
                 easyList%[totalCount%] := 1;  'all easy trials are easy
                 blockList%[totalCount%] := attColor%;  'remember block for potential use in making flashers
                 hazList[totalCount%] := attHazardMinTime;  'don't calculate a hazard time, just use the minimum
                 flashN%[totalCount%] := 0;  'no flashers on easy trials, this is redundant since it should be 0 to start, but...
-                rotList%[totalCount%] := 0;  'no rotation on easy trials
-                'rotList%[totalCount%] := attNumPatches%*(attColor%-1);  'no rotation on easy trials, but get cue circle contrast correct 
+                
+                'rotList%[totalCount%] := 0;  'no rotation on easy trials, this was replaced by cue-circle-swapping code above
+                'rotList%[totalCount%] := attNumPatches%*(attColor%-1);  'no rotation on easy trials, but get cue circle contrast correct - this is the oldest version of this line
                 UpdateFlasherSpecString(f$,0,flashX[totalCount%][],flashY[totalCount%][],attFlasherWidth,attFlasherHeight,flashTimes[totalCount%][],0,firstRun);  'On easy trials, num of flashers is zero, remainder of function does not run
                 if attDirection% <> 6 then 'for all blocks that are not no-change blocks, do this
                     chgList%[totalCount%] := attDirection%;  'set stimulus that changes
