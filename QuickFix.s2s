@@ -461,20 +461,22 @@ end;
 '========  CreateSampleConfiguration  ========
 proc CreateSampleConfiguration()
 	var i%;
+    var key$;
     
-'    var masterTxt$;
-'    var slaveTxt$;
-'    
-'    docase
-'    case UseTwo1401s% = 1 and UsePlexon% = 1 then
-'        masterTxt$ := "MICRO";
-'        slaveTxt$ := "POWER";
-'    case UseTwo1401s% = 1 and UsePlexon% = 0 then  'this would be for any two-1401 scenario for Joe
-'        masterTxt$ := "MASTR";
-'        slaveTxt$ := "SLAVE";
-'    else
-'        'do not need to set these variables
-'    endcase
+    var masterTxt$;
+    var slaveTxt$;
+    
+    docase
+    case UseTwo1401s% = 1 and UsePlexon% = 1 then
+        masterTxt$ := "MICRO";
+        slaveTxt$ := "POWER";
+    case UseTwo1401s% = 1 and UsePlexon% = 0 then  'this would be for any two-1401 scenario for Joe
+        masterTxt$ := "MASTR";
+        slaveTxt$ := "SLAVE";
+    else
+        'do not need to set these variables
+    endcase
+    
     
 	SampleClear(); 'Set standard sampling state
     SampleChannels(64);  '32 does not work, we need more!
@@ -484,7 +486,11 @@ proc CreateSampleConfiguration()
     ' Set path for new data files, and for those saved automatically
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
-      
+    
+    
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    DoSampleAutoName(key$,"quickfix","qf",masterTxt$,slaveTxt$);
+    
     SampleAutoFile(1);  'Enable automatic file naming
     
     ' Text marks make extraction easier
@@ -778,11 +784,12 @@ func Start%()
         
         ' Fetch the offset filename
         key$ := GetRegistryKey$(1) + "\\Rivalry";
+        printlog("reg key is %s\n",GetRegistryKey$(1));
         OffsetFile$ := GetStringRegistryValue$(GetRegistryKey$(1), "OffsetFile", "file_not_found");
-        if OffsetFile$ = "file_not_found" then
-            message("The offset file has not been defined in the registry!  Most likely you have created a new animal config.  Ask Jeff or Dan to update the registry for you!");
-            halt;
-        endif;
+'        if OffsetFile$ = "file_not_found" then
+'            message("The offset file has not been defined in the registry!\nMost likely you have created a new animal config.\nAsk Jeff or Dan to update the registry for you!");
+'            halt;
+'        endif;
         OffsetFile$ := " -r " + OffsetFile$;
         
         ' Fetch the stimulus duration (in dualstim, stimoff is done by counting frames because of VSG frame synching)
@@ -1110,6 +1117,23 @@ func Looking%(EyePosX,EyePosY)
     'if tunAlwaysLooking% = 1 then return 1; endif;
 	if (Pow(EyePosX-FixationX,2) + Pow(EyePosY-FixationY,2)) <= Pow(WindowRadius,2) then return 1; else return 0; endif
 end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc DoSampleAutoName(key$,long$,short$,master$,slave$)
+    'This function will do the auto-naming of files.  It will take into account the setup of the system
+    '(if there are one or two 1401s, and whether this is a micro/power or master/slave relationship)
+    'The long$ name should be 8 characters or fewer
+    'The short$ name should be 3 character or fewer
+    
+    if UseTwo1401s% = 0 then
+        SampleAutoName$(dataCellName$ + "_" + long$ + "_000");  'NOTE: maximum of 13 characters!!!
+    else
+        EqualizeSMRFilenumbers(dataPathRoot$ + "\\" + dataDataSet$,dataCellName$+"_" + short$ + master$ + "_",dataCellName$+"_" + short$ + slave$ + "_");
+        SampleAutoName$(dataCellName$ + "_" + short$ + master$ + "_000");  'NOTE: maximum of 13 characters!!!
+        SetStringRegistryValue(key$, "pref", short$);
+    endif;    
+end
 
 
 
