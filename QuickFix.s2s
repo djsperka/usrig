@@ -257,7 +257,7 @@ func IdleProcessing%()
         ' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
         pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
         
-        if tunDoRivalry% = 0 then
+        if qfDoRivalry% = 0 then
             if pulseFound% = 1 then
                 LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
                 Yield(1.0);
@@ -730,7 +730,7 @@ func Start%()
     endif;
     
     ' djs Set sequencer variable 5 if this is rivalry
-    if tunDoRivalry% = 1 then
+    if qfDoRivalry% = 1 then
         SampleSeqVar(5, 1);
     else
         SampleSeqVar(5, 0);
@@ -783,14 +783,14 @@ func Start%()
         ProgName$ := "\\remote.exe ";
         
         ' Fetch the offset filename
-        key$ := GetRegistryKey$(1) + "\\Rivalry";
-        printlog("reg key is %s\n",GetRegistryKey$(1));
-        OffsetFile$ := GetStringRegistryValue$(GetRegistryKey$(1), "OffsetFile", "file_not_found");
+        'key$ := GetRegistryKey$(1) + "\\Rivalry";
+        'printlog("reg key is %s\n",GetRegistryKey$(1));
+        'OffsetFile$ := GetStringRegistryValue$(GetRegistryKey$(1), "OffsetFile", "file_not_found");
 '        if OffsetFile$ = "file_not_found" then
 '            message("The offset file has not been defined in the registry!\nMost likely you have created a new animal config.\nAsk Jeff or Dan to update the registry for you!");
 '            halt;
 '        endif;
-        OffsetFile$ := " -r " + OffsetFile$;
+        'OffsetFile$ := " -r " + OffsetFile$;
         
         ' Fetch the stimulus duration (in dualstim, stimoff is done by counting frames because of VSG frame synching)
         StimDur$ := " -t " + Str$(tunFixationDuration) + " ";  'add stimulus duration in seconds
@@ -818,7 +818,7 @@ func Start%()
     'Get default tuning curve values - these may get changed!
     TunCurveMArg$ := " -E ";  'this is a lag tuning curve, set no lag
     MValues$ := "0";  
-    if tunDoRivalry% = 1 then
+    if qfDoRivalry% = 1 then
         TunCurveSArg$ := " -E ";  'Set slave to run same tuning curve...
         SValues$ := "0";  '...with same values as Master tuning curve 
     endif;
@@ -826,7 +826,7 @@ func Start%()
    
 
     'Build command line, any values that are unnecessary will be empty, so the build should work no matter what type of command line is required
-    if tunDoRivalry% = 0 then
+    if qfDoRivalry% = 0 then
         cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$; 'prelim stuff
         cmdLine$ := cmdLine$ + RefrLock$ + OffsetFile$ + StimDur$;  'Dual VSG stuff
         cmdLine$ := cmdLine$ + MasterIndicator$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$;  'Master grating stuff
@@ -896,7 +896,7 @@ func Start%()
 	'Begin the stimulus program. It will take a few seconds for the VSG to initialize.
 	PrintLog(cmdLine$+"\n");
     
-    if tunDoRivalry% = 0 then
+    if qfDoRivalry% = 0 then
         StimHandle% := ProgRun(cmdLine$, 1);
         if StimHandle% <0 then Message("Could not start stimulus."); halt; endif
     else
@@ -996,7 +996,7 @@ func Stop%()
 	SafeSampleKey("Q");
 	SampleStop();
     
-    if tunDoRivalry% = 0 then
+    if qfDoRivalry% = 0 then
         ProgKill(StimHandle%);
         while ProgStatus(StimHandle%) > 0 do
             Yield();
