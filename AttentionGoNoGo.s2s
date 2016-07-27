@@ -242,20 +242,20 @@ var attcolorsdlgCueCircleColorAttendR% := 23;
 var attcolorsdlgCueCircleColorAttendG% := 24;
 var attcolorsdlgCueCircleColorAttendB% := 25;
 var attcolorsdlgCueCircleColorIgnore1R% := 26;
-var attcolorsdlgCueCircleColorIgnore1B% := 27;
-var attcolorsdlgCueCircleColorIgnore1G% := 28;
+var attcolorsdlgCueCircleColorIgnore1G% := 27;
+var attcolorsdlgCueCircleColorIgnore1B% := 28;
 var attcolorsdlgCueCircleColorIgnore2R% := 29;
-var attcolorsdlgCueCircleColorIgnore2B% := 30;
-var attcolorsdlgCueCircleColorIgnore2G% := 31;
+var attcolorsdlgCueCircleColorIgnore2G% := 30;
+var attcolorsdlgCueCircleColorIgnore2B% := 31;
 var attcolorsdlgCueCircleColorIgnore3R% := 32;
-var attcolorsdlgCueCircleColorIgnore3B% := 33;
-var attcolorsdlgCueCircleColorIgnore3G% := 34;
+var attcolorsdlgCueCircleColorIgnore3G% := 33;
+var attcolorsdlgCueCircleColorIgnore3B% := 34;
 var attcolorsdlgCueCircleColorIgnore4R% := 35;
-var attcolorsdlgCueCircleColorIgnore4B% := 36;
-var attcolorsdlgCueCircleColorIgnore4G% := 37;
+var attcolorsdlgCueCircleColorIgnore4G% := 36;
+var attcolorsdlgCueCircleColorIgnore4B% := 37;
 var attcolorsdlgCueCircleColorNoAttenR% := 38;
-var attcolorsdlgCueCircleColorNoAttenB% := 39;
-var attcolorsdlgCueCircleColorNoAttenG% := 40;
+var attcolorsdlgCueCircleColorNoAttenG% := 39;
+var attcolorsdlgCueCircleColorNoAttenB% := 40;
 
 
 'variables for Henry's tuning curve version
@@ -656,6 +656,7 @@ func AttentionScriptDialog%()
     GetColorsDialogParameters();  'we need to GET the parameters here, even though we may not use any of them...but we WILL use backgroundColor$, that's why
     GetTimingDialogParameters();  'this too...
     GetFlasherDialogParameters(); 'and this...
+    CreateMasterColorLists();  'and this...
     
     fiveints%[0] := attOnlyOneCatch%;
     fiveints%[1] := attOneCatchContrast%;
@@ -3423,6 +3424,9 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                     if attDirection% > attNumPatches% then  'get the modulus if necessary
                         attDirection% := attDirection% mod attNumPatches%; 
                     endif
+                    if attDirection% = 0 then 'and then fix if modulus comes out to 0
+                        attDirection% := attNumPatches%;
+                    endif
                     rotList%[totalCount%] := (attNumPatches%*cueCircleRotation%)+attDirection%-1; 'this selects the correct brightness distribution for this rotation
                 endif;
                            
@@ -3493,6 +3497,9 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                     attDirection% := attColor% + attNumPatches% - cueCircleRotation%;  'do the math to get direction
                     if attDirection% > attNumPatches% then  'get the modulus if necessary
                         attDirection% := attDirection% mod attNumPatches%; 
+                    endif
+                    if attDirection% = 0 then 'and then fix if modulus comes out to 0
+                        attDirection% := attNumPatches%;
                     endif
                     rotList%[totalCount%] := (attNumPatches%*cueCircleRotation%)+attDirection%-1; 'this selects the correct brightness distribution for this rotation
                 endif;
