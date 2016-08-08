@@ -205,6 +205,7 @@ var iState%;
 var tempanswer%;
 var thisContrast%; 'for now just making everything compile
 var joystickHasBeenCentered%;
+var skipToCheckJoystickInRight%;
 var joystickInStartPosition%;
 var answerWindowTime;
 var answerWindowStart;
@@ -704,7 +705,11 @@ func TimingDialogChanged%(item%)
         DlgEnable(1,caTimingDlgFAWindow%);  'enable FA check window
         DlgEnable(1,caTimingDlgMissPenalty%);  'enable miss penalty
         DlgEnable(0,caTimingDlgFixAlternationTime%);  'disable fixation alternation time 
-        DlgEnable(0,caTimingDlgTrainingHoldTime%);  'disable training hold time
+        if DlgValue(caTimingDlgTrainingOptions%) = 3 and DlgValue(caTimingDlgRequireFixation%) <> 3 then
+            DlgEnable(1,caTimingDlgTrainingHoldTime%);  'enable training hold time
+        else
+            DlgEnable(0,caTimingDlgTrainingHoldTime%);  'disable training hold time
+        endif;
         DlgEnable(1,caTimingDlgRequireFixation%);  'enable require fixation check box
         DlgEnable(0,caTimingDlgReturnForReward%);  'disable return for reward check box (here it should ALL be return for reward)
         DlgEnable(1,caTimingDlgStartTrial%);  'enable start trial for input-file scenarios
@@ -1393,10 +1398,14 @@ func IdleProcessing%()
             
             
         case iState% = stateWaitForJoystickInCenter% then
-            
+            'check to see if it is OK to go straight to checking for the joystick in the right -
+            'do this if joystick has just been centered and the scenario is one where the trial does not start until joystick is in the right
+            if joystickHasBeenCentered% and (caTrainingOptions% < 2 or (caTrainingOptions% = 3 and caRequireSaccadeResponse% = 0)) then
+                skipToCheckJoystickInRight% := 1;
+            endif;
             tempanswer% := Answer%(JoyChannel%,tNow);
             'printlog("Joystick is in position %d\n",tempanswer% );
-            if tempanswer% = 2 or joystickHasBeenCentered% = 1 or caRequireSaccadeResponse% = 1 then  'if joystick is in center, or has previously been centered
+            if tempanswer% = 2 or skipToCheckJoystickInRight% = 1 or caRequireSaccadeResponse% = 1 then  'if joystick is in center, or has previously been centered
                 'Allow dual report, but either case will advance the state
                 if joystickHasBeenCentered% = 1 then
                     PrintLog("state stateWaitForJoystickInCenter: Joystick has previously been centered\n");
@@ -1420,6 +1429,7 @@ func IdleProcessing%()
                     ChangeStateTo(stateStartTrial%,tNow);    
                 endcase
                 joystickHasBeenCentered% := 0;  'Reset to not-been-centered default
+                skipToCheckJoystickInRight% := 0;  'Reset to not-OK-to-skip default
             endif;
             
             
@@ -2416,7 +2426,7 @@ func IdleProcessing%()
                     abortIsPostCC% := 1;
                 case joystickInStartPosition% = 0 then  'for image cue response training
                     ' Got an answer. Record marker for correct/incorrect answer
-                    if tempanswer% = 3 then
+                    if iAnswer% = 3 then
                         printlog("Response Right\n");
                         joystickHasBeenCentered% := 0;  'joystick not centered
                     else
