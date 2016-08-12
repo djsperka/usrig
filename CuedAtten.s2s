@@ -262,7 +262,8 @@ var abortIsPostCC% := 0;
 var nBlocksCompleted%:=0;
 var iAnswer%;
 var trialCatch%;
-var trialIsTarget%;
+var trialIsGo%;
+var trialTargetLoc%;
 var trialAttendLoc%;  'This value is actually unused (at least right now)!
 var trialResponseDirection%;  'because we shouldn't really call this "attend loc" even if we get that value from the attend location position in the control file.
 var trialHazardFunctionTime;
@@ -285,7 +286,7 @@ if iScript% <> 1 then
 	Halt;
 endif;
 
-'parse input file, but only if an input file exists (training options 3 and 4)
+'parse input file, but only if an input file exists (training options 3-5)
 if caTrainingOptions% > 2 then
     
     'the input file should be open already - the TimingDialog%() opens it via 
@@ -513,7 +514,7 @@ end;
 
 func TimingDialog%()
     var i%;
-    const nOpts% := 5;
+    const nOpts% := 6;
     var trainingOptionsList$[nOpts%];
     var fixationOptionsList$[6];
     var tempAW;
@@ -522,8 +523,9 @@ func TimingDialog%()
     trainingOptionsList$[0] := "Reward for lever";    '"Lever - Instant Reward - Release - Wait ITI";
     trainingOptionsList$[1] := "Reward for lever - hold - release";   '"Lever - Hold - Release - Reward - Wait ITI";
     trainingOptionsList$[2] := "Fixation training";    '"FixPt ON: Lever - Hold - Release - Reward - Wait ITI";
-    trainingOptionsList$[3] := "Under input file control";
-    trainingOptionsList$[4] := "Under input file control - cue image forced choice";
+    trainingOptionsList$[3] := "Under input file control - cue training, don't go on uncued";
+    trainingOptionsList$[4] := "Under input file control - true go/no-go";
+    trainingOptionsList$[5] := "Under input file control - cue image forced choice";
     
     fixationOptionsList$[0] := "Fixation:  None"; 
     fixationOptionsList$[1] := "Fixation:  Require Fixation"; 
@@ -1400,7 +1402,7 @@ func IdleProcessing%()
         case iState% = stateWaitForJoystickInCenter% then
             'check to see if it is OK to go straight to checking for the joystick in the right -
             'do this if joystick has just been centered and the scenario is one where the trial does not start until joystick is in the right
-            if joystickHasBeenCentered% and (caTrainingOptions% < 2 or (caTrainingOptions% = 3 and caRequireSaccadeResponse% = 0)) then
+            if joystickHasBeenCentered% and (caTrainingOptions% < 2 or (caTrainingOptions% < 5 and caRequireSaccadeResponse% = 0)) then
                 skipToCheckJoystickInRight% := 1;
             endif;
             tempanswer% := Answer%(JoyChannel%,tNow);
@@ -1421,11 +1423,11 @@ func IdleProcessing%()
                     ChangeStateTo(stateWaitForJoystickInRight%,tNow);
                 case caTrainingOptions% = 2 then  'don't require acquisition until the fixpt is actually ON
                     ChangeStateTo(stateStartTrial%,tNow);
-                case caTrainingOptions% = 3 and caRequireSaccadeResponse% = 1 then 'start trial on saccade-only experiments
+                case (caTrainingOptions% = 3 or caTrainingOptions% = 4) and caRequireSaccadeResponse% = 1 then 'start trial on saccade-only experiments
                     ChangeStateTo(stateStartTrial%,tNow); 
-                case caTrainingOptions% = 3 then
+                case caTrainingOptions% = 3 or caTrainingOptions% = 4 then
                     ChangeStateTo(stateWaitForJoystickInRight%,tNow);  'Animal will need to move joystick first, then trial starts   
-                case caTrainingOptions% = 4 then  'cue image forced choice needs joystick to start in center, don't require acquisition until the fixpt is actually ON
+                case caTrainingOptions% = 5 then  'cue image forced choice needs joystick to start in center, don't require acquisition until the fixpt is actually ON
                     ChangeStateTo(stateStartTrial%,tNow);    
                 endcase
                 joystickHasBeenCentered% := 0;  'Reset to not-been-centered default
@@ -1559,7 +1561,7 @@ func IdleProcessing%()
             SampleText("Trial "+Str$(caCurrTrialIndex%+1),tNow);
             caCountAllTrials% += 1;
             'SafeSampleKey("W");
-            if caTrainingOptions% <= 3 then 
+            if caTrainingOptions% <= 4 then 'go/no-go
                 docase
                 case trialType% = trialtypeAttendToward% then
                     caCountTowardTrials% += 1;
@@ -1662,7 +1664,7 @@ func IdleProcessing%()
                         PrintLog("stateHoldFixationToStimOn: joystick moved to left, aborting trial.\n");
                         FAIsResponse% := 1;
                         ChangeStateTo(stateAbort%, tNow);
-                        if caTrainingOptions% = 4 then
+                        if caTrainingOptions% = 5 then
                             SampleText("Joystick not held, False Alarm response to left before stimulus on, trial aborted",tNow); 
                             joystickHasBeenCentered% := 0;  'not centered in forced choice
                         else
@@ -1750,7 +1752,7 @@ func IdleProcessing%()
             
             ' tally up aborted trials, right now not distinguishing between response aborts and regular aborts
             caCountAllTrialsAbort% += 1;
-            if caTrainingOptions% <= 3 then
+            if caTrainingOptions% <= 4 then 'go/no-go
                 docase
                 case trialType% = trialtypeAttendToward% then
                     caCountTowardTrialsAbort% += 1;
@@ -1924,7 +1926,7 @@ func IdleProcessing%()
                     ChangeStateTo(stateCheckFalseAlarmSaccade%, tNow);
                     SampleText(Print$("failure to hold fixation to contrast change, checking for saccade FA, trial aborted"),tNow);   
                 'for image cue response training, if answer is allowed before "contrast change" and answer has occurred in appropriate window                    
-                case joystickInStartPosition% = 0 and caTrainingOptions% = 4 and tNow >= trialEarlyGoTime + tStateStart then  
+                case joystickInStartPosition% = 0 and caTrainingOptions% = 5 and tNow >= trialEarlyGoTime + tStateStart then  
                     ' Got an answer. Record marker for correct/incorrect answer
                     if tempanswer% = 3 then
                         printlog("Response Right\n");
@@ -1982,7 +1984,7 @@ func IdleProcessing%()
                     ChangeStateTo(stateAbort%, tNow);
                     SampleText("False Alarm before contrast change, trial aborted",tNow);
                     joystickHasBeenCentered% := 1;  'joystick centered by FA
-                case joystickInStartPosition% = 0 and tempanswer% = 1 and caTrainingOptions% < 4 then 'answer and overshot in GNG
+                case joystickInStartPosition% = 0 and tempanswer% = 1 and caTrainingOptions% < 5 then 'answer and overshot in GNG
                     PrintLog("stateHoldFixationToCC: false alarm and overshot before contrast change, aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
@@ -2015,9 +2017,9 @@ func IdleProcessing%()
                 if (tNow - tStateStart) > (trialHazardFunctionTime) then
                     ' we no longer turn off stimulus and advance it, but we DO allow response now
                     docase
-                    case caTrainingOptions% <= 3 and caRequireSaccadeResponse% = 0 then  'use joystick response
+                    case caTrainingOptions% <= 4 and caRequireSaccadeResponse% = 0 then  'use joystick response
                         ChangeStateTo(stateWaitForAnswer%, tStateStart+trialHazardFunctionTime);  'this will be the precise time rather than the "noticed" time
-                    case caTrainingOptions% <= 3 and caRequireSaccadeResponse% = 1 then  'use saccade response   
+                    case caTrainingOptions% <= 4 and caRequireSaccadeResponse% = 1 then  'use saccade response   
                         ChangeStateTo(stateWaitForAnswerSaccade%, tStateStart+trialHazardFunctionTime);  'this will be the precise time rather than the "noticed" time
                     else 'forced choice
                         ChangeStateTo(stateWaitForAnswerFC%, tStateStart+trialHazardFunctionTime);  'this will be the precise time rather than the "noticed" time
@@ -2025,17 +2027,17 @@ func IdleProcessing%()
                     
                     'This docase sets the color of the changed location to red on the "monitor screen"
                     docase
-                    case trialIsTarget% = 0 then
+                    case trialTargetLoc% = 0 then
                         view(XYWindow%).XYColour(iFixationWindowChannel%,16);  'Change fixation window to red
-                    case trialIsTarget% = 1 then
+                    case trialTargetLoc% = 1 then
                         view(XYWindow%).XYColour(iAnswerWindowChannelMain%,16);  'Change main window to red
-                    case trialIsTarget% = 2 then
+                    case trialTargetLoc% = 2 then
                         view(XYWindow%).XYColour(iAnswerWindowChannelDist1%,16);  'Change dist1 window to red
                     endcase
                     'This docase does the appropriate SampleTexting
                     docase
-                    case trialType% = trialtypeAttendToward% and caTrainingOptions% <= 3 then
-                        if trialIsTarget% > 0 then
+                    case trialType% = trialtypeAttendToward% and caTrainingOptions% <= 4 then
+                        if trialTargetLoc% > 0 then
                             if trialCatch% = 0 then
                                 Sampletext("Contrast Change, Level " + Str$(thisContrast%) + ", Attend Toward",tTrigger+trialHazardFunctionTime);
                             else
@@ -2044,8 +2046,8 @@ func IdleProcessing%()
                         else
                             Sampletext("Attend Toward, No Contrast Change",tTrigger+trialHazardFunctionTime);
                         endif
-                    case trialType% = trialtypeAttendAway% and caTrainingOptions% <= 3 then
-                        if trialIsTarget% > 0 then
+                    case trialType% = trialtypeAttendAway% and caTrainingOptions% <= 4 then
+                        if trialTargetLoc% > 0 then
                             if trialCatch% = 0 then
                                 Sampletext("Contrast Change, Level " + Str$(thisContrast%) + ", Attend Away",tTrigger+trialHazardFunctionTime);
                             else
@@ -2054,8 +2056,8 @@ func IdleProcessing%()
                         else
                             Sampletext("Attend Away, No Contrast Change",tTrigger+trialHazardFunctionTime);
                         endif
-                    case trialType% = trialtypeNoAttend% and caTrainingOptions% <= 3 then
-                        if trialIsTarget% > 0 then
+                    case trialType% = trialtypeNoAttend% and caTrainingOptions% <= 4 then
+                        if trialTargetLoc% > 0 then
                             if trialCatch% = 0 then
                                 Sampletext("Contrast Change, Level " + Str$(thisContrast%) + ", No Attend ",tTrigger+trialHazardFunctionTime);
                             else
@@ -2064,8 +2066,8 @@ func IdleProcessing%()
                         else
                             Sampletext("No Attend, No Contrast Change",tTrigger+trialHazardFunctionTime);
                         endif    
-                    case caTrainingOptions% = 4 then
-                        if trialIsTarget% > 0 then
+                    case caTrainingOptions% = 5 then
+                        if trialTargetLoc% > 0 then
                             if trialCatch% = 0 then
                                 Sampletext("Contrast Change, Level " + Str$(thisContrast%),tTrigger+trialHazardFunctionTime);
                             else
@@ -2089,7 +2091,7 @@ func IdleProcessing%()
             'getPreciseTiming := 1;  'do we need precise timing here??
             if tNow - tStimOn > totalStimDur then  'no response, stimulus over, at this point we don't care where the eye position is
                 SafeSampleKey("X");  'turn off animation (also kills fixation point, animation is probably already off here)
-                if trialIsTarget% > 0 then 'GO trial, expected response
+                if trialIsGo% > 0 then 'GO trial, expected response
                     PrintLog("stateWaitForAnswer: no response on go trial, miss\n");
                     if trialType% = trialtypeAttendToward% then
                         SampleText("Miss, Attend Toward",tNow);
@@ -2138,7 +2140,7 @@ func IdleProcessing%()
                     endif
                     
                     docase
-                    case trialIsTarget% > 0 then  'this is a GO trial, so this is a hit
+                    case trialIsGo% > 0 then  'this is a GO trial, so this is a hit
                         SafeSampleKey("X");  'turn off stimulus first thing
                         caCountAllTrialsCorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand);
@@ -2191,7 +2193,7 @@ func IdleProcessing%()
             'getPreciseTiming := 1;  'do we need precise timing here?? If so, stay in while loop until we get eye movements we expect
             if tNow - tStimOn > totalStimDur and answerWindowStart = 0 then  'no response, stimulus over, at this point we don't care where the eye position is
                 SafeSampleKey("X");  'turn off animation (also kills fixation point, animation is probably already off here)
-                if trialIsTarget% > 0 then 'GO trial, expected response
+                if trialIsGo% > 0 then 'GO trial, expected response
                     PrintLog("stateWaitForAnswer: no response on go trial, miss\n");
                     if trialType% = trialtypeAttendToward% then
                         SampleText("Miss, Attend Toward",tNow);
@@ -2313,11 +2315,11 @@ func IdleProcessing%()
                     answerWindowWhich% := 0;
                     
                     docase
-                    case trialIsTarget% > 0 then  'there is a contrast change
+                    case trialIsGo% > 0 then  'there is a correct go response
                         SafeSampleKey("X");  'turn off stimulus first thing
                         caCountAllTrialsCorrect% += 1;
                         docase
-                        case (trialIsTarget% = 1 and iAnswer% = 1) or (trialIsTarget% = 2 and iAnswer% = -1) then  'hit
+                        case (trialTargetLoc% = 1 and iAnswer% = 1) or (trialTargetLoc% = 2 and iAnswer% = -1) then  'hit
                             docase
                             case trialType% = trialtypeAttendToward% then
                                 caCountTowardTrialsCorrect% += 1;
@@ -2670,7 +2672,7 @@ proc UpdateToolbarText()
         pct := num/den*100;
         allpct$ := print$("%2.0f", pct);
     endif
-    if caTrainingOptions% <= 3 then 'GNG
+    if caTrainingOptions% <= 4 then 'GNG
         if (caCountTowardTrials% > 0) then
             num := caCountTowardTrialsCorrect%;
             den := caCountTowardTrials%;
@@ -2872,7 +2874,7 @@ proc PrepareTrial()
             trialEarlyGoTime := trialHazardFunctionTime+totalStimDur;
         endif;
         'determine if this is an attend-toward or attend-away trial
-        if caTrainingOptions% <> 4 then
+        if caTrainingOptions% <> 5 then  'go/no-go
             docase
             case caAttendLoc%[caCurrTrialIndex%] = 1 then
                 trialType% := trialtypeAttendToward%;
@@ -2888,8 +2890,30 @@ proc PrepareTrial()
             trialResponseDirection% := caAttendLoc%[caCurrTrialIndex%];  'use trialResponseDirection% to hold required direction
         endif
         
+        'Assign trial target location, if not location changes this will be 0
+        trialTargetLoc% := caWhichLocationChanges%[caCurrTrialIndex%];
         
-        trialIsTarget% := caWhichLocationChanges%[caCurrTrialIndex%];
+        'Assign whether this is a "go" trial or not
+        if caTrainingOptions% <> 3 then  'if caTrainingOptions is not 3, the animal is supposed to detect all contrast changes, even at the uncued location
+            if trialTargetLoc% > 0 then
+                trialIsGo% := 1;
+            else
+                trialIsGo% := 0;
+            endif;
+        else 'if caTrainingOptions is 3, the animal is supposed to ignore contrast changes at the uncued location
+            if trialTargetLoc% > 0 then  'if there is a contrast change
+                if trialTargetLoc% = trialAttendLoc% then 'if the contrast change is at the cued location
+                    trialIsGo% := 1; 'this is a go trial
+                else 'if the contrast change is at the uncued location (remember, caTrainingOptions = 3 only)
+                    trialIsGo% := 0;  'this is a no-go trial
+                endif;
+            else  'if there is no contrast change, this is a no-go trial
+                trialIsGo% := 0;
+            endif;
+        endif;
+        
+            
+        
         
         'Record actual contrast level on this trial
         docase
@@ -2916,39 +2940,7 @@ proc PrepareTrial()
         endcase
         
         
-        
-        
-        
     endif
-    
-    
-    
-    'printlog("Trial is target value is %d and expected answer is %d\n",trialisTarget%,expectedAnswer%);
-    
-    '    docase
-    '    case trialType% = trialtypeAttendToward% then
-    '        if trialIsTarget% > 0 then
-    '            if trialCatch% = 0 then
-    '                expectedAnswer% := 1;
-    '            else
-    '                expectedAnswer% := -1;
-    '            endif
-    '        else
-    '            expectedAnswer% := 0;
-    '        endif
-    '    case trialType% = trialtypeAttendAway% then
-    '        if trialIsTarget% > 0 then
-    '            if trialCatch% = 0 then
-    '                expectedAnswer% := -1;
-    '            else
-    '                expectedAnswer% := 1;
-    '            endif
-    '        else
-    '            expectedAnswer% := 0;
-    '        endif
-    '    else
-    '        PrintLog("ERROR! Unknown blocktype!!!\n");
-    '    endcase;
     
 end
 
@@ -3041,9 +3033,9 @@ func JoyInStartPosition%(pos%)
     docase
     case caRequireSaccadeResponse% then 'during Require Saccade Response scenarios the joystick is absent, by default return 1 as if "joystick" is "ready"
         sp% := 1;
-    case caTrainingOptions% <= 3 and pos% = 3 then  'For all "regular" experiments (GNG), the start position is "right"
+    case caTrainingOptions% <= 4 and pos% = 3 then  'For all "regular" experiments (GNG), the start position is "right"
         sp% := 1;
-    case caTrainingOptions% = 4 and pos% = 2 then  'For cue image forced choice experiments, the start position is "center"
+    case caTrainingOptions% = 5 and pos% = 2 then  'For cue image forced choice experiments, the start position is "center"
         sp% := 1
     case pos% = 0 then
         sp% := 1;  'If the joystick is in an "intermediate position" just call that "still in start position"
