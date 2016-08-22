@@ -717,7 +717,7 @@ func AttentionScriptDialog%()
     
     
     
-	DlgCreate("Attention Training Parameters", 25, 10);
+	DlgCreate("Attention Training Parameters", 28, 10);   'on Spike2 v6, must extend height, on v8, will auto-extend height
     DlgGroup("Blocks", 1, 1, 34, 11);
 	DlgInteger(1, "Number of Blocks:", 1, 1000, 22, 2);
 	DlgInteger(2, "Reg. Trials per block:", 1, 1000, 22, 3);
@@ -1854,11 +1854,11 @@ func IdleProcessing%()
             'printlog("OptoOn at %f\n",tOpt);
             SampleText("OptoOn",tOpt);
             attOptoStarted% := 1;
-'        else 'this is an opto-off trial
-'            SafeSampleKey("N");  'don't turn on opto    'this seems pointless
-'            tOpt := View(DataWindow%).MaxTime();
-'            'printlog("OptoOn at %f\n",tOpt);
-'            SampleText("NoOpto",tOpt);
+        else 'this is an opto-off trial
+            SafeSampleKey("N");  'don't turn on opto    'this seems pointless - the real thing is we have to wait the same amount of time as for wraparound
+            tOpt := View(DataWindow%).MaxTime();
+            'printlog("OptoOn at %f\n",tOpt);
+            SampleText("NoOpto",tOpt);
         endif;
         
         ChangeStateTo(stateWaitOptoPrestim%, tNow);   
@@ -2338,7 +2338,7 @@ func IdleProcessing%()
         nTrialsCompleted% += 1;  'trial is complete, change of count here makes logic easier 
         attCurrTrialIndex% += 1;
         docase
-        case attDoOpto% = 0 or (attOptoState% = 0 and attOptoUsePulse% = 1) then 'if this is not an opto trial, trial is complete
+        case attDoOpto% = 0 or attOptoStarted% = 0 then 'if this is not an opto trial, trial is complete
             if queueReward% = -1 then 'on a miss, go to miss penalty, otherwise we are done
                 ChangeStateTo(stateMiss%, tStateStart);
             else
@@ -5232,13 +5232,14 @@ func AttOptoDialogChanged%(item%)
     DlgEnable(0,5);  'Just straight up disable the laser diode recording
     DlgEnable(0,3);  'Just straight up disable the inter block time
     DlgEnable(0,8);  'Just straight up disable keeping opto on between stims (but the code ought to be right-ish) - DEFINITELY test if this is re-enabled
+    DlgEnable(0,7);  'Just straight up disable post-stimulus wraparound opto - we are not doing it and Henry doesn't want it
     if DlgValue(4) = 1 then
         DlgEnable(1,9);  'enable pulsing dialog values 
         DlgEnable(1,10);
         DlgEnable(1,11);
         DlgEnable(1,12);
         DlgEnable(0,6);  'disable wrap-around dialog values 
-        DlgEnable(0,7);
+        'DlgEnable(0,7);
         'DlgEnable(0,8);  'Just straight up disable keeping opto on between stims (but the code ought to be right-ish)  
     else
         DlgEnable(0,9);  'disable pulsing dialog values 
@@ -5246,7 +5247,7 @@ func AttOptoDialogChanged%(item%)
         DlgEnable(0,11);
         DlgEnable(0,12);
         DlgEnable(1,6);  'enable wrap-around dialog values 
-        DlgEnable(1,7);
+        'DlgEnable(1,7);
         'DlgEnable(1,8);  'Just straight up disable keeping opto on between stims (but the code ought to be right-ish)
     endif;
     
