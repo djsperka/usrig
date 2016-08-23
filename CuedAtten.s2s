@@ -51,6 +51,7 @@ var caSpecFileOpen%;
 var caInitialDeadTime;
 var caEEGSignals%;
 var caAnswerWindowMin;
+var caWithholdNoGoReward%;
 
 'Counter vars for attention script 
 var caCountAllTrials% := 0;
@@ -100,6 +101,7 @@ const caTimingDlgStartTrial% := 16;
 const caTimingDlgInitialDeadTime% := 17;
 const caTimingDlgEEGSignals% := 18;
 const caTimingDlgSaccadeAnswerWindow% := 19;
+const caTimingDlgWithholdNoGoReward% := 20;
 
 'const caTimingDlgCycleTrials% := 15;  'Not used
 
@@ -144,6 +146,7 @@ var caIsOvershot$;
 var Pause% := 0;
 var advanceOnAbort% := 1;  'Evan now wants to advance on aborts.  Making this a variable (not in dialog) for easy switching back if necessary.
 var trialNotStarted%;
+var rewardWithheld% := 0;
 'var caAudibleElectrode% := 0;  'looks like this will not work
 
 ' Channel numbers and handles
@@ -478,7 +481,8 @@ proc GetTimingDialogParameters()
     caEEGSignals% := val(stmp$);
     Profile(key$, "AnswerWindowMin", "0.0", stmp$);
 	caAnswerWindowMin := val(stmp$);
-    
+    Profile(key$, "WithholdNoGoReward", "0", stmp$);
+    caWithholdNoGoReward% := val(stmp$);
     
 end;
 
@@ -507,6 +511,7 @@ proc SaveTimingDialogParameters()
     Profile(key$, "InitialDeadTime", str$(caInitialDeadTime));
     Profile(key$, "EEGSignals", str$(caEEGSignals%));
     Profile(key$, "AnswerWindowMin", str$(caAnswerWindowMin));
+    Profile(key$, "WithholdNoGoReward", str$(caWithholdNoGoReward%));
     
 end;
 
@@ -558,13 +563,14 @@ func TimingDialog%()
     DlgReal(caTimingDlgInitialDeadTime%, "Initial Dead Time (s): ", 0, 100);
     DlgCheck(caTimingDlgEEGSignals%, "Send EEG signals");
     DlgReal(caTimingDlgSaccadeAnswerWindow%, "Saccade Answer Duration (s): ", 0, 100);
+    DlgCheck(caTimingDlgWithholdNoGoReward%, "Withhold No-Go Reward");
     
     
-    caTextCallbackItemNumber% := DlgText("Text!",2,caTimingDlgRequireFixation%+8,60);
-    DlgButton(2, "Use Above Input File", UseInputFile%,2,caTimingDlgRequireFixation%+9);
-    DlgButton(3, "Select An Input File", OpenInputFile%,2,caTimingDlgRequireFixation%+10);
-    DlgButton(4, "Fixation Point Dialog", FixationPointDialog%,2,caTimingDlgRequireFixation%+11);
-    DlgButton(5, "Joystick Dialog", JoystickConfigDialog%,2,caTimingDlgRequireFixation%+12);
+    caTextCallbackItemNumber% := DlgText("Text!",2,caTimingDlgRequireFixation%+9,60);
+    DlgButton(2, "Use Above Input File", UseInputFile%,2,caTimingDlgRequireFixation%+10);
+    DlgButton(3, "Select An Input File", OpenInputFile%,2,caTimingDlgRequireFixation%+11);
+    DlgButton(4, "Fixation Point Dialog", FixationPointDialog%,2,caTimingDlgRequireFixation%+12);
+    DlgButton(5, "Joystick Dialog", JoystickConfigDialog%,2,caTimingDlgRequireFixation%+13);
     
     DlgAllow(0, 0, TimingDialogChanged%);
     
@@ -572,7 +578,7 @@ func TimingDialog%()
     '              caTrainingHoldTime,caFixAlternationTime,caRequireFixation%,caReturnForReward%,caStartTrial%);
     
     i% := DlgShow(caAcquisitionTime,caFixationTime,caInterTrialTime,caInterTrialTimeRand,caAbortWaitTime,caAbort2WaitTime,caFalseAlarmWaitTime,caFalseAlarmCheckWindow,caMissPenalty,caTrainingOptions%,
-                  caTrainingHoldTime,caFixAlternationTime,caRequireFixation%,caAdditionalWindowRadius,caReturnForReward%,caStartTrial%,caInitialDeadTime,caEEGSignals%,caAnswerWindowMin);
+                  caTrainingHoldTime,caFixAlternationTime,caRequireFixation%,caAdditionalWindowRadius,caReturnForReward%,caStartTrial%,caInitialDeadTime,caEEGSignals%,caAnswerWindowMin,caWithholdNoGoReward%);
     
     if i% = 1 then        
         
@@ -1416,6 +1422,12 @@ func IdleProcessing%()
                     PrintLog("state stateWaitForJoystickInCenter: Joystick is in center\n");
                 endif;
                 
+                'once joystick is centered, check for withheld reward
+                if rewardWithheld% = 1 then
+                    Reward%();  'Give reward now that joystick is in center
+                    rewardWithheld% := 0;  'reset
+                endif;
+                
                 docase
                 case caTrainingOptions% = 0 then
                     ChangeStateTo(stateWaitForJoystickInRight%,tNow);
@@ -2105,14 +2117,21 @@ func IdleProcessing%()
                     PrintLog("stateWaitForAnswer: no response on no-go trial, correct rejection\n");
                     docase
                     case trialType% = trialtypeAttendToward% then
+                        caCountTowardTrialsCorrect% += 1;
                         SampleText("Correct Rejection, Attend Toward",tNow);
                     case trialType% = trialtypeAttendAway% then
+                        caCountAwayTrialsCorrect% += 1;
                         SampleText("Correct Rejection, Attend Away",tNow);
                     case trialType% = trialtypeNoAttend% then
+                        caCountAwayTrialsCorrect% += 1;
                         SampleText("Correct Rejection, No Attend Direction",tNow);    
                     endcase;
                     caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand);
-                    Reward%();
+                    if caWithholdNoGoReward% = 1 then
+                        rewardWithheld% := 1;
+                    else
+                        Reward%();
+                    endif;
                     ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);  'stateTrialCompletedWaitForBlank will advance
                     'joystick is not yet centered
                 endif;
@@ -2208,14 +2227,21 @@ func IdleProcessing%()
                     PrintLog("stateWaitForAnswer: no response on no-go trial, correct rejection\n");
                     docase
                     case trialType% = trialtypeAttendToward% then
+                        caCountTowardTrialsCorrect% += 1;
                         SampleText("Correct Rejection, Attend Toward",tNow);
                     case trialType% = trialtypeAttendAway% then
+                        caCountAwayTrialsCorrect% += 1;
                         SampleText("Correct Rejection, Attend Away",tNow);
                     case trialType% = trialtypeNoAttend% then
+                        caCountAwayTrialsCorrect% += 1;
                         SampleText("Correct Rejection, No Attend Direction",tNow);    
                     endcase;
                     caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand);
-                    Reward%();
+                    if caWithholdNoGoReward% = 1 then
+                        rewardWithheld% := 1;
+                    else
+                        Reward%();
+                    endif;
                     ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);  'stateTrialCompletedWaitForBlank will advance
                     'joystick is not yet centered
                 endif;
