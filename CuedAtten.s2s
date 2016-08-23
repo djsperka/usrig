@@ -2556,6 +2556,17 @@ func IdleProcessing%()
             
         case iState% = stateTrialCompletedPause% then
             'The time that the program stays in this state is the caInterTrialTime plus any miss penalty, if applicable
+            
+            'during the pause, check for administering withheld reward
+            if rewardWithheld% = 1 then
+                tempanswer% := Answer%(JoyChannel%,tNow);
+                if tempanswer% = 2 then  'if joystick is in center
+                    Reward%();  'Give reward now that joystick is in center
+                    rewardWithheld% := 0;  'reset
+                endif;  
+            endif;
+            
+            'check to see if pause is over
             if tNow - tStateStart > caInterTrialTime2 then  
                 
                 PrintLog("stateTrialCompletedPause: inter-trial time is done.\n");
