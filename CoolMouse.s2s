@@ -1,6 +1,7 @@
 ' $Id$
 ' Update 11/8/11 Jeff, includes SafeSampleKey and multi-juicer updates
 
+#include "../../Spike2Util/ChannelUtilities.s2s"
 #include "../../Spike2Util/UsreyUtil.s2s"
 #include "UsreyGratings.s2s"
 #include "UsreyDAQ.s2s"
@@ -26,6 +27,10 @@ var iStimChannel%;	' channel number for stimulus in xy window
 var iStimWindowChannel%;' channel number for stimulus window in xy window
 var iMonitorChannel%;	' channel number for monitor position display in xy window
 var StimHandle%;	' handle for stimulus application
+var cmNWavemarks% := 0;
+var cmWavemarkPorts%[16];
+var cmNContinuous% := 0;
+var cmContinuousPorts%[16];
 
 ' Display stuff
 var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
@@ -46,6 +51,28 @@ LogInit(1);
 cmRemoteGratingParametersFile$ := "s:\\cmouse-grating-parameters.txt";
 cmLocalGratingParametersFile$ := GetStimDir$(1) + "cmouse-grating-parameters.txt";
 
+
+'Note: this has been stolen from Tuning - Henry is having crashing problems and he believes that using the
+'standard recording setup abolishes them
+' Fetch electrode information. 
+docase
+case UsePlexon% = 1 then
+    cmNWavemarks% := 13;  '13 wavemarks on the micro for plexon
+    cmNContinuous% := 0;  'no continuous on the micro for plexon
+    var i%;
+    for i% := 0 to 12 do
+        cmWavemarkPorts%[i%] := i%;
+    next;
+case UsePlexon7WM15CN% = 1 then 
+    cmNWavemarks% := 7;  '7 wavemarks
+    cmNContinuous% := 15;  '15 continuous
+    for i% := 0 to 7 do
+        cmWavemarkPorts%[i%] := i%;
+    next;
+else
+    cmNWavemarks% := GetWavemarkPorts%(cmWavemarkPorts%[]);
+    cmNContinuous% := GetContinuousPorts%(cmContinuousPorts%[]);
+endcase;
 
 
 ' Dialog
@@ -305,6 +332,43 @@ proc CreateSampleConfiguration()
 	SampleTitle$(XChannel%,"Eye X");
 	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
 	SampleTitle$(YChannel%, "Eye Y");
+    
+    
+    'Note: this has been stolen from Tuning - Henry is having crashing problems and he believes that using the
+    'standard recording setup abolishes them
+    ' Set up channels for sampling electrodes.
+    var i%;
+    docase
+    case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
+        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
+    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
+        CreateElectrodeSamplingConfiguration7WM15CN(); 
+    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
+        CreateElectrodeSamplingConfiguration15WF15WF2k();
+    case UsePlexon24WF% = 1 then
+        CreateElectrodeSamplingConfiguration24WF(); 
+    case JoePlexon1% = 1 then
+        CreateJoePlexon1SamplingConfigurationMaster();
+    case JoePlexon2% = 1 then
+        message("Electrode Configuration JoePlexon2 is not yet implemented!");
+        halt;
+    else
+        ' Electrodes: wavemark/continuous
+        ' 12/6/2010
+        ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
+        ' and M waveform channels. 
+        for i% := 0 to cmNWavemarks%-1 do
+            SampleWaveMark(i% + 1, cmWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+            SampleTitle$(i% + 1, "WMrk " + str$(cmWavemarkPorts%[i%])); 
+        next
+        for i% := 0 to cmNContinuous%-1 do
+            SampleWaveform(cmNWavemarks% + i% + 1, cmContinuousPorts%[i%], 20000);
+            SampleTitle$(cmNWavemarks% + i% + 1, "Cont " + str$(cmContinuousPorts%[i%]));
+        next
+    endcase;
+    
+    
+    
     
 	SampleSequencer(script$ + "CoolMouse.pls");
 	SampleOptimise(2, 2, 2, 2, 50);  'Set optimise mode (do this last)
