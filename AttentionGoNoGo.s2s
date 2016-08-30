@@ -1989,7 +1989,9 @@ func IdleProcessing%()
                 FAIsResponse% := 0;
                 ChangeStateTo(stateFalseAlarmWait%, tTrigger);
                 'advance on false alarm
-                SafeSampleKey("a");  'this is the only place to get into stateFalseAlarmWait, so advance here is fine
+'                SafeSampleKey("a");  'this is the only place to get into stateFalseAlarmWait, so advance here is fine
+'                nTrialsCompleted% += 1;  'trial is complete, change of count here makes logic easier 
+'                attCurrTrialIndex% += 1;
             else                
                 ChangeStateTo(stateAbortWait%, tStateStart);  'don't update time, "credits" for time served
             endif;
@@ -2197,7 +2199,7 @@ func IdleProcessing%()
                 queueReward% := -1;  'indicates a miss
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
                 'ChangeStateTo(stateMiss%, tNow); 'go to miss penalty
-                SafeSampleKey("a");
+                'SafeSampleKey("a");
             else
                 if attOptoStarted% = 2 then  'if it's pulsed opto, kill it
                     SampleKey("B");  'NOT SafeSampleKey - sequencer is in use and we're killing it anyway, by design
@@ -2335,8 +2337,8 @@ func IdleProcessing%()
         
         
     case iState% = stateCheckTurnOffOpto% then
-        nTrialsCompleted% += 1;  'trial is complete, change of count here makes logic easier 
-        attCurrTrialIndex% += 1;
+        'nTrialsCompleted% += 1;  'trial is complete, change of count here makes logic easier 
+        'attCurrTrialIndex% += 1;
         docase
         case attDoOpto% = 0 or attOptoStarted% = 0 then 'if this is not an opto trial, trial is complete
             if queueReward% = -1 then 'on a miss, go to miss penalty, otherwise we are done
@@ -2408,7 +2410,7 @@ func IdleProcessing%()
             PrintLog("stateTrialCompleteWaitForBlank: Fix pt is off.\n");
             tLastTrigger := tTrigger;
             'advance
-            SafeSampleKey("a");
+            'SafeSampleKey("a");
             ChangeStateTo(stateTrialCompletedPause%, tTrigger);
             DrawStim(0);	' actually this draws the location of the fixpt.
         endif
@@ -2463,9 +2465,13 @@ func IdleProcessing%()
             view(XYWindow%).XYColour(iAnswerWindowChannelDist4%,13);  'Force distracter4 answer window to blue
         endif;
         view(XYWindow%).XYColour(iFixationWindowChannel%,13);  'Force fixation window to blue
-        'PrintLog("Trial completed.\n");
-        'nTrialsCompleted% += 1;
-        'attCurrTrialIndex% += 1;
+        'Things got a bit out of hand in advancing/incrementing as the function got more complex.  Here I am re-simplifying everything.
+        'All non-abort states go through stateTrialCompleted as a final step.  Thus, advance and increment in stateTrialCompleted and
+        'nowhere else.
+        PrintLog("Trial completed.\n");
+        nTrialsCompleted% += 1;
+        attCurrTrialIndex% += 1;
+        SafeSampleKey("a");
         if nTrialsCompleted% = attTrialsPerBlock%+attEasyTrialsPerBlock% then
             ChangeStateTo(stateBlockCompleted%, tNow);
         else
