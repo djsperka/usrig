@@ -6,6 +6,7 @@
 #include "UsreyFixationPoint.s2s"
 #include "UsreyDAQ.s2s"
 #include "Joystick.s2s"
+'#include "Unic.s2s"
 
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -23,7 +24,7 @@ var caNumberOfTrials%;  'will read from input file
 var specFileName$;
 
 
-'Timing Dialog variables 
+'Main Dialog variables 
 var caAcquisitionTime;
 var caInterTrialTime;
 var caInterTrialTime2;
@@ -80,30 +81,30 @@ var caCountNontargetTrialsIncorrect% := 0;
 var caCountNontargetTrialsAbort% := 0;
 
 
-' constants for timing dialog
-const caTimingDlgAcquisitionTime% := 1;
-const caTimingDlgHoldFixationTime% := 2;
-const caTimingDlgITI% := 3;
-const caTimingDlgInterTrialTimeRand% := 4;
-const caTimingDlgAbortWait% := 5;
-const caTimingDlgAbort2Wait% := 6;
-const caTimingDlgFAPenalty% := 7;
-const caTimingDlgFAWindow% := 8;
-const caTimingDlgMissPenalty% := 9;
-'const caTimingDlgJoyRight% := 10;
-const caTimingDlgTrainingOptions% := 10;
-const caTimingDlgTrainingHoldTime% := 11;
-const caTimingDlgFixAlternationTime% := 12;
-const caTimingDlgRequireFixation% := 13;
-const caTimingDlgAdditionalWindowRadius% := 14;
-const caTimingDlgReturnForReward% := 15;
-const caTimingDlgStartTrial% := 16;
-const caTimingDlgInitialDeadTime% := 17;
-const caTimingDlgEEGSignals% := 18;
-const caTimingDlgSaccadeAnswerWindow% := 19;
-const caTimingDlgWithholdNoGoReward% := 20;
+' constants for Main dialog
+const caMainDlgAcquisitionTime% := 1;
+const caMainDlgHoldFixationTime% := 2;
+const caMainDlgITI% := 3;
+const caMainDlgInterTrialTimeRand% := 4;
+const caMainDlgAbortWait% := 5;
+const caMainDlgAbort2Wait% := 6;
+const caMainDlgFAPenalty% := 7;
+const caMainDlgFAWindow% := 8;
+const caMainDlgMissPenalty% := 9;
+'const caMainDlgJoyRight% := 10;
+const caMainDlgTrainingOptions% := 10;
+const caMainDlgTrainingHoldTime% := 11;
+const caMainDlgFixAlternationTime% := 12;
+const caMainDlgRequireFixation% := 13;
+const caMainDlgAdditionalWindowRadius% := 14;
+const caMainDlgReturnForReward% := 15;
+const caMainDlgStartTrial% := 16;
+const caMainDlgInitialDeadTime% := 17;
+const caMainDlgEEGSignals% := 18;
+const caMainDlgSaccadeAnswerWindow% := 19;
+const caMainDlgWithholdNoGoReward% := 20;
 
-'const caTimingDlgCycleTrials% := 15;  'Not used
+'const caMainDlgCycleTrials% := 15;  'Not used
 
 
 
@@ -283,7 +284,7 @@ endif;
 
 ' run dialog
 'iScript% := AttentionScriptDialog%();
-iScript% := TimingDialog%();  'the dialog box will open an input file (inputFileHandle%)
+iScript% := MainDialog%();  'the dialog box will open an input file (inputFileHandle%)
 if iScript% <> 1 then
 	PrintLog("User cancel - exit gracefully\n");
 	Halt;
@@ -292,7 +293,7 @@ endif;
 'parse input file, but only if an input file exists (training options 3-5)
 if caTrainingOptions% > 2 then
     
-    'the input file should be open already - the TimingDialog%() opens it via 
+    'the input file should be open already - the MainDialog%() opens it via 
     if caSpecFileOpen% = 0 then
         
         PrintLog("Error - spec file is not open, but should be - exitting gracefully\n");
@@ -435,7 +436,7 @@ InitializeToolbar();
 '''End of script, once the toolbar closes, we're done.
 
 
-proc GetTimingDialogParameters()
+proc GetMainDialogParameters()
 	var stmp$;
 	var key$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\CuedAtten";
@@ -486,7 +487,7 @@ proc GetTimingDialogParameters()
     
 end;
 
-proc SaveTimingDialogParameters()
+proc SaveMainDialogParameters()
 	var key$;
 	var stmp$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\CuedAtten";
@@ -517,7 +518,7 @@ end;
 
 
 
-func TimingDialog%()
+func MainDialog%()
     var i%;
     const nOpts% := 6;
     var trainingOptionsList$[nOpts%];
@@ -539,40 +540,40 @@ func TimingDialog%()
     fixationOptionsList$[3] := "Fixation:  Require Saccade Response";
     fixationOptionsList$[4] := "Fixation:  Monitor Eye Position Only";
     
-    GetTimingDialogParameters();
+    GetMainDialogParameters();
     
 	DlgCreate("Attention timing", 25, 10);
-	DlgReal(caTimingDlgAcquisitionTime%, "Acquisition time(s):", .01, 10);
-    DlgReal(caTimingDlgHoldFixationTime%, "Fixation Hold time(s):", .01, 10);
-	DlgReal(caTimingDlgITI%, "Intertrial time(s):", .01, 10);
-    DlgReal(caTimingDlgInterTrialTimeRand%, "Random ITI additional time(s):", 0, 10);
-	DlgReal(caTimingDlgAbortWait%, "Abort penalty time(s):", .01, 10);
-    DlgReal(caTimingDlgAbort2Wait%, "Abort penalty time post-CC(s):", .01, 10);
-    DlgReal(caTimingDlgFAPenalty%, "False Alarm penalty time(s):", .01, 100);  'I'll let that be really really long
-    DlgReal(caTimingDlgFAWindow%, "False Alarm check window(s): ", .01, 10);
-    DlgReal(caTimingDlgMissPenalty%, "Miss penalty time(s): ", 0, 100);
-    'DlgReal(caTimingDlgJoyRight%, "Joystick Right Threshold (V): ", 0, 3);
-    DlgList(caTimingDlgTrainingOptions%, 60, trainingOptionsList$[], nOpts%);
-    DlgReal(caTimingDlgTrainingHoldTime%, "Joystick Hold Time To Reward/Stimulus(s): ", .01, 10);
-    DlgReal(caTimingDlgFixAlternationTime%, "Fixation Point On/Off Time (training)(s): ", .01, 10);
-    'DlgCheck(caTimingDlgRequireFixation%, "Require Fixation",50);
-    DlgList(caTimingDlgRequireFixation%, 60, fixationOptionsList$[], 5);
-    DlgReal(caTimingDlgAdditionalWindowRadius%, "Additional Eye Window Radius (deg)",-10,10);
-    DlgCheck(caTimingDlgReturnForReward%, "Return for Reward",50);
-    DlgInteger(caTimingDlgStartTrial%, "Start Trial",1,caMaxTrl%);
-    DlgReal(caTimingDlgInitialDeadTime%, "Initial Dead Time (s): ", 0, 100);
-    DlgCheck(caTimingDlgEEGSignals%, "Send EEG signals");
-    DlgReal(caTimingDlgSaccadeAnswerWindow%, "Saccade Answer Duration (s): ", 0, 100);
-    DlgCheck(caTimingDlgWithholdNoGoReward%, "Withhold No-Go Reward");
+	DlgReal(caMainDlgAcquisitionTime%, "Acquisition time(s):", .01, 10);
+    DlgReal(caMainDlgHoldFixationTime%, "Fixation Hold time(s):", .01, 10);
+	DlgReal(caMainDlgITI%, "Intertrial time(s):", .01, 10);
+    DlgReal(caMainDlgInterTrialTimeRand%, "Random ITI additional time(s):", 0, 10);
+	DlgReal(caMainDlgAbortWait%, "Abort penalty time(s):", .01, 10);
+    DlgReal(caMainDlgAbort2Wait%, "Abort penalty time post-CC(s):", .01, 10);
+    DlgReal(caMainDlgFAPenalty%, "False Alarm penalty time(s):", .01, 100);  'I'll let that be really really long
+    DlgReal(caMainDlgFAWindow%, "False Alarm check window(s): ", .01, 10);
+    DlgReal(caMainDlgMissPenalty%, "Miss penalty time(s): ", 0, 100);
+    'DlgReal(caMainDlgJoyRight%, "Joystick Right Threshold (V): ", 0, 3);
+    DlgList(caMainDlgTrainingOptions%, 60, trainingOptionsList$[], nOpts%);
+    DlgReal(caMainDlgTrainingHoldTime%, "Joystick Hold Time To Reward/Stimulus(s): ", .01, 10);
+    DlgReal(caMainDlgFixAlternationTime%, "Fixation Point On/Off Time (training)(s): ", .01, 10);
+    'DlgCheck(caMainDlgRequireFixation%, "Require Fixation",50);
+    DlgList(caMainDlgRequireFixation%, 60, fixationOptionsList$[], 5);
+    DlgReal(caMainDlgAdditionalWindowRadius%, "Additional Eye Window Radius (deg)",-10,10);
+    DlgCheck(caMainDlgReturnForReward%, "Return for Reward",50);
+    DlgInteger(caMainDlgStartTrial%, "Start Trial",1,caMaxTrl%);
+    DlgReal(caMainDlgInitialDeadTime%, "Initial Dead Time (s): ", 0, 100);
+    DlgCheck(caMainDlgEEGSignals%, "Send EEG signals");
+    DlgReal(caMainDlgSaccadeAnswerWindow%, "Saccade Answer Duration (s): ", 0, 100);
+    DlgCheck(caMainDlgWithholdNoGoReward%, "Withhold No-Go Reward");
     
     
-    caTextCallbackItemNumber% := DlgText("Text!",2,caTimingDlgRequireFixation%+9,60);
-    DlgButton(2, "Use Above Input File", UseInputFile%,2,caTimingDlgRequireFixation%+10);
-    DlgButton(3, "Select An Input File", OpenInputFile%,2,caTimingDlgRequireFixation%+11);
-    DlgButton(4, "Fixation Point Dialog", FixationPointDialog%,2,caTimingDlgRequireFixation%+12);
-    DlgButton(5, "Joystick Dialog", JoystickConfigDialog%,2,caTimingDlgRequireFixation%+13);
+    caTextCallbackItemNumber% := DlgText("Text!",2,caMainDlgRequireFixation%+9,60);
+    DlgButton(2, "Use Above Input File", UseInputFile%,2,caMainDlgRequireFixation%+10);
+    DlgButton(3, "Select An Input File", OpenInputFile%,2,caMainDlgRequireFixation%+11);
+    DlgButton(4, "Fixation Point Dialog", FixationPointDialog%,2,caMainDlgRequireFixation%+12);
+    DlgButton(5, "Joystick Dialog", JoystickConfigDialog%,2,caMainDlgRequireFixation%+13);
     
-    DlgAllow(0, 0, TimingDialogChanged%);
+    DlgAllow(0, 0, MainDialogChanged%);
     
     'i% := DlgShow(caAcquisitionTime,caFixationTime,caInterTrialTime,caInterTrialTimeRand,caAbortWaitTime,caAbort2WaitTime,caFalseAlarmWaitTime,caFalseAlarmCheckWindow,caMissPenalty,caJoyRight,caTrainingOptions%,
     '              caTrainingHoldTime,caFixAlternationTime,caRequireFixation%,caReturnForReward%,caStartTrial%);
@@ -589,7 +590,7 @@ func TimingDialog%()
             caFalseAlarmCheckWindow := tempAW;
         endif;
 
-        SaveTimingDialogParameters();
+        SaveMainDialogParameters();
         
         'Change value of caRequireFixation to -1 if it is 5 (monitor eye position only), because that's what the code expects.
         if caRequireFixation% = 4 then
@@ -625,7 +626,7 @@ func TimingDialog%()
         GetFixationPointParameters();    'fills FixationX,FixationY,FixationColor$,FixationDiameter, WindowRadius
         return 1;
     else   
-        Printlog("Timing Dialog was cancelled!\n");
+        Printlog("Main Dialog was cancelled!\n");
         return 0;
     endif;
     
@@ -633,64 +634,64 @@ func TimingDialog%()
 end
 
 
-func TimingDialogChanged%(item%)
+func MainDialogChanged%(item%)
     var status% := 1;
     'for now we are ignoring item%, the only relevant question is whether an input file is open
     docase
-    case DlgValue(caTimingDlgTrainingOptions%) = 0 then
-        DlgEnable(0,caTimingDlgAcquisitionTime%);  'disable acquisition time
-        DlgEnable(0,caTimingDlgHoldFixationTime%);  'disable hold fixation time
-        DlgEnable(0,caTimingDlgAbortWait%);  'disable abort wait time
-        DlgEnable(0,caTimingDlgAbort2Wait%);  'disable abort2 wait time
-        DlgEnable(0,caTimingDlgFAPenalty%);  'disable FA penalty
-        DlgEnable(0,caTimingDlgFAWindow%);  'disable FA check window
-        DlgEnable(0,caTimingDlgMissPenalty%);  'disable miss penalty
-        DlgEnable(0,caTimingDlgTrainingHoldTime%);  'disable training hold time
-        DlgEnable(0,caTimingDlgFixAlternationTime%);  'disable fixation alternation time
-        DlgEnable(0,caTimingDlgRequireFixation%);  'disable require fixation check box
-        DlgEnable(0,caTimingDlgReturnForReward%);  'disable return for reward check box - can't return for reward here, it's immediate
-        DlgEnable(0,caTimingDlgStartTrial%);  'disable start trial for non-input-file scenarios
+    case DlgValue(caMainDlgTrainingOptions%) = 0 then
+        DlgEnable(0,caMainDlgAcquisitionTime%);  'disable acquisition time
+        DlgEnable(0,caMainDlgHoldFixationTime%);  'disable hold fixation time
+        DlgEnable(0,caMainDlgAbortWait%);  'disable abort wait time
+        DlgEnable(0,caMainDlgAbort2Wait%);  'disable abort2 wait time
+        DlgEnable(0,caMainDlgFAPenalty%);  'disable FA penalty
+        DlgEnable(0,caMainDlgFAWindow%);  'disable FA check window
+        DlgEnable(0,caMainDlgMissPenalty%);  'disable miss penalty
+        DlgEnable(0,caMainDlgTrainingHoldTime%);  'disable training hold time
+        DlgEnable(0,caMainDlgFixAlternationTime%);  'disable fixation alternation time
+        DlgEnable(0,caMainDlgRequireFixation%);  'disable require fixation check box
+        DlgEnable(0,caMainDlgReturnForReward%);  'disable return for reward check box - can't return for reward here, it's immediate
+        DlgEnable(0,caMainDlgStartTrial%);  'disable start trial for non-input-file scenarios
         DlgEnable(1,-1);  'enable "OK"
         DlgEnable(0,-2);  'disable using current input file
         DlgEnable(0,-3);  'disable loading input file
         DlgEnable(0,caTextCallbackItemNumber%);  'disable text display of control file
         DlgValue$(caTextCallbackItemNumber%,"Control File Not Applicable");
-    case DlgValue(caTimingDlgTrainingOptions%) = 1 then
-        DlgEnable(0,caTimingDlgAcquisitionTime%);  'disable acquisition time
-        DlgEnable(0,caTimingDlgHoldFixationTime%);  'disable hold fixation time
-        DlgEnable(0,caTimingDlgAbortWait%);  'disable abort wait time
-        DlgEnable(0,caTimingDlgAbort2Wait%);  'disable abort2 wait time
-        DlgEnable(0,caTimingDlgFAPenalty%);  'disable FA penalty
-        DlgEnable(0,caTimingDlgFAWindow%);  'disable FA check window
-        DlgEnable(0,caTimingDlgMissPenalty%);  'disable miss penalty
-        DlgEnable(0,caTimingDlgFixAlternationTime%);  'disable fixation alternation time 
-        DlgEnable(1,caTimingDlgTrainingHoldTime%);  'enable training hold time   
-        DlgEnable(0,caTimingDlgRequireFixation%);  'disable require fixation check box
-        DlgEnable(1,caTimingDlgReturnForReward%);  'enable return for reward check box
-        DlgEnable(0,caTimingDlgStartTrial%);  'disable start trial for non-input-file scenarios
+    case DlgValue(caMainDlgTrainingOptions%) = 1 then
+        DlgEnable(0,caMainDlgAcquisitionTime%);  'disable acquisition time
+        DlgEnable(0,caMainDlgHoldFixationTime%);  'disable hold fixation time
+        DlgEnable(0,caMainDlgAbortWait%);  'disable abort wait time
+        DlgEnable(0,caMainDlgAbort2Wait%);  'disable abort2 wait time
+        DlgEnable(0,caMainDlgFAPenalty%);  'disable FA penalty
+        DlgEnable(0,caMainDlgFAWindow%);  'disable FA check window
+        DlgEnable(0,caMainDlgMissPenalty%);  'disable miss penalty
+        DlgEnable(0,caMainDlgFixAlternationTime%);  'disable fixation alternation time 
+        DlgEnable(1,caMainDlgTrainingHoldTime%);  'enable training hold time   
+        DlgEnable(0,caMainDlgRequireFixation%);  'disable require fixation check box
+        DlgEnable(1,caMainDlgReturnForReward%);  'enable return for reward check box
+        DlgEnable(0,caMainDlgStartTrial%);  'disable start trial for non-input-file scenarios
         DlgEnable(1,-1);  'enable "OK"
         DlgEnable(0,-2);  'disable using current input file
         DlgEnable(0,-3);  'disable loading input file
         DlgEnable(0,caTextCallbackItemNumber%);  'disable text display of control file
         DlgValue$(caTextCallbackItemNumber%,"Control File Not Applicable");
-    case DlgValue(caTimingDlgTrainingOptions%) = 2 then
-        if DlgValue(caTimingDlgRequireFixation%) = 1 or DlgValue(caTimingDlgRequireFixation%) = 2 or DlgValue(caTimingDlgRequireFixation%) = 3 then
-            DlgEnable(1,caTimingDlgAcquisitionTime%);  'enable acquisition time
-            DlgEnable(1,caTimingDlgHoldFixationTime%);  'enable hold fixation time
+    case DlgValue(caMainDlgTrainingOptions%) = 2 then
+        if DlgValue(caMainDlgRequireFixation%) = 1 or DlgValue(caMainDlgRequireFixation%) = 2 or DlgValue(caMainDlgRequireFixation%) = 3 then
+            DlgEnable(1,caMainDlgAcquisitionTime%);  'enable acquisition time
+            DlgEnable(1,caMainDlgHoldFixationTime%);  'enable hold fixation time
         else
-            DlgEnable(0,caTimingDlgAcquisitionTime%);  'disable acquisition time
-            DlgEnable(0,caTimingDlgHoldFixationTime%);  'disable hold fixation time
+            DlgEnable(0,caMainDlgAcquisitionTime%);  'disable acquisition time
+            DlgEnable(0,caMainDlgHoldFixationTime%);  'disable hold fixation time
         endif;
-        DlgEnable(0,caTimingDlgAbortWait%);  'disable abort wait time
-        DlgEnable(0,caTimingDlgAbort2Wait%);  'disable abort2 wait time
-        DlgEnable(0,caTimingDlgFAPenalty%);  'disable FA penalty
-        DlgEnable(0,caTimingDlgFAWindow%);  'disable FA check window
-        DlgEnable(0,caTimingDlgMissPenalty%);  'disable miss penalty
-        DlgEnable(1,caTimingDlgFixAlternationTime%);  'enable fixation alternation time 
-        DlgEnable(1,caTimingDlgTrainingHoldTime%);  'enable training hold time 
-        DlgEnable(1,caTimingDlgRequireFixation%);  'enable require fixation check box
-        DlgEnable(1,caTimingDlgReturnForReward%);  'enable return for reward check box
-        DlgEnable(0,caTimingDlgStartTrial%);  'disable start trial for non-input-file scenarios
+        DlgEnable(0,caMainDlgAbortWait%);  'disable abort wait time
+        DlgEnable(0,caMainDlgAbort2Wait%);  'disable abort2 wait time
+        DlgEnable(0,caMainDlgFAPenalty%);  'disable FA penalty
+        DlgEnable(0,caMainDlgFAWindow%);  'disable FA check window
+        DlgEnable(0,caMainDlgMissPenalty%);  'disable miss penalty
+        DlgEnable(1,caMainDlgFixAlternationTime%);  'enable fixation alternation time 
+        DlgEnable(1,caMainDlgTrainingHoldTime%);  'enable training hold time 
+        DlgEnable(1,caMainDlgRequireFixation%);  'enable require fixation check box
+        DlgEnable(1,caMainDlgReturnForReward%);  'enable return for reward check box
+        DlgEnable(0,caMainDlgStartTrial%);  'disable start trial for non-input-file scenarios
         DlgEnable(1,-1);  'enable "OK"
         DlgEnable(0,-2);  'disable using current input file
         DlgEnable(0,-3);  'disable loading input file
@@ -699,28 +700,28 @@ func TimingDialogChanged%(item%)
         'note that the logic past training stage 3 (dlg value 2) hasn't been worked out yet because training details are not complete
         'but at least here's the framework for the final training stages        
         
-    case DlgValue(caTimingDlgTrainingOptions%) >= 3 then   'note that the logic here hasn't been fully worked out
-        if DlgValue(caTimingDlgRequireFixation%) = 1 or DlgValue(caTimingDlgRequireFixation%) = 2 or DlgValue(caTimingDlgRequireFixation%) = 3 then
-            DlgEnable(1,caTimingDlgAcquisitionTime%);  'enable acquisition time
-            DlgEnable(1,caTimingDlgHoldFixationTime%);  'enable hold fixation time
+    case DlgValue(caMainDlgTrainingOptions%) >= 3 then   'note that the logic here hasn't been fully worked out
+        if DlgValue(caMainDlgRequireFixation%) = 1 or DlgValue(caMainDlgRequireFixation%) = 2 or DlgValue(caMainDlgRequireFixation%) = 3 then
+            DlgEnable(1,caMainDlgAcquisitionTime%);  'enable acquisition time
+            DlgEnable(1,caMainDlgHoldFixationTime%);  'enable hold fixation time
         else
-            DlgEnable(0,caTimingDlgAcquisitionTime%);  'disable acquisition time
-            DlgEnable(0,caTimingDlgHoldFixationTime%);  'disable hold fixation time
+            DlgEnable(0,caMainDlgAcquisitionTime%);  'disable acquisition time
+            DlgEnable(0,caMainDlgHoldFixationTime%);  'disable hold fixation time
         endif;
-        DlgEnable(1,caTimingDlgAbortWait%);  'enable abort wait time
-        DlgEnable(1,caTimingDlgAbort2Wait%);  'enable abort2 wait time
-        DlgEnable(1,caTimingDlgFAPenalty%);  'enable FA penalty
-        DlgEnable(1,caTimingDlgFAWindow%);  'enable FA check window
-        DlgEnable(1,caTimingDlgMissPenalty%);  'enable miss penalty
-        DlgEnable(0,caTimingDlgFixAlternationTime%);  'disable fixation alternation time 
-        if DlgValue(caTimingDlgTrainingOptions%) = 3 and DlgValue(caTimingDlgRequireFixation%) <> 3 then
-            DlgEnable(1,caTimingDlgTrainingHoldTime%);  'enable training hold time
+        DlgEnable(1,caMainDlgAbortWait%);  'enable abort wait time
+        DlgEnable(1,caMainDlgAbort2Wait%);  'enable abort2 wait time
+        DlgEnable(1,caMainDlgFAPenalty%);  'enable FA penalty
+        DlgEnable(1,caMainDlgFAWindow%);  'enable FA check window
+        DlgEnable(1,caMainDlgMissPenalty%);  'enable miss penalty
+        DlgEnable(0,caMainDlgFixAlternationTime%);  'disable fixation alternation time 
+        if DlgValue(caMainDlgTrainingOptions%) = 3 and DlgValue(caMainDlgRequireFixation%) <> 3 then
+            DlgEnable(1,caMainDlgTrainingHoldTime%);  'enable training hold time
         else
-            DlgEnable(0,caTimingDlgTrainingHoldTime%);  'disable training hold time
+            DlgEnable(0,caMainDlgTrainingHoldTime%);  'disable training hold time
         endif;
-        DlgEnable(1,caTimingDlgRequireFixation%);  'enable require fixation check box
-        DlgEnable(0,caTimingDlgReturnForReward%);  'disable return for reward check box (here it should ALL be return for reward)
-        DlgEnable(1,caTimingDlgStartTrial%);  'enable start trial for input-file scenarios
+        DlgEnable(1,caMainDlgRequireFixation%);  'enable require fixation check box
+        DlgEnable(0,caMainDlgReturnForReward%);  'disable return for reward check box (here it should ALL be return for reward)
+        DlgEnable(1,caMainDlgStartTrial%);  'enable start trial for input-file scenarios
         'furthermore...
         'don't allow user to press "OK" unless an input file has been opened...but only do this if we are in a state where an input file is necessary
         if inputFileHandle% < 0 then
@@ -734,12 +735,12 @@ func TimingDialogChanged%(item%)
         DlgValue$(caTextCallbackItemNumber%,"Control File: " + specFileName$);
     endcase
     
-    if DlgValue(caTimingDlgRequireFixation%) = 3 or DlgValue(caTimingDlgRequireFixation%) = 4 then
-        DlgEnable(1,caTimingDlgAdditionalWindowRadius%); 'enable additional radius entry
-        DlgEnable(1,caTimingDlgSaccadeAnswerWindow%); 'enable saccade answer window entry
+    if DlgValue(caMainDlgRequireFixation%) = 3 or DlgValue(caMainDlgRequireFixation%) = 4 then
+        DlgEnable(1,caMainDlgAdditionalWindowRadius%); 'enable additional radius entry
+        DlgEnable(1,caMainDlgSaccadeAnswerWindow%); 'enable saccade answer window entry
     else
-        DlgEnable(0,caTimingDlgAdditionalWindowRadius%); 'disable additional radius entry
-        DlgEnable(0,caTimingDlgSaccadeAnswerWindow%); 'disable saccade answer window entry
+        DlgEnable(0,caMainDlgAdditionalWindowRadius%); 'disable additional radius entry
+        DlgEnable(0,caMainDlgSaccadeAnswerWindow%); 'disable saccade answer window entry
     endif;
     
     return status%;
@@ -760,7 +761,7 @@ func UseInputFile%()
     else
         message("Failed to open input file!")
     endif
-    TimingDialogChanged%(-12345);   'doesn't matter what we pass it, just need to run it   
+    MainDialogChanged%(-12345);   'doesn't matter what we pass it, just need to run it   
     return 1;  'We'll just assume the user didn't cancel - we could in principle use a DialogChanged function to gate the OK button on the main dialog, but c'mon
 end;
 
@@ -780,7 +781,7 @@ func OpenInputFile%()
     else
         message("Failed to open input file!")
     endif
-    TimingDialogChanged%(-12345);   'doesn't matter what we pass it, just need to run it   
+    MainDialogChanged%(-12345);   'doesn't matter what we pass it, just need to run it   
     return 1;  'We'll just assume the user didn't cancel - we could in principle use a DialogChanged function to gate the OK button on the main dialog, but c'mon
 end;
 
