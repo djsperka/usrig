@@ -6,7 +6,7 @@
 #include "UsreyFixationPoint.s2s"
 #include "UsreyDAQ.s2s"
 #include "Joystick.s2s"
-'#include "Unic.s2s"
+#include "Unic.s2s"
 
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -22,6 +22,8 @@ const caMaxTrl% := 5000;  'should be enough, yes?
 var caNumberOfTrials%;  'will read from input file
 
 var specFileName$;
+var templateFileName$;
+var EEGBaseName$;
 
 
 'Main Dialog variables 
@@ -43,16 +45,20 @@ var caRequireSaccadeResponse%;
 var caAdditionalWindowRadius;
 var caReturnForReward%;
 var inputFileHandle% := -1;  'start negative, requires user to open an input file
+var templateFileHandle% := -1;  'start negative, requires user to open a template file
 var caBackgroundColor$ := "gray";  'for now just hardcoding the bg color, if we need it we can put this back in from AttenGNG
 var caStartTrial% := 1;
 'var caCycleTrials%;  'when we get to the bottom do we go back to the top of the slide, do we turn, do we stop, do we go for a ride?  (Sadly, this is not used because Evan didn't want it.)
 var caInterTrialTimeRand; 
 var caTextCallbackItemNumber%;
+var caTextCallbackItemNumber2%;
 var caSpecFileOpen%;
+var caTemplateFileOpen%;
 var caInitialDeadTime;
-var caEEGSignals%;
+var caRecordEEG%;
 var caAnswerWindowMin;
 var caWithholdNoGoReward%;
+var tempState%;  'we will use this in the idle loop when there is more than one state to go to, and we need to pass into CheckUnicChangeStateTo()
 
 'Counter vars for attention script 
 var caCountAllTrials% := 0;
@@ -100,9 +106,11 @@ const caMainDlgAdditionalWindowRadius% := 14;
 const caMainDlgReturnForReward% := 15;
 const caMainDlgStartTrial% := 16;
 const caMainDlgInitialDeadTime% := 17;
-const caMainDlgEEGSignals% := 18;
-const caMainDlgSaccadeAnswerWindow% := 19;
-const caMainDlgWithholdNoGoReward% := 20;
+const caMainDlgRecordEEG% := 18;
+const caMainDlgEEGBaseName% := 19;
+const caMainDlgSaccadeAnswerWindow% := 20;
+const caMainDlgWithholdNoGoReward% := 21;
+
 
 'const caMainDlgCycleTrials% := 15;  'Not used
 
@@ -137,6 +145,16 @@ var caFileGrating2Params$[caMaxTrl%];  'input file grating 2 parameters
 
 var caWhichLocationChanges%[caMaxTrl%];  'we will determine which location (if any) changes, 1 = "target", 2 = "distractor1", 0 = "none"
 
+'Variables for read in from template file - we will allow as many as there are trials but we do not expect this many
+var caTemplateLoc$[caMaxTrl%];
+var caTemplateDur[caMaxTrl%];
+var caNumberOfTemplates%;
+var caCurrTemplate% := 0;
+var tLastTemplateTime;
+var tThisTemplateDuration := -1;  'we could actually just index the variable, but I think this will make things clearer, start at -1
+var caTemplateIsLoaded%;
+var caEEGIsRecording%;
+
 var caFixationTime;  'not yet filled, probably do that in PrepareTrial
 var totalStimDur;  'same thing
 var caJoyRight;  'voltage of rightward joystick
@@ -163,6 +181,14 @@ var FixationPointChannel%;
 var StimChannel%;
 var StimChangeChannel%;
 var ReadyChannel%;
+
+'Unic channels, ports
+var unicFileChannel%;   'This channel will register a pulse when the unic server notices the unic file has changed
+var unicCommandSuccessChannel%;  'This channel will register a pulse when the unic server receives success from Nic after sending a command
+var unicStimulatingChannel%;   'This channel will go high when stimulation is on
+var unicFilePort%;
+var unicCommandSuccessPort%;
+var unicStimulatingPort%;
 
 ' tuning curves
 var TuningWindow%[8];	' one for each channel. There'd better not be more than 8 channels! 
@@ -206,6 +232,7 @@ var tStateStart:=-1;	' time that present state started. Used to measure wait tim
 var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this	
 var tStimOn:=-1;	    ' time that stim was turned on. Used to measure spike rates 
 var iState%;
+var stateNext%;         ' for doing the Unic command check
 var tempanswer%;
 var thisContrast%; 'for now just making everything compile
 var joystickHasBeenCentered%;
@@ -254,6 +281,20 @@ const stateWaitForAnswerFC% := 35;
 const stateInitialDeadTime% := 36;
 const stateCheckFalseAlarmSaccade% := 37;
 const stateWaitForAnswerSaccade% := 38;
+const stateUnicInitWait% := 39;
+const stateUnicInitWaitConfirm% := 40;
+const stateUnicCommandWait% := 41;
+const stateUnicCommandConfirm% := 42;
+const stateUnicPreInitialDeadTime% := 43;
+const stateCheckForTemplateAdvance% := 44;		' Before checking for joystick movements, introduced to allow EEG recording to be started between trials, if necessary
+const stateUnloadTemplate% := 45;
+const stateStopEEGRecording% := 46;
+const stateDetermineNextTemplate% := 47;
+const stateStartEEG% := 48;
+const stateLoadTemplate% := 49;
+
+
+
 
 const trialtypeAttendToward% := 100;
 const trialtypeAttendAway% := 101;
@@ -273,6 +314,8 @@ var trialResponseDirection%;  'because we shouldn't really call this "attend loc
 var trialHazardFunctionTime;
 var trialEarlyGoTime;
 var trialCueName$;
+var trialCount8bit1%;
+var trialCount8bit2%;
 
 
 ' Check for valid data file path
@@ -291,16 +334,26 @@ if iScript% <> 1 then
 endif;
 
 'parse input file, but only if an input file exists (training options 3-5)
+'also, parse template file, but only if a template file exists
 if caTrainingOptions% > 2 then
     
-    'the input file should be open already - the MainDialog%() opens it via 
+    'begin parsing input file
+    'the input file should be open already - the MainDialog%() opens it via OpenInputFile()/UseInputFile()
     if caSpecFileOpen% = 0 then
         
         PrintLog("Error - spec file is not open, but should be - exitting gracefully\n");
         message("Error - the spec file is not open, but should be!  Quitting!");
+        
+        'Close the template file if it happens to be open before closing down
+        if caTemplateFileOpen% > 0 then
+            View(templateFileHandle%);
+            FileClose();
+        endif;
+        
         Halt;
         
     else 'read the input file
+        View(inputFileHandle%);
 
         readsetup(",","	 ","","","	"); 'Hard separator is a comma
         'Soft separators are spaces and tabs
@@ -383,28 +436,118 @@ if caTrainingOptions% > 2 then
         
         
         'Second make sure all images have the .bmp extension
-        for j% := 0 to nUniqueCues%-1 do
-            if Right$(uniqueCueFile$[j%],4) <> ".bmp" then
-                message("The cue image '%s' is not a .bmp!  Quitting!",uniqueCueFile$[j%]);
-                halt;
-            endif
-        next
+'        for j% := 0 to nUniqueCues%-1 do
+'            if Right$(uniqueCueFile$[j%],4) <> ".bmp" then
+'                message("The cue image '%s' is not a .bmp!  Quitting!",uniqueCueFile$[j%]);
+'                halt;
+'            endif
+'        next
         'Third, make sure all files exist...I don't know if there is a good way of doing this outside of opening them!
         'However, we only have to open one instance of each cue - the unique list - so that should save lots of time
         var openSuccess%;
-        for j% := 0 to nUniqueCues%-1 do
-            openSuccess% := FileOpen(uniqueCueFile$[j%],9);
-            if openSuccess% > 0 then 'just close it
-                view(openSuccess%);
-                FileClose();
-            else
-                message("The cue image '%s' does not exist!  Quitting!",uniqueCueFile$[j%]);
-                halt;
+'        for j% := 0 to nUniqueCues%-1 do
+'            openSuccess% := FileOpen(uniqueCueFile$[j%],9);
+'            if openSuccess% > 0 then 'just close it
+'                view(openSuccess%);
+'                FileClose();
+'            else
+'                message("The cue image '%s' does not exist!  Quitting!",uniqueCueFile$[j%]);
+'                halt;
+'            endif
+'        next
+        
+    endif
+    
+    'end parsing input file
+    
+    
+    'begin parsing template file
+    'the template file should be open already - the MainDialog%() opens it via OpenTemplateFile()/UseTemplateFile()
+    docase
+    case caRecordEEG% = 1 and caTemplateFileOpen% = 0 then
+        
+        PrintLog("Error - template file is not open, but should be - exitting gracefully\n");
+        message("Error - the template file is not open, but should be!  Quitting!");
+        Halt;
+        
+    case caRecordEEG% = 1 then 'read the template file
+        View(templateFileHandle%);
+        
+        readsetup(",","	 ","","","	"); 'Hard separator is a comma
+        'Soft separators are spaces and tabs
+        'No delimiter is set for the start of a string
+        'No delimiter is set for the end of a string
+        'The hard separator character for strings that have no start delimiter is set to a tab
+        'This combo will gracefully deal with multiple tabs anywhere and any number
+        'of leading (but NOT trailing) spaces
+        'variables eof% and j% already exist
+        eof% := 1;  
+        j% := 0;
+        while eof% > 0 do  'the nice thing about READ is that when we tack junk onto the end of the line, we don't have to rewrite this code, anything left over on the line is just skipped, second call to read starts at beginning of second line 
+            eof% := read(caTemplateLoc$[j%],caTemplateDur[j%]);  
+            j%+=1;  'increment count
+            'printlog("line is %d and caTemplateLoc is %s and caTemplateDur is %f\n",j%,caTemplateLoc$[j%-1],caTemplateDur[j%-1]);
+        wend
+        caNumberOfTemplates% := j%-1;  'we need to decrement for the final increment because the final read will "fail", but not decrement for the penultimate increment because j% is a zero-based index
+        
+        'Make sure all specified templates exist
+        'First, consolidate the list of templates
+        var nUniqueTemplates% := 1;  'we'll start with one unique template file, and go from there
+        var uniqueTemplateFile$[caMaxTrl%];
+        uniqueTemplateFile$[0] := caTemplateLoc$[0];  'just put the first one in.
+        for j% := 1 to caNumberOfTemplates%-1 do  'don't need to start at 0, first file is unique by definition
+            'here is the bit that consolidates the images
+            found := 0;
+            jj% := 0;
+            while jj% <= nUniqueTemplates%-1 do
+                'while we're in here, let's make sure that we don't get hurt by "gap" vs "Gap" vs "GAP"
+                if LCase$(caTemplateLoc$[j%]) = "gap" then
+                    caTemplateLoc$[j%] := "gap";  'now any instance of "gap" is lowercase
+                endif;
+                if caTemplateLoc$[j%] = uniqueTemplateFile$[jj%] then  'we've already got this one
+                    found := 1;
+                    jj% := nUniqueTemplates%;  'break the while loop
+                else
+                    jj% += 1;
+                endif
+            wend
+            if found = 0 then 
+                uniqueTemplateFile$[nUniqueTemplates%] := caTemplateLoc$[j%];
+                nUniqueTemplates% += 1;
             endif
         next
         
-    endif
-endif
+        'Make sure all templates exist...I don't know if there is a good way of doing this outside of opening them!
+        'However, we only have to open one instance of each template - the unique list - so that should save lots of time
+        for j% := 0 to nUniqueTemplates%-1 do
+            if uniqueTemplateFile$[j%] <> "gap" then
+                openSuccess% := FileOpen(uniqueTemplateFile$[j%],9);
+                if openSuccess% > 0 then 'just close it
+                    view(openSuccess%);
+                    FileClose();
+                else
+                    message("The template '%s' does not exist!  Quitting!",uniqueTemplateFile$[j%]);
+                    halt;
+                endif
+            endif
+        next
+        
+        'Close the template file opened by the dialog box
+        View(templateFileHandle%);
+        FileClose();
+        
+        
+        'halt  'testing only
+    else 'no template file exists, so...don't do anything.
+        
+    endcase;
+    
+
+    
+    
+    'end parsing template file
+    
+endif;
 
 
 '''So at this point, we have run the dialog, checked for the existence and .bmp extension of all of the images, and have found success
@@ -420,6 +563,12 @@ StimChannel% := 27;
 StimChangeChannel% := 28;  '??
 ReadyChannel% := 29;
 JoyChannel% := 22;
+unicFileChannel% := 33;
+unicCommandSuccessChannel% := 34;
+unicStimulatingChannel% := 35;
+unicFilePort% := 5;
+unicCommandSuccessPort% := 6;
+unicStimulatingPort% := 7;
 
 LogInit(1);
 InitJoystick(JoyChannel%);
@@ -476,14 +625,20 @@ proc GetMainDialogParameters()
 	caFixationTime := val(stmp$);
     Profile(key$, "SpecFileName", "none", stmp$);
     specFileName$ := stmp$;
+    Profile(key$, "TemplateFileName", "none", stmp$);
+    templateFileName$ := stmp$;
     Profile(key$, "InitialDeadTime", "0.0", stmp$);
 	caInitialDeadTime := val(stmp$);
     Profile(key$, "EEGSignals", "0", stmp$);
-    caEEGSignals% := val(stmp$);
+    caRecordEEG% := val(stmp$);
     Profile(key$, "AnswerWindowMin", "0.0", stmp$);
 	caAnswerWindowMin := val(stmp$);
     Profile(key$, "WithholdNoGoReward", "0", stmp$);
     caWithholdNoGoReward% := val(stmp$);
+    Profile(key$, "EEGBaseName", "None Entered", stmp$);
+    EEGBaseName$ := stmp$;
+    
+    
     
 end;
 
@@ -509,10 +664,12 @@ proc SaveMainDialogParameters()
     Profile(key$, "InterTrialTimeRand", str$(caInterTrialTimeRand));
     Profile(key$, "FixationTime", str$(caFixationTime));
     Profile(key$, "SpecFileName", specFileName$);
+    Profile(key$, "TemplateFileName", templateFileName$);
     Profile(key$, "InitialDeadTime", str$(caInitialDeadTime));
-    Profile(key$, "EEGSignals", str$(caEEGSignals%));
+    Profile(key$, "EEGSignals", str$(caRecordEEG%));
     Profile(key$, "AnswerWindowMin", str$(caAnswerWindowMin));
     Profile(key$, "WithholdNoGoReward", str$(caWithholdNoGoReward%));
+    Profile(key$, "EEGBaseName", EEGBaseName$);
     
 end;
 
@@ -524,6 +681,8 @@ func MainDialog%()
     var trainingOptionsList$[nOpts%];
     var fixationOptionsList$[6];
     var tempAW;
+    var twoInts%[2];
+    
     
     
     trainingOptionsList$[0] := "Reward for lever";    '"Lever - Instant Reward - Release - Wait ITI";
@@ -541,6 +700,9 @@ func MainDialog%()
     fixationOptionsList$[4] := "Fixation:  Monitor Eye Position Only";
     
     GetMainDialogParameters();
+    'pack up two ints, we need the space
+    twoInts%[0] := caReturnForReward%;
+    twoInts%[1] := caStartTrial%;
     
 	DlgCreate("Attention timing", 25, 10);
 	DlgReal(caMainDlgAcquisitionTime%, "Acquisition time(s):", .01, 10);
@@ -562,24 +724,26 @@ func MainDialog%()
     DlgCheck(caMainDlgReturnForReward%, "Return for Reward",50);
     DlgInteger(caMainDlgStartTrial%, "Start Trial",1,caMaxTrl%);
     DlgReal(caMainDlgInitialDeadTime%, "Initial Dead Time (s): ", 0, 100);
-    DlgCheck(caMainDlgEEGSignals%, "Send EEG signals");
+    DlgCheck(caMainDlgRecordEEG%, "Record EEG");
+    DlgString(caMainDlgEEGBaseName%, "EEG Base Name + Path",60,""); 
     DlgReal(caMainDlgSaccadeAnswerWindow%, "Saccade Answer Duration (s): ", 0, 100);
     DlgCheck(caMainDlgWithholdNoGoReward%, "Withhold No-Go Reward");
     
     
-    caTextCallbackItemNumber% := DlgText("Text!",2,caMainDlgRequireFixation%+9,60);
-    DlgButton(2, "Use Above Input File", UseInputFile%,2,caMainDlgRequireFixation%+10);
-    DlgButton(3, "Select An Input File", OpenInputFile%,2,caMainDlgRequireFixation%+11);
-    DlgButton(4, "Fixation Point Dialog", FixationPointDialog%,2,caMainDlgRequireFixation%+12);
-    DlgButton(5, "Joystick Dialog", JoystickConfigDialog%,2,caMainDlgRequireFixation%+13);
+    
+    caTextCallbackItemNumber% := DlgText("Text!",2,caMainDlgRequireFixation%+10,60);
+    DlgButton(2, "Use Above Input File", UseInputFile%,2,caMainDlgRequireFixation%+11);
+    DlgButton(3, "Select An Input File", OpenInputFile%,2,caMainDlgRequireFixation%+12);
+    DlgButton(4, "Fixation Point Dialog", FixationPointDialog%,15,caMainDlgRequireFixation%+9);
+    DlgButton(5, "Joystick Dialog", JoystickConfigDialog%,40,caMainDlgRequireFixation%+9);
+    caTextCallbackItemNumber2% := DlgText("Text!",2,caMainDlgRequireFixation%+13,60);
+    DlgButton(6, "Use Above NIC Template File", UseTemplateFile%,2,caMainDlgRequireFixation%+14);
+    DlgButton(7, "Select A NIC Template File", OpenTemplateFile%,2,caMainDlgRequireFixation%+15);
     
     DlgAllow(0, 0, MainDialogChanged%);
     
-    'i% := DlgShow(caAcquisitionTime,caFixationTime,caInterTrialTime,caInterTrialTimeRand,caAbortWaitTime,caAbort2WaitTime,caFalseAlarmWaitTime,caFalseAlarmCheckWindow,caMissPenalty,caJoyRight,caTrainingOptions%,
-    '              caTrainingHoldTime,caFixAlternationTime,caRequireFixation%,caReturnForReward%,caStartTrial%);
-    
     i% := DlgShow(caAcquisitionTime,caFixationTime,caInterTrialTime,caInterTrialTimeRand,caAbortWaitTime,caAbort2WaitTime,caFalseAlarmWaitTime,caFalseAlarmCheckWindow,caMissPenalty,caTrainingOptions%,
-                  caTrainingHoldTime,caFixAlternationTime,caRequireFixation%,caAdditionalWindowRadius,caReturnForReward%,caStartTrial%,caInitialDeadTime,caEEGSignals%,caAnswerWindowMin,caWithholdNoGoReward%);
+                  caTrainingHoldTime,caFixAlternationTime,caRequireFixation%,caAdditionalWindowRadius,twoInts%[],caInitialDeadTime,caRecordEEG%,EEGBaseName$,caAnswerWindowMin,caWithholdNoGoReward%);
     
     if i% = 1 then        
         
@@ -589,7 +753,11 @@ func MainDialog%()
             message("Reducing window to be equal to shortest Abort Wait Time!");
             caFalseAlarmCheckWindow := tempAW;
         endif;
-
+        
+        'unpack two ints
+         caReturnForReward% := twoInts%[0];
+         caStartTrial% := twoInts%[1];
+        
         SaveMainDialogParameters();
         
         'Change value of caRequireFixation to -1 if it is 5 (monitor eye position only), because that's what the code expects.
@@ -656,6 +824,11 @@ func MainDialogChanged%(item%)
         DlgEnable(0,-3);  'disable loading input file
         DlgEnable(0,caTextCallbackItemNumber%);  'disable text display of control file
         DlgValue$(caTextCallbackItemNumber%,"Control File Not Applicable");
+        DlgEnable(0,caMainDlgRecordEEG%);  'disable EEG Signals
+        DlgValue$(caTextCallbackItemNumber2%,"Template File Not Applicable");
+        DlgEnable(0,-6);  'disable using current template file
+        DlgEnable(0,-7);  'disable loading template file
+        DlgEnable(0,caMainDlgEEGBaseName%);  'disable EEG base name
     case DlgValue(caMainDlgTrainingOptions%) = 1 then
         DlgEnable(0,caMainDlgAcquisitionTime%);  'disable acquisition time
         DlgEnable(0,caMainDlgHoldFixationTime%);  'disable hold fixation time
@@ -674,6 +847,11 @@ func MainDialogChanged%(item%)
         DlgEnable(0,-3);  'disable loading input file
         DlgEnable(0,caTextCallbackItemNumber%);  'disable text display of control file
         DlgValue$(caTextCallbackItemNumber%,"Control File Not Applicable");
+        DlgEnable(0,caMainDlgRecordEEG%);  'disable EEG Signals
+        DlgValue$(caTextCallbackItemNumber2%,"Template File Not Applicable");
+        DlgEnable(0,-6);  'disable using current template file
+        DlgEnable(0,-7);  'disable loading template file
+        DlgEnable(0,caMainDlgEEGBaseName%);  'disable EEG base name
     case DlgValue(caMainDlgTrainingOptions%) = 2 then
         if DlgValue(caMainDlgRequireFixation%) = 1 or DlgValue(caMainDlgRequireFixation%) = 2 or DlgValue(caMainDlgRequireFixation%) = 3 then
             DlgEnable(1,caMainDlgAcquisitionTime%);  'enable acquisition time
@@ -698,7 +876,25 @@ func MainDialogChanged%(item%)
         DlgEnable(0,caTextCallbackItemNumber%);  'disable text display of control file
         DlgValue$(caTextCallbackItemNumber%,"Control File Not Applicable");
         'note that the logic past training stage 3 (dlg value 2) hasn't been worked out yet because training details are not complete
-        'but at least here's the framework for the final training stages        
+        'but at least here's the framework for the final training stages    
+        DlgEnable(1,caMainDlgRecordEEG%);  'enable EEG Signals
+        if DlgValue(caMainDlgRecordEEG%) = 1 then
+            DlgValue$(caTextCallbackItemNumber2%,"Template File: " + templateFileName$);
+            DlgEnable(1,-6);  'enable using current template file
+            DlgEnable(1,-7);  'enable loading template file
+            DlgEnable(1,caMainDlgEEGBaseName%);  'enable EEG base name
+            'don't allow user to press "OK" unless an input AND template file has been opened...but only do this if we are in a state where a template file is necessary
+            if inputFileHandle% < 0 or templateFileHandle% < 0 then
+                DlgEnable(0,-1);  'disable "OK"
+            else
+                DlgEnable(1,-1);  'enable "OK"
+            endif;
+        else
+            DlgValue$(caTextCallbackItemNumber2%,"Template File Not Applicable");
+            DlgEnable(0,-6);  'disable using current template file
+            DlgEnable(0,-7);  'disable loading template file
+            DlgEnable(0,caMainDlgEEGBaseName%);  'disable EEG base name
+        endif;
         
     case DlgValue(caMainDlgTrainingOptions%) >= 3 then   'note that the logic here hasn't been fully worked out
         if DlgValue(caMainDlgRequireFixation%) = 1 or DlgValue(caMainDlgRequireFixation%) = 2 or DlgValue(caMainDlgRequireFixation%) = 3 then
@@ -733,6 +929,25 @@ func MainDialogChanged%(item%)
         DlgEnable(1,-3);  'enable loading input file
         DlgEnable(1,caTextCallbackItemNumber%);  'enable text display of control file
         DlgValue$(caTextCallbackItemNumber%,"Control File: " + specFileName$);
+        DlgEnable(1,caMainDlgRecordEEG%);  'enable EEG Signals 
+        if DlgValue(caMainDlgRecordEEG%) = 1 then
+            DlgValue$(caTextCallbackItemNumber2%,"Template File: " + templateFileName$);
+            DlgEnable(1,-6);  'enable using current template file
+            DlgEnable(1,-7);  'enable loading template file
+            DlgEnable(1,caMainDlgEEGBaseName%);  'enable EEG base name
+            'don't allow user to press "OK" unless an input AND template file has been opened...but only do this if we are in a state where a template file is necessary
+            if inputFileHandle% < 0 or templateFileHandle% < 0 then
+                DlgEnable(0,-1);  'disable "OK"
+            else
+                DlgEnable(1,-1);  'enable "OK"
+            endif;
+        else
+            DlgValue$(caTextCallbackItemNumber2%,"Template File Not Applicable");
+            DlgEnable(0,-6);  'disable using current template file
+            DlgEnable(0,-7);  'disable loading template file
+            DlgEnable(0,caMainDlgEEGBaseName%);  'disable EEG base name
+        endif;
+        
     endcase
     
     if DlgValue(caMainDlgRequireFixation%) = 3 or DlgValue(caMainDlgRequireFixation%) = 4 then
@@ -784,6 +999,45 @@ func OpenInputFile%()
     MainDialogChanged%(-12345);   'doesn't matter what we pass it, just need to run it   
     return 1;  'We'll just assume the user didn't cancel - we could in principle use a DialogChanged function to gate the OK button on the main dialog, but c'mon
 end;
+
+
+func UseTemplateFile%()
+    'We need to do this, otherwise a second click on the button will make the OK button go gray and force a cancel (because subsequent FileOpen commands return negative)
+    if caTemplateFileOpen% = 1 then 'if a template file is open, close it
+        View(templateFileHandle%);
+        FileClose();
+        caTemplateFileOpen% := 0;
+    endif;
+    templateFileHandle% := FileOpen(templateFileName$,8,0);  'open a text file (8) for reading only (0), could specify directory to start in
+    if templateFileHandle% >= 0 then
+        caTemplateFileOpen% := 1; 'keep track of fact that template file has been opened
+    else
+        message("Failed to open template file!")
+    endif
+    MainDialogChanged%(-12345);   'doesn't matter what we pass it, just need to run it   
+    return 1;  'We'll just assume the user didn't cancel - we could in principle use a DialogChanged function to gate the OK button on the main dialog, but c'mon
+end;
+
+
+func OpenTemplateFile%()
+    'We need to do this, otherwise a second click on the button will make the OK button go gray and force a cancel (because subsequent FileOpen commands return negative)
+    if caTemplateFileOpen% = 1 then 'if a template file is open, close it
+        View(templateFileHandle%);
+        FileClose();
+        caTemplateFileOpen% := 0;
+    endif;
+    templateFileHandle% := FileOpen("*",8,0,"Select New Template File");  'open a text file (8) for reading only (0), could specify directory to start in
+    if templateFileHandle% >= 0 then
+        caTemplateFileOpen% := 1;  'keep track of fact that template file has been opened
+        view(templateFileHandle%);  'get the filename, we'll pass that to the VSG, use for display on the dialog
+        templateFileName$ := FileName$();  'This is the full path and filename
+    else
+        message("Failed to open template file!")
+    endif
+    MainDialogChanged%(-12345);   'doesn't matter what we pass it, just need to run it   
+    return 1;  'We'll just assume the user didn't cancel - we could in principle use a DialogChanged function to gate the OK button on the main dialog, but c'mon
+end;
+
 
 
 
@@ -851,6 +1105,23 @@ proc CreateSampleConfiguration()
         ok%:=SampleWaveform(JoyChannel%, GetJoystickPort%(), 1000);
         SampleTitle$(JoyChannel%, "Joy");
     endif;
+    
+    
+    'Create channels for EEG integration with unic server and Nic
+    if caRecordEEG% = 1 then
+        SampleEvent(unicFileChannel%,unicFilePort%,2,3600); 'Unic file changed channel, level
+        SampleComment$(unicFileChannel%,"UnicFile");
+        SampleTitle$(unicFileChannel%,"UnicFile");
+        
+        SampleEvent(unicCommandSuccessChannel%,unicCommandSuccessPort%,2,3600); 'Unic command returned success channel, level
+        SampleComment$(unicCommandSuccessChannel%,"UnicSuccess");
+        SampleTitle$(unicCommandSuccessChannel%,"UnicSuccess");
+        
+        SampleEvent(unicStimulatingChannel%,unicStimulatingPort%,2,3600); 'EEG stimulation channel, level
+        SampleComment$(unicStimulatingChannel%,"EEGStimOn");
+        SampleTitle$(unicStimulatingChannel%,"EEGStimOn");
+    endif
+    
     
     
     
@@ -1160,7 +1431,7 @@ func Start%()
         ' 127.0.0.1. The port number is always 1234. 
         
         CommandLine$ := Opener$ + FixationArg$ + Extras$ + Stim$ + " -W " + specFileName$;  'Here we need the spec file name
-        if caEEGSignals% = 1 then
+        if caRecordEEG% = 1 then
             CommandLine$ += ",127.0.0.1:1234";
         endif
         
@@ -1211,6 +1482,26 @@ func Stop%()
     
     'Allow quit
     ToolbarEnable(7,1);
+    
+    
+    
+    
+    'Abort stimulation if it may still be running, or stop recording if it may be recording without a template
+    View(DataWindow%).NextTime(unicStimulatingChannel%, tLastTemplateTime, vTrigger);
+    if vTrigger = 0 then 'stimulation is still running!
+        unicSendAbortStimulation%();
+    else
+        if caEEGIsRecording% = 1 then
+            unicSendStopEEG%();
+        endif;
+    endif;
+
+    'Unload template, if it may still be loaded
+    if caTemplateIsLoaded% = 1 then
+        unicSendUnloadTemplate%();
+    endif;
+    
+    
     
 	' Tell stim app to shut down
 	SafeSampleKey("Q");
@@ -1326,6 +1617,7 @@ func IdleProcessing%()
     var tempanswer%;
     var temptext$;
     var nextStateImmed% := 1;
+    var tempReturn%;
     
     
     'The trick here is that sometimes sampling isn't caught up on all channels.  MaxTime() may return a lower
@@ -1385,25 +1677,188 @@ func IdleProcessing%()
             if tTrigger > tLastTrigger and vTrigger = 1 then
                 PrintLog("state stateVSGWaitConfirm: Got trailing edge of trigger\n");
                 tLastTrigger := tTrigger;
-                ChangeStateTo(stateInitialDeadTime%, tTrigger);
+                'once VSG has confirmed, initialize 
+                if caRecordEEG% = 1 then
+                    tempReturn% := unicInitialize%("d:\\work\\dev\\test.txt", "127.0.0.1:1235");  'location of file is hardcoded
+                    if tempReturn% = 1 then
+                        tempReturn% := unicRequestDummyPulse%();
+                        docase
+                        case tempReturn% = -1 then 'this would indicate that unicInitialize did not succeed, should not happen
+                            message("Coding error!  This should never happen!  Quitting!");  
+                            Quit%();
+                        case tempReturn% = -2 then
+                            message("Could not open command file!  Since command file just opened a few ms ago, this is weird.  Quitting!");
+                            Quit%();
+                        else 'success in requesting dummy pulse
+                            ChangeStateTo(stateUnicInitWait%, tTrigger);
+                        endcase
+                    else
+                        message("The Unic server did not successfully launch!  Quitting!");
+                        Quit%();
+                    endif;
+                else
+                    ChangeStateTo(stateInitialDeadTime%, tTrigger);
+                endif;
             endif;
+            
+            
+        case iState% = stateUnicInitWait% then
+            
+            ' Waiting for Unic to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
+            tTrigger := View(DataWindow%).NextTime(unicFileChannel%, tLastTrigger, vTrigger);
+            if tTrigger > tLastTrigger and vTrigger = 0 then
+                PrintLog("state stateUnicInitWait: Got leading edge of trigger\n");
+                tLastTrigger := tTrigger;
+                ChangeStateTo(stateUnicInitWaitConfirm%, tTrigger);
+            endif;
+            
+            
+        case iState% = stateUnicInitWaitConfirm% then
+            
+            ' Waiting for Unic to confirm it is ready. The downward side of the pulse is expected...
+            tTrigger := View(DataWindow%).NextTime(unicFileChannel%, tLastTrigger, vTrigger);
+            if tTrigger > tLastTrigger and vTrigger = 1 then
+                PrintLog("state stateUnicInitWaitConfirm: Got trailing edge of trigger\n");
+                tLastTrigger := tTrigger;
+                ChangeStateTo(stateUnicPreInitialDeadTime%, tTrigger);
+            endif;
+            
+            
+       case iState% = stateUnicPreInitialDeadTime% then
+            
+            ' By default, if we are doing EEG, we should start recording during the dead period
+            unicSendStartEEG%(EEGBaseName$,trialCount8bit1%,trialCount8bit2%); 'start recording
+            SampleText("Dead Time Recording: " + Str$(trialCount8bit1%) + "," + Str$(trialCount8bit2%),tNow);
+            Increment8bitTrialCount();
+            caEEGIsRecording% := 1;
+            CheckUnicChangeStateTo(stateInitialDeadTime%,tNow);  'check for recording start and move to dead time            
+    
             
             
         case iState% = stateInitialDeadTime% then
             'waiting through an initial dead period that Evan wants before the first stimulus
-            if tNow - tStateStart > caInitialDeadTime then
+            if tNow > caInitialDeadTime then  'was tNow - tStateStart, but dead time can easily go from start of recording, makes Unic Server check easier
                 if caRequireSaccadeResponse% = 1 then
                     'if we require a saccade response, skip the joystick centering step, joystick will not be used
-                    ChangeStateTo(stateStartTrial%, tNow);
+                    if caEEGIsRecording% = 1 then
+                        unicSendStopEEG%();
+                        caEEGIsRecording% := 0;
+                        CheckUnicChangeStateTo(stateStartTrial%,tNow);  'check for recording stop and move to start trial
+                    else
+                        ChangeStateTo(stateStartTrial%, tNow);
+                    endif;
                     nextStateImmed% := 1;
                     SampleText("Dead Time Over",tNow);
                 else
-                    ChangeStateTo(stateWaitForJoystickInCenter%, tNow);
+                    if caRecordEEG% = 1 then
+                        unicSendStopEEG%();
+                        CheckUnicChangeStateTo(stateCheckForTemplateAdvance%,tNow);  'check for recording stop and move to checking for template advance
+                    else
+                        ChangeStateTo(stateCheckForTemplateAdvance%, tNow);
+                    endif;
                     nextStateImmed% := 1;
                     SampleText("Dead Time Over",tNow);
                 endif;
             endif;
             
+
+            
+        case iState% = stateCheckForTemplateAdvance% then  'Check to see if it is time to start a template
+            
+            'check to see if we need to load/start a template, or start EEG, if recording EEG
+            if caRecordEEG% = 1 and tNow > tLastTemplateTime + tThisTemplateDuration then
+                
+                'if a template is currently loaded, check to make sure stimulation is stopped, then unload the template
+                docase
+                case caTemplateIsLoaded% = 1 then
+                    ChangeStateTo(stateUnloadTemplate%,tNow);
+                case caEEGIsRecording% = 1 then
+                    ChangeStateTo(stateStopEEGRecording%,tNow);
+                else
+                    ChangeStateTo(stateDetermineNextTemplate%,tNow);
+                endcase
+          
+            else 'if we don't need to mess with the template, just go straight to the next step
+                if caRequireSaccadeResponse% = 1 then
+                    ChangeStateTo(stateStartTrial%,tNow);  'which is start the trial, if saccade response
+                else
+                    ChangeStateTo(stateWaitForJoystickInCenter%, tNow);  'or center the joystick, if joystick response
+                endif;
+                nextStateImmed% := 1;  'go straight to it
+            endif;
+            
+                
+        case iState% = stateUnloadTemplate% then
+            ' Wait for Unic to confirm stop of stimulation. The downward side of the pulse is expected...
+            tTrigger := View(DataWindow%).NextTime(unicStimulatingChannel%, tLastTemplateTime, vTrigger);
+            if tTrigger > tLastTemplateTime and vTrigger = 1 then
+                PrintLog("state stateUnloadTemplate: Confirmed Stimulation is complete\n");
+                unicSendUnloadTemplate%();
+                CheckUnicChangeStateTo(stateStopEEGRecording%,tNow);  'check for template unload success and go to stop recording 
+                caTemplateIsLoaded% := 0;  'Note no template is loaded
+                nextStateImmed% := 1;  'come back ASAP
+            endif; 
+            
+            
+            
+        case iState% = stateStopEEGRecording% then
+            'if recording is curently ongoing, stop recording
+            if caEEGIsRecording% = 1 then
+                unicSendStopEEG%();
+                CheckUnicChangeStateTo(stateDetermineNextTemplate%,tNow);  'check for recording stop and figure out the next template
+                caEEGIsRecording% := 0;  'Note recording is stopped
+                nextStateImmed% := 1;  'come back ASAP
+            endif;
+            
+            
+        case iState% = stateDetermineNextTemplate% then
+            'caCurrTemplate% will start at 0, perfect for indexing, increment after this step
+            if caCurrTemplate% <= caNumberOfTemplates%-1 then 'if there is at least one more template
+                tThisTemplateDuration := caTemplateDur[caCurrTemplate%];
+                if caTemplateLoc$[caCurrTemplate%] = "gap" then
+                    ChangeStateTo(stateStartEEG%,tNow);  'do not load a template if we are using a gap
+                else
+                    ChangeStateTo(stateLoadTemplate%,tNow);  'load template
+                endif;   
+                nextStateImmed% := 1;  'go straight to it
+            else 'if we are out of new templates, skip ahead, the trials will continue according to Evan
+                if caRequireSaccadeResponse% = 1 then
+                    ChangeStateTo(stateStartTrial%,tNow);  'which is start the trial, if saccade response
+                else
+                    ChangeStateTo(stateWaitForJoystickInCenter%, tNow);  'or center the joystick, if joystick response
+                endif;
+                nextStateImmed% := 1;  'go straight to it
+                tThisTemplateDuration := 99999999;  'this will ensure future iterations go straight to the next trial
+            endif;            
+            
+            
+        case iState% = stateLoadTemplate% then
+            unicSendLoadTemplate%(caTemplateLoc$[caCurrTemplate%]);
+            caTemplateIsLoaded% := 1;
+            CheckUnicChangeStateTo(stateStartEEG%,tNow);  'check for template load
+            
+            
+
+        case iState% = stateStartEEG% then
+            if caTemplateIsLoaded% = 1 then
+                unicSendStartStimulation%(); 'start stimulation
+            else
+                unicSendStartEEG%(EEGBaseName$,trialCount8bit1%,trialCount8bit2%); 'start recording
+            endif;
+            if caRequireSaccadeResponse% = 1 then
+                tempState% := stateStartTrial%;  'next would be start the trial, if saccade response
+            else
+                tempState% := stateWaitForJoystickInCenter%;  'or center the joystick, if joystick response
+            endif;
+            CheckUnicChangeStateTo(tempState%,tNow);  'check for template load
+            if caTemplateIsLoaded% = 1 then
+                SampleText("Template (" + caTemplateLoc$[caCurrTemplate%] + ") Recording Begins: " + Str$(trialCount8bit1%) + "," + Str$(trialCount8bit2%),tLastTemplateTime);
+            else
+                SampleText("Gap Recording Begins: " + Str$(trialCount8bit1%) + "," + Str$(trialCount8bit2%),tLastTemplateTime);
+            endif;
+            Increment8bitTrialCount();  'increment the trial counter
+            caEEGIsRecording% := 1;  'note recording is started
+            caCurrTemplate% += 1;  'finally, increment the current template number
             
             
         case iState% = stateWaitForJoystickInCenter% then
@@ -1460,6 +1915,13 @@ func IdleProcessing%()
                 trialNotStarted% := 1;  'did not get to stateStartTrial before aborting, do not advance even if advancing on abort
                 joystickHasBeenCentered% := 1;  'presumably joystick has not gone right yet
             endif;
+            if tNow - tStateStart > caAcquisitionTime then  'simple abort on failure to move joystick to right
+                PrintLog("stateWaitForJoystickInRight: failed.\n");
+                SampleText("Failure to move joystick to right, trial aborted",tNow);
+                ChangeStateTo(stateAbort%, tNow);
+                trialNotStarted% := 1;  'did not get to stateStartTrial before aborting, do not advance even if advancing on abort
+                joystickHasBeenCentered% := 1;  'presumably joystick has not gone right yet
+            endif
             tempanswer% := Answer%(JoyChannel%,tNow);
             if tempanswer% = 3 then  'if joystick is in right
                 PrintLog("stateWaitForJoystickInRight: Joystick in right\n");
@@ -1566,7 +2028,6 @@ func IdleProcessing%()
             
             
         case iState% = stateStartTrial% then
-            
             ' Start trial. Put up fixation point.
             UpdateToolbarText();
             PrepareTrial();
@@ -2596,13 +3057,42 @@ func IdleProcessing%()
                 Stop%();
                 iStatus% := 0;
             else
-                if caRequireSaccadeResponse% = 1 then
-                    'if we require a saccade response, skip the joystick centering step, joystick will not be used
-                    ChangeStateTo(stateStartTrial%, tNow);
-                else
-                    ChangeStateTo(stateWaitForJoystickInCenter%, tNow);
-                endif;
+                ChangeStateTo(stateCheckForTemplateAdvance%, tNow);
             endif;
+            
+            
+            
+            
+            
+            
+        'These two states will allow us to do the "same" thing in multiple places.  There are plenty of instances of sending
+        'a Unic command - we can confirm the command with these states, and then change to StateNext% once finished.
+        'Please note that EVERY TIME before changing to stateUnicCommandWait you must set stateNext%, so making a new
+        'function (CheckUnicChangeStateTo) makes sense.
+            
+        case iState% = stateUnicCommandWait% then
+            
+            ' Waiting for Unic to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
+            tTrigger := View(DataWindow%).NextTime(unicCommandSuccessChannel%, tLastTrigger, vTrigger);
+            if tTrigger > tLastTrigger and vTrigger = 0 then
+                PrintLog("state stateUnicCommandWait: Got leading edge of trigger\n");
+                tLastTrigger := tTrigger;
+                ChangeStateTo(stateUnicCommandConfirm%, tTrigger);
+                nextStateImmed% := 1;
+            endif;
+            
+            
+        case iState% = stateUnicCommandConfirm% then
+            
+            ' Waiting for Unic to confirm it is ready. The downward side of the pulse is expected...
+            tTrigger := View(DataWindow%).NextTime(unicCommandSuccessChannel%, tLastTrigger, vTrigger);
+            if tTrigger > tLastTrigger and vTrigger = 1 then
+                PrintLog("state stateUnicCommandConfirm: Got trailing edge of trigger\n");
+                tLastTrigger := tTrigger;
+                tLastTemplateTime := tTrigger;
+                ChangeStateTo(stateNext%, tTrigger); 'Go to the next specified state
+                nextStateImmed% := 1;
+            endif;            
             
             
         else
@@ -2655,6 +3145,13 @@ end
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 proc ChangeStateTo(stateTo%, tStart)
 	iState% := stateTo%;
+	if tStart > 0 then tStateStart := tStart; endif;
+end;
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc CheckUnicChangeStateTo(stateTo%, tStart)
+    stateNext% := stateTo%;
+	iState% := stateUnicCommandWait%;
 	if tStart > 0 then tStateStart := tStart; endif;
 end;
 
@@ -3170,3 +3667,18 @@ proc UpdateOnScreenPositions()
     
 end
 
+
+'This function simply increments the 8 bit trial counters.  Note that bit2 is the first incremented, so that count goes
+'[0 0], [0 1], [0 2]...[0 255], [1 0], [1 1]...
+proc Increment8bitTrialCount()
+    trialCount8bit2% += 1;  'increment bit2
+    if trialCount8bit2% = 256 then  'if bit2 has exceeded the max
+        trialCount8bit2% := 0;  'flip bit2 to zero
+        trialCount8bit1% += 1;  'increment bit1
+        if trialCount8bit1% = 256 then  'if bit1 has exceeded the max, this really would be extreme barring a coding error
+            trialCount8bit1% := 0;  'flip bit1 to zero, because what else can you do?
+            'And give warning
+            message("The bit counter has flipped!\nEither you have run 65537 recordings or there is a coding error!\nContinuing!");
+        endif;
+    endif;
+end
