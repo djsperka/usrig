@@ -371,13 +371,14 @@ func IdleProcessing%()
 	if tNow-tLastUpdate > .005 then
 		View(XYWindow%).XYAddData(1,xEye,yEye);
 		tLastUpdate := tNow;
-        'if we're collecting a rivalry button, do it here
-        if tunButtonCollect% = 1 then
-            buttonError% := WhichButton%(tButtonStart,tNow,buttonStatus%,buttonTime);
-            if buttonError% = -1 then
-                FlushButton(tButtonStart,tNow,buttonStatus%,buttonTime);  'flush out all button events on error
-            endif;
-        endif;
+        'if we're collecting a rivalry button, get button status and time here
+        'OK, so the amazing thing is that for as complicated as this code is, the outputs ARE COMPLETELY UNUSED.  100%.  So until that changes, let's not go through the CPU time to analyze the button channel every 5 ms. -jj 9/22/16
+        'if tunButtonCollect% = 1 then
+        '    buttonError% := WhichButton%(tButtonStart,tNow,buttonStatus%,buttonTime);
+        '    if buttonError% = -1 then
+        '        FlushButton(tButtonStart,tNow,buttonStatus%,buttonTime);  'flush out all button events on error
+        '    endif;
+        'endif;
 	endif
 
 	docase 
@@ -1519,6 +1520,46 @@ proc CreateSampleConfiguration()
     var masterTxt$;
     var slaveTxt$;
     
+    
+    ''''''' TESTING ''''''''
+    
+'    if tunType$ = tunTypeGonzago$ then     
+'        'DoSampleAutoName(key$,"gz","gz",masterTxt$,slaveTxt$);
+'        
+'        'By definition, tuntype1 is contrast (on the core)  
+'        GetRepeatedParameterProgression%(tunGonzagoCoreContrastNSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunGonzagoMinContrast, tunGonzagoMaxContrast, 1, 0);
+'        tun1NValues% := 2*(tunGonzagoCoreContrastNSteps%+1);
+'        
+'        
+'        'By definition, tuntype2 is area (on the donut)
+'        GetRepeatedParameterProgression%(tunGonzagoDonutAreaNSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunGonzagoMinOuterDiameter, tunGonzagoMaxOuterDiameter, 1, 0);
+'        tun2NValues% := 2*(tunGonzagoDonutAreaNSteps%+1);
+'        
+'        
+'        tunNRepeats% := tunGonzagoNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics   
+'        tunNAdvances% := tun1NValues%*tun2NValues%-1;  'this gives the correct number of advances
+'        tunNValues% := tun1NValues%*tun2NValues%*tunGonzagoNRepeats%;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
+'        
+'        'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
+'        GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],tunGonzagoProgression%,tunGonzagoNRepeats%); 
+'        
+'        'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
+'        tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunGonzagoNRepeats%, tun1Values[], tun1ValuesIndices%[]);
+'        tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunGonzagoNRepeats%, tun2Values[], tun2ValuesIndices%[]);
+'        
+'        printlog("Core values are: %s\n",tun1ValuesStringified$);
+'        printlog("Donut values are: %s\n",tun2ValuesStringified$);
+'        halt;
+'    endif
+    
+    ''''''' TESTING ''''''''
+    
+    
+    
+    
+    
+    
+    
     docase
     case UseTwo1401s% = 1 and UsePlexon% = 1 then
         masterTxt$ := "MICRO";
@@ -2010,6 +2051,32 @@ proc CreateSampleConfiguration()
         
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);  
         
+        
+    case tunType$ = tunTypeGonzago$ then     
+        DoSampleAutoName(key$,"gz","gz",masterTxt$,slaveTxt$);
+        
+        'By definition, tuntype1 is contrast (on the core)  
+        GetRepeatedParameterProgression%(tunGonzagoCoreContrastNSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunGonzagoMinContrast, tunGonzagoMaxContrast, 1, 0);
+        tun1NValues% := 2*(tunGonzagoCoreContrastNSteps%+1);  'By mutiplying the NValues by 2, we trick GridStimuli into gridding out the zeros that fill the empty parts of tun1Values[]
+
+        
+        'By definition, tuntype2 is area (on the donut)
+        GetRepeatedParameterProgression%(tunGonzagoDonutAreaNSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunGonzagoMinOuterDiameter, tunGonzagoMaxOuterDiameter, 1, 0);
+        tun2NValues% := 2*(tunGonzagoDonutAreaNSteps%+1);   'By mutiplying the NValues by 2, we trick GridStimuli into gridding out the zeros that fill the empty parts of tun2Values[]
+
+        
+        tunNRepeats% := tunGonzagoNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics   
+        tunNAdvances% := tun1NValues%*tun2NValues%-1;  'this gives the correct number of advances
+        tunNValues% := tun1NValues%*tun2NValues%*tunGonzagoNRepeats%;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
+        
+        'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
+        GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],tunGonzagoProgression%,tunGonzagoNRepeats%); 
+        
+        'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
+        tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunGonzagoNRepeats%, tun1Values[], tun1ValuesIndices%[]);
+        tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunGonzagoNRepeats%, tun2Values[], tun2ValuesIndices%[]);
+        
+        
     case tunType$ = tunTypeDSS$ then
         DoSampleAutoName(key$,"dss","dss",masterTxt$,slaveTxt$);
         
@@ -2108,7 +2175,8 @@ proc CreateSampleConfiguration()
 '        SampleComment$(ButtonChannel%,"Raw Button");
 '        SampleTitle$(ButtonChannel%,"Raw Button");
         SampleWaveform(ButtonChannel%, ButtonPort%, 1000);
-        SampleTitle$(XChannel%,"V");
+        'SampleTitle$(XChannel%,"V");   '??? WTF ???  Would have been overwritten by later command setting up eye channels anyway -jj 9/22/16
+        SampleTitle$(ButtonChannel%,"Button");  'We ought to title the button channel something, right? -jj 9/22/16
     endif;    
     
     
@@ -2700,11 +2768,21 @@ proc WriteParameterFile()
 			Print("Values: " + tunValuesStringified$ + "\n");
             Print("\n"); 
         
-        case tunType$ = tunTypeDanish$ then
+        case tunType$ = tunTypeDSS$ then
 
 			Print("Type:                  : DSS\n");
 			Print("#Trials,#Flashes,#Blanks,#FlashesPerReward: %d,%d,%d,%d\n", tunDSSNTrials%, tunDSSNPeriods%, tunDSSNBlanks%, tunDSSNFlashesPerReward%);
             Print("\n");        
+        
+        
+        case tunType$ = tunTypeGonzago$ then
+        
+            Print("Type:                  : Gonzago\n");
+			Print("Core Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunGonzagoMinContrast, tunGonzagoMaxContrast, tunGonzagoCoreContrastNSteps%, tunGonzagoNRepeats%);
+            Print("Core Values: " + tun2ValuesStringified$ + "\n");
+            Print("Donut Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunGonzagoMinOuterDiameter, tunGonzagoMaxOuterDiameter, tunGonzagoDonutAreaNSteps%, tunGonzagoNRepeats%);
+            Print("Donut Values: " + tun1ValuesStringified$ + "\n");
+            Print("\n");
         
 		else
 
@@ -3311,6 +3389,19 @@ func Start%()
         if tunDoRivalry% = 0 then
             MGrat$ := " -s ";  'change this back if we are not doing rivalry...the logic to get this to go is a bit ugly, but...
         endif;
+        
+        
+    case tunType$ = tunTypeGonzago$ then
+        'set this up like BoxODonuts
+        TunCurveSArg$ := " -" + TunType1$ + " ";
+        TunCurveS2Arg$ := " -" + TunType2$ + " ";
+        SValues$ := tun1ValuesStringified$;
+        S2Values$ := tun2ValuesStringified$;
+        
+        'we kill this, and just use the "slave" (even though this is not rivalry
+        MGrat$ := " -s ";  'Change master grating variable to -g because it doesn't change
+        TunCurveMArg$ := "";  'clear the tuning curve argument
+        MValues$ := "";  'clear the tuning curve values
         
         
     case tunType$ = tunTypeCRG$ then
