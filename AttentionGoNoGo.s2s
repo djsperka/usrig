@@ -737,7 +737,7 @@ func AttentionScriptDialog%()
 	DlgReal(9, "", 0, 10, 56, 3);  DlgText("Max dContrast (oct)",37,3);
 	DlgReal(10, "", 0, 10, 56, 4);  DlgText("Min dContrast (oct)",37,4);
     DlgInteger(11, "", 1, 10, 56, 5);  DlgText("N contrast levels",37,5);
-    DlgReal(attdlgAnsWindowRadius%, "", 0, 10, 56, 6);  DlgText("Ans. window rad. (deg)",37,6);
+    DlgReal(attdlgAnsWindowRadius%, "", -1, 10, 56, 6);  DlgText("Ans. window rad. (deg)",37,6);
 	DlgCheck(attdlgTrainingContrastCheck%, "Training Contrast", 37, 7);
 	DlgInteger(attdlgTrainingContrastPct%, "", 0, 100, 56, 8);  DlgText("Training Contrast(%)",37,8);
     DlgCheck(attdlgOnlyOneCatch%, "Use only one catch value", 37,9);
@@ -993,7 +993,7 @@ func AttentionScriptDialogChanged%(item%)
         DlgEnable(attOnlyOneCatch%, attdlgDoUncatch%);
         DlgEnable(attdlgUseCueCircles%, attdlgCueCircleExtraRadius%);
         DlgEnable(DlgValue(attdlgUseLowReward%), attdlgLowReward%);
-        DlgEnable(0,attdlgAnsWindowRadius%);  'Turn off answer window radius, it is currently unused
+        'DlgEnable(0,attdlgAnsWindowRadius%);  'Turn off answer window radius, it is currently unused, OK, now it is used
         DlgEnable(DlgValue(attdlgUseFlashers%),-4);
 '        DlgEnable(attLollipopCheck%, attdlgCircleDiameterDiff%);
 '        DlgEnable(attLollipopCheck%, attdlgCueLinePct%);
@@ -2797,6 +2797,20 @@ proc InitializeWindows()
         dist4H := mainH;
     endif;
     
+    'And finally, override answer window size if specified answer window is positive
+    if attAnswerPointWindowRadius <= 0 then
+        mainW := attAnswerPointWindowRadius;
+        mainH := attAnswerPointWindowRadius;
+        dist1W := attAnswerPointWindowRadius;
+        dist1H := attAnswerPointWindowRadius;
+        dist2W := attAnswerPointWindowRadius;
+        dist2H := attAnswerPointWindowRadius;
+        dist3W := attAnswerPointWindowRadius;
+        dist3H := attAnswerPointWindowRadius;
+        dist4W := attAnswerPointWindowRadius;
+        dist4H := attAnswerPointWindowRadius;
+    endif;
+    
     
     'Create new channels in the XY view to display the answer windows
     'reuse FixationX, FixationY
@@ -4292,7 +4306,11 @@ proc WriteParameterFile()
     Print("Max contrast change   : %f\n", attMaxContChange);
     Print("Min contrast change   : %f\n", attMinContChange);
     Print("N Contrast levels   : %d\n", attNContLevels%);
-    'Print("Answer point window radius   : %f\n", attAnswerPointWindowRadius);  'currently not used
+    if attAnswerPointWindowRadius > 0 then
+        Print("Answer point window radius   : %f\n", attAnswerPointWindowRadius);  
+    else
+        Print("Answer point window radius   : Matches Stimulus\n");  
+    endif;
     Print("Use Training Contrast?   : %d\n", attTrainingContrastCheck%);
     Print("Training contrast   : %d\n", attTrainingContrastPct%);
     Print("Set phase at contrast change?   : %d\n", attPhaseCheck%);
