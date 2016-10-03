@@ -89,6 +89,10 @@ var tunContrastMaxContrast;		' max contrast
 var tunContrastProgression%;
 var tunContrastUseFile%;
 var tunContrastTuningFile$;
+var tunContrastDualScreenCombo%;
+var tunContrastDualScreenComboRegistry%;  'we are saving a slightly different value in the registry - we need to disable this if not allowed, but we'd like to save the allowed value
+
+var tempDualValue%;  'This is the value of tunDualTuningType, but gathered from the dialog BEFORE the dialog is closed, used for setting DlgAllow only for the Contrast dialog (for now)
 
 ' Spatial next
 var tunSpatialNSteps%;			' # steps in spatial freq tuning curve
@@ -422,6 +426,7 @@ proc GetTuningCurveContrastParameters()
     tunContrastProgression% := GetIntRegistryValue%(key$, "Progression", tunContrastProgression%);
     tunContrastUseFile% := GetIntRegistryValue%(key$, "UseFile", tunContrastUseFile%);
     tunContrastTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunContrastTuningFile$);
+    tunContrastDualScreenComboRegistry% := GetIntRegistryValue%(key$, "DualScreenCombo", tunContrastDualScreenComboRegistry%);
 end;
 
 proc SaveTuningCurveContrastParameters()
@@ -434,6 +439,7 @@ proc SaveTuningCurveContrastParameters()
     SetIntRegistryValue(key$, "Progression", tunContrastProgression%);
     SetIntRegistryValue(key$, "UseFile", tunContrastUseFile%);
     SetStringRegistryValue(key$, "TuningFile", tunContrastTuningFile$);
+    SetIntRegistryValue(key$, "DualScreenCombo", tunContrastDualScreenComboRegistry%);
 end;
 
 proc GetTuningCurveSpatialParameters()
@@ -985,7 +991,23 @@ end;
 func TuningCurveContrastDialog%()
 	var iReturn% := 0;
 	var i%;
-	GetTuningCurveContrastParameters();
+    var hmm1%;
+    var hmm2%;
+    
+    GetTuningCurveContrastParameters();    
+    
+    'This determines whether the dual screen combo tuning controls are allowed 
+    hmm1% := DlgValue(11);
+    hmm2% := DlgValue(12);
+    if hmm1% = 1 and hmm2% = 0 then
+        tempDualValue% := 1;
+        tunContrastDualScreenCombo% := tunContrastDualScreenComboRegistry%;  'if it's allowed, set it to the registry value
+    else
+        tempDualValue% := 0;
+        tunContrastDualScreenCombo% := 0;  'Also, if it's not allowed, set it to 0
+    endif;
+    
+	
 	DlgCreate("Contrast Tuning Curve Parameters");
 	DlgInteger(1, "Number of Steps", 1, 100);
 	'DlgInteger(2, "Number of Repeats", 1, 10);
@@ -994,6 +1016,7 @@ func TuningCurveContrastDialog%()
 	'DlgCheck(5, "Random Progression");
     DlgCheck(6, "Use File For Tuning Values");
     DlgString(7,40,255,"",3);  'for visual confirmation of selected seq file
+    DlgCheck(8, "Do Dual-Screen Combo Tuning",2,9);
     DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
     if tunBoxODonutsCurrentCurve% = 0 then
         DlgInteger(2, "Number of Repeats", 1, 1000);
@@ -1002,9 +1025,9 @@ func TuningCurveContrastDialog%()
         DlgInteger(2, "----------------", 1, 1);
         DlgCheck(5, "----------------");
     endif;
-    DlgAllow(0xffff, 0, TuningCurveGenericDialogChanged%);
+    DlgAllow(0xffff, 0, TuningCurveContrastDialogChanged%);
 
-	i% := DlgShow(tunContrastNSteps%, tunContrastNRepeats%, tunContrastMinContrast, tunContrastMaxContrast, tunContrastProgression%, tunContrastUseFile%, tunContrastTuningFile$);
+	i% := DlgShow(tunContrastNSteps%, tunContrastNRepeats%, tunContrastMinContrast, tunContrastMaxContrast, tunContrastProgression%, tunContrastUseFile%, tunContrastTuningFile$, tunContrastDualScreenCombo%);
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
     ' djs 2/4/2011
@@ -1016,6 +1039,10 @@ func TuningCurveContrastDialog%()
     ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
     ' before things proceed. 
 	if i% = 1 then
+        if tempDualValue% = 1 then 'save value in registry if we are allowed to change it
+            tunContrastDualScreenComboRegistry% := tunContrastDualScreenCombo%;
+        endif;
+        
 		SaveTuningCurveContrastParameters();
 '		PrintLog("TuningCurveContrastDialog - user hit OK\n");
 		tunType$ := tunTypeContrast$;
@@ -1073,6 +1100,30 @@ func TuningCurveContrastDialog%()
 
 	return iReturn%;
 end;
+
+
+func TuningCurveContrastDialogChanged%(item%)
+    'There is an update to ONLY the contrast dialog that requires a special dialog changed function 
+    
+    
+    DlgEnable(tempDualValue%,8);  'enable/disable dual screen combo based on if it should be allowed
+
+    
+    if DlgValue(6) = 0 then  'If we are not using a tuning file
+        DlgEnable(0,7);  'disable the string box with the text file name (button still works)
+        DlgEnable(1,1);  'enable nSteps, min, and max
+        DlgEnable(1,3);
+        DlgEnable(1,4);
+    endif;
+    if DlgValue(6) = 1 then
+        DlgEnable(1,7);  'enable the string box with the text file name
+        DlgEnable(0,1);  'disable nSteps, min, and max
+        DlgEnable(0,3);
+        DlgEnable(0,4);
+    endif;
+    return 1;
+end
+
 
 func TuningCurveSpatialDialog%()
 	var iReturn% := 0;

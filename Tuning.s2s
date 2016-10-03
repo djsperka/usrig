@@ -1561,6 +1561,47 @@ proc CreateSampleConfiguration()
 '        halt;
 '    endif
     
+'    if tunType$ = tunTypeContrast$ then 
+'        tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+'        if tunContrastDualScreenCombo% = 0 then
+'            if tunUseFile% = 1 then
+'                'tunNAdvances% := tunFileLen%-1;
+'                'ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunContrastProgression%);
+'            else
+'                tunNAdvances% := tunContrastNSteps%;
+'                GetRepeatedParameterProgression%(tunContrastNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, tunContrastProgression%);
+'            endif;
+'            'tunNValues% := (tunContrastNSteps%+1)*tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+'            tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  'shorter, should work the same as above commented line, keeping old line for contrast only just in case...
+'            tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+'            printlog("Values are: %s\n",tunValuesStringified$);
+'            halt;
+'        else 'do the dual-screen combo version
+'            if tunUseFile% = 1 then
+'                'ShuffleAndExpand(tunFileLen%,1,tunValuesIndices%[],0);
+'                'tun1NValues% := tunFileLen%;
+'                'tun2NValues% := tunFileLen%;
+'            else
+'                GetRepeatedParameterProgression%(tunContrastNSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, 0);
+'                GetRepeatedParameterProgression%(tunContrastNSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, 0);
+'                tun1NValues% := (tunContrastNSteps%+1); 
+'                tun2NValues% := (tunContrastNSteps%+1); 
+'            endif;
+'            tunNAdvances% := tun1NValues%*tun2NValues%-1;  'this gives the correct number of advances
+'            tunNValues% := tun1NValues%*tun2NValues%*tunNRepeats%;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
+'            'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
+'            GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],tunContrastProgression%,tunContrastNRepeats%); 
+'            'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
+'            tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunContrastNRepeats%, tun1Values[], tun1ValuesIndices%[]);
+'            tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunContrastNRepeats%, tun2Values[], tun2ValuesIndices%[]);  
+'            printlog("Master values are: %s\n",tun1ValuesStringified$);
+'            printlog("Slave values are: %s\n",tun2ValuesStringified$);
+'            halt;
+'        endif;   
+'    endif;
+    
+    
+    
     ''''''' TESTING ''''''''
     
     
@@ -1665,16 +1706,40 @@ proc CreateSampleConfiguration()
         'tunNValues% := (tunContrastNSteps%+1)*tunContrastNRepeats%;
         'tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
         tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        if tunUseFile% = 1 then
-            tunNAdvances% := tunFileLen%-1;
-            ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunContrastProgression%);
-        else
-            tunNAdvances% := tunContrastNSteps%;
-            GetRepeatedParameterProgression%(tunContrastNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, tunContrastProgression%);
+        if tunContrastDualScreenCombo% = 0 then
+            if tunUseFile% = 1 then
+                tunNAdvances% := tunFileLen%-1;
+                ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunContrastProgression%);
+            else
+                tunNAdvances% := tunContrastNSteps%;
+                GetRepeatedParameterProgression%(tunContrastNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, tunContrastProgression%);
+            endif;
+            'tunNValues% := (tunContrastNSteps%+1)*tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+            tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  'shorter, should work the same as above commented line, keeping old line for contrast only just in case...
+            tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+        else 'do the dual-screen combo version
+            if tunUseFile% = 1 then
+                ShuffleAndExpand(tunFileLen%,1,tunValuesIndices%[],0);
+                tun1NValues% := tunFileLen%;
+                tun2NValues% := tunFileLen%;
+            else
+                GetRepeatedParameterProgression%(tunContrastNSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, 0);
+                GetRepeatedParameterProgression%(tunContrastNSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, 0);
+                tun1NValues% := (tunContrastNSteps%+1); 
+                tun2NValues% := (tunContrastNSteps%+1); 
+            endif;
+            tunNAdvances% := tun1NValues%*tun2NValues%-1;  'this gives the correct number of advances
+            tunNValues% := tun1NValues%*tun2NValues%*tunNRepeats%;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
+            'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
+            GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],tunContrastProgression%,tunContrastNRepeats%); 
+            'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
+            tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunContrastNRepeats%, tun1Values[], tun1ValuesIndices%[]);
+            tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunContrastNRepeats%, tun2Values[], tun2ValuesIndices%[]);  
         endif;
-        'tunNValues% := (tunContrastNSteps%+1)*tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  'shorter, should work the same as above commented line, keeping old line for contrast only just in case...
-        tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+        
+         
+        
+        
     case tunType$ = tunTypeOrientation$ then 
         DoSampleAutoName(key$,"ori","ori",masterTxt$,slaveTxt$);
         
@@ -3203,13 +3268,21 @@ func Start%()
     case tunType$ = tunTypeContrast$ then
         TunCurveMArg$ := " -C ";
         
-        if tunDoRivalry% = 1 then
-            TunCurveSArg$ := " -C ";  'Set slave to run same tuning curve...
-            SValues$ := MValues$;  '...with same values as Master tuning curve
-            'based on tunDualTuningType%, allows dual to produce tuning curve on both, only master, or only slave
-            ClearMasterOrSlaveIfNecessary(SGrat$,SGratParam$,SlaveIndicator$,TunCurveSArg$,SValues$,MGrat$,MGratParam$,MasterIndicator$,TunCurveMArg$,MValues$);  
+        if tunContrastDualScreenCombo% = 0 then
+            if tunDoRivalry% = 1 then
+                TunCurveSArg$ := " -C ";  'Set slave to run same tuning curve...
+                SValues$ := MValues$;  '...with same values as Master tuning curve
+                'based on tunDualTuningType%, allows dual to produce tuning curve on both, only master, or only slave
+                ClearMasterOrSlaveIfNecessary(SGrat$,SGratParam$,SlaveIndicator$,TunCurveSArg$,SValues$,MGrat$,MGratParam$,MasterIndicator$,TunCurveMArg$,MValues$);  
+            endif;
+        else
+            TunCurveSArg$ := " -C ";
+            MValues$ := tun1ValuesStringified$;
+            SValues$ := tun2ValuesStringified$;
         endif;
-
+        
+   
+        
     case tunType$ = tunTypeOrientation$ then
         TunCurveMArg$ := " -O ";
 
