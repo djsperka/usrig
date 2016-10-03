@@ -573,7 +573,7 @@ func IdleProcessing%()
         ' Start trial. Put up stimulus.
         LogStatus("StartTrial", "Request stimulus");
         docase
-        case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ then
+        case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ or (tunType$ = tunTypeContrast$ and tunContrastDualScreenCombo% = 1) then
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
             SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
         else
@@ -2572,7 +2572,12 @@ proc WriteParameterFile()
 
 			Print("Type:                  : Contrast\n");
 			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunContrastMinContrast, tunContrastMaxContrast, tunContrastNSteps%, tunContrastNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
+            if tunContrastDualScreenCombo% = 0 then
+                Print("Values: " + tunValuesStringified$ + "\n");
+            else
+                Print("Master Values: " + tun1ValuesStringified$ + "\n");
+                Print("Slave Values: " + tun2ValuesStringified$ + "\n");
+            endif;
 			Print("\n");
 
 
