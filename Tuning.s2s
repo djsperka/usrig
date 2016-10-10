@@ -1706,7 +1706,7 @@ proc CreateSampleConfiguration()
                 tun2FileLen%+=1;  'increment tuning file length
             endcase
         next;
-    endif
+    endif 
     
     
     'read tuning file for box'o'donuts curve 1, if one is specified
@@ -1780,9 +1780,9 @@ proc CreateSampleConfiguration()
             tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
         else 'do the dual-screen combo version
             if tunUseFile% = 1 then
-                ShuffleAndExpand(tunFileLen%,1,tunValuesIndices%[],0);
-                tun1NValues% := tunFileLen%;
-                tun2NValues% := tunFileLen%;
+                'ShuffleAndExpand(tunFileLen%,1,tunValuesIndices%[],0);
+                tun1NValues% := tun1FileLen%;
+                tun2NValues% := tun2FileLen%;
             else
                 GetRepeatedParameterProgression%(tunContrastNSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, 0);
                 GetRepeatedParameterProgression%(tunContrastNSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, 0);
@@ -1796,9 +1796,7 @@ proc CreateSampleConfiguration()
             'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
             tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunContrastNRepeats%, tun1Values[], tun1ValuesIndices%[]);
             tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunContrastNRepeats%, tun2Values[], tun2ValuesIndices%[]);  
-        endif;
-        
-         
+        endif;        
         
         
     case tunType$ = tunTypeOrientation$ then 
