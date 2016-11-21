@@ -130,6 +130,7 @@ const stateVSGWaitConfirm%:=11;		' waif for vsg to send ready signal #2
 const stateTrialCompleted%:=12;		' trial has been completed successfully
 const stateDone%:=13;
 const stateAbortOneIdleLoop% := 14;
+const stateVerifyBlank% := 15;
 var iState% := stateVSGWait%;	' present state
 
 var nTrialsStarted%:=0;
@@ -233,7 +234,12 @@ func IdleProcessing%()
 				tLastTrigger := tTrigger;
 				ChangeStateTo(stateInterTrialInterval%, tTrigger);
 				DrawStim(0);	' actually this draws the location of the fixpt.
-			endif
+            endif
+        
+        case iState% = stateVerifyBlank% then
+        
+            'here we are making sure that the condition that triggered stateWaitForBlank was NOT a false trigger from crosstalk
+            
 
 		case iState% = stateInterTrialInterval% then
 
