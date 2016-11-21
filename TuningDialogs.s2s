@@ -120,6 +120,9 @@ var tunAreaMaxDiam;		' max diameter
 var tunAreaProgression%;
 var tunAreaUseFile%;
 var tunAreaTuningFile$;
+var tunAreaDualScreenCombo%;
+var tunAreaDualScreenComboRegistry%;  'we are saving a slightly different value in the registry - we need to disable this if not allowed, but we'd like to save the allowed value
+
 
 ' X/XY Position next
 var tunXPosNSteps%;			' # steps in X position tuning curve
@@ -595,6 +598,7 @@ proc GetTuningCurveAreaParameters()
     tunAreaProgression% := GetIntRegistryValue%(key$, "Progression", tunAreaProgression%);
     tunAreaUseFile% := GetIntRegistryValue%(key$, "UseFile", tunAreaUseFile%);
     tunAreaTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunAreaTuningFile$);
+    tunAreaDualScreenComboRegistry% := GetIntRegistryValue%(key$, "DualScreenCombo", tunAreaDualScreenComboRegistry%);
     tunDonutOptimalIndex% := GetIntRegistryValue%(key$, "OptimalIndex", tunDonutOptimalIndex%);
     tunDonutProgression% := GetIntRegistryValue%(key$, "DonutProgression", tunDonutProgression%);
     tunDonutCoreOnSlave% := GetIntRegistryValue%(key$, "DonutCoreOnSlave", tunDonutCoreOnSlave%);
@@ -620,6 +624,7 @@ proc SaveTuningCurveAreaParameters()
     SetIntRegistryValue(key$, "Progression", tunAreaProgression%);
     SetIntRegistryValue(key$, "UseFile", tunAreaUseFile%);
     SetStringRegistryValue(key$, "TuningFile", tunAreaTuningFile$);
+    SetIntRegistryValue(key$, "DualScreenCombo", tunAreaDualScreenComboRegistry%);
     SetIntRegistryValue(key$, "OptimalIndex", tunDonutOptimalIndex%);
     SetIntRegistryValue(key$, "DonutProgression", tunDonutProgression%);
     SetIntRegistryValue(key$, "DonutCoreOnSlave", tunDonutCoreOnSlave%);
@@ -1313,7 +1318,23 @@ end;
 func TuningCurveAreaDialog%()
 	var iReturn% := 0;
 	var i%;
+    var hmm1%;
+    var hmm2%;
+    
 	GetTuningCurveAreaParameters();
+    
+    'This determines whether the dual screen combo tuning controls are allowed 
+    hmm1% := DlgValue(11);
+    hmm2% := DlgValue(12);
+    if hmm1% = 1 and hmm2% = 0 then
+        tempDualValue% := 1;
+        tunAreaDualScreenCombo% := tunAreaDualScreenComboRegistry%;  'if it's allowed, set it to the registry value
+    else
+        tempDualValue% := 0;
+        tunAreaDualScreenCombo% := 0;  'Also, if it's not allowed, set it to 0
+    endif;
+    
+    
 	DlgCreate("Area Tuning Curve Parameters");
 	DlgInteger(1, "Number of Steps", 1, 100);
 	'DlgInteger(2, "Number of Repeats", 1, 1000);
@@ -1322,6 +1343,7 @@ func TuningCurveAreaDialog%()
 	'DlgCheck(5, "Random Progression");
     DlgCheck(6, "Use File For Tuning Values");
     DlgString(7,40,255,"",3);  'for visual confirmation of selected seq file
+    DlgCheck(8, "Do Dual-Screen Combo Tuning",2,9);
     DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
     if tunBoxODonutsCurrentCurve% = 0 then
         DlgInteger(2, "Number of Repeats", 1, 1000);
@@ -1330,10 +1352,12 @@ func TuningCurveAreaDialog%()
         DlgInteger(2, "----------------", 1, 1);
         DlgCheck(5, "----------------");
     endif;
-    DlgAllow(0xffff, 0, TuningCurveGenericDialogChanged%);
+    DlgAllow(0xffff, 0, TuningCurveContrastDialogChanged%);  'Yes, that says CONTRAST.  I wrote the Contrast one special because
+                                                             'of the dual-screen combo tuning, and now area does the same.  The
+                                                             'dialog-changed functions are generic, so...
     
     
-	i% := DlgShow(tunAreaNSteps%, tunAreaNRepeats%, tunAreaMinDiam, tunAreaMaxDiam, tunAreaProgression%, tunAreaUseFile%, tunAreaTuningFile$);
+	i% := DlgShow(tunAreaNSteps%, tunAreaNRepeats%, tunAreaMinDiam, tunAreaMaxDiam, tunAreaProgression%, tunAreaUseFile%, tunAreaTuningFile$, tunAreaDualScreenCombo%);
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
     ' 
@@ -1347,6 +1371,10 @@ func TuningCurveAreaDialog%()
     ' before things proceed. 
     'tunMaximalDiam := tunAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
 	if i% = 1 then
+        if tempDualValue% = 1 then 'save value in registry if we are allowed to change it
+            tunAreaDualScreenComboRegistry% := tunAreaDualScreenCombo%;
+        endif;
+        
 		SaveTuningCurveAreaParameters();
 '		PrintLog("TuningCurveAreaDialog - user hit OK\n");
 		tunType$ := tunTypeArea$;
@@ -1404,6 +1432,8 @@ func TuningCurveAreaDialog%()
     
 	return iReturn%;
 end;
+
+
 
 
 func TuningCurveXPosDialog%()

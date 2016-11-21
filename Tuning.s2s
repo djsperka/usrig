@@ -577,7 +577,7 @@ func IdleProcessing%()
         ' Start trial. Put up stimulus.
         LogStatus("StartTrial", "Request stimulus");
         docase
-        case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ or (tunType$ = tunTypeContrast$ and tunContrastDualScreenCombo% = 1) then
+        case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ or (tunType$ = tunTypeContrast$ and tunContrastDualScreenCombo% = 1) or (tunType$ = tunTypeArea$ and tunAreaDualScreenCombo% = 1) then
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
             SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
         else
@@ -1677,17 +1677,22 @@ proc CreateSampleConfiguration()
         eof%:=1;
         readsetup(",","	 ","","","	");  'Standard read setup
         FileOpen(tunTuningFile$,8,0);  'open specified file
-        if tunContrastDualScreenCombo% = 0 then
-            while eof% > 0 do
-                eof% := read(tunValues[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
-                tunFileLen%+=1;  'increment tuning file length
-            wend
-        else
-            while eof% > 0 do
-                eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
-                tunFileLen%+=1;  'increment tuning file length
-            wend
-        endif;        
+'        if tunContrastDualScreenCombo% = 0 or tunAreaDualScreenCombo% = 0 then
+'            while eof% > 0 do
+'                eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
+'                tunFileLen%+=1;  'increment tuning file length
+'            wend
+'        else
+'            while eof% > 0 do
+'                eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
+'                tunFileLen%+=1;  'increment tuning file length
+'            wend
+'        endif;  
+        'The read function actually isn't any different in the two cases above
+        while eof% > 0 do
+            eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
+            tunFileLen%+=1;  'increment tuning file length
+        wend
         tunFileLen%-=1;  'decrement tuning file length because we increment when we find EOF.
         FileClose();  'close the file
         'Now deal out the values to tun1Values and tun2Values
@@ -1842,15 +1847,37 @@ proc CreateSampleConfiguration()
         DoSampleAutoName(key$,"area","are",masterTxt$,slaveTxt$);
         
         tunNRepeats% := tunAreaNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        if tunUseFile% = 1 then
-            tunNAdvances% := tunFileLen%-1;
-            ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunAreaProgression%);
-        else
-            tunNAdvances% := tunAreaNSteps%;
-            GetRepeatedParameterProgression%(tunAreaNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunAreaMinDiam, tunAreaMaxDiam, 1, tunAreaProgression%);
-        endif;
-        tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
-        tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+        if tunAreaDualScreenCombo% = 0 then
+            if tunUseFile% = 1 then
+                tunNAdvances% := tunFileLen%-1;
+                ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunAreaProgression%);
+            else
+                tunNAdvances% := tunAreaNSteps%;
+                GetRepeatedParameterProgression%(tunAreaNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunAreaMinDiam, tunAreaMaxDiam, 1, tunAreaProgression%);
+            endif;
+            'tunNValues% := (tunAreaNSteps%+1)*tunAreaNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+            tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  'shorter, should work the same as above commented line, keeping old line for contrast only just in case...
+            tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+        else 'do the dual-screen combo version
+            if tunUseFile% = 1 then
+                'ShuffleAndExpand(tunFileLen%,1,tunValuesIndices%[],0);
+                tun1NValues% := tun1FileLen%;
+                tun2NValues% := tun2FileLen%;
+            else
+                GetRepeatedParameterProgression%(tunAreaNSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunAreaMinDiam, tunAreaMaxDiam, 1, 0);
+                GetRepeatedParameterProgression%(tunAreaNSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunAreaMinDiam, tunAreaMaxDiam, 1, 0);
+                tun1NValues% := (tunAreaNSteps%+1); 
+                tun2NValues% := (tunAreaNSteps%+1); 
+            endif;
+            tunNAdvances% := tun1NValues%*tun2NValues%-1;  'this gives the correct number of advances
+            tunNValues% := tun1NValues%*tun2NValues%*tunAreaNRepeats%;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
+            'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
+            GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],tunAreaProgression%,tunAreaNRepeats%); 
+            'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
+            tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunAreaNRepeats%, tun1Values[], tun1ValuesIndices%[]);
+            tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunAreaNRepeats%, tun2Values[], tun2ValuesIndices%[]);  
+        endif;        
+        
     case tunType$ = tunTypeNullTest$ then 
         DoSampleAutoName(key$,"nulltest","nul",masterTxt$,slaveTxt$);
         
@@ -2665,7 +2692,12 @@ proc WriteParameterFile()
 
 			Print("Type:                  : Aperture Area\n");
 			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
+			if tunAreaDualScreenCombo% = 0 then
+                Print("Values: " + tunValuesStringified$ + "\n");
+            else
+                Print("Master Values: " + tun1ValuesStringified$ + "\n");
+                Print("Slave Values: " + tun2ValuesStringified$ + "\n");
+            endif;
             Print("\n");
         
         case tunType$ = tunTypeNullTest$ then
@@ -3379,13 +3411,21 @@ func Start%()
 
     case tunType$ = tunTypeArea$ then
         TunCurveMArg$ := " -A ";
-
-        if tunDoRivalry% = 1 then
-            TunCurveSArg$ :="  -A ";  'Set slave to run same tuning curve...
-            SValues$ := MValues$;  '...with same values as Master tuning curve
-            'based on tunDualTuningType%, allows dual to produce tuning curve on both, only master, or only slave
-            ClearMasterOrSlaveIfNecessary(SGrat$,SGratParam$,SlaveIndicator$,TunCurveSArg$,SValues$,MGrat$,MGratParam$,MasterIndicator$,TunCurveMArg$,MValues$);  
-        endif;
+        
+        
+        if tunAreaDualScreenCombo% = 0 then
+            if tunDoRivalry% = 1 then
+                TunCurveSArg$ := " -A ";  'Set slave to run same tuning curve...
+                SValues$ := MValues$;  '...with same values as Master tuning curve
+                'based on tunDualTuningType%, allows dual to produce tuning curve on both, only master, or only slave
+                ClearMasterOrSlaveIfNecessary(SGrat$,SGratParam$,SlaveIndicator$,TunCurveSArg$,SValues$,MGrat$,MGratParam$,MasterIndicator$,TunCurveMArg$,MValues$);  
+            endif;
+        else
+            TunCurveSArg$ := " -A ";
+            MValues$ := tun1ValuesStringified$;
+            SValues$ := tun2ValuesStringified$;
+        endif;        
+        
         
     case tunType$ = tunTypeXPos$ then
         TunCurveMArg$ := " -X ";
