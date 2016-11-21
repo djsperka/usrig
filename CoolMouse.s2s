@@ -128,7 +128,8 @@ const stateInterTrialInterval%:=9;	' time out after failed trial
 const stateVSGWait%:=10;		' wait for vsg to send ready signal #1
 const stateVSGWaitConfirm%:=11;		' waif for vsg to send ready signal #2
 const stateTrialCompleted%:=12;		' trial has been completed successfully
-const stateDone%:=13;	
+const stateDone%:=13;
+const stateAbortOneIdleLoop% := 14;
 var iState% := stateVSGWait%;	' present state
 
 var nTrialsStarted%:=0;
@@ -187,7 +188,7 @@ func IdleProcessing%()
 		case iState% = stateWaitForFixPtOn% then
 
 			tTrigger := NextTime(TriggerChannel%, tLast, vTrigger);
-			if tTrigger > tLast and vTrigger = 0 then
+			if tTrigger > tLast and vTrigger = 0 then 
 				' Fixation point is up
 				LogStatus("stateWaitForFixPtOn", "Fixpt is on");
 				tLastTrigger := tTrigger;
@@ -213,10 +214,15 @@ func IdleProcessing%()
 
 			' Signal "X" turns off fixpt and stimulus. The next state 'stateWaitForBlank' only checks for 
 			' fixpt off. 
-			LogStatus("stateAbort", "send f key.");
-			SafeSampleKey("f");
-			ChangeStateTo(stateWaitForBlank%, tNow);
-
+            LogStatus("stateAbort", "send f key.");
+			SafeSampleKey("f"); 'removed hja_edit
+            ChangeStateTo(stateWaitForBlank%, tNow);
+            'ChangeStateTo(stateAbortOneIdleLoop%, tNow);
+        
+'        case iState% = stateAbortOneIdleLoop% then  'this state is an attempt to "fast-forward" tLast past any possible crosstalk
+'            tLast := tNow;
+'            ChangeStateTo(stateWaitForBlank%, tNow);
+        
 		case iState% = stateWaitForBlank% then
 
 			' we just wait for fix point off signal in this case. 
