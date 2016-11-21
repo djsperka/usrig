@@ -124,13 +124,19 @@ var expectedAnswer%;            'keeps track of expected answer, saves a bunch o
 'variables read in from input file
 var caCueOn[caMaxTrl%];  'time of cue onset
 var caCueOff[caMaxTrl%];  'time of cue offset
-var caStimOn[caMaxTrl%];  'time of stimulus onset
-var caContrastChange[caMaxTrl%];  'time of contrast change
+var caEpoch1[caMaxTrl%];  'time of stimulus onset
+var caEpoch2[caMaxTrl%];  'time of contrast change
+var caEpoch3[caMaxTrl%];  'time of epoch 3
+var caEpoch4[caMaxTrl%];  'time of epoch 4
 var caStimOff[caMaxTrl%];  'time of stimulus offset
 var caContrast1Init[caMaxTrl%];  'initial contrast for stimulus 1
 var caContrast1Final[caMaxTrl%];  'contrast of stimulus 1 after contrast change
+var caContrast1Epoch3[caMaxTrl%];  'contrast of stimulus 1 in epoch 3
+var caContrast1Epoch4[caMaxTrl%];  'contrast of stimulus 1 in epoch 4
 var caContrast2Init[caMaxTrl%];  'initial contrast of stimulus 2
 var caContrast2Final[caMaxTrl%];  'contrast of stimulus 2 after contrast change
+var caContrast2Epoch3[caMaxTrl%];  'contrast of stimulus 2 in epoch 3
+var caContrast2Epoch4[caMaxTrl%];  'contrast of stimulus 2 in epoch 4
 var caAttendLoc%[caMaxTrl%];  'direction of attention (1/2 for target/distractor1)
 var caAlternateGoTime[caMaxTrl%];  'time at which a response changes from an interrupt to a response, if different than the time of the contrast change
 'note that if AttendLoc and CorrectResponse are the same, the trial is valid.  (Barring possible 0/other entry in Response, but not accounting for that until it happens)
@@ -164,8 +170,9 @@ var caIsOvershot$;
 ' Overall script control vars
 var Pause% := 0;
 var advanceOnAbort% := 1;  'Evan now wants to advance on aborts.  Making this a variable (not in dialog) for easy switching back if necessary.
-var trialNotStarted%;
+var trialNotStarted%;  'This could get sticky.  Right now, this defaults to 0 (assume trial started) and is set to one for specific aborts prior to StateStartTrial.  Perhaps could default to 1, then set to 0 in StateStartTrial.
 var rewardWithheld% := 0;
+var tTrialStart;
 'var caAudibleElectrode% := 0;  'looks like this will not work
 
 ' Channel numbers and handles
@@ -354,7 +361,7 @@ if caTrainingOptions% > 2 then
         
     else 'read the input file
         View(inputFileHandle%);
-
+        
         readsetup(",","	 ","","","	"); 'Hard separator is a comma
         'Soft separators are spaces and tabs
         'No delimiter is set for the start of a string
@@ -362,29 +369,74 @@ if caTrainingOptions% > 2 then
         'The hard separator character for strings that have no start delimiter is set to a tab
         'This combo will gracefully deal with multiple tabs anywhere and any number
         'of leading (but NOT trailing) spaces
+        
+        var testRead$[13];
+        var twelveVals[12];
+        var inputStyle%;
+        'read(testRead$[0],testRead$[1],testRead$[2],testRead$[3],testRead$[4],testRead$[5],testRead$[6],
+        '     testRead$[7],testRead$[8],testRead$[9],testRead$[10],testRead$[11],testRead$[12]);
+        read(testRead$[0:13]);  'read all thirteen in one fell swoop
+        if testRead$[12] = "" or testRead$[12] = "|" then
+            inputStyle% := 0;  'input is original 2-epoch version (12 vars pre-pipe)
+        else
+            inputStyle% := 1;  'input is new 4-epoch version (18 vars pre-pipe) 
+            if caTrainingOptions% = 5 then
+                message("The 4-epoch input file is currently not compatible with a forced-choice experiment!");
+                halt;
+            endif;
+        endif;
+        FileClose(); 'close the file, we need to start reading again from the top
+        
+        inputFileHandle% := FileOpen(specFileName$,8,0); 're-open file
+        View(inputFileHandle%);
+        readsetup(",","	 ","","","	");
+        
         var eof% := 1;
         var j%;
-        while eof% > 0 do  'the nice thing about READ is that when we tack junk onto the end of the line, we don't have to rewrite this code, anything left over on the line is just skipped, second call to read starts at beginning of second line 
-            eof% := read(caCueOn[j%],caCueOff[j%],caStimOn[j%],caContrastChange[j%],caStimOff[j%],
-            caContrast1Init[j%],caContrast1Final[j%],caContrast2Init[j%],caContrast2Final[j%],
-            caAttendLoc%[j%],caAlternateGoTime[j%],caCueFile$[j%],b1$[j%],caFileFixParams$[j%],b2$[j%],caFileGrating1Params$[j%],b3$[j%],caFileGrating2Params$[j%]);  
-            j%+=1;  'increment count
-            'printlog("line is %d and caCueFile is %s\n",j%-1,caCueFile$[j%-1]);
-        wend
-        'We still need to use caAttendLoc and caCorrectResponse
+        
+        if inputStyle% = 0 then 'do the 2-epoch read
+            while eof% > 0 do  'the nice thing about READ is that when we tack junk onto the end of the line, we don't have to rewrite this code, anything left over on the line is just skipped, second call to read starts at beginning of second line 
+                eof% := read(caCueOn[j%],caCueOff[j%],caEpoch1[j%],caEpoch2[j%],caStimOff[j%],
+                caContrast1Init[j%],caContrast1Final[j%],caContrast2Init[j%],caContrast2Final[j%],
+                caAttendLoc%[j%],caAlternateGoTime[j%],caCueFile$[j%],b1$[j%],caFileFixParams$[j%],b2$[j%],caFileGrating1Params$[j%],b3$[j%],caFileGrating2Params$[j%]);  
+                j%+=1;  'increment count
+                'printlog("line is %d and caAttendLoc is %d\n",j%-1,caAttendLoc%[j%-1]);
+            wend
+        else 'do the 4-epoch read
+            while eof% > 0 do  'the nice thing about READ is that when we tack junk onto the end of the line, we don't have to rewrite this code, anything left over on the line is just skipped, second call to read starts at beginning of second line
+                'Can't use this because there are more than 20 inputs...                
+'                eof% := read(caCueOn[j%],caCueOff[j%],caEpoch1[j%],caEpoch2[j%],caEpoch3[j%],caEpoch4[j%],caStimOff[j%],
+'                caContrast1Init[j%],caContrast1Final[j%],caContrast1Epoch3[j%],caContrast1Epoch4[j%],
+'                caContrast2Init[j%],caContrast2Final[j%],caContrast2Epoch3[j%],caContrast2Epoch4[j%],
+'                caAttendLoc%[j%],caAlternateGoTime[j%],caCueFile$[j%],b1$[j%],caFileFixParams$[j%],b2$[j%],caFileGrating1Params$[j%],b3$[j%],caFileGrating2Params$[j%]); 
+                
+                'So read some of the values into an array
+                eof% := read(twelveVals[0:12],caContrast2Final[j%],caContrast2Epoch3[j%],caContrast2Epoch4[j%],
+                caAttendLoc%[j%],caAlternateGoTime[j%],caCueFile$[j%],b1$[j%],caFileFixParams$[j%],b2$[j%],caFileGrating1Params$[j%],b3$[j%],caFileGrating2Params$[j%]); 
+                
+                'and then deal that array out
+                caCueOn[j%] := twelveVals[0];
+                caCueOff[j%] := twelveVals[1];
+                caEpoch1[j%] := twelveVals[2];
+                caEpoch2[j%] := twelveVals[3];
+                caEpoch3[j%] := twelveVals[4];
+                caEpoch4[j%] := twelveVals[5];
+                caStimOff[j%] := twelveVals[6];
+                caContrast1Init[j%] := twelveVals[7];
+                caContrast1Final[j%] := twelveVals[8];
+                caContrast1Epoch3[j%] := twelveVals[9];
+                caContrast1Epoch4[j%] := twelveVals[10];
+                caContrast2Init[j%] := twelveVals[11];
+                
+                
+                j%+=1;  'increment count
+                'printlog("line is %d and caCueFile is %s\n",j%-1,caCueFile$[j%-1]);
+            wend
+        endif
+        
         
         caNumberOfTrials% := j%-1;  'we need to decrement for the final increment because the final read will "fail", but not decrement for the penultimate increment because j% is a zero-based index
         
-        'This works, but the read REQUIRES a tab after the filename, can't parse the other stuff if not - or put filename at end!
-        'These lines are just to check a successful read of the input file
-        '    for j% := 0 to 2 do
-        '        printlog("Cue On = %f, Cue Off = %f, Stim On = %f, Contrast Change Time = %f, Stim Off = %f, C1Init = %f, C1Final = %f, C2Init = %f, C2Final = %f, AttendLoc = %d, Correct Response = %d, Cue File = %s\n",
-        '        caCueOn[j%],caCueOff[j%],caStimOn[j%],caContrastChange[j%],caStimOff[j%],caContrast1Init[j%],caContrast1Final[j%],caContrast2Init[j%],caContrast2Final[j%],caAttendLoc%[j%],caAlternateGoTime[j%],caCueFile$[j%]); 
-        '    next
-        
-        ''Close the input file (opened by the dialog box), but get the filename first, we'll pass that to the VSG
-        ''view(inputFileHandle%);
-        ''specFileName$ := FileName$();  'This is the full path and filename
         'Close the input file opened by the dialog box
         View(inputFileHandle%);
         FileClose();
@@ -414,6 +466,7 @@ if caTrainingOptions% > 2 then
                 nUniqueCues% += 1;
             endif
         next
+        
         'here is the bit that assigns caWhichLocationChanges%[] - this will help us determine if it is a catch trial or not
         for j% := 0 to caNumberOfTrials%-1 do  'THIS needs to start at 0
             docase
@@ -427,7 +480,7 @@ if caTrainingOptions% > 2 then
             else
                 caWhichLocationChanges%[j%] := 0; 
             endcase
-            'For now, I am not allowing an undefined attend location (e.g. "no attend"). However "no attend" is ready to go in PrepareTrial in case this changes
+
             if caAttendLoc%[j%] <> 0 and caAttendLoc%[j%] <> 1 and caAttendLoc%[j%] <> 2 and caAttendLoc%[j%] <> 3 then
                 message("On trial #%d, there is no defined attend location, this is not currently allowed!  Quitting!",j%);
                 halt;
@@ -435,16 +488,18 @@ if caTrainingOptions% > 2 then
         next
         
         
-        'Second make sure all images have the .bmp extension
+        'Second make sure all images have the .bmp extension  (I'm not sure why this was commented out)
 '        for j% := 0 to nUniqueCues%-1 do
 '            if Right$(uniqueCueFile$[j%],4) <> ".bmp" then
 '                message("The cue image '%s' is not a .bmp!  Quitting!",uniqueCueFile$[j%]);
 '                halt;
 '            endif
 '        next
-        'Third, make sure all files exist...I don't know if there is a good way of doing this outside of opening them!
+        
+        'Third, make sure all image files exist...I don't know if there is a good way of doing this outside of opening them!
         'However, we only have to open one instance of each cue - the unique list - so that should save lots of time
         var openSuccess%;
+        '(I'm not sure why this was commented out either)
 '        for j% := 0 to nUniqueCues%-1 do
 '            openSuccess% := FileOpen(uniqueCueFile$[j%],9);
 '            if openSuccess% > 0 then 'just close it
@@ -550,7 +605,7 @@ if caTrainingOptions% > 2 then
 endif;
 
 
-'''So at this point, we have run the dialog, checked for the existence and .bmp extension of all of the images, and have found success
+'''So at this point, we have run the dialog, checked for the existence and .bmp extension of all of the images, and have found success (except several of those checks are disabled)
 
 
 
@@ -731,12 +786,12 @@ func MainDialog%()
     
     
     
-    caTextCallbackItemNumber% := DlgText("Text!",2,caMainDlgRequireFixation%+10,60);
+    caTextCallbackItemNumber% := DlgText("Text!",2,caMainDlgRequireFixation%+10,80);
     DlgButton(2, "Use Above Input File", UseInputFile%,2,caMainDlgRequireFixation%+11);
     DlgButton(3, "Select An Input File", OpenInputFile%,2,caMainDlgRequireFixation%+12);
     DlgButton(4, "Fixation Point Dialog", FixationPointDialog%,15,caMainDlgRequireFixation%+9);
     DlgButton(5, "Joystick Dialog", JoystickConfigDialog%,40,caMainDlgRequireFixation%+9);
-    caTextCallbackItemNumber2% := DlgText("Text!",2,caMainDlgRequireFixation%+13,60);
+    caTextCallbackItemNumber2% := DlgText("Text!",2,caMainDlgRequireFixation%+13,80);
     DlgButton(6, "Use Above NIC Template File", UseTemplateFile%,2,caMainDlgRequireFixation%+14);
     DlgButton(7, "Select A NIC Template File", OpenTemplateFile%,2,caMainDlgRequireFixation%+15);
     
@@ -1278,18 +1333,6 @@ proc InitializeWindows()
         XYJoin(iAnswerWindowChannelDist1%,1);
         'Draw the answer window
         XYAddData(iAnswerWindowChannelDist1%, FixWindowX[], FixWindowY[]);
-        
-        
-'The logic here seems bizarre, and unlikely to be correct anyway.  Changed above if statement to do this above if necessary.      
-'        if caRequireFixation% = 0 then
-'            'Create a new channel in the XY view to display the "fixation" window even though there is no fixation (if there is fixation this was displayed above)
-'            iFixationWindowChannel% := XYSetChan(0);
-'            XYColour(iFixationWindowChannel%,13);
-'            XYDrawMode(iFixationWindowChannel%,2,1);
-'            XYJoin(iFixationWindowChannel%,1);
-'            'Draw the fixation window
-'            XYAddData(iFixationWindowChannel%, FixWindowX[], FixWindowY[]);
-'        endif;
                 
         
     endif;
@@ -1346,7 +1389,7 @@ func Start%()
     
     'leaving in Plexon-specific code in commented form just in case
 	
-    'hard code pReward to 1, per Henry, keep it this way for Evan unless he asks
+    'hard code pReward to 1, keep it this way for Evan unless he asks
     pReward := 1;
     
     'and set the start trial based on the user's requested start trial (will probably be 1 most of the time, correct for zero-indexing)
@@ -1915,13 +1958,14 @@ func IdleProcessing%()
                 trialNotStarted% := 1;  'did not get to stateStartTrial before aborting, do not advance even if advancing on abort
                 joystickHasBeenCentered% := 1;  'presumably joystick has not gone right yet
             endif;
-            if tNow - tStateStart > caAcquisitionTime then  'simple abort on failure to move joystick to right
-                PrintLog("stateWaitForJoystickInRight: failed.\n");
-                SampleText("Failure to move joystick to right, trial aborted",tNow);
-                ChangeStateTo(stateAbort%, tNow);
-                trialNotStarted% := 1;  'did not get to stateStartTrial before aborting, do not advance even if advancing on abort
-                joystickHasBeenCentered% := 1;  'presumably joystick has not gone right yet
-            endif
+            'This abort procedure was added when the Unic code was added.  However, it appears we cannot abort at this step (at least, not on the first trial, maybe ever) because the fixation point isn't up.  -jj 10/24/16
+'            if tNow - tStateStart > caAcquisitionTime then  'simple abort on failure to move joystick to right
+'                PrintLog("stateWaitForJoystickInRight: failed.\n");
+'                SampleText("Failure to move joystick to right, trial aborted",tNow);
+'                ChangeStateTo(stateAbort%, tNow);
+'                trialNotStarted% := 1;  'did not get to stateStartTrial before aborting, do not advance even if advancing on abort
+'                joystickHasBeenCentered% := 1;  'presumably joystick has not gone right yet
+'            endif
             tempanswer% := Answer%(JoyChannel%,tNow);
             if tempanswer% = 3 then  'if joystick is in right
                 PrintLog("stateWaitForJoystickInRight: Joystick in right\n");
@@ -2032,7 +2076,7 @@ func IdleProcessing%()
             UpdateToolbarText();
             PrepareTrial();
             printlog("Starting trial #%d\n",caCurrTrialIndex%+1);
-            SampleText("Trial "+Str$(caCurrTrialIndex%+1),tNow);
+            SampleText("Start Trial "+Str$(caCurrTrialIndex%+1),tNow);
             caCountAllTrials% += 1;
             'SafeSampleKey("W");
             if caTrainingOptions% <= 4 then 'go/no-go
@@ -2069,6 +2113,7 @@ func IdleProcessing%()
                     ' Fixation point is up
                     PrintLog("stateWaitForFixPtOn: signal received. " + str$(tTrigger) + "\n");
                     tLastTrigger := tTrigger;
+                    tTrialStart := tTrigger;
                     if caRequireFixation% = 1 then
                         ChangeStateTo(stateWaitForAcquisition%, tTrigger);
                         DrawStim(1);	' this draws the location of the fixpt.
@@ -2079,10 +2124,22 @@ func IdleProcessing%()
                             ChangeStateTo(stateHoldFixationToStimOn%, tNow);
                         endif;
                     endif;
-                    if trialType% = trialtypeAttendToward% then
-                        SampleText("Fixation point on, Attend Toward",tTrigger);
+                    if caTrainingOptions% <= 4 then
+                        if trialType% = trialtypeAttendToward% then
+                            SampleText("Fixation point on, Attend Toward",tTrigger);
+                        else
+                            SampleText("Fixation point on, Attend Away",tTrigger);
+                        endif;
                     else
-                        SampleText("Fixation point on, Attend Away",tTrigger);
+                        docase
+                        case trialResponseDirection% = 1 then
+                            SampleText("Fixation point on, Expected Response Left",tTrigger);
+                        case trialResponseDirection% = 3 then
+                            SampleText("Fixation point on, Expected Response Right",tTrigger);
+                        else
+                            SampleText("Fixation point on, Nontarget Trial",tTrigger);
+                        endcase;
+                        
                     endif;
                 endif;
             endif
@@ -2307,6 +2364,11 @@ func IdleProcessing%()
                     abortIsPostCC% := 0;
                 endif
                 
+                'If this abort came after the trial was started (stateStartTrial), report the end of the trial whether we advance or not
+                if trialNotStarted% = 0 then
+                    SampleText("End Trial "+Str$(caCurrTrialIndex%+1),tNow);
+                endif
+                
                 ' check to see if we advance on abort, make sure we don't go beyond final trial
                 if advanceOnAbort% = 1 and trialNotStarted% = 0 then  'if we are advancing on abort, now would be the time.  Don't abort-advance if we never started the trial at all.
                     SafeSampleKey("a");
@@ -2319,10 +2381,11 @@ func IdleProcessing%()
                     if nTrialsCompleted% = caNumberOfTrials% then
                         Stop%();
                         iStatus% := 0;
-                    endif;
-                else
-                    trialNotStarted% := 0;  'reset trialNotStarted
+                    endif;    
                 endif;
+                
+                trialNotStarted% := 0;  'reset trialNotStarted regardless
+                
             endif;
             
             
@@ -2343,16 +2406,16 @@ func IdleProcessing%()
                 tempanswer% := Answer%(JoyChannel%,tNow);
                 docase
                 case tempanswer% = 2 then 'return to center
-                    PrintLog("stateCheckFalseAlarm: joystick returned to center, aborting trial.\n");
+                    PrintLog("stateCheckFalseAlarm: joystick returned to center " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
-                    SampleText("Joystick not held, False Alarm response before stimulus on, trial aborted",tNow);
+                    SampleText("Joystick not held, False Alarm response " + GetCurrentEpoch$() + ", trial aborted",tNow);
                     joystickHasBeenCentered% := 1;  'joystick centered by FA
                 case tempanswer% = 1 then 'overshot
-                    PrintLog("stateCheckFalseAlarm: joystick moved to left, aborting trial.\n");
+                    PrintLog("stateCheckFalseAlarm: joystick moved to left " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
-                    SampleText("Joystick not held, False Alarm response all the way to left before stimulus on, trial aborted",tNow); 
+                    SampleText("Joystick not held, False Alarm response all the way to left " + GetCurrentEpoch$() + ", trial aborted",tNow); 
                     joystickHasBeenCentered% := 1;  'joystick centered by FA - overshot is centering
                 endcase;
             else 'credit the animal for time served on the abort if it's not a response
@@ -2368,15 +2431,15 @@ func IdleProcessing%()
                 tempanswer% := EyeAnswer%(xEye,yEye);
                 docase
                 case tempanswer% = 1 then 'response to target
-                    PrintLog("stateCheckFalseAlarmSaccade: response to target, aborting trial.\n");
+                    PrintLog("stateCheckFalseAlarmSaccade: response to target " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
-                    SampleText("False Alarm saccade to target before stimulus on, trial aborted",tNow);
+                    SampleText("False Alarm saccade to target " + GetCurrentEpoch$() + ", trial aborted",tNow);
                 case tempanswer% = -1 then 'overshot
-                    PrintLog("stateCheckFalseAlarmSaccade: response to distractor, aborting trial.\n");
+                    PrintLog("stateCheckFalseAlarmSaccade: response to distractor " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
-                    SampleText("False Alarm saccade to distractor before stimulus on, trial aborted",tNow); 
+                    SampleText("False Alarm saccade to distractor " + GetCurrentEpoch$() + ", trial aborted",tNow); 
                 endcase;
             else 'credit the animal for time served on the abort if it's not a response
                 PrintLog("stateCheckFalseAlarmSaccade: no response in temporal window, aborting trial.\n");
@@ -2443,38 +2506,38 @@ func IdleProcessing%()
                         caCountAllTrialsIncorrect% += 1;
                         caCountNontargetTrialsIncorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand) + caMissPenalty;
-                        SampleText("FA, Response Left, Expected No Response",tNow);
+                        SampleText("False Alarm " + GetCurrentEpoch$() + ", Response Left, Expected No Response",tNow);
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);
                     case tempanswer% = 3 and trialResponseDirection% = 0 then 'no response expected, response to right
                         caCountAllTrialsIncorrect% += 1;
                         caCountNontargetTrialsIncorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand) + caMissPenalty;
-                        SampleText("FA, Response Right, Expected No Response",tNow);
+                        SampleText("False Alarm " + GetCurrentEpoch$() + ", Response Right, Expected No Response",tNow);
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);    
                     endcase
                 case joystickInStartPosition% = 0 and tempanswer% = 2 then 'FA in GNG
-                    PrintLog("stateHoldFixationToCC: false alarm before contrast change, aborting trial.\n");
+                    PrintLog("stateHoldFixationToCC: false alarm " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
-                    SampleText("False Alarm before contrast change, trial aborted",tNow);
+                    SampleText("False Alarm " + GetCurrentEpoch$() + ", trial aborted",tNow);
                     joystickHasBeenCentered% := 1;  'joystick centered by FA
                 case joystickInStartPosition% = 0 and tempanswer% = 1 and caTrainingOptions% < 5 then 'answer and overshot in GNG
-                    PrintLog("stateHoldFixationToCC: false alarm and overshot before contrast change, aborting trial.\n");
+                    PrintLog("stateHoldFixationToCC: false alarm and overshot " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
-                    SampleText("False Alarm and overshot before contrast change, trial aborted",tNow);
+                    SampleText("False Alarm and overshot " + GetCurrentEpoch$() + ", trial aborted",tNow);
                     joystickHasBeenCentered% := 1;  'joystick centered by FA - overshot is centering
                 case joystickInStartPosition% = 0 and tempanswer% = 1 then 'FA Left in forced choice
-                    PrintLog("stateHoldFixationToCC: false alarm (left) before contrast change, aborting trial.\n");
+                    PrintLog("stateHoldFixationToCC: false alarm (left) " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
-                    SampleText("False Alarm (left) before contrast change, trial aborted",tNow);
+                    SampleText("False Alarm (left) " + GetCurrentEpoch$() + ", trial aborted",tNow);
                     joystickHasBeenCentered% := 0;  'joystick not centered 
                 case joystickInStartPosition% = 0 and tempanswer% = 3 then 'FA Right in forced choice
-                    PrintLog("stateHoldFixationToCC: false alarm (right) before contrast change, aborting trial.\n");
+                    PrintLog("stateHoldFixationToCC: false alarm (right) " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
-                    SampleText("False Alarm (right) before contrast change, trial aborted",tNow);
+                    SampleText("False Alarm (right) " + GetCurrentEpoch$() + ", trial aborted",tNow);
                     joystickHasBeenCentered% := 0;  'joystick not centered   
                 case Looking%(xEye, yEye) = 0 and caRequireFixation% = 1 and caRequireSaccadeResponse% = 0 then  'no joystick move, but a fixation break
                     PrintLog("stateHoldFixationToCC: failure to hold fixation, aborting trial.\n");
@@ -2483,7 +2546,7 @@ func IdleProcessing%()
                     SampleText("Failure to hold fixation to contrast change, trial aborted",tNow); 
                 else  'keep checking, joystick is in intermediate position (this may never trigger following addition of "joystickInStartPosition" syntax)
                     ChangeStateTo(stateCheckFalseAlarm%, tNow);
-                    temptext$ := "before contrast change";
+                    temptext$ :=  GetCurrentEpoch$();
                     'will check for centering later
                 endcase;
                 
@@ -2649,16 +2712,16 @@ func IdleProcessing%()
                         docase
                         case trialType% = trialtypeAttendToward% then
                             caCountTowardTrialsIncorrect% += 1;
-                            SampleText("False Alarm, Attend Toward" + caIsOvershot$,tNow);
+                            SampleText("False Alarm " + GetCurrentEpoch$() + ", Attend Toward" + caIsOvershot$,tNow);
                         case trialType% = trialtypeAttendAway% then
                             caCountAwayTrialsIncorrect% += 1;
-                            SampleText("False Alarm, Attend Away" + caIsOvershot$,tNow);
+                            SampleText("False Alarm " + GetCurrentEpoch$() + ", Attend Away" + caIsOvershot$,tNow);
                         case trialType% = trialtypeNoAttend% then
                             caCountAwayTrialsIncorrect% += 1;
-                            SampleText("False Alarm, No Attend Direction" + caIsOvershot$,tNow);
+                            SampleText("False Alarm " + GetCurrentEpoch$() + ", No Attend Direction" + caIsOvershot$,tNow);
                         else
                             PrintLog("ERROR: Unknown trial type (" + str$(trialType%) + "\n");
-                            SampleText("False Alarm, Unknown trial type" + caIsOvershot$,tNow);
+                            SampleText("False Alarm " + GetCurrentEpoch$() + ", Unknown trial type" + caIsOvershot$,tNow);
                         endcase
                         'getPreciseTiming := 0;
                         FAIsResponse% := 1;
@@ -2853,16 +2916,16 @@ func IdleProcessing%()
                         docase
                         case trialType% = trialtypeAttendToward% then
                             caCountTowardTrialsIncorrect% += 1;
-                            SampleText("False Alarm, Attend Toward",tNow);
+                            SampleText("False Alarm " + GetCurrentEpoch$() + ", Attend Toward",tNow);
                         case trialType% = trialtypeAttendAway% then
                             caCountAwayTrialsIncorrect% += 1;
-                            SampleText("False Alarm, Attend Away",tNow);
+                            SampleText("False Alarm " + GetCurrentEpoch$() + ", Attend Away",tNow);
                         case trialType% = trialtypeNoAttend% then
                             caCountAwayTrialsIncorrect% += 1;
-                            SampleText("False Alarm, No Attend Direction",tNow);
+                            SampleText("False Alarm " + GetCurrentEpoch$() + ", No Attend Direction",tNow);
                         else
                             PrintLog("ERROR: Unknown trial type (" + str$(trialType%) + "\n");
-                            SampleText("False Alarm, Unknown trial type",tNow);
+                            SampleText("False Alarm " + GetCurrentEpoch$() + ", Unknown trial type",tNow);
                         endcase
                         'getPreciseTiming := 0;
                         FAIsResponse% := 1;
@@ -2958,13 +3021,13 @@ func IdleProcessing%()
                         caCountAllTrialsIncorrect% += 1;
                         caCountNontargetTrialsIncorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand) + caMissPenalty;
-                        SampleText("FA, Response Left, Expected No Response",tNow);
+                        SampleText("False Alarm " + GetCurrentEpoch$() + ", Response Left, Expected No Response",tNow);
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);
                     case iAnswer% = 3 and trialResponseDirection% = 0 then 'no response expected, response to right
                         caCountAllTrialsIncorrect% += 1;
                         caCountNontargetTrialsIncorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand) + caMissPenalty;
-                        SampleText("FA, Response Right, Expected No Response",tNow);
+                        SampleText("False Alarm " + GetCurrentEpoch$() + ", Response Right, Expected No Response",tNow);
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow); 
                     endcase
                 endcase                
@@ -3046,6 +3109,7 @@ func IdleProcessing%()
             endif;
             
             PrintLog("Trial #%d completed.\n",caCurrTrialIndex%+1);
+            SampleText("End Trial "+Str$(caCurrTrialIndex%+1),tNow);
             'advance
             SafeSampleKey("a");
             nTrialsCompleted% += 1;
@@ -3394,9 +3458,31 @@ proc PrepareTrial()
 	PrintLog("Prepare trial: ");
     
     if caTrainingOptions% > 2 then
-        trialHazardFunctionTime := caContrastChange[caCurrTrialIndex%];  'hazard time has been pre-calculated  
+        if inputStyle% = 0 then
+            trialEarlyGoTime := caAlternateGoTime[caCurrTrialIndex%];  'Early go time
+            trialHazardFunctionTime := caEpoch2[caCurrTrialIndex%];  'hazard time has been pre-calculated
+        else
+            'we will not use trial early go time
+            trialEarlyGoTime := -1;  'just define it as -1, will be ignored later
+            docase
+            case caAlternateGoTime[caCurrTrialIndex%] = -1 then
+                trialHazardFunctionTime := caEpoch1[caCurrTrialIndex%];
+            case caAlternateGoTime[caCurrTrialIndex%] = -2 then
+                trialHazardFunctionTime := caEpoch2[caCurrTrialIndex%];
+            case caAlternateGoTime[caCurrTrialIndex%] = -3 then
+                trialHazardFunctionTime := caEpoch3[caCurrTrialIndex%];
+            case caAlternateGoTime[caCurrTrialIndex%] = -4 then
+                trialHazardFunctionTime := caEpoch4[caCurrTrialIndex%]; 
+            case caAlternateGoTime[caCurrTrialIndex%] > 0 then
+                trialHazardFunctionTime := caAlternateGoTime[caCurrTrialIndex%];
+            else
+                message("Time of allowed response not properly defined!  Using epoch 2, but you should quit and fix it!");
+                trialHazardFunctionTime := caEpoch2[caCurrTrialIndex%];
+            endcase
+        endif;
+        
+          
         totalStimDur := caStimOff[caCurrTrialIndex%];  'stimulus duration has been pre-calculated 
-        trialEarlyGoTime := caAlternateGoTime[caCurrTrialIndex%];  'Early go time
         trialCueName$ := caCueFile$[caCurrTrialIndex%];  'name of trial cue
         'cut out the directory structure, because it makes the sample text unreadable in real time
         'this doesn't work because Spike2 SIMPLY CAN'T SEE the backslash.
@@ -3405,7 +3491,7 @@ proc PrepareTrial()
         wend
         
         'if trialEarlyGoTime should be ignored, set it to later than the trial end and forget it
-        if trialEarlyGoTime <= 0 or trialEarlyGoTime > trialHazardFunctionTime then
+        if trialEarlyGoTime <= 0 or trialEarlyGoTime > trialHazardFunctionTime or inputStyle% = 1 then
             trialEarlyGoTime := trialHazardFunctionTime+totalStimDur;
         endif;
         'determine if this is an attend-toward or attend-away trial
@@ -3421,15 +3507,19 @@ proc PrepareTrial()
                 trialType% := trialtypeNoAttend%;
                 trialAttendLoc% := 0;
             endcase
+            printlog("Trial Type is %d\n",trialType%);
         else 'forced choice
             trialResponseDirection% := caAttendLoc%[caCurrTrialIndex%];  'use trialResponseDirection% to hold required direction
         endif
         
-        'Assign trial target location, if not location changes this will be 0
+        'Assign trial target location, if no location changes this will be 0
         trialTargetLoc% := caWhichLocationChanges%[caCurrTrialIndex%];
         
         'Assign whether this is a "go" trial or not
-        if caTrainingOptions% <> 3 then  'if caTrainingOptions is not 3, the animal is supposed to detect all contrast changes, even at the uncued location
+        docase
+        case inputStyle% = 1 then  'all trials are go trials for four-epoch input files (at least for now!)
+            trialIsGo% := 1;  
+        case caTrainingOptions% <> 3 then  'if caTrainingOptions is not 3, the animal is supposed to detect all contrast changes, even at the uncued location
             if trialTargetLoc% > 0 then
                 trialIsGo% := 1;
             else
@@ -3445,13 +3535,15 @@ proc PrepareTrial()
             else  'if there is no contrast change, this is a no-go trial
                 trialIsGo% := 0;
             endif;
-        endif;
+        endcase;
         
             
         
         
         'Record actual contrast level on this trial
         docase
+        case inputStyle% = 1 then
+            thisContrast% := -1;  'For four-epoch input files, for now punt this...we can fix it later if necessary, not sure how to do it right now
         case caWhichLocationChanges%[caCurrTrialIndex%] = 1 then
             thisContrast% := caContrast1Final[caCurrTrialIndex%]; 
         case caWhichLocationChanges%[caCurrTrialIndex%] = 2 then
@@ -3460,6 +3552,8 @@ proc PrepareTrial()
         
         'determine if it's a catch trial
         docase
+        case inputStyle% = 1 then
+            trialCatch% := 0;
         case caWhichLocationChanges%[caCurrTrialIndex%] = 1 and caAttendLoc%[caCurrTrialIndex%] = 1 then
             trialCatch% := 0;
         case caWhichLocationChanges%[caCurrTrialIndex%] = 2 and caAttendLoc%[caCurrTrialIndex%] = 2 then
@@ -3682,3 +3776,42 @@ proc Increment8bitTrialCount()
         endif;
     endif;
 end
+
+
+'This function returns a text output corresponding to the current epoch, useful for sampletexting
+func GetCurrentEpoch$()
+    var outString$ := "Error in GetCurrentEpoch!";  'if we don't assign below, will return a string indicating an error (that shouldn't ever happen, but...just in case...)
+    'if there is an input file, use epoch times to determine which epoch (there should ALWAYS be an input file if this function is called)
+    if caTrainingOptions% > 2 then
+        if inputStyle% = 0 then 'if there are two epochs
+            docase
+            case tNow-tTrialStart < trialHazardFunctionTime and tNow < trialEarlyGoTime then
+                outString$ := " before contrast change";
+            case tNow-tTrialStart < trialHazardFunctionTime and tNow > trialEarlyGoTime then
+                outString$ := " during early go window";
+            else
+                outString$ := " after contrast change";  'this probably won't ever happen because we won't call this function on hits...
+            endcase
+        else
+            docase
+'            case tNow-tTrialStart > trialHazardFunctionTime then  'this probably won't ever happen because we won't call this function on hits...
+'                outString$ := " during response window";
+            case tNow-tTrialStart < caEpoch1[caCurrTrialIndex%] then
+                outString$ := " before epoch 1";
+            case tNow-tTrialStart < caEpoch2[caCurrTrialIndex%] then
+                outString$ := " during epoch 1";   
+            case tNow-tTrialStart < caEpoch3[caCurrTrialIndex%] then
+                outString$ := " during epoch 2"; 
+            case tNow-tTrialStart < caEpoch4[caCurrTrialIndex%] then
+                outString$ := " during epoch 3";
+            case tNow-tTrialStart >= caEpoch4[caCurrTrialIndex%] then
+                outString$ := " during epoch 4";    'this probably won't happen unless the hazard function time is defined as after the start of epoch four
+            else 'if none of these match, this is weird, there is something wrong with the defined epoch times
+                outString$ := " Error in defined epoch times!";
+            endcase 
+        endif;
+    endif;
+    return outString$;
+end
+
+
