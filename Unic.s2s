@@ -1,0 +1,172 @@
+' $Id$
+
+
+' Utility functions to be used with "unic.exe" and the NIC Starstim device. 
+' Based on testing (and little more), these commands should be sent in a certain
+' order - see below. 
+' 
+' First, call unicInitialize%. [SHOULD THIS FUNC LOAD THE UNIC.EXE APPLICATION?]
+' 
+' After that, send commands in this order
+'
+' For EEG recording,
+' - StartEEG
+'   StopEEG
+' 
+' For EEG recording, with stimulation:
+' 
+' - StartEEG
+'   StopEEG
+'   LoadTemplate
+'   StartStimulation
+'   UnloadTemplate
+'   StopEEG (yes, I think this is needed; after template the NIC is
+'            monitoring EEG signals but not recording them. To record them
+'            you have to stop EEG first, then send the StartEEG command)
+'   StartEEG (yes, you just stopped it, I know)
+
+#include "../../Spike2util/UsreyUtil.s2s"
+#include "../../Spike2Util/LogUtilities.s2s"
+
+var unicCommandFile$ := "NONE";
+var unicServerIPPort$ := "NONE";
+var unicIsInitialized% := 0;
+var unicHandle;                     ' file handle used for command file
+
+' unicInitialize
+' 
+' Specify command file to be used, and server/ip port. 
+' Will launch unic.exe if 
+
+func unicInitialize%(commandFile$, serverIPPort$)
+    var handle;
+    unicCommandFile$ := commandFile$;
+    unicServerIPPort$ := serverIPPort$;
+    
+    ' see if we can open the command file
+    if unicOpenCommandFile%() = 0 then
+        unicIsInitialized% := 1;
+        unicCloseCommandFile%();
+    endif
+    return unicIsInitialized%;
+end
+
+
+' open unic command file. Used internally by functions in this file - do not call from your script! 
+' Use unicInitialize and the unicSend* functions instead. 
+
+func unicOpenCommandFile%()
+    var value% := 0;
+    unicHandle := FileOpen(unicCommandFile$, 8, 1);
+    if unicHandle < 0 then
+        LogError("unicInitialize", "Cannot open/access command file """ + unicCommandFile$ + """");
+        value% := unicHandle;
+    endif
+    return value%;
+end
+
+func unicCloseCommandFile%()
+    if unicHandle > 0 then
+        View(unicHandle);
+        FileClose();
+        unicHandle := 0;
+    endif
+    return 0;
+end
+
+
+func unicSendStartEEG%(eegfile$)
+    if unicIsInitialized% <> 1 then
+        LogError("unicStartEEG", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    Print("%d\n%s;true", 201, eegfile$);
+    
+    unicCloseCommandFile%();
+    return 0;
+end
+
+func unicSendStopEEG%()
+    if unicIsInitialized% <> 1 then
+        LogError("unicStopEEG", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    Print("%d\n", 202);
+    
+    unicCloseCommandFile%();
+    return 0;
+end
+    
+func unicSendLoadTemplate%(template$)
+    if unicIsInitialized% <> 1 then
+        LogError("unicSendLoadTemplate", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    Print("%d\n%s", 203, template$);
+    
+    unicCloseCommandFile%();
+    return 0;
+end
+
+func unicSendStartStimulation%()
+    if unicIsInitialized% <> 1 then
+        LogError("unicStartStimulation", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    Print("%d\n", 205);
+    
+    unicCloseCommandFile%();
+    return 0;
+end
+
+func unicSendAbortStimulation%()
+    if unicIsInitialized% <> 1 then
+        LogError("unicAbortStimulation", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    Print("%d\n", 204);
+    
+    unicCloseCommandFile%();
+    return 0;
+end
+
+func unicSendUnloadTemplate%()
+    if unicIsInitialized% <> 1 then
+        LogError("unicStartStimulation", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    Print("%d\n", 214);
+    
+    unicCloseCommandFile%();
+    return 0;
+end
