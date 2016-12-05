@@ -26,7 +26,7 @@ end
 ' wavemark if the "continuous" checkbox is UNCKECKED. 
 ' Continuous checkbox cannot be checked without checking wm checkbox. 
 
-func WMCNPortDialog%(title$, wmports%[], cnports%[])
+func WMCNPortDialog%(title$, wmports%[], cnports%[], channame$[], &CustomLabel%)
     var n%;
     var i%;
     n% := max(Len(wmports%[]), Len(cnports%[]));
@@ -37,24 +37,34 @@ func WMCNPortDialog%(title$, wmports%[], cnports%[])
         DlgText("Port " + str$(i%-1), 0, i%);
         DlgCheck(i%, "Wavemark", 10, i%);
         DlgCheck(i%+n%, "Continuous", 30, i%);
+        DlgString(i%+(2*n%), 15, 6, "", 50, i%);
     next;
-    DlgCheck((2*n%)+1, "Use Plexon 15/15", 10, n%+1);
-    DlgCheck((2*n%)+2, "Use Plexon 24WF", 30, n%+1);
-    DlgCheck((2*n%)+3, "Joe Plexon #1", 10, n%+2);
-    DlgCheck((2*n%)+4, "Joe Plexon #2", 30, n%+2);
+    DlgCheck((3*n%)+1, "Use Plexon 15/15", 10, n%+1);
+    DlgCheck((3*n%)+2, "Use Plexon 24WF", 30, n%+1);
+    DlgCheck((3*n%)+3, "Joe Plexon #1", 10, n%+2);
+    DlgCheck((3*n%)+4, "Joe Plexon #2", 30, n%+2);
+    DlgCheck((3*n%)+5, "Use Custom Chan Labels", 49, n%+1);
     DlgAllow(0xffff, 0, WMCNPortDialogChanged%);
-	i% := DlgShow(wmports%[0:n%],cnports%[0:n%],UsePlexon15WF15WF2k%,UsePlexon24WF%,JoePlexon1%,JoePlexon2%);
+	i% := DlgShow(wmports%[0:n%],cnports%[0:n%],channame$[0:n%],UsePlexon15WF15WF2k%,UsePlexon24WF%,JoePlexon1%,JoePlexon2%,CustomLabel%);
     return i%;
 end
 
 func WMCNPortDialogChanged%(item%)
     var j%;
     var enable%;
-    if DlgValue((2*dlguNPorts%)+1) = 1 or DlgValue((2*dlguNPorts%)+2) = 1 or DlgValue((2*dlguNPorts%)+3) = 1 or DlgValue((2*dlguNPorts%)+4) = 1 then
+    var enableText%;
+    
+    if DlgValue((3*dlguNPorts%)+1) = 1 or DlgValue((3*dlguNPorts%)+2) = 1 or DlgValue((3*dlguNPorts%)+3) = 1 or DlgValue((3*dlguNPorts%)+4) = 1 then
         enable% := 0;
     else
         enable% := 1;
     endif
+    
+    if DlgValue((3*dlguNPorts%)+5) = 1 then
+        enableText% := 1;
+    else
+        enableText% := 0;
+    endif; 
     
     docase
     case item% = 0 then
@@ -66,42 +76,49 @@ func WMCNPortDialogChanged%(item%)
             'DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
             DlgEnable(enable%,j%);
         next;
-    case item% = (2*dlguNPorts%)+1 then
+        for j% := (2*dlguNPorts%)+1 to (3*dlguNPorts%) do
+            DlgEnable(enableText%,j%);
+        next;
+    case item% = (3*dlguNPorts%)+1 then
         for j% := 1 to (2*dlguNPorts%) do
             'DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
             DlgEnable(enable%,j%);
         next;
         'clear imcompatible checkboxes
-        DlgValue((2*dlguNPorts%)+2,0);
-        DlgValue((2*dlguNPorts%)+3,0);
-        DlgValue((2*dlguNPorts%)+4,0);
-    case item% = (2*dlguNPorts%)+2 then
+        DlgValue((3*dlguNPorts%)+2,0);
+        DlgValue((3*dlguNPorts%)+3,0);
+        DlgValue((3*dlguNPorts%)+4,0);
+    case item% = (3*dlguNPorts%)+2 then
         for j% := 1 to (2*dlguNPorts%) do
             'DlgEnable(1-DlgValue((2*dlguNPorts%)+2), j%);
             DlgEnable(enable%,j%);
         next;
         'clear imcompatible checkboxes
-        DlgValue((2*dlguNPorts%)+1,0);
-        DlgValue((2*dlguNPorts%)+3,0);
-        DlgValue((2*dlguNPorts%)+4,0);
-    case item% = (2*dlguNPorts%)+3 then
+        DlgValue((3*dlguNPorts%)+1,0);
+        DlgValue((3*dlguNPorts%)+3,0);
+        DlgValue((3*dlguNPorts%)+4,0);
+    case item% = (3*dlguNPorts%)+3 then
         for j% := 1 to (2*dlguNPorts%) do
             'DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
             DlgEnable(enable%,j%);
         next;
         'clear imcompatible checkboxes
-        DlgValue((2*dlguNPorts%)+1,0);
-        DlgValue((2*dlguNPorts%)+2,0);
-        DlgValue((2*dlguNPorts%)+4,0);
-    case item% = (2*dlguNPorts%)+4 then
+        DlgValue((3*dlguNPorts%)+1,0);
+        DlgValue((3*dlguNPorts%)+2,0);
+        DlgValue((3*dlguNPorts%)+4,0);
+    case item% = (3*dlguNPorts%)+4 then
         for j% := 1 to (2*dlguNPorts%) do
             'DlgEnable(1-DlgValue((2*dlguNPorts%)+2), j%);
             DlgEnable(enable%,j%);
         next;
         'clear imcompatible checkboxes
-        DlgValue((2*dlguNPorts%)+1,0);
-        DlgValue((2*dlguNPorts%)+2,0);
-        DlgValue((2*dlguNPorts%)+3,0);
+        DlgValue((3*dlguNPorts%)+1,0);
+        DlgValue((3*dlguNPorts%)+2,0);
+        DlgValue((3*dlguNPorts%)+3,0);
+    case item% = (3*dlguNPorts%)+5 then
+        for j% := (2*dlguNPorts%)+1 to (3*dlguNPorts%) do
+            DlgEnable(enableText%,j%);
+        next;
     endcase
     
     return 1;

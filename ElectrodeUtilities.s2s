@@ -6,6 +6,8 @@ var UsePlexon7WM15CN%;
 var UsePlexon24WF%;
 var JoePlexon1%;
 var JoePlexon2%;
+var UseCustomLabels%;
+var CustomLabels$[16];
 
 #include "DlgUtilities.s2s"
 #include "UsreyUtil.s2s"
@@ -80,7 +82,7 @@ func ElectrodesDialog%()
     for i% := 0 to NumWavemarkPorts%-1 do
         wm%[WavemarkPorts%[i%]] := 1;
     next
-    if WMCNPortDialog%("Electrode Configuration", wm%[], cn%[]) = 1 then
+    if WMCNPortDialog%("Electrode Configuration", wm%[], cn%[], CustomLabels$[], UseCustomLabels%) = 1 then
         NumWavemarkPorts% := 0;
         NumContinuousPorts% := 0;
         for i% := 0 to Len(wm%[])-1 do
@@ -101,6 +103,8 @@ end;
 proc GetElectrodeParameters()
 	var key$;
     var s$;
+    var i%;
+    
 	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
     s$ := GetStringRegistryValue$(key$, "WavemarkPorts", "");
     NumWavemarkPorts% := ReadStr(s$, WavemarkPorts%[]);
@@ -112,6 +116,12 @@ proc GetElectrodeParameters()
     Profile(key$, "UsePlexon24WF", 0, UsePlexon24WF%);
     Profile(key$, "JoePlexon1", 0, JoePlexon1%);
     Profile(key$, "JoePlexon2", 0, JoePlexon2%);
+    Profile(key$, "UseCustomLabels", 0, UseCustomLabels%);
+    for i% := 0 to 15 do
+        s$ := GetStringRegistryValue$(key$, "CustomLabel" + Str$(i%), "");
+        CustomLabels$[i%] := s$;
+    next;
+    
 end;
 
 proc SaveElectrodeParameters()
@@ -127,6 +137,10 @@ proc SaveElectrodeParameters()
     Profile(key$, "UsePlexon24WF", UsePlexon24WF%); 
     Profile(key$, "JoePlexon1", JoePlexon1%);
     Profile(key$, "JoePlexon2", JoePlexon2%);
+    Profile(key$, "UseCustomLabels", UseCustomLabels%);
+    for i% := 0 to 15 do
+        SetStringRegistryValue(key$, "CustomLabel" + Str$(i%), CustomLabels$[i%]);
+    next;
 end;
 
 
@@ -143,7 +157,11 @@ func CreateElectrodeSamplingConfiguration(iStartWM%, iStartCont%)
     
     for i% := 0 to NumWavemarkPorts%-1 do
 		SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
-		SampleTitle$(ichan%, "WMrk " + str$(WavemarkPorts%[i%])); 
+        if useCustomLabels% = 1 and CustomLabels$[i%] <> "" then
+            SampleTitle$(ichan%, CustomLabels$[i%] + "WM"); 
+        else
+            SampleTitle$(ichan%, "WMrk " + str$(WavemarkPorts%[i%])); 
+        endif;
         ichan% += 1;
 	next
     
@@ -157,7 +175,11 @@ func CreateElectrodeSamplingConfiguration(iStartWM%, iStartCont%)
     
     for i% := 0 to NumContinuousPorts%-1 do
         SampleWaveform(ichan%, ContinuousPorts%[i%], 20000);
-        SampleTitle$(ichan% + 1, "Cont " + str$(ContinuousPorts%[i%]));
+        if useCustomLabels% = 1 and CustomLabels$[i%] <> "" then
+            SampleTitle$(ichan%, CustomLabels$[i%] + "WF"); 
+        else
+            SampleTitle$(ichan% + 1, "Cont " + str$(ContinuousPorts%[i%])); 
+        endif;
         ichan% += 1;
     next
     
