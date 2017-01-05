@@ -1534,6 +1534,7 @@ proc CreateSampleConfiguration()
     var slaveTxt$;
     
     
+    
     ''''''' TESTING ''''''''
     
 '    if tunType$ = tunTypeGonzago$ then     
@@ -1564,23 +1565,28 @@ proc CreateSampleConfiguration()
 '        printlog("Donut values are: %s\n",tun2ValuesStringified$);
 '        halt;
 '    endif
-    
+'    
 '    'read tuning file, if one is specified
 '    if tunUseFile% = 1 then
 '        eof%:=1;
 '        readsetup(",","	 ","","","	");  'Standard read setup
 '        FileOpen(tunTuningFile$,8,0);  'open specified file
-'        if tunContrastDualScreenCombo% = 0 then
-'            while eof% > 0 do
-'                eof% := read(tunValues[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
-'                tunFileLen%+=1;  'increment tuning file length
-'            wend
-'        else
-'            while eof% > 0 do
-'                eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
-'                tunFileLen%+=1;  'increment tuning file length
-'            wend
-'        endif;        
+''        if tunContrastDualScreenCombo% = 0 or tunAreaDualScreenCombo% = 0 then
+''            while eof% > 0 do
+''                eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
+''                tunFileLen%+=1;  'increment tuning file length
+''            wend
+''        else
+''            while eof% > 0 do
+''                eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
+''                tunFileLen%+=1;  'increment tuning file length
+''            wend
+''        endif;  
+'        'The read function actually isn't any different in the two cases above
+'        while eof% > 0 do
+'            eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
+'            tunFileLen%+=1;  'increment tuning file length
+'        wend
 '        tunFileLen%-=1;  'decrement tuning file length because we increment when we find EOF.
 '        FileClose();  'close the file
 '        'Now deal out the values to tun1Values and tun2Values
@@ -1592,6 +1598,7 @@ proc CreateSampleConfiguration()
 '            case tunValues$[i%] = "-" then
 '                eof% := 1;  'change to tunValues2[] on the "-"
 '            case eof% = 0 then  'otherwise it is expected to be a number
+'                tunValues[tun1FileLen%] := Val(tunValues$[i%]);  'may use tunValues or tun1Values later, let's not worry about which right now, fill both
 '                tun1Values[tun1FileLen%] := Val(tunValues$[i%]);
 '                tun1FileLen%+=1;  'increment tuning file length
 '            case eof% = 1 then
@@ -1601,22 +1608,22 @@ proc CreateSampleConfiguration()
 '        next;
 '        printlog("tun1 len is %d and tun2 len is %d\n",tun1FileLen%,tun2FileLen%);
 '    endif
-'    
+'   
 '    if tunType$ = tunTypeContrast$ then 
 '        tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
 '        if tunContrastDualScreenCombo% = 0 then
 '            if tunUseFile% = 1 then
-'                'tunNAdvances% := tunFileLen%-1;
-'                'ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunContrastProgression%);
+'                tunNAdvances% := tunFileLen%-1;
+'                ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunContrastProgression%);
 '            else
 '                tunNAdvances% := tunContrastNSteps%;
 '                GetRepeatedParameterProgression%(tunContrastNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, tunContrastProgression%);
 '            endif;
 '            'tunNValues% := (tunContrastNSteps%+1)*tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
 '            tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  'shorter, should work the same as above commented line, keeping old line for contrast only just in case...
+'            printlog("Tun Values are %f\n",tunValues);
+'            printlog("Tun Values Indices are %d\n",tunValuesIndices%);
 '            tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
-'            printlog("Values are: %s\n",tunValuesStringified$);
-'            halt;
 '        else 'do the dual-screen combo version
 '            if tunUseFile% = 1 then
 '                'ShuffleAndExpand(tunFileLen%,1,tunValuesIndices%[],0);
@@ -1635,13 +1642,10 @@ proc CreateSampleConfiguration()
 '            'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
 '            tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunContrastNRepeats%, tun1Values[], tun1ValuesIndices%[]);
 '            tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunContrastNRepeats%, tun2Values[], tun2ValuesIndices%[]);  
-'            printlog("Master values are: %s\n",tun1ValuesStringified$);
-'            printlog("Slave values are: %s\n",tun2ValuesStringified$);
-'            halt;
-'        endif;   
+'        endif; 
 '    endif;
-    
-    
+'    printlog("tun values are %s\n",tunValuesStringified$);
+'    halt
     
     ''''''' TESTING ''''''''
     
@@ -1704,6 +1708,7 @@ proc CreateSampleConfiguration()
             case tunValues$[i%] = "-" then
                 eof% := 1;  'change to tunValues2[] on the "-"
             case eof% = 0 then  'otherwise it is expected to be a number
+                tunValues[tun1FileLen%] := Val(tunValues$[i%]);  'may use tunValues or tun1Values later, let's not worry about which right now, fill both
                 tun1Values[tun1FileLen%] := Val(tunValues$[i%]);
                 tun1FileLen%+=1;  'increment tuning file length
             case eof% = 1 then
