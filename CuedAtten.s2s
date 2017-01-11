@@ -3465,28 +3465,35 @@ proc PrepareTrial()
         if inputStyle% = 0 then
             trialEarlyGoTime := caAlternateGoTime[caCurrTrialIndex%];  'Early go time
             trialHazardFunctionTime := caEpoch2[caCurrTrialIndex%];  'hazard time has been pre-calculated
+            totalStimDur := caStimOff[caCurrTrialIndex%];  'There is no epoch3, so use StimOff
         else
             'we will not use trial early go time
             trialEarlyGoTime := -1;  'just define it as -1, will be ignored later
             docase
             case caAlternateGoTime[caCurrTrialIndex%] = -1 then
                 trialHazardFunctionTime := caEpoch1[caCurrTrialIndex%];
+                totalStimDur := caEpoch2[caCurrTrialIndex%];  'Instead of using StimOff, use Epoch 2 - for this Epochs 2/3/4 will not happen because either response or end of response window will turn off stim
             case caAlternateGoTime[caCurrTrialIndex%] = -2 then
                 trialHazardFunctionTime := caEpoch2[caCurrTrialIndex%];
+                totalStimDur := caEpoch3[caCurrTrialIndex%];  'Instead of using StimOff, use Epoch 3 - for this Epochs 3/4 will not happen because either response or end of response window will turn off stim
             case caAlternateGoTime[caCurrTrialIndex%] = -3 then
                 trialHazardFunctionTime := caEpoch3[caCurrTrialIndex%];
+                totalStimDur := caEpoch4[caCurrTrialIndex%];  'Instead of using StimOff, use Epoch 4 - for this Epoch 4 will not happen because either response or end of response window will turn off stim
             case caAlternateGoTime[caCurrTrialIndex%] = -4 then
-                trialHazardFunctionTime := caEpoch4[caCurrTrialIndex%]; 
+                trialHazardFunctionTime := caEpoch4[caCurrTrialIndex%];
+                totalStimDur := caStimOff[caCurrTrialIndex%];  'Use StimOff is Epoch 4 is response window
             case caAlternateGoTime[caCurrTrialIndex%] > 0 then
                 trialHazardFunctionTime := caAlternateGoTime[caCurrTrialIndex%];
+                totalStimDur := caStimOff[caCurrTrialIndex%];  'If there is an alternate go time, use StimOff for end of response window, because what else??
             else
                 message("Time of allowed response not properly defined!  Using epoch 2, but you should quit and fix it!");
                 trialHazardFunctionTime := caEpoch2[caCurrTrialIndex%];
+                totalStimDur := caEpoch3[caCurrTrialIndex%];  'Instead of using StimOff, use Epoch 3 - for this Epochs 3/4 will not happen because either response or end of response window will turn off stim
             endcase
         endif;
         
           
-        totalStimDur := caStimOff[caCurrTrialIndex%];  'stimulus duration has been pre-calculated 
+        'totalStimDur := caStimOff[caCurrTrialIndex%];  'stimulus duration has been pre-calculated, this is now determined for each possible Go Time individually
         trialCueName$ := caCueFile$[caCurrTrialIndex%];  'name of trial cue
         'cut out the directory structure, because it makes the sample text unreadable in real time
         'this doesn't work because Spike2 SIMPLY CAN'T SEE the backslash.
@@ -3496,7 +3503,7 @@ proc PrepareTrial()
         
         'if trialEarlyGoTime should be ignored, set it to later than the trial end and forget it
         if trialEarlyGoTime <= 0 or trialEarlyGoTime > trialHazardFunctionTime or inputStyle% = 1 then
-            trialEarlyGoTime := trialHazardFunctionTime+totalStimDur;
+            trialEarlyGoTime := trialHazardFunctionTime+caStimOff[caCurrTrialIndex%];
         endif;
         'determine if this is an attend-toward or attend-away trial
         if caTrainingOptions% <> 5 then  'go/no-go
