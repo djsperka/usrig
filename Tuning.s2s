@@ -889,8 +889,11 @@ func IdleProcessing%()
             if tunDoOpto% = 1 and dontToggleOpto% = 0 then
                 tunOptoState% := 1-tunOptoState%;  'but only toggle if we're actually doing opto, and we haven't been told to not toggle opto
             endif;
+            if tunUseMaintainMode% >= 1 then
+                SafeSampleKey("X");  'turn everything off, fixation wasn't turned off previously because of maintain mode
+            endif;
             tInterTrialTime := tunStdInterTrialTime + tunInterBlockTime;
-            ChangeStateTo(stateInterTrialInterval%, tNow);
+            ChangeStateTo(stateInterTrialInterval%, tNow);  'at end of block, we do not maintain fixation, it will start again for next time
         else
             if tunUseMaintainMode% >= 1 then
                 ChangeStateTo(stateMaintainFixation%, tNow);
