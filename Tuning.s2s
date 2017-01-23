@@ -663,9 +663,11 @@ func IdleProcessing%()
     case iState% = stateInterTrialIntervalFixAlreadyUp% then
 
         if tNow - tStateStart > tunStdInterTrialTime then
-            SafeSampleKey("S");  'request stimulus
-            ChangeStateTo(stateWaitForStimTrigger%, tNow);
-
+'            SafeSampleKey("S");  'request stimulus
+'            ChangeStateTo(stateWaitForStimTrigger%, tNow);
+            
+            'going to stateWaitForAcqusition allows opto to happen
+            ChangeStateTo(stateWaitForAcquisition%, tNow-tunAcquisitionTime);  'do not allow acquisition window, if animal is not fixating during maintain, this is an abort
         endif    
         
 
@@ -941,8 +943,11 @@ func IdleProcessing%()
                 if tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4 then  'this will allow a "break" after giving a reward, uses intertrial interval
                     ChangeStateTo(stateInterTrialIntervalFixAlreadyUp%, tNow);                
                 else  'if no reward, goes straight to next stimulus
-                    SafeSampleKey("S");                
-                    ChangeStateTo(stateWaitForStimTrigger%, tNow);
+'                    SafeSampleKey("S");                
+'                    ChangeStateTo(stateWaitForStimTrigger%, tNow);
+                    
+                    'try going to acquisition step first, this allows opto to happen, also penalizes for fixation break after second reward
+                    ChangeStateTo(stateWaitForAcquisition%, tNow-tunAcquisitionTime);  'do not allow acquisition window, if animal is not fixating during maintain, this is an abort
                 endif;
                 
 
