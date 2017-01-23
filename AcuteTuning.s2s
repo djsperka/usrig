@@ -233,7 +233,7 @@ const stateWaitOptoPoststim%:=24;
 const statePulsedOpto%:=25;
 const stateWaitPulsedOpto%:=26;
 const stateWaitCameraTrigger%:=27;
-
+const stateWaitCameraBaselinePeriod%:=28;
 
 var iState% := stateVSGWait%;	' present state
 
@@ -286,7 +286,18 @@ func IdleProcessing%()
         if View(DataWindow%).FindPulseUp%(CameraTriggerChannel%, -1, tRise, tFall) = 1 then
             LogStatus("CameraWait", "Got Shutter Pulse from Camera at " + str$(tRise));
             tLastTrigger := tFall;
-            ChangeStateTo(stateCheckTurnOnOpto%, tFall);
+            if tunCameraBaselinePeriod > 0 then
+                ChangeStateTo(stateWaitCameraBaselinePeriod%, tFall);
+            else
+                ChangeStateTo(stateCheckTurnOnOpto%, tFall);
+            endif;
+        endif;
+        
+        
+        
+    case iState% = stateWaitCameraBaselinePeriod% then  'note that this is a pretty sloppy way to do this, timewise.  However, Scottie will be using pulses to sync the camera so this is OK.
+        if tNow >= tStateStart + tunCameraBaselinePeriod then
+            ChangeStateTo(stateCheckTurnOnOpto%, tNow);
         endif;
         
         

@@ -11,6 +11,7 @@ var TuningCurveScriptDialogAllowOK%;  'allows OK to button to work on main dialo
 var tunStimulusDuration := 3;      ' New, time for each stimulus to last, replaces tunFixationDuration
 var tunInterTrialTime := 1;        ' Time between stimuli 
 var tunInterBlockTime := 0;        ' New, time between blocks, important for opto
+var tunCameraBaselinePeriod;       ' New, allows for camera to collect baseline period before stimuli begin
 'var tunBackgroundColor$ := "gray";	' background color for stim
 var tunBackgroundGrayLevel% := 128; ' Background gray level
 var tunDoOpto%;                     ' New, 1 if doing optogenetics
@@ -188,6 +189,7 @@ proc GetTuningCurveScriptParameters()
     tunStimulusDuration := GetFloatRegistryValue(key$, "StimulusDuration", tunStimulusDuration);  'new
     tunInterTrialTime := GetFloatRegistryValue(key$, "InterTrialTime", tunInterTrialTime);  'new
     tunInterBlockTime := GetFloatRegistryValue(key$, "InterBlockTime", tunInterBlockTime);
+    tunCameraBaselinePeriod := GetFloatRegistryValue(key$, "CameraBaselinePeriod", tunCameraBaselinePeriod);
     'tunBackgroundColor$ := GetStringRegistryValue$(key$, "BackgroundColor", tunBackgroundColor$);
     tunBackgroundGrayLevel% := GetIntRegistryValue%(key$, "BackgroundGrayLevel", tunBackgroundGrayLevel%);
     tunDoOpto% := GetIntRegistryValue%(key$, "DoOpto", tunDoOpto%);
@@ -203,6 +205,7 @@ proc SaveTuningCurveScriptParameters()
     SetFloatRegistryValue(key$, "StimulusDuration", tunStimulusDuration);
     SetFloatRegistryValue(key$, "InterTrialTime", tunInterTrialTime);
     SetFloatRegistryValue(key$, "InterBlockTime", tunInterBlockTime);
+    SetFloatRegistryValue(key$, "CameraBaselinePeriod", tunCameraBaselinePeriod);
     'SetStringRegistryValue(key$, "BackgroundColor", tunBackgroundColor$);
     SetIntRegistryValue(key$, "BackgroundGrayLevel", tunBackgroundGrayLevel%);
     SetIntRegistryValue(key$, "DoOpto", tunDoOpto%);
@@ -234,6 +237,7 @@ func TuningCurveScriptDialog%()
     var tempParam$;
     var tempPhase;
     var boxOK% := 1;  'do the stimulus/crosshairs boxes overlap?
+    var dlgwid% := 45;  'Width of dialog
     
     TuningCurveScriptDialogAllowOK% := 0;  'Disable OK button to start, force selection of experiment
     
@@ -251,40 +255,40 @@ func TuningCurveScriptDialog%()
 '	next;
     
 
-	DlgCreate("Tuning Curve Parameters", 50, 10, 40);
+	DlgCreate("Tuning Curve Parameters", 50, 10, dlgwid%);
     DlgButton(0,"         Quit         ");
     DlgButton(1,"     Select Expt.     ");        
-	DlgGroup("Common Parameters", 1, 1, 38, 7);
-	DlgReal(1, "Stimulus Duration(s):", .1, 100, 20, 2);  'new, allow really long stimuli
-    DlgReal(2, "InterTrial Time(s):", .1, 100, 20, 3);  'new, allow really long stimuli
-	DlgReal(3, "InterBlock Time(s):", 0, 100, 20, 4);  'new, allow really long stimuli
-    DlgInteger(4, "Background Gray Level (0-255):", 0, 255, 20, 5);  'new, allow all grays
+	DlgGroup("Common Parameters", 1, 1, dlgwid%-2, 8);
+	DlgReal(1, "Stimulus Duration(s):", .1, 100, 0, 2);  'new, allow really long stimuli
+    DlgReal(2, "InterTrial Time(s):", .1, 100, 0, 3);  'new, allow really long stimuli
+	DlgReal(3, "InterBlock Time(s):", 0, 100, 0, 4);  'new, allow really long stimuli
+    DlgInteger(4, "Background Gray Level (0-255):", 0, 255, 0, 5);  'new, allow all grays
     'DlgCheck(5, "Record Stimulator?", 2,6);
     DlgCheck(5, "Record Temperature?", 2,6);
-	'DlgList(3, "Background color:", bcl$, 3, 20, 4);  'updated as new dialog number
+	'DlgList(3, "Background color:", bcl$, 3, 0, 4);  'updated as new dialog number
     DlgCheck(6, "Wait For Camera Trigger?", 2,7);
+    DlgReal(7, "Camera Baseline Period(s):", 0, 1000, 0, 8);  'new, allow really long stimuli
+    
+    DlgGroup("Grating Parameters", 1, 9, dlgwid%-2, 2);
+    DlgButton(tundlgGratingParametersButton%, "Grating Parameters", TunDlgGratingMaster%, 2, 10);
+    
+    DlgGroup("Optogenetics", 1, 11, dlgwid%-2, 3);
+    DlgCheck(8,"Opto On",2,12);
+    DlgButton(tundlgOptogeneticsButton%, "Optogenetics Parameters", TunOptoDialog%, 2, 13);
+    
+    DlgGroup("Individual Tuning Curve Types", 1, 14, dlgwid%-2, 8);
+	DlgButton(tundlgOrientationButton%, "Orientation", TuningCurveOrientationDialog%, 2, 15);
+	DlgButton(tundlgContrastButton%, "Contrast", TuningCurveContrastDialog%, 2, 16);
+	DlgButton(tundlgSpatialButton%, "Spatial Freq", TuningCurveSpatialDialog%, 2, 17);
+	DlgButton(tundlgTemporalButton%, "Temporal Freq", TuningCurveTemporalDialog%, 2, 18);
+	DlgButton(tundlgAreaButton%, "Area", TuningCurveAreaDialog%, 2, 19);
+    DlgButton(tundlgNullTestButton%, "Null Test", TuningCurveNullTestDialog%, 2, 20);
+	DlgButton(tundlgIDButton%, "InnerDiam", TuningCurveIDDialog%, 2, 21);
     
     
-    DlgGroup("Grating Parameters", 1, 8, 38, 2);
-    DlgButton(tundlgGratingParametersButton%, "Grating Parameters", TunDlgGratingMaster%, 2, 9);
-    
-    DlgGroup("Optogenetics", 1, 10, 38, 3);
-    DlgCheck(7,"Opto On",2,11);
-    DlgButton(tundlgOptogeneticsButton%, "Optogenetics Parameters", TunOptoDialog%, 2, 12);
-    
-    DlgGroup("Individual Tuning Curve Types", 1, 13, 38, 8);
-	DlgButton(tundlgOrientationButton%, "Orientation", TuningCurveOrientationDialog%, 2, 14);
-	DlgButton(tundlgContrastButton%, "Contrast", TuningCurveContrastDialog%, 2, 15);
-	DlgButton(tundlgSpatialButton%, "Spatial Freq", TuningCurveSpatialDialog%, 2, 16);
-	DlgButton(tundlgTemporalButton%, "Temporal Freq", TuningCurveTemporalDialog%, 2, 17);
-	DlgButton(tundlgAreaButton%, "Area", TuningCurveAreaDialog%, 2, 18);
-    DlgButton(tundlgNullTestButton%, "Null Test", TuningCurveNullTestDialog%, 2, 19);
-	DlgButton(tundlgIDButton%, "InnerDiam", TuningCurveIDDialog%, 2, 20);
-    
-    
-    DlgGroup("Non-Grating Stimuli", 1, 21, 38, 3);
-    DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 22);
-    DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 2, 23);
+    DlgGroup("Non-Grating Stimuli", 1, 22, dlgwid%-2, 3);
+    DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 23);
+    DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 2, 24);
     
     DlgAllow(0xffff, 0, TuningCurveScriptDialogChanged%);
     
@@ -292,7 +296,7 @@ func TuningCurveScriptDialog%()
     'should be regular, allows us to record the stimulator
     'i%:=DlgShow(tunStimulusDuration, tunInterTrialTime, tunInterBlockTime, tunBackgroundGrayLevel%, tunRecStimulator%, tunDoOpto%);  'now using background gray level
     'replaces tunRecStimulator with tunUseTemperature, probably will only be used for a short period of time
-    i%:=DlgShow(tunStimulusDuration, tunInterTrialTime, tunInterBlockTime, tunBackgroundGrayLevel%, tunUseTemperature%, tunWaitForCameraTrigger%, tunDoOpto%);  'now using background gray level
+    i%:=DlgShow(tunStimulusDuration, tunInterTrialTime, tunInterBlockTime, tunBackgroundGrayLevel%, tunUseTemperature%, tunWaitForCameraTrigger%, tunCameraBaselinePeriod, tunDoOpto%);  'now using background gray level
     
     ' djs 4-1-09
     ' Spike2 v6 change. DlgShow will return the button number when a button on the dialog is hit and the corresponding
@@ -351,6 +355,10 @@ func TuningCurveScriptDialogChanged%(item%)
     'DlgEnable(0,5);  'this is a temporary disable because the opto box input may conflict
                      'with the required event channel (12/7/15)  In principle we will learn
                      'what we need to learn and then get rid of this sometime 12/15 or 1/16 -jj
+    
+    'This turns on and off the camera delay period with the use camera checkbox
+    DlgEnable(DlgValue(6),7);
+    
     'This disables the "OK" button (though it will have different labels) until an experiment is selected
     if TuningCurveScriptDialogAllowOK% = 1 then
         DlgEnable(1,-1);  'enable "OK" 
