@@ -232,6 +232,7 @@ const stateTurnOffOpto%:=23;
 const stateWaitOptoPoststim%:=24;
 const statePulsedOpto%:=25;
 const stateWaitPulsedOpto%:=26;
+const stateWaitCameraTrigger%:=27;
 
 
 var iState% := stateVSGWait%;	' present state
@@ -268,13 +269,26 @@ func IdleProcessing%()
             LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
             Yield(1.0);
             tLastTrigger := tFall;
-            ChangeStateTo(stateCheckTurnOnOpto%, tFall);
+            if tunWaitForCameraTrigger% = 1 then
+                ChangeStateTo(stateWaitCameraTrigger%, tFall);
+            else
+                ChangeStateTo(stateCheckTurnOnOpto%, tFall);
+            endif;
         else
             if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                 LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
                 tLastTrigger := tFall;
             endif;
         endif;
+        
+        
+    case iState% = stateWaitCameraTrigger% then
+        if View(DataWindow%).FindPulseUp%(CameraTriggerChannel%, -1, tRise, tFall) = 1 then
+            LogStatus("CameraWait", "Got Shutter Pulse from Camera at " + str$(tRise));
+            tLastTrigger := tFall;
+            ChangeStateTo(stateCheckTurnOnOpto%, tFall);
+        endif;
+        
         
         
     case iState% = stateCheckTurnOnOpto% then
@@ -1244,7 +1258,7 @@ proc CreateSampleConfiguration()
             'before needing to reposition other channels anyway (this non-collapsed scheme would work up to a hard-coded 9 rather than 7 Ports).
             'So if you need to use Port 7/8, you'll need to change the hardcode here and for tunNContinuous% below to 8/9.  If you need
             'to go beyond Port 8, you'll have to either move some of the hardcoded pulse channels, or dump the non-collapsed numbering scheme. -jj
-            halt();
+            halt;
         endif;
 	next
     for i% := 0 to tunNContinuous%-1 do
@@ -1412,7 +1426,7 @@ proc WriteParameterFile()
     Print("Temporal frequency              : %s\n", Tstimtf$);
 	Print("Spatial frequency               : %s\n", Tstimsf$);
 	Print("Orientation (degrees)           : %s\n", Tstimorientation$);
-    Print("Initial Phase (degrees)         : %f\n", Tstimphase$);
+    Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
 	Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
 	Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
 	Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
@@ -1421,6 +1435,7 @@ proc WriteParameterFile()
 	Print("\nExperimental parameters\n");
 	Print("-------------------------\n\n");
     Print("Stimulus Duration (s)  : %f\n", tunStimulusDuration);
+    Print("Intertrial Interval (s): %f\n", tunInterTrialTime);
 	Print("\nTuning parameters\n");
 	Print("-------------------\n\n");
 	docase 

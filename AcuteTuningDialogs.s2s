@@ -20,6 +20,7 @@ var tunRecStimulator% := 0;   'record the stimulator?
 var tunOptoUsePulse% := 0;  'Are we using a "pulsing stimulation"?
 var tunLaserDiode% := 0;  'Are we recording the output of the laser using a photodiode?
 var tunUseTemperature%;
+var tunWaitForCameraTrigger%;
 
 ' These will be set by the tuning curve choice
 var tunNAdvances%;		' Number of times stim will advance during one repeat
@@ -192,6 +193,7 @@ proc GetTuningCurveScriptParameters()
     tunDoOpto% := GetIntRegistryValue%(key$, "DoOpto", tunDoOpto%);
     tunRecStimulator% := GetIntRegistryValue%(key$, "RecStimulator", tunRecStimulator%);
     tunUseTemperature% := GetIntRegistryValue%(key$, "UseTemperature", tunUseTemperature%);
+    tunWaitForCameraTrigger% := GetIntRegistryValue%(key$, "WaitForCameraTrigger", tunWaitForCameraTrigger%);   
 end;
 
 proc SaveTuningCurveScriptParameters()
@@ -206,6 +208,7 @@ proc SaveTuningCurveScriptParameters()
     SetIntRegistryValue(key$, "DoOpto", tunDoOpto%);
     SetIntRegistryValue(key$, "RecStimulator", tunRecStimulator%);
     SetIntRegistryValue(key$, "UseTemperature", tunUseTemperature%);
+    SetIntRegistryValue(key$, "WaitForCameraTrigger", tunWaitForCameraTrigger%); 
 end;
 
 
@@ -251,7 +254,7 @@ func TuningCurveScriptDialog%()
 	DlgCreate("Tuning Curve Parameters", 50, 10, 40);
     DlgButton(0,"         Quit         ");
     DlgButton(1,"     Select Expt.     ");        
-	DlgGroup("Common Parameters", 1, 1, 38, 6);
+	DlgGroup("Common Parameters", 1, 1, 38, 7);
 	DlgReal(1, "Stimulus Duration(s):", .1, 100, 20, 2);  'new, allow really long stimuli
     DlgReal(2, "InterTrial Time(s):", .1, 100, 20, 3);  'new, allow really long stimuli
 	DlgReal(3, "InterBlock Time(s):", 0, 100, 20, 4);  'new, allow really long stimuli
@@ -259,27 +262,29 @@ func TuningCurveScriptDialog%()
     'DlgCheck(5, "Record Stimulator?", 2,6);
     DlgCheck(5, "Record Temperature?", 2,6);
 	'DlgList(3, "Background color:", bcl$, 3, 20, 4);  'updated as new dialog number
-    
-    DlgGroup("Grating Parameters", 1, 7, 38, 2);
-    DlgButton(tundlgGratingParametersButton%, "Grating Parameters", TunDlgGratingMaster%, 2, 8);
-    
-    DlgGroup("Optogenetics", 1, 9, 38, 3);
-    DlgCheck(6,"Opto On",2,10);
-    DlgButton(tundlgOptogeneticsButton%, "Optogenetics Parameters", TunOptoDialog%, 2, 11);
-    
-    DlgGroup("Individual Tuning Curve Types", 1, 12, 38, 8);
-	DlgButton(tundlgOrientationButton%, "Orientation", TuningCurveOrientationDialog%, 2, 13);
-	DlgButton(tundlgContrastButton%, "Contrast", TuningCurveContrastDialog%, 2, 14);
-	DlgButton(tundlgSpatialButton%, "Spatial Freq", TuningCurveSpatialDialog%, 2, 15);
-	DlgButton(tundlgTemporalButton%, "Temporal Freq", TuningCurveTemporalDialog%, 2, 16);
-	DlgButton(tundlgAreaButton%, "Area", TuningCurveAreaDialog%, 2, 17);
-    DlgButton(tundlgNullTestButton%, "Null Test", TuningCurveNullTestDialog%, 2, 18);
-	DlgButton(tundlgIDButton%, "InnerDiam", TuningCurveIDDialog%, 2, 19);
+    DlgCheck(6, "Wait For Camera Trigger?", 2,7);
     
     
-    DlgGroup("Non-Grating Stimuli", 1, 20, 38, 3);
-    DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 21);
-    DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 2, 22);
+    DlgGroup("Grating Parameters", 1, 8, 38, 2);
+    DlgButton(tundlgGratingParametersButton%, "Grating Parameters", TunDlgGratingMaster%, 2, 9);
+    
+    DlgGroup("Optogenetics", 1, 10, 38, 3);
+    DlgCheck(7,"Opto On",2,11);
+    DlgButton(tundlgOptogeneticsButton%, "Optogenetics Parameters", TunOptoDialog%, 2, 12);
+    
+    DlgGroup("Individual Tuning Curve Types", 1, 13, 38, 8);
+	DlgButton(tundlgOrientationButton%, "Orientation", TuningCurveOrientationDialog%, 2, 14);
+	DlgButton(tundlgContrastButton%, "Contrast", TuningCurveContrastDialog%, 2, 15);
+	DlgButton(tundlgSpatialButton%, "Spatial Freq", TuningCurveSpatialDialog%, 2, 16);
+	DlgButton(tundlgTemporalButton%, "Temporal Freq", TuningCurveTemporalDialog%, 2, 17);
+	DlgButton(tundlgAreaButton%, "Area", TuningCurveAreaDialog%, 2, 18);
+    DlgButton(tundlgNullTestButton%, "Null Test", TuningCurveNullTestDialog%, 2, 19);
+	DlgButton(tundlgIDButton%, "InnerDiam", TuningCurveIDDialog%, 2, 20);
+    
+    
+    DlgGroup("Non-Grating Stimuli", 1, 21, 38, 3);
+    DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 22);
+    DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 2, 23);
     
     DlgAllow(0xffff, 0, TuningCurveScriptDialogChanged%);
     
@@ -287,7 +292,7 @@ func TuningCurveScriptDialog%()
     'should be regular, allows us to record the stimulator
     'i%:=DlgShow(tunStimulusDuration, tunInterTrialTime, tunInterBlockTime, tunBackgroundGrayLevel%, tunRecStimulator%, tunDoOpto%);  'now using background gray level
     'replaces tunRecStimulator with tunUseTemperature, probably will only be used for a short period of time
-    i%:=DlgShow(tunStimulusDuration, tunInterTrialTime, tunInterBlockTime, tunBackgroundGrayLevel%, tunUseTemperature%, tunDoOpto%);  'now using background gray level
+    i%:=DlgShow(tunStimulusDuration, tunInterTrialTime, tunInterBlockTime, tunBackgroundGrayLevel%, tunUseTemperature%, tunWaitForCameraTrigger%, tunDoOpto%);  'now using background gray level
     
     ' djs 4-1-09
     ' Spike2 v6 change. DlgShow will return the button number when a button on the dialog is hit and the corresponding
