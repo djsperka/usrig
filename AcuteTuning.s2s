@@ -98,6 +98,7 @@ var StimulatorChannel%;
 var OptoEfferenceChannel%;
 var LaserDiodeChannel%;
 var SequencerPeriodMS;
+var CameraTriggerChannel%;
 
 ' xy windows for plotting (TuningWindow) and PSTH. 
 var TuningWindow%[16];	' one for each wavemark channel
@@ -153,6 +154,7 @@ ReadyChannel% := 27;            ' Look for ready signal on port 2 (same as fixpt
 FrameChannel% := 19;
 StimulatorChannel% := 18;
 OptoEfferenceChannel% := 23;
+CameraTriggerChannel% := 26;
 
 
 ' Fetch electrode information. 
@@ -1156,15 +1158,19 @@ proc CreateSampleConfiguration()
 	SampleComment$(StimChannel%,"Stim");
 	SampleTitle$(StimChannel%,"Stim");
     
-	SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+	'SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+    SampleEvent(ReadyChannel%, 2, 2, 3600); 'Trigger channel, level, moved to port 2 in order to allow port 1 (front of 1401) to carry camera signal
 	SampleComment$(ReadyChannel%,"VSG Ready");
 	SampleTitle$(ReadyChannel%,"VSG Ready");
     
-    
-
     SampleEvent(FrameChannel%, 0, 2, 3600);
     SampleComment$(FrameChannel%,"Frame");
     SampleTitle$(FrameChannel%,"Frame");
+    
+    'Camera frame trigger channel
+    SampleEvent(CameraTriggerChannel%, 1, 2, 3600); 'Camera trigger channel, level
+	SampleComment$(CameraTriggerChannel%, "CamTrg");
+	SampleTitle$(CameraTriggerChannel%, "CamTrg");
 
     
     'The below three channels are used for optogenetics and temperature recording
@@ -1659,7 +1665,8 @@ func Start%()
     Stim$ := " -s " + GetGratingParameters$("Stimulus");    
 	Values$ := tunValuesStringified$;
     'Extras$ := " -b " + tunBackgroundColor$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 2 -v";
-    Extras$ := " -b " + tunBGStr$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 2 -v";
+    'Extras$ := " -b " + tunBGStr$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 2 -v";
+    Extras$ := " -b " + tunBGStr$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 4 -v";  'changed ready pulse (-p) to 4 so that it comes on port 2 - this is bitmapped, not linear mapped
     
     'By default, set ProgName$ to be FIXSTIM
     ProgName$ := "\\fixstim.exe ";    
