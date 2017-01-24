@@ -1314,6 +1314,7 @@ func Stop%()
 	' Disable idle process func
 	ToolbarSet(0,"");
     
+    
     'turn off opto if it happens to be on
     SafeSampleKey("o");
     
@@ -1388,6 +1389,11 @@ func Stop%()
         InvestigateRastersDialog%();
     endif;
     
+    'We are getting strange freezes, sometimes, for no apparent reason. The PAR, SMR, and MAT files are written
+    'but the S2R file is not written in these cases.  There is no explicit halt, so I am putting one in to see
+    'if that helps.  Well, the S2R file isn't written until the SMR is closed, so it makes sense that we don't
+    'get it on crashes.  I've got no idea what's going on, but at least this is worth a try.
+    halt;
     
 end;
 
