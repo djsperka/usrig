@@ -76,6 +76,8 @@ var starDoOptoThisTrial% ;  'will keep track of trial-by-trial opto
 var optoIsOn%;  'Keeps track of if the laser is actually on
 var starOptoOffMidStimTime;  'used to turn off the opto laser mid-stimulus, if required by the timing
 
+var smallAreaTextItemNumber%;
+
 
 proc GetStarStimScriptParameters()
 	var key$;
@@ -146,13 +148,13 @@ func StarStimScriptDialog%()
 	var i%;
 	GetStarStimScriptParameters();
     GetStarStimOptoParameters();
-	DlgCreate("StarSac2 Script Parameters", 25, 10);
+	DlgCreate("StarSac2 Script Parameters", 27, 10);
 	DlgReal(1, "Fixation duration min(s):", .01, 10);
 	DlgReal(2, "Fixation duration max(s):", .01, 10);
 	DlgReal(3, "Acquisition time(s):", .01, 10);
 	DlgReal(4, "Intertrial time(s):", .01, 10);
 	DlgReal(5, "Answer time(s):", .01, 10);
-	DlgInteger(6, "Number of targets:", 1, 99);
+	DlgInteger(6, "Number of targets:", 0, 99);
     DlgInteger(7, "Number of blocks", 1, 50);
     DlgInteger(8, "Num each targ per block", 1, 10);
     DlgCheck(9, "Use opto?");
@@ -167,8 +169,9 @@ func StarStimScriptDialog%()
     DlgInteger(17, "Small reward size(ms)", 1, 200);
     DlgCheck(18, "Use fixpt diameter for target");
     DlgReal(19, "Target diameter", 0.1, 100);
-    DlgButton(101, "SmallArea", StarStimSmallAreaDialog%);
-    DlgButton(102, "Opto Parameters", StarStimOptoDialog%, 20,9);
+    smallAreaTextItemNumber% := DlgText("Text Here",2,20,25);
+    DlgButton(101, "SmallArea", StarStimSmallAreaDialog%,2,21);
+    DlgButton(102, "Opto Parameters", StarStimOptoDialog%,20,21);
     DlgAllow(0xffff, 0, StarStimScriptDialogChanged%);
 	i%:=DlgShow(starFixationDurationMin, starFixationDurationMax, starAcquisitionTime, starInterTrialTime, starAnswerTime, starNumTargets%, 
     starNumBlocks%, starNumPerBlock%, starDoOpto%, starUseStimulusXY%, starTargetX, starTargetY,
@@ -177,6 +180,12 @@ func StarStimScriptDialog%()
 	if i% = 1 then
 		SaveStarStimScriptParameters();
         
+        
+        'Adjust starPostStimOptoTime, which must not allow the opto time to go past the max time
+        if (starPreStimOptoTime + starPostStimOptoTime + starAnswerTime) > starMaxOptoTime then
+            starPostStimOptoTime := starMaxOptoTime - starAnswerTime - starPreStimOptoTime;
+        endif;
+        
         'Set starOptoOffMidStimTime, which will allow us to cut the opto off mid-trial if required
         if (starMaxOptoTime - starPreStimOptoTime) < starAnswerTime then
             starOptoOffMidStimTime := starMaxOptoTime - starPreStimOptoTime;
@@ -184,10 +193,7 @@ func StarStimScriptDialog%()
             starOptoOffMidStimTime := starAnswerTime + .1;  'this will simply prevent starOptoOffMidStimTime from having any effect if the requested time is true wraparound
         endif;
         
-        'Adjust starPostStimOptoTime, which must not allow the opto time to go past the max time
-        if (starPreStimOptoTime + starPostStimOptoTime + starAnswerTime) > starMaxOptoTime then
-            starPostStimOptoTime := starMaxOptoTime - starAnswerTime - starPreStimOptoTime;
-        endif;
+        
         
         'Make sure that the pre-opto time is shorter than the min fixation time (if doing opto)
         '(otherwise the request to turn on the opto might come before the fixation point)
@@ -203,6 +209,20 @@ func StarStimScriptDialog%()
 end;
 
 func StarStimScriptDialogChanged%(item%)
+    'set small area text string every time
+    var textStr$ := "SmallArea: X=";
+    if starXAxis% = 1 then
+        textStr$ := textStr$ + "on, Y=";
+    else
+        textStr$ := textStr$ + "off, Y=";
+    endif
+    if starYAxis% = 1 then
+        textStr$ := textStr$ + "on";
+    else
+        textStr$ := textStr$ + "off";
+    endif
+    DlgValue$(smallAreaTextItemNumber%,textStr$);
+    
     docase
     case item% = 0 then
         DlgEnable(1-starUseStimulusXY%, 11, 12);
@@ -230,6 +250,20 @@ func StarStimSmallAreaDialog%()
     DlgReal(6, "Degree offset", 0.0, 5.0);
     DlgAllow(0xffff, 0, StarStimSmallAreaDialogChanged%);
     DlgShow(starXAxis%, starXNumPerSide%, starXOffset, starYAxis%, starYNumPerSide%, starYOffset);
+    
+    var textStr$ := "SmallArea: X=";
+    if starXAxis% = 1 then
+        textStr$ := textStr$ + "on, Y=";
+    else
+        textStr$ := textStr$ + "off, Y=";
+    endif
+    if starYAxis% = 1 then
+        textStr$ := textStr$ + "on";
+    else
+        textStr$ := textStr$ + "off";
+    endif
+    DlgValue$(smallAreaTextItemNumber%,textStr$);    
+    
     return 1;
 end
 
@@ -1157,13 +1191,14 @@ func Start%()
     ' angstep is the angular diff between the targets
    	var twopi;
 	twopi := 2.0*4.0*ATan(1.0);
-    angstep := twopi / starNumTargets%;
+    'angstep := twopi / starNumTargets%;  'moved inside FOR loop below to allow starNumTargets to be 0
     
     
     ' rotate vec[] to get direction vec for each target. The base target is already saved in
     ' starTargetPositions, as are any additional small-area targets -- we use count% as the index
     ' into starTargetPositions for this reason. 
     for i% := 1 to starNumTargets%-1 do
+        angstep := twopi / starNumTargets%;
         starTargetPositions[starNTargetPositions%][0] := (vec[0] * cos(i% * angstep) - vec[1] * sin(i% * angstep)) * length + fpx;
         starTargetPositions[starNTargetPositions%][1] := (vec[0] * sin(i% * angstep) + vec[1] * cos(i% * angstep)) * length + fpy;
         
@@ -1461,6 +1496,21 @@ proc WriteParameterFile()
 	for i%:= 0 to starNTargetPositions%-1 do
 		Print("%3d (%6.2f, %6.2f) %4d %4d\n", i%, starTargetPositions[i%][0], starTargetPositions[i%][1], nTrialsSuccessByTarget%[i%], nTrialsFailByTarget%[i%]);
 	next;
+    if starXAxis% = 1 then
+        Print("\nSmall Area X: ON\n");
+        Print("NumPerSide         : %d\n",starXNumPerSide%);
+        Print("X Offset           : %f\n",starXOffset);
+    else
+        Print("\nSmall Area X: OFF\n");
+    endif
+    if starYAxis% = 1 then
+        Print("Small Area Y: ON\n");
+        Print("NumPerSide         : %d\n",starYNumPerSide%);
+        Print("Y Offset           : %f\n",starYOffset);
+    else
+        Print("Small Area Y: OFF\n");
+    endif
+    
 
 	Print("\nExperimental parameters\n");
 	Print("-------------------------\n\n");
