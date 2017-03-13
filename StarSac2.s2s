@@ -58,6 +58,7 @@ var starTargetPositions[MAXTARGETPOSITIONS%][2];
 var starNTargetPositions% := 0;
 var starNTargetOrder% := 0;
 var starTrialCounter% := 0;
+var starDoTargetGrid% := 0;
 const MAXEYETRACECOLORS% := 12;
 var starEyeTraceColors%[MAXEYETRACECOLORS%];    ' These are used to draw colors
 
@@ -108,6 +109,7 @@ proc GetStarStimScriptParameters()
     starMSPerRewardHit% := GetIntRegistryValue%(key$, "SmallRewardSize", starMSPerRewardHit%);
     starUseDefaultTargetSize% := GetIntRegistryValue%(key$, "UseDefaultTargetSize", starUseDefaultTargetSize%);
     starTargetDiameter := GetFloatRegistryValue(key$, "TargetDiameter", starTargetDiameter);
+    starDoTargetGrid% := GetIntRegistryValue%(key$, "DoTargetGrid", starDoTargetGrid%);
     
 end;
  	
@@ -140,6 +142,7 @@ proc SaveStarStimScriptParameters()
     SetIntRegistryValue(key$, "SmallRewardSize", starMSPerRewardHit%);
     SetIntRegistryValue(key$, "UseDefaultTargetSize", starUseDefaultTargetSize%);
     SetFloatRegistryValue(key$, "TargetDiameter", starTargetDiameter);
+    SetIntRegistryValue(key$, "DoTargetGrid", starDoTargetGrid%);
 end;
 
 
@@ -248,8 +251,9 @@ func StarStimSmallAreaDialog%()
     DlgCheck(4, "Y-axis");
     DlgInteger(5, "Num per side", 0, 10);
     DlgReal(6, "Degree offset", 0.0, 5.0);
+    DlgCheck(7, "Use Grid");
     DlgAllow(0xffff, 0, StarStimSmallAreaDialogChanged%);
-    DlgShow(starXAxis%, starXNumPerSide%, starXOffset, starYAxis%, starYNumPerSide%, starYOffset);
+    DlgShow(starXAxis%, starXNumPerSide%, starXOffset, starYAxis%, starYNumPerSide%, starYOffset, starDoTargetGrid%);
     
     var textStr$ := "SmallArea: X=";
     if starXAxis% = 1 then
@@ -277,6 +281,11 @@ func StarStimSmallAreaDialogChanged%(item%)
     case item% = 4 then
         DlgEnable(DlgValue(4), 5, 6);
     endcase
+    if DlgValue(7) = 1 then 'If grid is selected, force both X and Y to be on
+        DlgEnable(1, 2, 3, 5, 6);  'Enable x/y entries
+        DlgValue(1,1);  'Force x checkbox to 1
+        DlgValue(4,1);  'Force y checkbox to 1
+    endif;
     return 1;
 end
 
@@ -1135,6 +1144,9 @@ func Start%()
     var length;
     var angstep;
     var i%;
+    var j%;
+    var gridX[(starXNumPerSide%*2)+1];
+    var gridY[(starYNumPerSide%*2)+1];
     GetFixationPointParameterValues(fpx, fpy, fpd, fpr);
     if starUseDefaultTargetSize% = 0 then
         fpd := starTargetDiameter;
@@ -1149,37 +1161,79 @@ func Start%()
         targy := starTargetY;
     endif
     
-    ' base target first
-    starTargetPositions[0][0] := targx;
-    starTargetPositions[0][1] := targy;
-    starNTargetPositions% := 1;
     
-    ' Small area targets on x-axis
-    if starXAxis% = 1 then
-        for i% := 1 to starXNumPerSide% do
-            starTargetPositions[starNTargetPositions%][0] := targx + i% * starXOffset;
-            starTargetPositions[starNTargetPositions%][1] := targy;
-            starNTargetPositions% += 1;
-            starTargetPositions[starNTargetPositions%][0] := targx - i% * starXOffset;
-            starTargetPositions[starNTargetPositions%][1] := targy;
-            starNTargetPositions% += 1;
+    if starDoTargetGrid% = 0 then
+        ' base target first
+        starTargetPositions[0][0] := targx;
+        starTargetPositions[0][1] := targy;
+        starNTargetPositions% := 1;
+        
+        ' Small area targets on x-axis
+        if starXAxis% = 1 then
+            for i% := 1 to starXNumPerSide% do
+                starTargetPositions[starNTargetPositions%][0] := targx + i% * starXOffset;
+                starTargetPositions[starNTargetPositions%][1] := targy;
+                starNTargetPositions% += 1;
+                starTargetPositions[starNTargetPositions%][0] := targx - i% * starXOffset;
+                starTargetPositions[starNTargetPositions%][1] := targy;
+                starNTargetPositions% += 1;
+            next
+        endif
+        
+        ' Small area targets on x-axis    
+        if starYAxis% = 1 then
+            for i% := 1 to starYNumPerSide% do
+                starTargetPositions[starNTargetPositions%][0] := targx;
+                starTargetPositions[starNTargetPositions%][1] := targy + i% * starYOffset;
+                starNTargetPositions% += 1;
+                starTargetPositions[starNTargetPositions%][0] := targx;
+                starTargetPositions[starNTargetPositions%][1] := targy - i% * starYOffset;
+                starNTargetPositions% += 1;
+            next
+        endif
+        
+        ' Total number of small area targets (includes the base target)
+        starNumSmall% := 1 + starXAxis% * starXNumPerSide% * 2 + starYAxis% * starYNumPerSide% * 2;
+        
+    else  'if we are doing a grid
+        count% := 0;
+        for i% := 0 to starXNumPerSide% do
+            if i% = 0 then
+                gridX[count%] := targx;
+                count% += 1;
+            else
+                gridX[count%] := targx + i% * starXOffset;
+                count% += 1;
+                gridX[count%] := targx - i% * starXOffset;
+                count% += 1;
+            endif                
+        next;
+
+        count% := 0;
+        for i% := 0 to starYNumPerSide% do
+            if i% = 0 then
+                gridY[count%] := targy;
+                count% += 1;
+            else
+                gridY[count%] := targy + i% * starYOffset;
+                count% += 1;
+                gridY[count%] := targy - i% * starYOffset;
+                count% += 1;
+            endif 
+        next; 
+        
+        starNTargetPositions% := 0;
+        for i% := 0 to (starXNumPerSide%*2) do
+            for j% := 0 to (starYNumPerSide%*2) do
+                starTargetPositions[starNTargetPositions%][0] := gridX[i%];
+                starTargetPositions[starNTargetPositions%][1] := gridY[j%];
+                starNTargetPositions% += 1;
+            next  
         next
-    endif
+        ' Total number of small area targets (includes the base target)
+        starNumSmall% := ((starXNumPerSide%*2)+1) * ((starYNumPerSide%*2)+1);
+    endif;
     
-    ' Small area targets on x-axis    
-    if starYAxis% = 1 then
-        for i% := 1 to starYNumPerSide% do
-            starTargetPositions[starNTargetPositions%][0] := targx;
-            starTargetPositions[starNTargetPositions%][1] := targy + i% * starYOffset;
-            starNTargetPositions% += 1;
-            starTargetPositions[starNTargetPositions%][0] := targx;
-            starTargetPositions[starNTargetPositions%][1] := targy - i% * starYOffset;
-            starNTargetPositions% += 1;
-        next
-    endif
-    
-    ' Total number of small area targets (includes the base target)
-    starNumSmall% := 1 + starXAxis% * starXNumPerSide% * 2 + starYAxis% * starYNumPerSide% * 2;
     
     LogInfo("targxy " + str$(targx) + ", " + str$(targy));
     
