@@ -142,10 +142,10 @@ var nTrialsAborted% :=0;		'
 
 func IdleProcessing%()
 	var iStatus% := 1;	
-	tNow := MaxTime();
+	tNow := View(DataWindow%).MaxTime();
 
-	xEye := ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
-	yEye := ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+	yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
 
 	' Don't update display every time....
 	if tNow-tLastUpdate > .005 then
@@ -162,7 +162,7 @@ func IdleProcessing%()
         'ChangeStateTo(stateStartTrial%, tNow);
         
 			' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
-			tTrigger := NextTime(ReadyChannel%, tLast, vTrigger);
+			tTrigger := View(DataWindow%).NextTime(ReadyChannel%, tLast, vTrigger);
 			if tTrigger > tLastTrigger and vTrigger = 0 then
 				LogStatus("stateVSGWait", "Got leading edge of trigger at " + str$(tTrigger));
 				tLastTrigger := tTrigger;
@@ -172,7 +172,7 @@ func IdleProcessing%()
 		case iState% = stateVSGWaitConfirm% then
 
 			' Waiting for VSG to confirm it is ready. The downward side of the pulse is expected...
-			tTrigger := NextTime(ReadyChannel%, tLastTrigger, vTrigger);
+			tTrigger := View(DataWindow%).NextTime(ReadyChannel%, tLastTrigger, vTrigger);
 			if tTrigger > tLastTrigger and vTrigger = 1 then
 				LogStatus("stateVSGWaitConfirm", "Got trailing edge of trigger");
 				tLastTrigger := tTrigger;
@@ -189,7 +189,7 @@ func IdleProcessing%()
 		
 		case iState% = stateWaitForFixPtOn% then
 
-			tTrigger := NextTime(TriggerChannel%, tLast, vTrigger);
+			tTrigger := View(DataWindow%).NextTime(TriggerChannel%, tLast, vTrigger);
 			if tTrigger > tLast and vTrigger = 0 then 
 				' Fixation point is up
 				LogStatus("stateWaitForFixPtOn", "Fixpt is on");
@@ -228,7 +228,7 @@ func IdleProcessing%()
 		case iState% = stateWaitForBlank% then
 
 			' we just wait for fix point off signal in this case. 
-            tTrigger := NextTime(TriggerChannel%, tLast, vTrigger);
+            tTrigger := View(DataWindow%).NextTime(TriggerChannel%, tLast, vTrigger);
             'printlog("Value on trigger channel is %f\n",ChanValue(TriggerChannel%,tNow));
 			if tTrigger > tLast and vTrigger = 1 then
                 ' Fixation point is off
@@ -247,7 +247,7 @@ func IdleProcessing%()
             'The major issue is that the crosstalk is sometimes 'infinitely narrow' - that is, the time of both the upwards and
             'the downwards transitions is identical.  NextTime can't see both events in that case.
             
-            tTrigger2 := NextTime(TriggerChannel%, tLastTrigger, vTrigger);  'so check this value again, from the last trigger time
+            tTrigger2 := View(DataWindow%).NextTime(TriggerChannel%, tLastTrigger, vTrigger);  'so check this value again, from the last trigger time
             docase
             case tTrigger2 = -1 and vTrigger = 0 then 'no event, channel is low, blank is verified, move forward as expected
                 ChangeStateTo(stateInterTrialInterval%, tTrigger);
