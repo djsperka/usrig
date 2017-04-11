@@ -340,6 +340,10 @@ unicStimulatingChannel% := 35;
 unicFilePort% := 5;
 unicCommandSuccessPort% := 6;
 unicStimulatingPort% := 7;
+ExcludedChans%[0] := 22;  'Joystick is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 35;  'unicStimulationgChannel% is highest non-electrode channel used by this function
+
+
 
 LogInit(1);
 InitJoystick2(JoyChannel%,GetJoystickPort%()); 'now calls InitJoystick2 - we must do this BEFORE calling the main dialog
@@ -818,17 +822,15 @@ func MainDialog%()
         
         SaveMainDialogParameters();
         
-        'Change value of caRequireFixation to -1 if it is 5 (monitor eye position only), because that's what the code expects.
+        'Change value of caRequireFixation to -1 if it is 4 (monitor eye position only), because that's what the code expects.
         if caRequireFixation% = 4 then
             caRequireFixation% := -1;
         endif;
         
         'Change value of caRequireSaccadeResponse based on caRequireFixation result
         docase
-        case caRequireFixation% = 3 then
+        case caRequireFixation% = 3 and caTrainingOptions% > 2 then
             caRequireSaccadeResponse% := 1;
-        'case caRequireFixation% = 3 then  'this was an intermediate step that Evan decided was unnecessary
-        '    caAllowSaccadeResponse% := 1;
         else
             caAdditionalWindowRadius := 0;  'do not display additional stimulus window size if saccade response is not applicable, parameters have already been saved so if this was changed it will save in registry
         endcase;
@@ -1202,7 +1204,8 @@ proc CreateSampleConfiguration()
     GetElectrodeParameters();
     'printlog("num wavemark ports = %d and num continuous ports = %d\n",numWavemarkPorts%,numContinuousPorts%); 
     'CreateElectrodeSamplingConfiguration(1, 11);
-    CreateElectrodeSamplingConfiguration(1, 1+numWavemarkPorts%);  'updated to have continuous channels start where wavemark channels leave off.
+    'CreateElectrodeSamplingConfiguration(1, 1+numWavemarkPorts%);  'updated to have continuous channels start where wavemark channels leave off.
+    CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
     'endcase;
 	
     if caRequireFixation% <> 0 then  'don't set up eye channels unless we are looking at eye position

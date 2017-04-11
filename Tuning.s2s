@@ -268,6 +268,10 @@ StimSlaveChannel% := 47;
 DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
 OptoCopyChannel% := 49;
 
+ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
+
+
 ' end djs 9-18-14
 
 ButtonChannel% := 27;
@@ -2384,24 +2388,26 @@ proc CreateSampleConfiguration()
         ' 12/6/2010
         ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
         ' and M waveform channels. 
-        for i% := 0 to tunNWavemarks%-1 do
-            SampleWaveMark(i% + 1, tunWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
-            if useCustomLabels% = 1 and CustomLabels$[i%] <> "" then
-                SampleTitle$(i% + 1, CustomLabels$[WavemarkPorts%[i%]] + "WM"); 
-            else 
-                SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%])); 
-            endif;
-            'SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%]));
-        next
-        for i% := 0 to tunNContinuous%-1 do
-            SampleWaveform(tunNWavemarks% + i% + 1, tunContinuousPorts%[i%], 20000);
-            if useCustomLabels% = 1 and CustomLabels$[i%] <> "" then
-                SampleTitle$(tunNWavemarks% + i% + 1, CustomLabels$[ContinuousPorts%[i%]] + "WF"); 
-            else
-                SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
-            endif;
-            'SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
-        next
+'        for i% := 0 to tunNWavemarks%-1 do
+'            SampleWaveMark(i% + 1, tunWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+'            if useCustomLabels% = 1 and CustomLabels$[i%] <> "" then
+'                SampleTitle$(i% + 1, CustomLabels$[WavemarkPorts%[i%]] + "WM"); 
+'            else 
+'                SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%])); 
+'            endif;
+'            'SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%]));
+'        next
+'        for i% := 0 to tunNContinuous%-1 do
+'            SampleWaveform(tunNWavemarks% + i% + 1, tunContinuousPorts%[i%], 20000);
+'            if useCustomLabels% = 1 and CustomLabels$[i%] <> "" then
+'                SampleTitle$(tunNWavemarks% + i% + 1, CustomLabels$[ContinuousPorts%[i%]] + "WF"); 
+'            else
+'                SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
+'            endif;
+'            'SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
+'        next
+        CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
+
     endcase;
     
         

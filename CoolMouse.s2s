@@ -89,6 +89,11 @@ XChannel% := 21;
 YChannel% := 22;
 TriggerChannel% := 23;
 ReadyChannel% := 24;
+
+ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 31;  'Keyboard (default) is highest non-electrode channel used by this function
+
+
 CreateSampleConfiguration();
 
 
@@ -408,14 +413,15 @@ proc CreateSampleConfiguration()
         ' 12/6/2010
         ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
         ' and M waveform channels. 
-        for i% := 0 to cmNWavemarks%-1 do
-            SampleWaveMark(i% + 1, cmWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
-            SampleTitle$(i% + 1, "WMrk " + str$(cmWavemarkPorts%[i%])); 
-        next
-        for i% := 0 to cmNContinuous%-1 do
-            SampleWaveform(cmNWavemarks% + i% + 1, cmContinuousPorts%[i%], 20000);
-            SampleTitle$(cmNWavemarks% + i% + 1, "Cont " + str$(cmContinuousPorts%[i%]));
-        next
+'        for i% := 0 to cmNWavemarks%-1 do
+'            SampleWaveMark(i% + 1, cmWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+'            SampleTitle$(i% + 1, "WMrk " + str$(cmWavemarkPorts%[i%])); 
+'        next
+'        for i% := 0 to cmNContinuous%-1 do
+'            SampleWaveform(cmNWavemarks% + i% + 1, cmContinuousPorts%[i%], 20000);
+'            SampleTitle$(cmNWavemarks% + i% + 1, "Cont " + str$(cmContinuousPorts%[i%]));
+'        next
+        CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
     endcase;
     
     
