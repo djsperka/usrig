@@ -1411,6 +1411,10 @@ SynchChannel% := 32;
 DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
 OptoCopyChannel% := 49;
 
+ExcludedChans%[0] := 23;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 49;  'OptoCopyChannel is highest non-electrode channel used by this function
+
+
 'If we are not using the Plexon (and thus linking the two 1401s together, just use the standard order of operations:
 '1) create sampling configuration, 2) Initialize windows, 3) Initialize/run toolbar.
 'However, if we are linking the 1401s we have to do this in a different order, because we have to open up the second
@@ -2961,13 +2965,16 @@ proc CreateSampleConfiguration()
     case UsePlexon24WF% = 1 then
         CreateElectrodeSamplingConfiguration24WF();
     else  'just set up the channels as expected
-        CreateElectrodeSamplingConfiguration(1, 11);
+        'CreateElectrodeSamplingConfiguration(1, 11);
+        CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
     endcase;
 	
     ' Set up eye channels whether using Plexon or not
-	SampleWaveform(XChannel%,14,1000);
+	'SampleWaveform(XChannel%,14,1000);
+    SampleWaveform(XChannel%,GetEyeXPort%(),1000);
 	SampleTitle$(XChannel%,"Eye X");
-	SampleWaveform(YChannel%,15,1000);
+	'SampleWaveform(YChannel%,15,1000);
+    SampleWaveform(YChannel%,GetEyeYPort%(),1000);
 	SampleTitle$(YChannel%,"Eye Y");
     
     
