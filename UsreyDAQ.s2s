@@ -86,14 +86,26 @@ end
 
 
 func GetJoystickPort%()
+    if JoystickPort% = -1 then
+        message("Joystick port has been set to -1 (off) in Config->DAQ but the current script requires joystick!  Quitting!");
+        halt
+    endif
     return JoystickPort%;
 end
 
 func GetEyeXPort%()
+    if EyeXPort% = -1 then
+        message("EyeX port has been set to -1 (off) in Config->DAQ but the current script requires eyetracking!  Quitting!");
+        halt
+    endif
     return EyeXPort%;
 end
 
 func GetEyeYPort%()
+    if EyeYPort% = -1 then
+        message("EyeY port has been set to -1 (off) in Config->DAQ but the current script requires eyetracking!  Quitting!");
+        halt
+    endif
     return EyeYPort%;
 end
 
@@ -240,9 +252,9 @@ func DAQParametersDialog%()
 	DlgInteger(8, "Juice per reward:", 0, 10, 0, 0, 1);
     DlgInteger(9, "Juice Reward ms:", 0, 1000);
     DlgList(10, "Juicer Open State:",juicerList2$,2);
-    DlgInteger(11, "Eye X Port", 0, 31);
-    DlgInteger(12, "Eye Y Port", 0, 31);
-    DlgInteger(13, "Joystick Port", 0, 31);
+    DlgInteger(11, "Eye X Port", -1, 31);
+    DlgInteger(12, "Eye Y Port", -1, 31);
+    DlgInteger(13, "Joystick Port", -1, 31);
     DlgCheck(14, "Use Remote Stimulus");
     DlgString(15, "Remote ip", 21);
     DlgString(16, "Remote port", 5);
