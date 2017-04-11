@@ -37,6 +37,7 @@ var starNumBlocks% := 1;
 var starMSPerRewardHit% := 25;
 var starUseDefaultTargetSize% := 1;
 var starTargetDiameter := 1.0;
+var starTargetIsGrating%;
 
 ' keep fixpt on stuff
 var starKeepFixptOn% := 1;
@@ -110,6 +111,7 @@ proc GetStarStimScriptParameters()
     starUseDefaultTargetSize% := GetIntRegistryValue%(key$, "UseDefaultTargetSize", starUseDefaultTargetSize%);
     starTargetDiameter := GetFloatRegistryValue(key$, "TargetDiameter", starTargetDiameter);
     starDoTargetGrid% := GetIntRegistryValue%(key$, "DoTargetGrid", starDoTargetGrid%);
+    starTargetIsGrating% := GetIntRegistryValue%(key$, "TargetIsGrating", starTargetIsGrating%);
     
 end;
  	
@@ -143,6 +145,7 @@ proc SaveStarStimScriptParameters()
     SetIntRegistryValue(key$, "UseDefaultTargetSize", starUseDefaultTargetSize%);
     SetFloatRegistryValue(key$, "TargetDiameter", starTargetDiameter);
     SetIntRegistryValue(key$, "DoTargetGrid", starDoTargetGrid%);
+    SetIntRegistryValue(key$, "TargetIsGrating", starTargetIsGrating%);
 end;
 
 
@@ -173,13 +176,14 @@ func StarStimScriptDialog%()
     DlgCheck(18, "Use fixpt diameter for target");
     DlgReal(19, "Target diameter", 0.1, 100);
     smallAreaTextItemNumber% := DlgText("Text Here",2,20,25);
-    DlgButton(101, "SmallArea", StarStimSmallAreaDialog%,2,21);
-    DlgButton(102, "Opto Parameters", StarStimOptoDialog%,20,21);
+    DlgCheck(20, "Use grating for target",2,21);
+    DlgButton(101, "SmallArea", StarStimSmallAreaDialog%,2,22);
+    DlgButton(102, "Opto Parameters", StarStimOptoDialog%,20,22);
     DlgAllow(0xffff, 0, StarStimScriptDialogChanged%);
 	i%:=DlgShow(starFixationDurationMin, starFixationDurationMax, starAcquisitionTime, starInterTrialTime, starAnswerTime, starNumTargets%, 
     starNumBlocks%, starNumPerBlock%, starDoOpto%, starUseStimulusXY%, starTargetX, starTargetY,
     starKeepFixptOn%, starMinSmallRewardDelta, starMaxSmallRewardDelta, starJuicePerSmallReward%, starMSPerRewardHit%,
-    starUseDefaultTargetSize%, starTargetDiameter);
+    starUseDefaultTargetSize%, starTargetDiameter, starTargetIsGrating%);
 	if i% = 1 then
 		SaveStarStimScriptParameters();
         
@@ -231,12 +235,17 @@ func StarStimScriptDialogChanged%(item%)
         DlgEnable(1-starUseStimulusXY%, 11, 12);
         DlgEnable(starKeepFixptOn%, 14, 15, 16, 17);
         DlgEnable(1-starUseDefaultTargetSize%, 19);
+        DlgEnable(1-DlgValue(20),18);  'disable target diameter = fixation point if target is grating
+        DlgEnable(1-DlgValue(20),19);
     case item% = 10 then
         DlgEnable(1-DlgValue(10), 11, 12);
     case item% = 13 then
         DlgEnable(DlgValue(13), 14, 15, 16, 17);
     case item% = 18 then
         DlgEnable(1-DlgValue(18), 19);
+    case item% = 20 then
+        DlgEnable(1-DlgValue(20),18);  'disable target diameter = fixation point if target is grating
+        DlgEnable(1-DlgValue(20),19);
     endcase
     return 1;
 end
@@ -437,6 +446,11 @@ ReadyChannel% := 23;
 FixationChannel% := 24;
 StimChannel% := 25;
 ChangeChannel% := 26;
+
+ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 31;  'Keyboard (default) is highest non-electrode channel used by this function
+
+
 CreateSampleConfiguration();
 
 ' Get display windows ready
@@ -940,8 +954,9 @@ proc CreateSampleConfiguration()
 '        SampleWaveform(starNContinuous% + i% + 1, starContinuousPorts%[i%], 20000);
 '        SampleTitle$(starNContinuous% + i% + 1, "Cont " + str$(starContinuousPorts%[i%]));
 '    next
-    CreateElectrodeSamplingConfiguration(1, starNWavemarks%);  'Use new system, this will also use electrode names
-    
+    'CreateElectrodeSamplingConfiguration(1, starNWavemarks%);  'Use new system, this will also use electrode names
+    CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
+
 
 	'EYE COIL CHANNELS. Last # is sampling freq in Hz. 
 	SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
@@ -1300,6 +1315,13 @@ func Start%()
     SafeSampleKey("0");      
     
 	CommandLine$ := "cmd /k " + GetBinDir$(1) + "remote " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() +  " starstim " + TargetArg$ + Extras$;
+    
+    
+    if starTargetIsGrating% = 1 then
+        tmp$ := GetGratingParameters$("Stimulus");
+        CommandLine$ := CommandLine$ + " -g " + tmp$;
+    endif
+    
     
     
     if starDoOpto% = 1 then
