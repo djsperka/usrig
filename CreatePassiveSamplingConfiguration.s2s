@@ -1,0 +1,72 @@
+'A very simple function that creates an electrode sampling configuration for passive sampling, with
+'parameters taken from the rig configuration.  Basically, this is just yanking out CreateSampleConfiguration
+'from a regular script (in this case, CuedAtten)
+
+'We'll need some of these, I don't really know which...try them all for now!
+#include "../../Spike2Util/UsreyUtil.s2s"
+#include "AttentionExtractFunctions.s2s"
+#include "UsreyFixationPoint.s2s"
+#include "UsreyDAQ.s2s"
+#include "Joystick.s2s"
+#include "Unic.s2s"
+
+
+
+'And begin setting up the electrode sampling configuration
+var index;
+var key$;
+var XChannel%;
+var YChannel%;
+var JoyChannel%;
+
+key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+SampleClear(); 'Set standard sampling state
+
+' Assign necessary channel numbers
+XChannel% := 23;
+YChannel% := 24;
+JoyChannel% := 22;
+ExcludedChans%[0] := 22;  'Joystick is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 35;  'This parallels the current CuedAtten, though not all the dig in channels are created
+
+
+FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+SampleAutoName$(dataCellName$ + "_ps_000");  'NOTE: maximum of 13 characters!!!  Use "ps" for passive sampling in the autoname
+SampleAutoFile(1);  'Enable automatic file naming
+SampleAutoComment(0); 'Prompt for comment after sampling
+SampleAutoCommit(60); 'Seconds between each file commit
+
+'If the config requests a joystick port
+if JoystickPort% >= 0 then 
+    printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPort%());
+    var ok%;
+    ok%:=SampleWaveform(JoyChannel%, GetJoystickPort%(), 1000);
+    SampleTitle$(JoyChannel%, "Joy");
+endif;
+
+'Set up eye channels, normally this would NOT be independent for X/Y, but who know what wacky thing we might want to do in testing
+if EyeXPort% >= 0 then  'don't set up eye channels unless we are looking at eye position
+    ' Set up eye X channel
+    SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+    SampleTitle$(XChannel%,"Eye X");
+endif;
+
+if EyeYPort% >= 0 then  'don't set up eye channels unless we are looking at eye position
+    ' Set up eye Y channel 
+    SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+    SampleTitle$(YChannel%,"Eye Y");
+endif;
+
+GetElectrodeParameters();
+CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%[]);  'Allows a lot of channels while preventing accidentally re-defining a channel
+
+SampleTextMark(200);  'increase number of allowed characters, 1 is so stingy!
+
+SampleSequencer(script$ + "Tuning.pls");  'This may not really be necessary
+
+SampleOptimise(2,2,2,2,50);  'otherwise: full optimize timing, channels may have different rates, Power1401 (lowest common denominator, so eh), low usPerTime of 2, high usPerTime of 50
+
+SampleMode(1); 'Continuous sampling
+
+Message("Sampling configuration created, please check sampling config to verify results.");
