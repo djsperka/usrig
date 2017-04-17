@@ -1371,9 +1371,11 @@ proc InitializeToolbar()
     ToolbarSet(5,"Juice", Reward%);  'moved from 3 to 5 because Stacey was accidentally clicking Sample Stop sometimes, there are no ToolbarEnable commands for juice, it is always enabled
     ToolbarSet(6,"Adjust Joystick",JoystickConfigDialog%);
 	ToolbarSet(7,"Quit",Quit%);
+    ToolbarSet(8,"Optimize Y",OptimizeY%);
 	ToolbarEnable(2,0);
 	ToolbarEnable(3,0);  
-	ToolbarEnable(4,0);  
+	ToolbarEnable(4,0); 
+    ToolbarEnable(8,0);     
 	Toolbar("Go",0x3ff);
     
 end;
@@ -1513,6 +1515,7 @@ func Start%()
 	ToolbarEnable(1,0);  'disable sample start
 	'ToolbarEnable(6,0);  'this button is not used
 	ToolbarEnable(7,0);  'disable Quit
+    ToolbarEnable(8,1);  'enable optimize y
 	View(DataWindow%);
 	Yield(.1);
     return 1;
@@ -1533,6 +1536,7 @@ func Stop%()
     'Allow quit
     ToolbarEnable(7,1);
     
+    ToolbarEnable(8,0);  'disable optimize y (don't really need to because we don't close the dataWindow, but may as well...)
     
     
     
@@ -3829,3 +3833,10 @@ func GetCurrentEpoch$()
 end
 
 
+'This function simply optimizes the y axis of all electrodes
+'And by simply, I mean REALLY simply
+func OptimizeY%()
+    
+    View(DataWindow%).Optimise(-1);
+    
+end
