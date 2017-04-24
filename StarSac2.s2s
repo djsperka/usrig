@@ -1151,6 +1151,32 @@ func Targ$(x, y, d, c$)
     return " -t " + str$(x) + "," + str$(y) + "," + str$(d) + "," + c$ + " ";
 end
 
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func TargGrating$(x, y)
+    'This function gets the current grating parameters, replaces the x and y location with the specified location, and returns
+    'the grating with the new location with the correct syntax for adding into the command line
+    var gr$;
+    var newgr$;
+    var NOTx; 
+    var NOTy;
+    var w;
+    var h;
+    var iw;
+    var ih;
+    var contrast%;
+    var sf;
+    var tf;
+    var ori;
+    var phase;
+    var cv$;
+    var pattern$;
+    var aperture$;
+    gr$ := GetGratingParameters$("Stimulus");
+    ParseGratingParameters%(gr$, NOTx, NOTy, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    newgr$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    return " -g " + newgr$ + " ";
+end
+
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Start%()
@@ -1291,7 +1317,11 @@ func Start%()
     ' Generate target args for startstim program
     for i% := 0 to starNTargetPositions% -1 do
         LogInfo("target pos[" + str$(i%) + "] " + str$(starTargetPositions[i%][0]) + ", " + str$(starTargetPositions[i%][1]));
-        TargetArg$ += Targ$(starTargetPositions[i%][0], starTargetPositions[i%][1], fpd, starTargetColor$);
+        if starTargetIsGrating% = 0 then
+            TargetArg$ += Targ$(starTargetPositions[i%][0], starTargetPositions[i%][1], fpd, starTargetColor$);
+        else
+            TargetArg$ += TargGrating$(starTargetPositions[i%][0], starTargetPositions[i%][1]);
+        endif;
     next
     
     ' Randomize target order
@@ -1315,12 +1345,6 @@ func Start%()
     SafeSampleKey("0");      
     
 	CommandLine$ := "cmd /k " + GetBinDir$(1) + "remote " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() +  " starstim " + TargetArg$ + Extras$;
-    
-    
-    if starTargetIsGrating% = 1 then
-        tmp$ := GetGratingParameters$("Stimulus");
-        CommandLine$ := CommandLine$ + " -g " + tmp$;
-    endif
     
     
     
