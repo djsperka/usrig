@@ -11,6 +11,8 @@ var CustomLabels$[32];
 var ExcludedChans%[2];  'This allows us (if we use CreateElectrodeSamplingConfiguration32) to exclude the channels reserved for other info
 ExcludedChans%[0] := 30;  'Lowest default excluded channel; the standard TextMark channel is #30
 ExcludedChans%[1] := 31;  'Highest default excluded channel; the standard Keyboard channel is #31, exclude additional channels if necessary in individual functions
+var WavemarkSamplingRate%;  'this had been hardcoded
+var WaveformSamplingRate%;
 
 
 #include "DlgUtilities.s2s"
@@ -124,6 +126,8 @@ proc GetElectrodeParameters()
     Profile(key$, "JoePlexon1", 0, JoePlexon1%);
     Profile(key$, "JoePlexon2", 0, JoePlexon2%);
     Profile(key$, "UseCustomLabels", 0, UseCustomLabels%);
+    Profile(key$, "WavemarkSamplingRate", 28000, WavemarkSamplingRate%);  'actually setting a default value!
+    Profile(key$, "WaveformSamplingRate", 20000, WaveformSamplingRate%);  'actually setting a default value!
     for i% := 0 to 31 do
         s$ := GetStringRegistryValue$(key$, "CustomLabel" + Str$(i%), "");
         CustomLabels$[i%] := s$;
@@ -145,6 +149,8 @@ proc SaveElectrodeParameters()
     Profile(key$, "JoePlexon1", JoePlexon1%);
     Profile(key$, "JoePlexon2", JoePlexon2%);
     Profile(key$, "UseCustomLabels", UseCustomLabels%);
+    Profile(key$, "WavemarkSamplingRate", WavemarkSamplingRate%);
+    Profile(key$, "WaveformSamplingRate", WaveformSamplingRate%);
     for i% := 0 to 31 do
         SetStringRegistryValue(key$, "CustomLabel" + Str$(i%), CustomLabels$[i%]);
     next;
@@ -289,7 +295,8 @@ func CreateElectrodeSamplingConfiguration32(iStartWM%, iStartCont%, ExcludedChan
         if ichan% >= ExcludedChans%[0] then
             ichan% := ExcludedChans%[1]+1;
         endif;
-        SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+        'SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+        SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, WavemarkSamplingRate%); ' chan, port, event rate, points, pre-trigger, rate
         if useCustomLabels% = 1 and CustomLabels$[WavemarkPorts%[i%]] <> "" then
             SampleTitle$(ichan%, CustomLabels$[WavemarkPorts%[i%]] + "WM"); 
         else
@@ -311,7 +318,8 @@ func CreateElectrodeSamplingConfiguration32(iStartWM%, iStartCont%, ExcludedChan
         if ichan% >= ExcludedChans%[0] then
             ichan% := ExcludedChans%[1]+1;
         endif;
-        SampleWaveform(ichan%, ContinuousPorts%[i%], 20000);
+        'SampleWaveform(ichan%, ContinuousPorts%[i%], 20000);
+        SampleWaveform(ichan%, ContinuousPorts%[i%], WaveformSamplingRate%);
         if useCustomLabels% = 1 and CustomLabels$[ContinuousPorts%[i%]] <> "" then
             SampleTitle$(ichan%, CustomLabels$[ContinuousPorts%[i%]] + "WF"); 
         else

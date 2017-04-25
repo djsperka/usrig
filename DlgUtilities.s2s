@@ -171,8 +171,10 @@ func WMCNPortDialog32%(title$, wmports%[], cnports%[], channame$[], &CustomLabel
     DlgCheck((3*n%)+3, "Joe Plexon #1", 10, height%+2);
     DlgCheck((3*n%)+4, "Joe Plexon #2", 30, height%+2);
     DlgCheck((3*n%)+5, "Use Custom Chan Labels", 49, height%+1);
+    DlgInteger((3*n%)+6, 6, 0, 40000, 75, height%+1); DlgText("Wavemark Sampling Rate",81,height%+1);
+    DlgInteger((3*n%)+7, 6, 0, 40000, 75, height%+2); DlgText("Continuous Sampling Rate",81,height%+2);
     DlgAllow(0xffff, 0, WMCNPortDialogChanged32%);
-	i% := DlgShow(wmports%[0:n%],cnports%[0:n%],channame$[0:n%],UsePlexon15WF15WF2k%,UsePlexon24WF%,JoePlexon1%,JoePlexon2%,CustomLabel%);
+	i% := DlgShow(wmports%[0:n%],cnports%[0:n%],channame$[0:n%],UsePlexon15WF15WF2k%,UsePlexon24WF%,JoePlexon1%,JoePlexon2%,CustomLabel%,WavemarkSamplingRate%,WaveformSamplingRate%);
     return i%;
 end
 
@@ -258,6 +260,8 @@ func WMCNPortDialogChanged32%(item%)
         DlgEnable(0,1+EyeXPort%);
         DlgEnable(0,1+EyeXPort%+dlguNPorts%);
         DlgEnable(0,1+EyeXPort%+(2*dlguNPorts%));
+        DlgValue(1+EyeXPort%,0);
+        DlgValue(1+EyeXPort%+dlguNPorts%,0);
         DlgValue$(1+EyeXPort%+(2*dlguNPorts%),"EyeX");
     endif;
     
@@ -265,6 +269,8 @@ func WMCNPortDialogChanged32%(item%)
         DlgEnable(0,1+EyeYPort%);
         DlgEnable(0,1+EyeYPort%+dlguNPorts%);
         DlgEnable(0,1+EyeYPort%+(2*dlguNPorts%));
+        DlgValue(1+EyeYPort%,0);
+        DlgValue(1+EyeYPort%+dlguNPorts%,0);
         DlgValue$(1+EyeYPort%+(2*dlguNPorts%),"EyeY");
     endif;
     
@@ -272,6 +278,8 @@ func WMCNPortDialogChanged32%(item%)
         DlgEnable(0,1+JoystickPort%);
         DlgEnable(0,1+JoystickPort%+dlguNPorts%);
         DlgEnable(0,1+JoystickPort%+(2*dlguNPorts%));
+        DlgValue(1+JoystickPort%,0);
+        DlgValue(1+JoystickPort%+dlguNPorts%,0);
         DlgValue$(1+JoystickPort%+(2*dlguNPorts%),"Joystk");
     endif;
     
