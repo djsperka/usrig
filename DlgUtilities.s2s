@@ -47,7 +47,6 @@ func WMCNPortDialog%(title$, wmports%[], cnports%[], channame$[], &CustomLabel%)
     DlgCheck((3*n%)+4, "Joe Plexon #2", 30, n%+2);
     DlgCheck((3*n%)+5, "Use Custom Chan Labels", 49, n%+1);
     DlgAllow(0xffff, 0, WMCNPortDialogChanged%);
-	i% := DlgShow(wmports%[0:n%],cnports%[0:n%],channame$[0:n%],UsePlexon15WF15WF2k%,UsePlexon24WF%,JoePlexon1%,JoePlexon2%,CustomLabel%);
     return i%;
 end
 
@@ -136,8 +135,7 @@ end
 ' Adapted from WMCNPortDialog.  Allows 32 channels, grays out ports that 
 ' are defined in the DAQ parameters (EyeX, EyeY, Joystick)
 
-func WMCNPortDialog32%(title$, wmports%[], cnports%[], channame$[], &CustomLabel%)
-    'not yet written...this is still the original function
+func WMCNPortDialog32%(title$, &wmports%[], &cnports%[], channame$[], &CustomLabel%)
     var n%;
     var i%;
     var height%;  'not exactly the height, but the height of the eletrodes portion of the dialog
@@ -175,12 +173,196 @@ func WMCNPortDialog32%(title$, wmports%[], cnports%[], channame$[], &CustomLabel
     DlgInteger((3*n%)+7, 6, 0, 40000, 75, height%+2); DlgText("Continuous Sampling Rate",81,height%+2);
     DlgAllow(0xffff, 0, WMCNPortDialogChanged32%);
 	i% := DlgShow(wmports%[0:n%],cnports%[0:n%],channame$[0:n%],UsePlexon15WF15WF2k%,UsePlexon24WF%,JoePlexon1%,JoePlexon2%,CustomLabel%,WavemarkSamplingRate%,WaveformSamplingRate%);
+    if i% = 1 then
+        UseChanByChanSampRates% := 0;
+        DlgValue$(14,"<--");
+        DlgValue$(15,"");
+    endif;
     return i%;
 end
 
 
 
 func WMCNPortDialogChanged32%(item%)
+    var j%;
+    var enable%;
+    var enableText%;
+    
+    GetDAQParameters();
+    
+    if DlgValue((3*dlguNPorts%)+1) = 1 or DlgValue((3*dlguNPorts%)+2) = 1 or DlgValue((3*dlguNPorts%)+3) = 1 or DlgValue((3*dlguNPorts%)+4) = 1 then
+        enable% := 0;
+    else
+        enable% := 1;
+    endif
+    
+    if DlgValue((3*dlguNPorts%)+5) = 1 then
+        enableText% := 1;
+    else
+        enableText% := 0;
+    endif; 
+    
+    docase
+    case item% = 0 then
+        for j% := 1 to dlguNPorts% do
+'            DlgValue(j%, wmports%[j%]);
+'            DlgValue(j%+n%, cnports%[j%]);
+        next
+        for j% := 1 to (2*dlguNPorts%) do
+            'DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
+            DlgEnable(enable%,j%);
+        next;
+        for j% := (2*dlguNPorts%)+1 to (3*dlguNPorts%) do
+            DlgEnable(enableText%,j%);
+        next;
+        
+    case item% = (3*dlguNPorts%)+1 then
+        for j% := 1 to (2*dlguNPorts%) do
+            'DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
+            DlgEnable(enable%,j%);
+        next;
+        'clear imcompatible checkboxes
+        DlgValue((3*dlguNPorts%)+2,0);
+        DlgValue((3*dlguNPorts%)+3,0);
+        DlgValue((3*dlguNPorts%)+4,0);
+    case item% = (3*dlguNPorts%)+2 then
+        for j% := 1 to (2*dlguNPorts%) do
+            'DlgEnable(1-DlgValue((2*dlguNPorts%)+2), j%);
+            DlgEnable(enable%,j%);
+        next;
+        'clear imcompatible checkboxes
+        DlgValue((3*dlguNPorts%)+1,0);
+        DlgValue((3*dlguNPorts%)+3,0);
+        DlgValue((3*dlguNPorts%)+4,0);
+    case item% = (3*dlguNPorts%)+3 then
+        for j% := 1 to (2*dlguNPorts%) do
+            'DlgEnable(1-DlgValue((2*dlguNPorts%)+1), j%);
+            DlgEnable(enable%,j%);
+        next;
+        'clear imcompatible checkboxes
+        DlgValue((3*dlguNPorts%)+1,0);
+        DlgValue((3*dlguNPorts%)+2,0);
+        DlgValue((3*dlguNPorts%)+4,0);
+    case item% = (3*dlguNPorts%)+4 then
+        for j% := 1 to (2*dlguNPorts%) do
+            'DlgEnable(1-DlgValue((2*dlguNPorts%)+2), j%);
+            DlgEnable(enable%,j%);
+        next;
+        'clear imcompatible checkboxes
+        DlgValue((3*dlguNPorts%)+1,0);
+        DlgValue((3*dlguNPorts%)+2,0);
+        DlgValue((3*dlguNPorts%)+3,0);
+    case item% = (3*dlguNPorts%)+5 then
+        for j% := (2*dlguNPorts%)+1 to (3*dlguNPorts%) do
+            DlgEnable(enableText%,j%);
+        next;
+    endcase
+    
+    'Disable ports being used for eye/joystick
+    if EyeXPort% >= 0 then
+        DlgEnable(0,1+EyeXPort%);
+        DlgEnable(0,1+EyeXPort%+dlguNPorts%);
+        DlgEnable(0,1+EyeXPort%+(2*dlguNPorts%));
+        DlgValue(1+EyeXPort%,0);
+        DlgValue(1+EyeXPort%+dlguNPorts%,0);
+        DlgValue$(1+EyeXPort%+(2*dlguNPorts%),"EyeX");
+    endif;
+    
+    if EyeYPort% >= 0 then
+        DlgEnable(0,1+EyeYPort%);
+        DlgEnable(0,1+EyeYPort%+dlguNPorts%);
+        DlgEnable(0,1+EyeYPort%+(2*dlguNPorts%));
+        DlgValue(1+EyeYPort%,0);
+        DlgValue(1+EyeYPort%+dlguNPorts%,0);
+        DlgValue$(1+EyeYPort%+(2*dlguNPorts%),"EyeY");
+    endif;
+    
+    if JoystickPort% >= 0 then
+        DlgEnable(0,1+JoystickPort%);
+        DlgEnable(0,1+JoystickPort%+dlguNPorts%);
+        DlgEnable(0,1+JoystickPort%+(2*dlguNPorts%));
+        DlgValue(1+JoystickPort%,0);
+        DlgValue(1+JoystickPort%+dlguNPorts%,0);
+        DlgValue$(1+JoystickPort%+(2*dlguNPorts%),"Joystk");
+    endif;
+    
+    
+    return 1;
+end
+
+
+
+
+' Assume that length of wmports and cnports is the same. 
+' Will allow selection of ports in first column. If selected, port is 
+' wavemark if the "continuous" checkbox is UNCKECKED. 
+' Continuous checkbox cannot be checked without checking wm checkbox.
+' Adapted from WMCNPortDialog.  Allows 32 channels, grays out ports that 
+' are defined in the DAQ parameters (EyeX, EyeY, Joystick)
+
+func WMCNPortDialog32SetSampFreq%(title$, &wmports%[], &cnSampFreq%[], channame$[], &CustomLabel%)
+    'writing still in progress
+    var n%;
+    var i%;
+    var height%;  'not exactly the height, but the height of the eletrodes portion of the dialog
+    
+    n% := max(Len(wmports%[]), Len(cnSampFreq%[]));
+    dlguNPorts% := n%;
+    
+    height% := floor(n%/2);
+    
+	DlgCreate(title$);
+'    for i% := 1 to n% do
+'        DlgText("Port " + str$(i%-1), 0, i%);
+'        DlgCheck(i%, "Wavemark", 10, i%);
+'        DlgCheck(i%+n%, "Continuous", 30, i%);
+'        DlgString(i%+(2*n%), 15, 6, "", 50, i%);
+'    next;
+    for i% := 1 to height% do
+        DlgText("Port " + str$(i%-1), 0, i%);
+        'DlgText("WvMrk", 9, i%);
+        DlgText("Cont", 26, i%);
+        DlgText("Label", 43, i%);
+        'DlgInteger(i%, 6, 0, 40000, 17, i%);
+        DlgCheck(i%, "Wavemark", 9, i%); 
+        DlgInteger(i%+n%, 6, 0, 40000, 32, i%);
+        DlgString(i%+(2*n%), 15, 6, "", 50, i%);
+        
+              
+        
+    next;
+    for i% := height%+1 to n% do
+        DlgText("Port " + str$(i%-1), 70, i%-height%);
+        'DlgText("WvMrk", 79, i%-height%);
+        DlgText("Cont", 96, i%-height%);
+        DlgText("Label", 113, i%-height%);
+        'DlgInteger(i%, 6, 0, 40000, 87, i%-height%);
+        DlgCheck(i%, "Wavemark", 79, i%-height%);
+        DlgInteger(i%+n%, 6, 0, 40000, 102, i%-height%);
+        DlgString(i%+(2*n%), 15, 6, "", 120, i%-height%);
+    next;
+    DlgCheck((3*n%)+1, "Use Plexon 15/15", 10, height%+1);
+    DlgCheck((3*n%)+2, "Use Plexon 24WF", 30, height%+1);
+    DlgCheck((3*n%)+3, "Joe Plexon #1", 10, height%+2);
+    DlgCheck((3*n%)+4, "Joe Plexon #2", 30, height%+2);
+    DlgCheck((3*n%)+5, "Use Custom Chan Labels", 49, height%+1);
+    DlgInteger((3*n%)+6, 6, 0, 40000, 75, height%+1); DlgText("Wavemark Sampling Rate",81,height%+1);
+    'DlgInteger((3*n%)+7, 6, 0, 40000, 75, height%+2); DlgText("Continuous Sampling Rate",81,height%+2);
+    DlgAllow(0xffff, 0, WMCNPortDialogChanged32SetSampFreq%);
+	i% := DlgShow(wmports%[0:n%],cnSampFreq%[0:n%],channame$[0:n%],UsePlexon15WF15WF2k%,UsePlexon24WF%,JoePlexon1%,JoePlexon2%,CustomLabel%,WavemarkSamplingRate%);
+    if i% = 1 then
+        UseChanByChanSampRates% := 1;
+        DlgValue$(14,"");
+        DlgValue$(15,"<--");
+    endif;
+    return i%;
+end
+
+
+'This function, as it stands now, is not necessary, because it is identical to the "not SetSampFreq" version.
+'However, if in the future the standard version is updated to adjust the two checkboxes not present in the 
+'SetSampFreq version, then having two functions will be necessary.
+func WMCNPortDialogChanged32SetSampFreq%(item%)
     var j%;
     var enable%;
     var enableText%;

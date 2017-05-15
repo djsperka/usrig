@@ -13,6 +13,11 @@ ExcludedChans%[0] := 30;  'Lowest default excluded channel; the standard TextMar
 ExcludedChans%[1] := 31;  'Highest default excluded channel; the standard Keyboard channel is #31, exclude additional channels if necessary in individual functions
 var WavemarkSamplingRate%;  'this had been hardcoded
 var WaveformSamplingRate%;
+var WavemarkSamplingRate32%[32];  'for trying to set all 32 sampling rates
+var WaveformSamplingRate32%[32];
+var WavemarkSamplingRateByPort32%[32];
+var WaveformSamplingRateByPort32%[32];
+var UseChanByChanSampRates%;
 
 
 #include "DlgUtilities.s2s"
@@ -109,9 +114,48 @@ func ElectrodesDialog%()
     return 1;
 end;
 
+
+func ElectrodesDialogSetSampFreq%()
+    var i%;
+    var wm%[32];
+    GetElectrodeParameters();
+    
+    ArrConst(wm%[], 0); 
+    for i% := 0 to NumWavemarkPorts%-1 do
+        wm%[WavemarkPorts%[i%]] := 1;
+    next    
+    
+    if WMCNPortDialog32SetSampFreq%("Electrode Configuration", wm%[], WaveformSamplingRate32%[], CustomLabels$[], UseCustomLabels%) = 1 then
+        NumWavemarkPorts% := 0;
+        NumContinuousPorts% := 0;
+        for i% := 0 to Len(WavemarkSamplingRate32%[])-1 do
+            if wm%[i%] = 1 then
+                WavemarkPorts%[NumWavemarkPorts%] := i%;
+                NumWavemarkPorts% += 1;
+            endif
+'            if WavemarkSamplingRate32%[i%] > 0 then
+'                WavemarkPorts%[NumWavemarkPorts%] := i%;
+'                WavemarkSamplingRateByPort32%[NumWavemarkPorts%] := WavemarkSamplingRate32%[i%];
+'                NumWavemarkPorts% += 1;
+'            endif
+            if WaveformSamplingRate32%[i%] > 0 then
+                ContinuousPorts%[NumContinuousPorts%] := i%;
+                WaveformSamplingRateByPort32%[NumContinuousPorts%] := WaveformSamplingRate32%[i%];
+                NumContinuousPorts% += 1;
+            endif
+        next
+        SaveElectrodeParameters();
+    endif
+
+    
+    return 1;
+end;
+
+
 proc GetElectrodeParameters()
 	var key$;
     var s$;
+    var temp%;
     var i%;
     
 	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
@@ -128,9 +172,18 @@ proc GetElectrodeParameters()
     Profile(key$, "UseCustomLabels", 0, UseCustomLabels%);
     Profile(key$, "WavemarkSamplingRate", 28000, WavemarkSamplingRate%);  'actually setting a default value!
     Profile(key$, "WaveformSamplingRate", 20000, WaveformSamplingRate%);  'actually setting a default value!
+    Profile(key$, "UseChanByChanSampRates", 0, UseChanByChanSampRates%);
     for i% := 0 to 31 do
         s$ := GetStringRegistryValue$(key$, "CustomLabel" + Str$(i%), "");
         CustomLabels$[i%] := s$;
+        temp% := GetIntRegistryValue%(key$, "WavemarkSamplingRate32" +  Str$(i%), 0);
+        WavemarkSamplingRate32%[i%] := temp%;
+        temp% := GetIntRegistryValue%(key$, "WaveformSamplingRate32" +  Str$(i%), 0);
+        WaveformSamplingRate32%[i%] := temp%;
+        temp% := GetIntRegistryValue%(key$, "WavemarkSamplingRateByPort32" +  Str$(i%), 0);
+        WavemarkSamplingRateByPort32%[i%] := temp%;
+        temp% := GetIntRegistryValue%(key$, "WaveformSamplingRateByPort32" +  Str$(i%), 0);
+        WaveformSamplingRateByPort32%[i%] := temp%;
     next;
     
 end;
@@ -151,8 +204,13 @@ proc SaveElectrodeParameters()
     Profile(key$, "UseCustomLabels", UseCustomLabels%);
     Profile(key$, "WavemarkSamplingRate", WavemarkSamplingRate%);
     Profile(key$, "WaveformSamplingRate", WaveformSamplingRate%);
+    Profile(key$, "UseChanByChanSampRates", UseChanByChanSampRates%);
     for i% := 0 to 31 do
         SetStringRegistryValue(key$, "CustomLabel" + Str$(i%), CustomLabels$[i%]);
+        SetIntRegistryValue(key$, "WavemarkSamplingRate32" +  Str$(i%), WavemarkSamplingRate32%[i%]);
+        SetIntRegistryValue(key$, "WaveformSamplingRate32" +  Str$(i%), WaveformSamplingRate32%[i%]);
+        SetIntRegistryValue(key$, "WavemarkSamplingRateByPort32" +  Str$(i%), WavemarkSamplingRateByPort32%[i%]);
+        SetIntRegistryValue(key$, "WaveformSamplingRateByPort32" +  Str$(i%), WaveformSamplingRateByPort32%[i%]);
     next;
 end;
 
@@ -284,6 +342,8 @@ func CreateElectrodeSamplingConfiguration32(iStartWM%, iStartCont%, ExcludedChan
     var iStatus% := -1;
     var i%;
     var ichan%;
+    var WMIndex%;
+    var WFIndex%;
     
     ' Starting channel number is iStartWM% unless iStartWM<=0, in which case we start at channel 1.
     ichan% := iStartWM%;
@@ -297,6 +357,12 @@ func CreateElectrodeSamplingConfiguration32(iStartWM%, iStartCont%, ExcludedChan
         endif;
         'SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
         SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, WavemarkSamplingRate%); ' chan, port, event rate, points, pre-trigger, rate
+'        if UseChanByChanSampRates% > 0 then
+'            SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, WavemarkSamplingRateByPort32%[i%]); ' chan, port, event rate, points, pre-trigger, rate
+'            WMIndex% += 1;
+'        else
+'            SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, WavemarkSamplingRate%); ' chan, port, event rate, points, pre-trigger, rate
+'        endif;
         if useCustomLabels% = 1 and CustomLabels$[WavemarkPorts%[i%]] <> "" then
             SampleTitle$(ichan%, CustomLabels$[WavemarkPorts%[i%]] + "WM"); 
         else
@@ -319,7 +385,13 @@ func CreateElectrodeSamplingConfiguration32(iStartWM%, iStartCont%, ExcludedChan
             ichan% := ExcludedChans%[1]+1;
         endif;
         'SampleWaveform(ichan%, ContinuousPorts%[i%], 20000);
-        SampleWaveform(ichan%, ContinuousPorts%[i%], WaveformSamplingRate%);
+        
+        if UseChanByChanSampRates% > 0 then
+            SampleWaveform(ichan%, ContinuousPorts%[i%], WaveformSamplingRateByPort32%[i%]);
+            WFIndex% += 1;
+        else
+            SampleWaveform(ichan%, ContinuousPorts%[i%], WaveformSamplingRate%);
+        endif;
         if useCustomLabels% = 1 and CustomLabels$[ContinuousPorts%[i%]] <> "" then
             SampleTitle$(ichan%, CustomLabels$[ContinuousPorts%[i%]] + "WF"); 
         else
