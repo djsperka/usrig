@@ -3326,6 +3326,7 @@ proc GetTuningCurveScriptParameters()
     tunUseConstantLag% := GetIntRegistryValue%(key$, "UseConstantLag", tunUseConstantLag%);
     tunConstantLagFrames% := GetIntRegistryValue%(key$, "ConstantLagFrames", tunConstantLagFrames%);
     tunDoOpto% := GetIntRegistryValue%(key$, "DoOpto", tunDoOpto%);
+    tunSetStationary% := GetIntRegistryValue%(key$, "SetStationary", tunSetStationary%);
     
 end;
 
@@ -3355,6 +3356,8 @@ proc SaveTuningCurveScriptParameters()
     SetIntRegistryValue(key$, "ButtonCollect", tunButtonCollect%);
     SetIntRegistryValue(key$, "DoTuningHist", tunDoTuningHist%);
     SetIntRegistryValue(key$, "DoOpto", tunDoOpto%);
+    SetIntRegistryValue(key$, "SetStationary", tunSetStationary%);
+    
 
     PrintLog("Saved DoRivalry=%d\n", tunDoRivalry%);
 end;
@@ -3576,6 +3579,9 @@ func TuningCurveScriptDialog%()
                 else
                     message("The Stationary option is not defined for tuning type '" + tunType$ + "'.  If you wish to change this, \nsee your local programmer.  Quitting.");
                 endif;
+                'if Stationary is set but cannot be used, undo the change in the registry
+                tunSetStationary% := 0;
+                SaveTuningCurveScriptParameters();
                 iReturn% := 0;
             endif;
         endif
