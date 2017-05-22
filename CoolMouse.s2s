@@ -242,8 +242,15 @@ func IdleProcessing%()
 				'LogStatus("stateWaitForBlank", "Fix pt is off.");
 				'ChangeStateTo(stateInterTrialInterval%, tTrigger);
                 'DrawStim(0);	' actually this draws the location of the fixpt.
-            
-                ChangeStateTo(stateVerifyBlank%, tTrigger);
+     
+            ChangeStateTo(stateVerifyBlank%, tTrigger);
+            else
+                if tTrigger = -1 and vTrigger = 0 then
+                    'There is a path for the logic here to miss the blank - if there is crosstalk with a width but due to OS delays the actual blank happens before the recheck, we would get stuck here.  So don't.
+                    ChangeStateTo(stateInterTrialInterval%, tTrigger);
+                    LogStatus("stateWaitForBlank", "Blank occured while we were trying to identify crosstalk, move along!");
+                
+                endif
             endif
         
         case iState% = stateVerifyBlank% then
@@ -260,9 +267,11 @@ func IdleProcessing%()
                 DrawStim(0);	' actually this draws the location of the fixpt.
             case tTrigger2 = -1 and vTrigger = 1 then 'no event, but channel is high, this implies infinitely narrow crosstalk, go back to wait for blank
                 ChangeStateTo(stateWaitForBlank%, tTrigger); 'go back at the exact same time we came at, this should be OK
-            case tTrigger2 > tLast and vTrigger = 0 then 'this is an event, but channel is high, implies crosstalk was not infinitely narrow, go back and wait for blank
+                LogStatus("stateVerifyBlank", "Infinitely narrow crosstalk found, returning to stateWaitForBlank.");
+            case tTrigger2 > tLastTrigger and vTrigger = 0 then 'this is an event, but channel is high, implies crosstalk was not infinitely narrow, go back and wait for blank
                 ChangeStateTo(stateWaitForBlank%, tTrigger2);  'go back to find blanking signal, but move beyond spurious low-to-high transition
-            case tTrigger2 > tLast and vTrigger = 1 then 'this is an event with channel going low, this implies an initial infinitely narrow crosstalk followed by a true blank signal, move forward
+                LogStatus("stateVerifyBlank", "Crosstalk found, returning to stateWaitForBlank.");
+            case tTrigger2 > tLastTrigger and vTrigger = 1 then 'this is an event with channel going low, this implies an initial infinitely narrow crosstalk followed by a true blank signal, move forward
                 ChangeStateTo(stateInterTrialInterval%, tTrigger2);  'use time of event found on this check
                 LogStatus("stateVerifyBlank", "Fix pt is off.");
                 DrawStim(0);	' actually this draws the location of the fixpt.
@@ -270,12 +279,12 @@ func IdleProcessing%()
                 message("Error!  Check Log!");
                 printlog("Error in stateVerifyBlank, message is: %s\n",Error$(tTrigger2));
                 Quit%();
-            case tTrigger2 < tLast then
-                message("Error!  tTrigger2 should not be less than tLast!");
+            case tTrigger2 < tLastTrigger then
+                message("Error!  tTrigger2 should not be less than tLastTrigger!");
                 printlog("Error in stateVerifyBlank, tTrigger2 returned a seemingly impossible value less than tLast! (%f)\n",tTrigger2);
-                Quit%();
-            case tTrigger2 = tLast then
-                message("Error!  tTrigger2 should not be equal to tLast!");
+                Quit%(); 'hja edit 170517
+            case tTrigger2 = tLastTrigger then
+                message("Error!  tTrigger2 should not be equal to tLastTrigger!");
                 printlog("Error in stateVerifyBlank, tTrigger2 returned a seemingly impossible value equal to tLast! (%f)\n",tTrigger2);
                 Quit%();
             else 
