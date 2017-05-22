@@ -16,6 +16,8 @@ var cmAlwaysLooking% := 0;          ' testing only
 var cmRemoteGratingParametersFile$; ' initialized below
 var cmLocalGratingParametersFile$;  ' initialized below
 var cmUseGratingParametersFile% := 0;    ' only if remote is NOT 127.0.0.1
+var cmFixationAlwaysUp% := 0;
+var cmCollectElectrodeData% := 0;
 
 ' Window handles and channel numbers
 var XChannel%,YChannel%;		' Channel number assigned to eye x and y
@@ -135,8 +137,7 @@ const stateVSGWait%:=10;		' wait for vsg to send ready signal #1
 const stateVSGWaitConfirm%:=11;		' waif for vsg to send ready signal #2
 const stateTrialCompleted%:=12;		' trial has been completed successfully
 const stateDone%:=13;
-const stateAbortOneIdleLoop% := 14;
-const stateVerifyBlank% := 15;
+const stateVerifyBlank% := 14;
 var iState% := stateVSGWait%;	' present state
 
 var nTrialsStarted%:=0;
@@ -218,17 +219,18 @@ func IdleProcessing%()
 			endif
 
 		case iState% = stateAbort% then
-
-			' Signal "X" turns off fixpt and stimulus. The next state 'stateWaitForBlank' only checks for 
-			' fixpt off. 
-            LogStatus("stateAbort", "send f key.");
-			SafeSampleKey("f"); 'removed hja_edit
-            ChangeStateTo(stateWaitForBlank%, tNow);
-            'ChangeStateTo(stateAbortOneIdleLoop%, tNow);
         
-'        case iState% = stateAbortOneIdleLoop% then  'this state is an attempt to "fast-forward" tLast past any possible crosstalk
-'            tLast := tNow;
-'            ChangeStateTo(stateWaitForBlank%, tNow);
+            if cmFixationAlwaysUp% = 1 then
+                LogStatus("stateAbort", "Fixation always up, returning to waiting for acquisition.");
+                ChangeStateTo(stateWaitForAcquisition%, tNow);  'just go back to waiting for acquisition
+            else
+                ' Signal "X" turns off fixpt and stimulus. The next state 'stateWaitForBlank' only checks for 
+                ' fixpt off. 
+                LogStatus("stateAbort", "send f key.");
+                SafeSampleKey("f"); 
+                ChangeStateTo(stateWaitForBlank%, tNow);
+            endif;
+        
         
 		case iState% = stateWaitForBlank% then
 
@@ -402,37 +404,38 @@ proc CreateSampleConfiguration()
     'Note: this has been stolen from Tuning - Henry is having crashing problems and he believes that using the
     'standard recording setup abolishes them
     ' Set up channels for sampling electrodes.
-    var i%;
-    docase
-    case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
-        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
-    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
-        CreateElectrodeSamplingConfiguration7WM15CN(); 
-    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
-        CreateElectrodeSamplingConfiguration15WF15WF2k();
-    case UsePlexon24WF% = 1 then
-        CreateElectrodeSamplingConfiguration24WF(); 
-    case JoePlexon1% = 1 then
-        CreateJoePlexon1SamplingConfigurationMaster();
-    case JoePlexon2% = 1 then
-        message("Electrode Configuration JoePlexon2 is not yet implemented!");
-        halt;
-    else
-        ' Electrodes: wavemark/continuous
-        ' 12/6/2010
-        ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
-        ' and M waveform channels. 
-'        for i% := 0 to cmNWavemarks%-1 do
-'            SampleWaveMark(i% + 1, cmWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
-'            SampleTitle$(i% + 1, "WMrk " + str$(cmWavemarkPorts%[i%])); 
-'        next
-'        for i% := 0 to cmNContinuous%-1 do
-'            SampleWaveform(cmNWavemarks% + i% + 1, cmContinuousPorts%[i%], 20000);
-'            SampleTitle$(cmNWavemarks% + i% + 1, "Cont " + str$(cmContinuousPorts%[i%]));
-'        next
-        CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
-    endcase;
-    
+    if cmCollectElectrodeData% = 1 then
+        var i%;
+        docase
+        case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
+            CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
+        case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
+            CreateElectrodeSamplingConfiguration7WM15CN(); 
+        case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
+            CreateElectrodeSamplingConfiguration15WF15WF2k();
+        case UsePlexon24WF% = 1 then
+            CreateElectrodeSamplingConfiguration24WF(); 
+        case JoePlexon1% = 1 then
+            CreateJoePlexon1SamplingConfigurationMaster();
+        case JoePlexon2% = 1 then
+            message("Electrode Configuration JoePlexon2 is not yet implemented!");
+            halt;
+        else
+            ' Electrodes: wavemark/continuous
+            ' 12/6/2010
+            ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
+            ' and M waveform channels. 
+            '        for i% := 0 to cmNWavemarks%-1 do
+            '            SampleWaveMark(i% + 1, cmWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+            '            SampleTitle$(i% + 1, "WMrk " + str$(cmWavemarkPorts%[i%])); 
+            '        next
+            '        for i% := 0 to cmNContinuous%-1 do
+            '            SampleWaveform(cmNWavemarks% + i% + 1, cmContinuousPorts%[i%], 20000);
+            '            SampleTitle$(cmNWavemarks% + i% + 1, "Cont " + str$(cmContinuousPorts%[i%]));
+            '        next
+            CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
+        endcase;
+    endif;
     
     
     
@@ -676,6 +679,8 @@ proc GetCoolMouseParameters()
     cmFixationDuration := GetFloatRegistryValue(key$, "FixationDuration", cmFixationDuration);
     cmMaintainFixation := GetFloatRegistryValue(key$, "MaintainFixation", cmMaintainFixation);
     cmTimeOutTime := GetFloatRegistryValue(key$, "TimeOutTime", cmTimeOutTime);
+    cmFixationAlwaysUp%:= GetIntRegistryValue%(key$, "FixationAlwaysUp", cmFixationAlwaysUp%);
+    cmCollectElectrodeData% := GetIntRegistryValue%(key$, "CollectElectrodeData", cmCollectElectrodeData%);
 end
 
 proc SaveCoolMouseParameters()
@@ -685,6 +690,8 @@ proc SaveCoolMouseParameters()
     SetFloatRegistryValue(key$, "FixationDuration", cmFixationDuration);
     SetFloatRegistryValue(key$, "MaintainFixation", cmMaintainFixation);
     SetFloatRegistryValue(key$, "TimeOutTime", cmTimeOutTime);
+    SetIntRegistryValue(key$, "FixationAlwaysUp", cmFixationAlwaysUp%);
+    SetIntRegistryValue(key$, "CollectElectrodeData", cmCollectElectrodeData%);
 end
 
 
@@ -696,7 +703,9 @@ func CoolMouseDialog%()
     DlgReal(2, "Fixation Time", 0.01, 100.0);
     DlgReal(3, "Maintain Fixation Time", 0.01, 100.0);
     DlgReal(4, "Time Out Time", 0.01, 100.0);
-    status% := DlgShow(cmAcquisitionTime, cmFixationDuration, cmMaintainFixation, cmTimeOutTime);
+    DlgCheck(5, "Keep Fixation Point Up");
+    DlgCheck(6, "Sample From Electrodes");
+    status% := DlgShow(cmAcquisitionTime, cmFixationDuration, cmMaintainFixation, cmTimeOutTime, cmFixationAlwaysUp%, cmCollectElectrodeData%);
     if status% = 1 then
         SaveCoolMouseParameters();
     endif
