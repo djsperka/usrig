@@ -786,7 +786,7 @@ func MainDialog%()
     DlgCheck(caMainDlgReturnForReward%, "Return for Reward",50);
     DlgInteger(caMainDlgStartTrial%, "Start Trial",1,caMaxTrl%);
     DlgReal(caMainDlgInitialDeadTime%, "Initial Dead Time (s): ", 0, 100);
-    DlgCheck(caMainDlgRecordEEG%, "Record EEG");
+    DlgCheck(caMainDlgRecordEEG%, "Record EEG - deprecaed");
     DlgString(caMainDlgEEGBaseName%, "EEG Base Name + Path",60,""); 
     DlgReal(caMainDlgSaccadeAnswerWindow%, "Saccade Answer Duration (s): ", 0, 100);
     DlgCheck(caMainDlgWithholdNoGoReward%, "Withhold No-Go Reward");
@@ -1017,6 +1017,17 @@ func MainDialogChanged%(item%)
         DlgEnable(0,caMainDlgAdditionalWindowRadius%); 'disable additional radius entry
         DlgEnable(0,caMainDlgSaccadeAnswerWindow%); 'disable saccade answer window entry
     endif;
+    
+    'We have completely deprecated the Record EEG functions, because they were designed towards controlling
+    'the NIC through Dan's UNIC program, and that program is no longer usable with the newest version of NIC.
+    'I am not removing the code in case it is useful in the future, but anytime the DialogChanged function is
+    'called, I'm just explicitly disabling these dialog entries/buttons.
+    DlgEnable(0,caMainDlgRecordEEG%);  'disable EEG Signals
+    DlgValue$(caTextCallbackItemNumber2%,"Template File Not Applicable");
+    DlgEnable(0,-6);  'disable using current template file
+    DlgEnable(0,-7);  'disable loading template file
+    DlgEnable(0,caMainDlgEEGBaseName%);  'disable EEG base name
+    
     
     return status%;
 end
