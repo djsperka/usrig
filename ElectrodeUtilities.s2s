@@ -378,18 +378,20 @@ func CreateElectrodeSamplingConfiguration32(iStartWM%, iStartCont%, ExcludedChan
         ichan% := NumWavemarkPorts% + 1;
     endif
     
-    
+    var mycount%;
+    mycount% := 0;
     for i% := 0 to NumContinuousPorts%-1 do
-        printlog("Excluded Chans is %d\n",ExcludedChans%[]);
+        'printlog("Excluded Chans is %d\n",ExcludedChans%[]);
         if ichan% >= ExcludedChans%[0] then
             ichan% := ExcludedChans%[1]+1;
         endif;
         'SampleWaveform(ichan%, ContinuousPorts%[i%], 20000);
-        
+        printlog("iChan is %d\n",ichan%);
         if UseChanByChanSampRates% > 0 then
             SampleWaveform(ichan%, ContinuousPorts%[i%], WaveformSamplingRateByPort32%[i%]);
             WFIndex% += 1;
         else
+            mycount%+=1;
             SampleWaveform(ichan%, ContinuousPorts%[i%], WaveformSamplingRate%);
         endif;
         if useCustomLabels% = 1 and CustomLabels$[ContinuousPorts%[i%]] <> "" then
@@ -400,7 +402,7 @@ func CreateElectrodeSamplingConfiguration32(iStartWM%, iStartCont%, ExcludedChan
         ichan% += 1;
         
     next
-    
+    printlog("Requested %d continuous channels\n",mycount%);
     return iStatus%;
 end
 
