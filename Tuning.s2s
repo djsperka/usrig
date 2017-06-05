@@ -898,7 +898,11 @@ func IdleProcessing%()
             if tunUseMaintainMode% >= 1 then
                 SafeSampleKey("X");  'turn everything off, fixation wasn't turned off previously because of maintain mode
             endif;
-            tInterTrialTime := tunStdInterTrialTime + tunInterBlockTime;
+            if tunDoOpto% = 1 then
+                tInterTrialTime := tunStdInterTrialTime + tunInterBlockTime;
+            else
+                tInterTrialTime := tunStdInterTrialTime;
+            endif;
             ChangeStateTo(stateInterTrialInterval%, tNow);  'at end of block, we do not maintain fixation, it will start again for next time
         else
             if tunUseMaintainMode% >= 1 then
