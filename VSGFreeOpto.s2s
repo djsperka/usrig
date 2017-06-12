@@ -1,0 +1,687 @@
+'A relatively simpler function which collects electrophys data and monitors fixation,
+'but presents nothing to the screen and provides no reward.
+
+'We'll need some of these, I don't really know which...
+#include "../../Spike2Util/ChannelUtilities.s2s"
+#include "../../Spike2Util/UsreyUtil.s2s"
+#include "../../Spike2Util/LogUtilities.s2s"
+#include "../../Spike2Util/MiscUtilities.s2s"
+#include "UsreyFixationPoint.s2s"
+#include "UsreyDAQ.s2s"
+
+
+'Begin setting up the electrode sampling configuration
+var index;
+var key$;
+var XChannel%;
+var YChannel%;
+var DigitalLaserChannel%;
+var OptoCopyChannel%;
+var UseTwo1401s% := 0;
+var OptoUsePulse%;
+var ooNWavemarks% := 0;
+var ooWavemarkPorts%[16];
+var ooNContinuous% := 0;
+var ooContinuousPorts%[16];
+var ooOptoState%;
+var ooOptoFirstState%;
+var ooTotalOptoTime;
+var DataWindow%;
+var XYWindow%;
+var iMonitorChannel%;
+var xEye;
+var yEye;
+'var Pause%;
+var tNow;
+var tStateStart;
+var tLast;
+var tLastUpdate;
+
+var ooOptoVoltageOut;
+var ooOptoStartState%;
+var ooInterBlockTime;
+var ooOptoNPulses%;
+var ooOptoPulseWidth;
+var ooOptoIPI;
+var ooOptoNumRepeats%;
+var ooOptoBlockCount%;
+
+var iState%;
+var stateStartBlock% := 1;
+var stateInterBlock% := 2;
+var stateStartTrial% := 3;
+var stateWaitOpto% := 4;
+
+var stateDone% := 100;
+
+
+'Run the dialog box
+if ooOptoDialog%() = 0 then
+    halt;
+endif;
+
+
+'Create the Sampling configuration
+CreateSampleConfiguration();
+
+'Initialize windows
+InitializeWindows();
+
+'Run the toolbar
+InitializeToolbar();
+
+''''''End main script''''''
+
+func CreateSampleConfiguration()
+    
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    SampleClear(); 'Set standard sampling state
+    SampleChannels(64);  '32 does not work, we need more!
+    
+    ' Assign necessary channel numbers
+    XChannel% := 23;
+    YChannel% := 24;
+    DigitalLaserChannel% := 25;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
+    OptoCopyChannel% := 26;
+    ExcludedChans%[0] := 23;  'XChannel is lowest non-electrode channel used by this function
+    ExcludedChans%[1] := 35;  'This parallels the current CuedAtten, though not all the dig in channels are created
+    
+    
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    SampleAutoName$(dataCellName$ + "_oo_000");  'NOTE: maximum of 13 characters!!!  Use "oo" for OPTO ONLY in the autoname
+    SampleAutoFile(1);  'Enable automatic file naming
+    SampleAutoComment(0); 'Prompt for comment after sampling
+    SampleAutoCommit(60); 'Seconds between each file commit
+    
+    
+    ' Fetch electrode information. 
+    if UsePlexon% = 1 or JoePlexon1% = 1 or JoePlexon2% = 1 then
+        UseTwo1401s% := 1;
+    else
+        UseTwo1401s% := 0;
+    endif;
+    
+    docase
+    case UsePlexon% = 1 then
+        ooNWavemarks% := 13;  '13 wavemarks on the micro for plexon
+        ooNContinuous% := 0;  'no continuous on the micro for plexon
+        var i%;
+        for i% := 0 to 12 do
+            ooWavemarkPorts%[i%] := i%;
+        next;
+    case UsePlexon7WM15CN% = 1 then 
+        ooNWavemarks% := 7;  '7 wavemarks
+        ooNContinuous% := 15;  '15 continuous
+        for i% := 0 to 7 do
+            ooWavemarkPorts%[i%] := i%;
+        next;
+    else
+        ooNWavemarks% := GetWavemarkPorts%(ooWavemarkPorts%[]);
+        ooNContinuous% := GetContinuousPorts%(ooContinuousPorts%[]);
+    endcase;
+    
+    
+    'Set up eye channels, normally this would NOT be independent for X/Y, but who know what wacky thing we might want to do in testing
+    if EyeXPort% >= 0 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye X channel
+        SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+        SampleTitle$(XChannel%,"Eye X");
+    endif;
+    
+    if EyeYPort% >= 0 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye Y channel 
+        SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+        SampleTitle$(YChannel%,"Eye Y");
+    endif;
+    
+    
+    GetElectrodeParameters();
+    
+    
+    ' Set up channels for sampling electrodes.
+    docase
+    case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
+        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
+    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
+        CreateElectrodeSamplingConfiguration7WM15CN(); 
+    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
+        CreateElectrodeSamplingConfiguration15WF15WF2k();
+    case UsePlexon24WF% = 1 then
+        CreateElectrodeSamplingConfiguration24WF(); 
+    case JoePlexon1% = 1 then
+        CreateJoePlexon1SamplingConfigurationMaster();
+    case JoePlexon2% = 1 then
+        message("Electrode Configuration JoePlexon2 is not yet implemented!");
+        halt;
+    else
+        CreateElectrodeSamplingConfiguration32(1, 1+ooNWavemarks%, ExcludedChans%[]);  'Allows a lot of channels while preventing accidentally re-defining a channel
+        
+    endcase;
+    
+    
+    
+    SampleTextMark(200);  'increase number of allowed characters, 1 is so stingy!
+    
+    SampleSequencer(script$ + "Tuning.pls");  
+    
+    docase
+    case UsePlexon% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
+        SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
+    case JoePlexon1% = 1 or JoePlexon2% = 1 then
+        SampleOptimise(0,1,4,0,0,0,0);  'copying the micro settings...not necessarily the be-all end-all, just trying to see if anything works
+    case UsePlexon15WF15WF2k% = 1 or UsePlexon24WF% = 1 then 
+        SampleOptimise(2,2,9,1,50,0,1);  'for big-data, need to set for burst mode, Power1401-3 setting is not clear because help does not list it.  9?  8 for micro1401-3?
+    else
+        SampleOptimise(2,2,Get1401Type%(),2,50);  'otherwise: full optimize timing, channels may have different rates, Power1401 (lowest common denominator, so eh), low usPerTime of 2, high usPerTime of 50
+    endcase;
+    
+    SampleMode(1); 'Continuous sampling
+    
+    
+    'Add a digital marker channel for pulsing optogenetics
+    'Do it for every opto, easy enough to add this into the wraparound calls in the PLS
+    'Will record a '1' for laser on and a '0' for laser off
+    SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+    SampleTitle$(DigitalLaserChannel%,"Laser On");
+    
+    'Add a waveform channel for efference copy.  This can come from either the 1401 itself or
+    'from the stimulator, it doesn't really matter.
+    'It would be nice to have these as level channels on event inputs, but that does not fly with the VSG box. (Several months later, I do not know how to interpret that comment...jj)
+    if OptoUsePulse% = 1 then
+        SampleWaveform(OptoCopyChannel%,31,5000);  'on adc31, which is Henry's max, hardcoded for now
+        SampleTitle$(OptoCopyChannel%, "OptoCopy");
+    endif;
+    
+end
+
+
+
+
+func ooOptoDialog%()
+	var iReturn% := 0;
+	var i%;
+    var labels$[4];
+    var stimdur;
+    var tempNPulses%;
+    var tempCount%;
+      
+    labels$[0] := "Opto Off First";
+    labels$[1] := "Opto On First";
+    labels$[2] := "Random First";
+	GetOoOptoParameters();
+	DlgCreate("Optogenetics Parameters");
+    DlgReal(1, "Opto Voltage Out (V)",0.0002,5); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+    DlgList(2, "Order of blocks",labels$,3);
+    DlgInteger(3, "Opto # Pulses ",0,1000);
+    DlgReal(4, "Opto Pulse Width (s)",0,100);
+    DlgReal(5, "Opto Interpulse Interval (s)",0,100);
+    DlgReal(6, "InterBlock Time (s):", 0, 1000);  'new, allow really long stimuli
+    DlgInteger(7, "Overall # Repeats ",0,1000);    
+    
+    i% := DlgShow(ooOptoVoltageOut,ooOptoStartState%,ooOptoNPulses%,ooOptoPulseWidth,ooOptoIPI,ooInterBlockTime,ooOptoNumRepeats%);
+
+	if i% = 1 then
+		SaveOoOptoParameters();
+        docase
+        case ooOptoStartState% = 2 then
+            ooOptoState% := round(Rand());
+        else
+            ooOptoState% := ooOptoStartState%;
+        endcase;
+        ooOptoFirstState% := ooOptoState%;  'record what the first state was, 0 = off first, 1 = on first
+        iReturn% := 1;
+	endif;
+    
+	return iReturn%;
+end;
+
+
+
+
+
+
+proc GetOoOptoParameters()
+	var stmp$;
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\VSGFree\\Opto";
+    
+    ooOptoVoltageOut := GetFloatRegistryValue(key$, "OptoVoltageOut", ooOptoVoltageOut);
+    ooOptoStartState% := GetIntRegistryValue%(key$, "OptoStartState", ooOptoStartState%);
+    ooOptoNPulses% := GetIntRegistryValue%(key$, "OptoNPulses", ooOptoNPulses%);
+    ooOptoPulseWidth := GetFloatRegistryValue(key$, "OptoPulseWidth", ooOptoPulseWidth);
+    ooOptoIPI := GetFloatRegistryValue(key$, "OptoIPI", ooOptoIPI);
+    ooInterBlockTime := GetFloatRegistryValue(key$, "InterBlockTime", ooInterBlockTime);
+    ooOptoNumRepeats% := GetIntRegistryValue%(key$, "OptoNRepeats", ooOptoNumRepeats%);
+
+end;
+
+proc SaveOoOptoParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\VSGFree\\Opto";
+    
+    SetFloatRegistryValue(key$, "OptoVoltageOut", ooOptoVoltageOut);
+    SetIntRegistryValue(key$, "OptoStartState", ooOptoStartState%);
+    SetIntRegistryValue(key$, "OptoNPulses", ooOptoNPulses%);
+    SetFloatRegistryValue(key$, "OptoPulseWidth", ooOptoPulseWidth);
+    SetFloatRegistryValue(key$, "OptoIPI", ooOptoIPI);
+    SetFloatRegistryValue(key$, "InterBlockTime", ooInterBlockTime);
+    SetIntRegistryValue(key$, "OptoNRepeats", ooOptoNumRepeats%);
+
+end;
+
+
+
+proc InitializeWindows()
+
+    ' Make spike2 use all of monitor 1
+    View(App()).Window(0, 0, 100, 100, 1);
+    
+	'Open the data sampling window
+    DataWindow% := FileNew(0,4);
+    if DataWindow% < 0 then
+        PrintLog("FileNew Error: %s\n", Error$(DataWindow%));
+    endif
+
+	Window(0,48,50,95);
+    XRange(0, 30);
+	View(DataWindow%).WindowVisible(1);
+    
+	'Open an XY view to display eye position
+	XYWindow% := FileNew(12);
+	XRange(-30,30);
+	YRange(-2,-30,30);
+	XYDrawMode(0,5,0);
+	WindowVisible(1);
+	Window(0, 0, 50, 47);
+	XYColour(1,16);
+	XYSize(1,-1);
+
+	'Create a new channel in the XY view to show the monitor's location
+	iMonitorChannel% := XYSetChan(0);
+	XYColour(4,13);
+	XYDrawMode(4,3,1);
+	XYJoin(4,2);
+	XYAddData(4,-9,-7);
+	XYAddData(4,9,-7);
+	XYAddData(4,9,7);
+	XYAddData(4,-9,7);
+
+end;
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitializeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+    
+    iState% := stateStartBlock%;  'Start at the very beginning
+    
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+'    if UseTwo1401s% = 1 then
+'        ToolbarSet(1,"StartPlexon",StartPlexon%);
+'    else
+        ToolbarSet(1,"Sample start",Start%);
+'    endif;
+	ToolbarSet(2,"Sample stop", Stop%);
+	ToolbarSet(3,"Juice", Juice%);
+'	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
+'	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
+    ToolbarSet(4,"Select Wavemarks",SelectWavemarkDialog%);
+	ToolbarSet(5,"Quit",Quit%);
+	ToolbarEnable(2,0);
+'	ToolbarEnable(4,0);
+'	ToolbarEnable(5,0);
+	Toolbar("Go",0x3ff);
+
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+    
+	' Disable idle process func
+	ToolbarSet(0,"");
+    
+    'turn off opto just in case it might be on (it shouldn't, but...)
+    SampleKey("B");  'NOT SafeSampleKey - if sequencer is in use SafeSampleKey won't work
+    
+	SampleStop();
+    
+	' Write parameter file
+	WriteParameterFile(); 
+
+end;
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc WriteParameterFile()
+	var parFileName$;
+	var parFileBase$;
+	var parHandle%;
+    var tempPrimary$;
+    var tempSecondary$;
+
+	' get filename for parfile (data file + "par" extension) and open it
+	View(DataWindow%);
+	parFileBase$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
+	parFileName$ := parFileBase$ + ".par";
+	PrintLog("par filename is " + parFileName$ + "\n");
+	parHandle% := FileOpen(parFileName$, 8, 1);
+
+	' write general info - eye coil gains, dist to screen
+	Print("Tuning parameters for %s\n\n", parFileBase$);
+
+	Print("General information\n");
+	Print("-------------------\n\n");
+	Print("Distance to screen (MM)    : %s\n", GetDistanceToScreenMM$());
+	Print("Eye coil software gain (X) : %f\n", DegreesPerVoltX);
+	Print("Eye coil software gain (Y) : %f\n", DegreesPerVoltY);
+	Print("Eye coil sampling freq (Hz): %d\n", EyeCoilSamplingFrequency%);
+    Print("Wavemark ports             : %s\n", GetWavemarkPorts$());
+    Print("Continuous ports           : %s\n", GetContinuousPorts$());
+	Print("Reward size (ms)           : %d\n", GetJuiceRewardMS%());
+
+        
+    
+    Print("\nOptogenetics parameters\n");
+    Print("-------------------------\n\n");
+    Print("Opto Voltage Out: %f\n", ooOptoVoltageOut);
+    var label$[3]; 
+    label$[0] := "Opto Off First";
+    label$[1] := "Opto On First";
+    label$[2] := "Random First";
+    Print("Order of blocks : %s\n", label$[ooOptoStartState%]);
+    Print("Opto#Pulses,OptoPulseWidth,OptoInterpulseInterval,InterBlockTime,NRepeats: %d,%f,%f,%f,%d\n",ooOptoNPulses%,ooOptoPulseWidth,ooOptoIPI,ooInterBlockTime,ooOptoNumRepeats%);
+
+	' close parfile
+	FileClose(0);
+
+end;
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Juice%()  'note that this function is only used for Toolbar-based juice delivery
+    if JuicerType% = 1 then  'open-high juicer, dispense based on ms
+        DeliverReward();
+    else
+        if JuicerType% = 2 then  'open-low juicer, dispense based on number of hits
+            DeliverRewardNumber();
+        endif;
+    endif;
+    return 1;
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+
+    'vars for opto setup
+    var voltageInteger%;
+    var tempSeqVarValue;
+    var tempSeqVarValue%;
+    var SequencerPeriodMS;
+    var OneClockTick% := 1;
+    var nPulsesFloat;
+    
+	'start sampling
+'    if UseTwo1401s% = 1 then
+'        SampleStart(1);  'set sampling to start on a trigger
+'    else
+    	SampleStart(0); 'Start sampling now
+'    endif;
+    
+    SampleSeqVar(5, 0);
+
+
+	' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");
+    
+    
+    SequencerPeriodMS := SampleSeqClock(1);  'Get the clock period of the sequencer, in MS, must do this after starting sampling
+    
+    'set sequencer variable 4 for opto voltage
+    'Please note that the input for this has to be a 32-bit variable. Use vdac32% to get the right value.
+    voltageInteger% := vdac32%(ooOptoVoltageOut, 1, 0);
+    SampleSeqVar(4,voltageInteger%);
+    printlog("Voltage integer is %d\n",voltageInteger%);
+    
+    SampleSeqVar(6,ooOptoNPulses%);  'set number of pulses
+    printlog("Opto N pulses is %d\n",ooOptoNPulses%);
+    'For below calculations, the standard numbers we are getting are in seconds, sequencer period is in MS (because that's how it comes)
+    
+    tempSeqVarValue := ooOptoPulseWidth*1000/SequencerPeriodMS;  'do math in float
+    tempSeqVarValue% := tempSeqVarValue-2;  'now convert to integer, subtract two ticks for sequencer instructions
+    SampleSeqVar(7,tempSeqVarValue%);  'set duration of pulse in clock ticks
+    printlog("Opto width is %d\n",tempSeqVarValue%);
+    
+    tempSeqVarValue := ooOptoIPI*1000/SequencerPeriodMS;  'do math in float
+    tempSeqVarValue% := tempSeqVarValue-3;  'now convert to integer, subtract three ticks for sequencer instructions
+    SampleSeqVar(8,tempSeqVarValue%);  'set interpulse interval in clock ticks
+    printlog("Opto IPI width is %d\n",tempSeqVarValue%);
+    
+    nPulsesFloat := ooOptoNPulses%;
+    ooTotalOptoTime :=  nPulsesFloat*(ooOptoPulseWidth+ooOptoIPI);
+    
+    'For the pre/post times, we don't have an actual stimulus to worry about, set these to 
+    'one clock tick so the .pls instructions don't break (don't know what would happen at 0, 
+    'don't want to try).  Note that "OneClockTick%" is super redundant (could put "1") but unconfusing.
+    
+    'tempSeqVarValue := tunPulsedOptoOnset*1000/SequencerPeriodMS;  'do math in float
+    'tempSeqVarValue% := tempSeqVarValue-1;  'now convert to integer, subtract one tick for sequencer instructions
+    SampleSeqVar(9,OneClockTick%);  'set pre-pulse stimulus duration in clock ticks
+    'printlog("Opto onset is %d\n",tempSeqVarValue%);
+    
+    'tempSeqVarValue := stimRemaining*1000/SequencerPeriodMS;  'do math in float
+    'tempSeqVarValue% := tempSeqVarValue-3;  'now convert to integer, subtract three ticks for sequencer instructions
+    SampleSeqVar(10,OneClockTick%);  'set post-pulse stimulus duration in clock ticks
+    'printlog("Opto remaining time is %d\n",tempSeqVarValue%);
+    
+
+	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);
+	ToolbarEnable(1,0);
+'	ToolbarEnable(6,0);
+'	ToolbarEnable(7,0);
+    ToolbarEnable(4,0);  'moved 6 and 7 because no pause
+	ToolbarEnable(5,0);
+	View(DataWindow%);
+
+return 1;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'func PauseStimuli%();
+'    Pause% :=1;
+'    ToolbarEnable(4,0);
+'    ToolbarEnable(5,1);
+'    return 1;
+'end
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'func ResumeStimuli%();
+'    Pause% :=0;
+'    ToolbarEnable(4,1);
+'    ToolbarEnable(5,0);
+'    return 1;
+'end
+
+func SelectWavemarkDialog%()
+	var iReturn%:=1;
+	var i%;
+    var whichWaveMark% := 1;
+	DlgCreate("Select Wavemark");
+	DlgInteger(1, "Input Wavemark to view, -1 for all", -1, 256);  'max is based on highest possible wavemark value
+    
+	i% := DlgShow(whichWaveMark%);
+
+	if i% = 1 then
+		PrintLog("SelectWavemarkDialog - user hit OK\n");
+        for i% := 0 to ooNWavemarks%-1 do  'for each wavemark channel
+            View(DataWindow%).MarkMask(i%+1,0,0,-1);  'exclude all codes on layer 0
+            View(DataWindow%).MarkMask(i%+1,0,1,whichWaveMark%);  'then include requested code (or all, if -1) on layer 0
+        next;       
+	endif;
+	if i% = 0 then
+		PrintLog("SelectWavemarkDialog - user hit Cancel\n");
+	endif;
+    'PrintLog("Return value is %d\n", iReturn%);  'always return 1, so don't bother reporting this
+	return iReturn%;
+end;
+
+
+' Used to hard-quit from toolbar. This will close data files without saving!!! 
+' It is important that this function be disabled once sampling is started!!!
+
+func Quit%()
+	FileClose(-1,-1);
+	return 0;
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' The vdac32% function converts a value in user DAC units into an integer value
+'  (the result of the function) suitable for passing into a sequencer variable
+'  for use in the DAC, ADDAC, RAMP and OFFSET sequencer instructions. It mimics
+'  the vdac32() expression in the text sequence compiler.
+'
+' out     is the output value that you want to generate, in user DAC units.
+' scale   is the user DAC units corresponding to one volt on the actual DAC
+'         (or two volts for a ten-volt system). This is exactly the same as
+'         the DACscale field used with the SET or SDAC directives.
+' offset  is the user DAC units corresponding to zero volts output. This is
+'         exactly the same as the DACOffset field in SET or SDAC.
+'
+' If you want to use this function to calculate the slope for a ramp, use
+'  vdac32%(volts/sticks%(time)) for maximum accuracy.
+'
+func vdac32%(out, scale, offset)
+var v32;                                ' Real variable for the calculation
+out := out - offset;                    ' First compensate for offset
+v32 := ((out * (6553.6 / scale)) * 65536.0);   ' Floating point result
+var v32%;                               ' Integer value for the result
+if v32 > 2147483647.0 then              ' 2147483647 is the largest positive
+    v32% := 2147483647;                 '  integer value
+else
+    if v32 < -2147483647.0 then         ' -2147483648 is the lowest negative value
+        v32% := -2147483647;            '  but we have to stay one above that
+    else
+        v32% := round(v32);             ' We can be sure this will not overflow
+    endif;
+endif;
+return v32%;
+end
+
+
+func IdleProcessing%()
+	var iStatus% := 1;	
+    var xval;
+    var yval;
+    var xind%;
+    var yind%;
+    
+	tNow := View(DataWindow%).MaxTime();
+    
+    ' First time through (tLast<0) just update tLast. Crosstalk on vsg dig outputs leads to erroneous
+    ' triggers. Maybe this will help. 
+    if tLast < 0 then
+        tLast := 1;
+        return 1;
+    endif
+    
+    
+	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+	yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+
+	' Don't update display every time....
+	if tNow-tLastUpdate > .005 then
+		View(XYWindow%).XYAddData(1,xEye,yEye);
+		tLastUpdate := tNow;
+	endif
+    
+    
+	docase 
+    case iState% = stateStartBlock% then
+        'Determine which block number we are in
+        'A block is a series of opto pulses PLUS an interblock, the interblock can come first or second.
+        if ooOptoState% = ooOptoFirstState% then
+            ooOptoBlockCount% += 1;  'Block count will be the current block, not the number of complete blocks
+        endif
+        
+        'If we are finished with blocks, quit, otherwise go to appropriate step
+        docase
+        case ooOptoBlockCount% > ooOptoNumRepeats% then 'finished with blocks
+            ChangeStateTo(stateDone%, tNow);
+            SampleText("Blocks Are Complete", tNow);
+            LogStatus("StartBlock", "Blocks Are Complete" + str$(tNow));
+            Stop%();
+            iStatus% := 0;
+        case ooOptoState% = 0 then 'interblock
+            ooOptoState% := 1;  'update state for next time
+            ChangeStateTo(stateInterBlock%, tNow);
+            SampleText("Beginning Interblock Period", tNow);
+            LogStatus("StartBlock", "Beginning Interblock Period" + str$(tNow));
+        else 'ooOptoState% = 1
+            ooOptoState% := 0;  'update state for next time
+            ChangeStateTo(stateStartTrial%, tNow);
+            SampleText("Beginning Opto Period", tNow);
+            LogStatus("StartBlock", "Beginning Opto Period" + str$(tNow));
+        endcase
+        
+        
+    case iState% = stateInterBlock% then
+        if tNow - tStateStart > ooInterBlockTime then
+            ChangeStateTo(stateStartBlock%, tNow);
+            SampleText("End Interblock Period", tNow);
+            LogStatus("StartBlock", "End Interblock Period at " + str$(tNow));
+        endif
+   
+
+    case iState% = stateStartTrial% then
+
+        ' Indicate start of pulsing, let sequencer actually pulse
+        SafeSampleKey("P");  'start pulsed opto, the whole sequence is controlled by the sequencer, this does the "S" implicitly
+        tNow := View(DataWindow%).MaxTime();
+        SampleText("Opto pulses begin",tNow);
+        LogStatus("StartTrial", "Started opto trial at " + str$(tNow));
+        ChangeStateTo(stateWaitOpto%, tNow);
+        
+        
+    case iState% = stateWaitOpto% then
+        if tNow > tStateStart + ooTotalOptoTime then
+            if SampleSeqVar(2) = 0 then  'Check to make sure everything is done
+                SampleText("Opto pulses complete",tNow);
+                LogStatus("WaitOpto", "Opto pulses complete at " + str$(tNow));
+                ChangeStateTo(stateStartBlock%, tNow);
+                SampleSeqVar(6,ooOptoNPulses%);  'reset number of pulses, because the script decrements them
+            endif;
+            
+        endif;
+        
+        
+    else
+        
+        ' Unknown state!
+        Message("Unknown state=" + str$(iState%));
+        halt;
+
+	endcase;
+
+	tLast := tNow;
+	return iStatus%;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+	if tStart > 0 then tStateStart := tStart; endif;
+end;
