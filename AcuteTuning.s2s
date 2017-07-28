@@ -280,7 +280,7 @@ func IdleProcessing%()
         ' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
         'if View(DataWindow%).FindPulseUp%(ReadyChannel%, -1, tRise, tFall) = 1 then
         pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
-        if pulseFound% = 1 or 1 = 1 then  'skip this step because we can't seem to find the ready pulse from Render
+        if pulseFound% = 1 or DisplayHardwareIndex% = 1 then  'RENDER does not give a ready pulse.  In the future, it will, and the second half of this statement will need to be removed
             yield(0.5);  'this pause is because we can't find the ready pulse from Render
             LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
             Yield(1.0);
@@ -1780,14 +1780,22 @@ func Start%()
     var jsonFilePre$;
     jsonFilePre$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
     
+    
     'By default, set ProgName$ to be FIXSTIM
-    'ProgName$ := "\\fixstim.exe ";
-    'ProgName$ := "\\render_relay.exe ";
-    'bin$ := "C:\\Users\\Lab\\Dekstop\\render_relay";
-    ProgName$ := "C:\\Users\\Lab\\Desktop\\render_relay\\render_relay.exe ";
-    bin$ := "";
-    preArgs$ := "-ip 128.120.140.14 -prefix " + jsonFilePre$ + " ";
-    tempBinDir$ := bin$;
+    if DisplayHardwareIndex% = 0 then  'Display hardware is VSG/ViSaGe
+        ProgName$ := "\\fixstim.exe ";  'for VSG
+        preArgs$ := "";  'preArgs$ is for RENDER only, set to empty for FIXSTIM 
+    else  'Display hardware is RENDER
+        'ProgName$ := "\\render_relay.exe ";
+        'bin$ := "C:\\Users\\Lab\\Dekstop\\render_relay";
+        tempBinDir$ := bin$;  'Hey Scottie, we have to assign our temp value before we change the original value!
+        bin$ := "";
+        ProgName$ := "C:\\Users\\Lab\\Desktop\\render_relay\\render_relay.exe ";
+        preArgs$ := "-ip 128.120.140.14 -prefix " + jsonFilePre$ + " ";
+    endif
+    
+
+    
     
 	docase 
     case tunType$ = tunTypeContrast$ then
@@ -1891,7 +1899,9 @@ func Start%()
     ' NOTE: 20170410 PCA
     ' reset bin$ back to its original value so we don't screw anything
     ' else up
-    bin$ := tempBinDir$;
+    if DisplayHardwareIndex% = 1 then
+        bin$ := tempBinDir$; 
+    endif      
     ' ==================================================================== '
     
     PrintLog(cmdLine$+"\n");
