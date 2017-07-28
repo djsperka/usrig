@@ -22,6 +22,7 @@ var NumberOfElectrodes%;		' Number of electrodes (i.e. wavemark inputs) in use
 var JuicePerReward%;			' Number of juice squirts per reward
 var JuiceRewardMS% := 200;      ' for Ben's new juicer this is the length of time juicer is held open.
 var JuicerIndex% := 0;          ' default juicer index will not allow sampling, 1 is open high, 2 is open low
+var DisplayHardwareIndex% := 0; ' 0 for VSG/ViSaGe, 1 for Render, many scripts will not check this flag and assume VSG
 var EyeXPort%;                  ' Port horizontal eye signal connected to
 var EyeYPort%;                  ' Port vertical eye signal connected to
 var JoystickPort%;              ' Port joystick is connected to
@@ -242,6 +243,10 @@ func DAQParametersDialog%()
     juicerList2$[0] := "Open Hi (Ben, var dur)";
     juicerList2$[1] := "Open Low (fixed dur)";
     
+    var displayHardwareList$[2];
+    displayHardwareList$[0] := "VSG";
+    displayHardwareList$[1] := "Render";
+    
     
 	DlgCreate("DAQ parameters");
 	DlgInteger(1, "Number of Electrodes:", 1, 32, 0, 0, 1);
@@ -262,12 +267,13 @@ func DAQParametersDialog%()
     DlgString(16, "Remote port", 5);
     DlgString(17, "Slave ip", 21);
     DlgString(18, "Slave port", 5);
+    DlgList(19, "Display Hardware:",displayHardwareList$,2);
     DlgAllow(0xffff, 0, DAQParametersDialogChanged%);
 	iReturn% := DlgShow(NumberOfElectrodes%, DegreesPerVoltX, DegreesPerVoltY, 
                         CalibrationOffsetDegrees, CalibrationComPort%,
                         EyeCoilSamplingFrequency%, pReward, JuicePerReward%, JuiceRewardMS%,
                         JuicerIndexDecremented%, EyeXPort%, EyeYPort%, JoystickPort%, 
-                        UseRemoteStimulus%, RemoteStimulusIP$, RemoteStimulusPort$, SlaveStimulusIP$, SlaveStimulusPort$);
+                        UseRemoteStimulus%, RemoteStimulusIP$, RemoteStimulusPort$, SlaveStimulusIP$, SlaveStimulusPort$,DisplayHardwareIndex%);
 
 	if iReturn% = 1 then
         JuicerIndex% := JuicerIndexDecremented% + 1; 'Correct JuicerIndex%
@@ -311,6 +317,7 @@ proc GetDAQParameters()
     RemoteStimulusPort$ := GetStringRegistryValue$(key$, "RemoteStimulusPort", "7000");
     SlaveStimulusIP$ := GetStringRegistryValue$(key$, "SlaveStimulusIP", "192.168.1.2");
     SlaveStimulusPort$ := GetStringRegistryValue$(key$, "SlaveStimulusPort", "7000");
+    DisplayHardwareIndex% := GetIntRegistryValue%(key$, "DisplayHardwareIndex", DisplayHardwareIndex%);
     GetElectrodeParameters();
 end;
 
@@ -339,6 +346,7 @@ proc SaveDAQParameters()
     SetStringRegistryValue(key$, "RemoteStimulusPort", RemoteStimulusPort$);
     SetStringRegistryValue(key$, "SlaveStimulusIP", SlaveStimulusIP$);
     SetStringRegistryValue(key$, "SlaveStimulusPort", SlaveStimulusPort$);
+    SetIntRegistryValue(key$, "DisplayHardwareIndex", DisplayHardwareIndex%);
     SaveElectrodeParameters();
 end;
 
