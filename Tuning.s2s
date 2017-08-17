@@ -3160,17 +3160,21 @@ func Start%()
     var OffsetFile$:="";
     var StimDur$:="";
     var MGrat$:=" -s ";
+    var M2Grat$:="";  'start this empty, fill it only if necessary
     var SGrat$:=" -s ";
     var DGrat$:="";
     var MGratParam$:="";
+    var M2GratParam$:="";
 	var SGratParam$:="";
     var DGratParam$:="";  'for donut stimulus, uses Distractor1
     var MasterIndicator$:="";  'Do not use Master Indicator
     var SlaveIndicator$:="";  'or Slave Indicator for fixstim, set if needed
     var KlugeArg$:=" -H ";  'this is for a Jerry-rigged "hole" in Box O' Donuts slave stimuli 
     var MValues$:="";
+    var M2Values$:="";
     var SValues$:="";   
-    var S2Values$:="";  'won't be used except for Box O' Donuts 
+    var S2Values$:="";  'won't be used except for Box O' Donuts, rivalry
+    var DValues$:="";  'won't be used except for Box O' Donuts, two-grating version
     var KlugeValues$:="";  'this is for a Jerry-rigged "hole" in Box O' Donuts slave stimuli
     var MConstantLag$:="";  
     var SConstantLag$:=""; 
@@ -3588,25 +3592,56 @@ func Start%()
 
         
     case tunType$ = tunTypeBoxODonuts$ then
-        'Set slave values, do this first because master values may be set to slave values
-        TunCurveSArg$ := " -" + TunType1$ + " ";
-        TunCurveS2Arg$ := " -" + TunType2$ + " ";
-        SValues$ := tun1ValuesStringified$;
-        S2Values$ := tun2ValuesStringified$;
         
-        'Set master values, based on whether the master should vary with TunCurve1 on slave or not
-        if tunMasterFollowsCurve1% = 0 then        
-            MGrat$ := " -g ";  'Change master grating variable to -g because it doesn't change
-            TunCurveMArg$ := "";  'clear the tuning curve argument
-            MValues$ := "";  'clear the tuning curve values
+        'If tunBoxODonutsOneOrTwoGratings% is 0, do as current, if 1, we are doing curve 1 on "stim" and curve 2 on "distractor"
+        'Since I don't know quite how we would ever work this (syntax-wise OR from a logical experimental point of view)
+        'we will short circuit and force rivalry version to be on one grating no matter what the value says.
+        
+        if tunBoxODonutsOneOrTwoGratings% = 0 or tunDoRivalry% = 1 then
+            
+            'Set slave values, do this first because master values may be set to slave values
+            TunCurveSArg$ := " -" + TunType1$ + " ";
+            TunCurveS2Arg$ := " -" + TunType2$ + " ";
+            SValues$ := tun1ValuesStringified$;
+            S2Values$ := tun2ValuesStringified$;
+            
+            'Set master values, based on whether the master should vary with TunCurve1 on slave or not
+            if tunMasterFollowsCurve1% = 0 then        
+                MGrat$ := " -g ";  'Change master grating variable to -g because it doesn't change
+                TunCurveMArg$ := "";  'clear the tuning curve argument
+                MValues$ := "";  'clear the tuning curve values
+            else
+                'Do not change master grating variable to -G
+                TunCurveMArg$ := TunCurveSArg$;  'Set master tuning curve argument same as slave 1
+                MValues$ := SValues$;  'Set master tuning curve values same as slave 1
+            endif;    
+            
+            if tunDoRivalry% = 0 then
+                MGrat$ := " -s ";  'change this back if we are not doing rivalry...the logic to get this to go is a bit ugly, but...
+            endif;
+            
         else
-            'Do not change master grating variable to -G
-            TunCurveMArg$ := TunCurveSArg$;  'Set master tuning curve argument same as slave 1
-            MValues$ := SValues$;  'Set master tuning curve values same as slave 1
-        endif;    
-        
-        if tunDoRivalry% = 0 then
-            MGrat$ := " -s ";  'change this back if we are not doing rivalry...the logic to get this to go is a bit ugly, but...
+            
+            'In principle this is what we need...note that the actual build of the command line is not done yet...
+            
+            'Set values for "Stimulus"
+            TunCurveMArg$ := " -" + TunType1$ + " ";
+            MValues$ := tun1ValuesStringified$;
+            MGrat$ := " -s ";
+            MGratParam$ := GetGratingParameters$("Stimulus");  'this would undo the setting of tunSetStationary
+            
+            'Set values for second grating, use "Distractor1" for values
+            TunCurveM2Arg$ := " -" + TunType2$ + " ";
+            M2Values$ := tun2ValuesStringified$;
+            M2Grat$ := " -s ";
+            M2GratParam$ := GetGratingParameters$("Distractor1");
+            
+            'Blank out values for "Slave"
+            TunCurveSArg$ := ""; 
+            SValues$ := "";
+            SGrat$ := "";
+            SGratParam$ := "";
+            
         endif;
         
         
@@ -3755,8 +3790,10 @@ func Start%()
         cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$; 'prelim stuff
         cmdLine$ := cmdLine$ + RefrLock$ + OffsetFile$ + StimDur$;  'Dual VSG stuff
         cmdLine$ := cmdLine$ + MasterIndicator$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$;  'Master grating stuff
+        cmdLine$ := cmdLine$ + M2Grat$ + M2GratParam$ + TunCurveM2Arg$ + M2Values$;  'Master grating stuff, second grating (only box o' donuts on two gratings)
         cmdLine$ := cmdLine$ + SlaveIndicator$ + SGrat$ + SGratParam$ + TunCurveSArg$ + SValues$;  'Slave grating stuff
         cmdLine$ := cmdLine$ + TunCurveS2Arg$ + S2Values$;  'Second slave parameters (for Box O' Donuts, more possible)
+                
         
         ' Initial text marks
         ' djs Always version 3. NO difference if maintainmode is used or not. 

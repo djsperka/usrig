@@ -165,6 +165,7 @@ var updateCurve2Text%;
 var tunCurve1SelectedType$;         'This prevents us from doubling up
 var tunBoxODonutsProgression%;
 var tunBoxODonutsNRepeats%;
+var tunBoxODonutsOneOrTwoGratings%;
 var tunMasterFollowsCurve1%;
 
 
@@ -340,8 +341,10 @@ var tunSetStationary% := 0;         'do stationary?
 var tunXHairText$;                  'holds whether crosshairs are on or off
 var updateXHairText%;             'Gets the item number of a DlgText object for update
 var TunCurveMArg$:="";            'holds type of tuning curve on Master
+var TunCurveM2Arg$:="";           'holds type of tuning curve on second Master grating, only for two-grating box'o'donuts right now
 var TunCurveSArg$:="";            'holds type of tuning curve on slave
-var TunCurveS2Arg$:="";           'holds second type of tuning curve on slave, for Box O' Donuts
+var TunCurveS2Arg$:="";           'holds second type of tuning curve on slave, for Box O' Donuts, rivalry version
+var TunCurveDArg$:="";            'holds second type of tuning curve on distractor, for Box O' Donuts two-grating version
 var tunButtonCollect%;            'Collect button data for rivalry?
 var tunUseLagDialog%;             'will be 1 if we are using the lag dialog, 0 for null test
 var tunUseDonutDialog%;           'will be 1 if we are using the donut dialog, 0 for Gonzagos
@@ -611,6 +614,7 @@ proc GetTuningCurveAreaParameters()
     tunMasterFollowsCurve1% := GetIntRegistryValue%(key$, "MasterFollowsCurve1", tunMasterFollowsCurve1%); 
     tunBoxODonutsProgression% := GetIntRegistryValue%(key$, "BoxODonutsProgression", tunBoxODonutsProgression%);
     tunBoxODonutsNRepeats% := GetIntRegistryValue%(key$, "BoxODonutsNRepeats", tunBoxODonutsNRepeats%);
+    tunBoxODonutsOneOrTwoGratings% := GetIntRegistryValue%(key$, "BoxODonutsOneOrTwoGratings", tunBoxODonutsOneOrTwoGratings%);
 end;
 
 proc SaveTuningCurveAreaParameters()
@@ -637,6 +641,7 @@ proc SaveTuningCurveAreaParameters()
     SetIntRegistryValue(key$, "BoxODonutsProgression", tunBoxODonutsProgression%);
     SetIntRegistryValue(key$, "BerlinerCoreOnSlave", tunBerlinerCoreOnSlave%);
     SetIntRegistryValue(key$, "BoxODonutsNRepeats", tunBoxODonutsNRepeats%);
+    SetIntRegistryValue(key$, "BoxODonutsOneOrTwoGratings", tunBoxODonutsOneOrTwoGratings%);
 end;
 
 proc GetTuningCurveDotsParameters()
@@ -1928,6 +1933,9 @@ func TuningCurveBoxODonutsDialogChanged%(item%)
         DlgEnable(0,-1);  'Otherwise disable "OK"
     endif;
     
+    'disable dialog list allowing one or two gratings - if doing dual VSG we will ignore this value
+    DlgEnable(0,4);
+    
     return 1;
 end
 
@@ -1958,6 +1966,9 @@ func TuningCurveBoxODonutsDialogChanged2%(item%)
         DlgEnable(0,-1);  'Otherwise disable "OK"
     endif;
     
+    'enable dialog list allowing one or two gratings - if doing single VSG we will use this value
+    DlgEnable(1,4);    
+    
     return 1;
 end
 
@@ -1967,6 +1978,10 @@ func TuningCurveBoxODonutsDialog%()
     var sValues$;
     var i%;
     var iReturn%;
+    var gratingOptions$[2];
+    
+    gratingOptions$[0] := "Both tuning curves on main grating";
+    gratingOptions$[1] := "Tuning curve 1 on main grating, tuning curve 2 on distractor1";
     
     GetTuningCurveAreaParameters();   'parameters are still carried in "area", may not be ideal but ought to work 
     
@@ -1981,6 +1996,7 @@ func TuningCurveBoxODonutsDialog%()
     DlgInteger(1,"Number of repeats",1,100,20);
     DlgCheck(2, "Random Progression", 2, 2);
     DlgCheck(3, "Master Follows Curve 1", 2, 3);
+    DlgList(4, 55, gratingOptions$[], 2, 35, 1);
     
     if tunUseLagDialog% = 0 then  'do not show lag tuning for single-vsg
         DlgGroup("Select Two Tuning Curve Types", 1, 4, 47, 6); 
@@ -2006,14 +2022,14 @@ func TuningCurveBoxODonutsDialog%()
     DlgButton(152, "Slave Grating", TunDlgGratingSlave%);
     DlgButton(153, "Master Vals -> Slave", TunMasterValsToSlave%);
     DlgButton(154, "Slave Vals -> Master", TunSlaveValsToMaster%);
-    if DlgValue(10) = 1 then
+    if DlgValue(11) = 1 then
         DlgAllow(0xffff, 0, TuningCurveBoxODonutsDialogChanged%);
     else
         DlgAllow(0xffff, 0, TuningCurveBoxODonutsDialogChanged2%);
     endif;
     
     
-    i% := DlgShow(tunBoxODonutsNRepeats%,tunBoxODonutsProgression%,tunMasterFollowsCurve1%);
+    i% := DlgShow(tunBoxODonutsNRepeats%,tunBoxODonutsProgression%,tunMasterFollowsCurve1%,tunBoxODonutsOneOrTwoGratings%);
     
     ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
