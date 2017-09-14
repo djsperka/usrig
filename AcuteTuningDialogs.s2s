@@ -649,6 +649,7 @@ proc GetTunOptoParameters()
     tunPulsedOptoOnset := GetFloatRegistryValue(key$, "PulsedOptoOnset", tunPulsedOptoOnset);
     tunPulsedOptoWidth := GetFloatRegistryValue(key$, "PulsedOptoWidth", tunPulsedOptoWidth);
     tunPulsedOptoIPI := GetFloatRegistryValue(key$, "PulsedOptoIPI", tunPulsedOptoIPI);
+    tunInterBlockTime := GetFloatRegistryValue(key$, "InterBlockTime", tunInterBlockTime);
     
     
     'tunRecOptoBox% := GetIntRegistryValue%(key$, "RecOptoBox", tunRecOptoBox%);
@@ -670,6 +671,7 @@ proc SaveTunOptoParameters()
     SetFloatRegistryValue(key$, "PulsedOptoOnset", tunPulsedOptoOnset);
     SetFloatRegistryValue(key$, "PulsedOptoWidth", tunPulsedOptoWidth);
     SetFloatRegistryValue(key$, "PulsedOptoIPI", tunPulsedOptoIPI);
+    SetFloatRegistryValue(key$, "InterBlockTime", tunInterBlockTime);
     
     'SetIntRegistryValue(key$, "RecOptoBox", tunRecOptoBox%);
     'SetIntRegistryValue(key$, "RecStimulator", tunRecStimulator%);
@@ -1320,17 +1322,18 @@ func TunOptoDialog%()
     DlgGroup("Common Parameters", 1, 1, 38, 5);
     DlgReal(1, "Opto Voltage Out (V)",0.0002,5,20,2); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
     DlgList(2, "Order of blocks",labels$,4,20,3);
-    DlgCheck(3, "Use pulsing opto",2,4);
-    DlgCheck(4, "Record Laser Diode",2,5);
-    DlgGroup("Wrap-Around Opto", 1, 6, 38, 4);
-    DlgReal(5, "PreStimulus Opto On (s)",0,10,20,7);
-    DlgReal(6, "PostStimulus Opto On (s)",0,10,20,8);
-    DlgCheck(7, "Keep Opto on between stims",2,9);
-    DlgGroup("Pulsing Opto", 1, 10, 38, 5);
-    DlgInteger(8, "Opto # Pulses ",0,1000,20,11);
-    DlgReal(9, "Opto Period Onset (s)",0,stimdur,20,12);
-    DlgReal(10, "Opto Pulse Width (s)",0,stimdur,20,13);
-    DlgReal(11, "Opto Interpulse Interval (s)",0,100,20,14);
+    DlgReal(3, "InterBlock Time(s):", 0, 100, 20, 4);  'new, allow really long stimuli
+    DlgCheck(4, "Use pulsing opto",2,5);
+    DlgCheck(5, "Record Laser Diode",2,6);
+    DlgGroup("Wrap-Around Opto", 1, 7, 38, 4);
+    DlgReal(6, "PreStimulus Opto On (s)",0,10,20,8);
+    DlgReal(7, "PostStimulus Opto On (s)",0,10,20,9);
+    DlgCheck(8, "Keep Opto on between stims",2,10);
+    DlgGroup("Pulsing Opto", 1, 11, 38, 5);
+    DlgInteger(9, "Opto # Pulses ",0,1000,20,12);
+    DlgReal(10, "Opto Period Onset (s)",0,stimdur,20,13);
+    DlgReal(11, "Opto Pulse Width (s)",0,stimdur,20,14);
+    DlgReal(12, "Opto Interpulse Interval (s)",0,100,20,15);
     
     'DlgCheck(6, "Record control box voltage");
     'DlgCheck(7, "Record stimulator");
@@ -1339,7 +1342,7 @@ func TunOptoDialog%()
     
 	'i% := DlgShow(tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoVoltageOut,tunOptoStartState%);',tunRecOptoBox%,tunRecStimulator%);
 	'changing order with bigger dialog - note that with addition of the dialogChanged function the above will not be terribly relevant ever again
-    i% := DlgShow(tunOptoVoltageOut,tunOptoStartState%,tunOptoUsePulse%,tunLaserDiode%,tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoNPulses%,tunPulsedOptoOnset,tunPulsedOptoWidth,tunPulsedOptoIPI);
+    i% := DlgShow(tunOptoVoltageOut,tunOptoStartState%,tunInterBlockTime,tunOptoUsePulse%,tunLaserDiode%,tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoNPulses%,tunPulsedOptoOnset,tunPulsedOptoWidth,tunPulsedOptoIPI);
     ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
     ' 
