@@ -353,6 +353,14 @@ func IdleProcessing%()
         
         
     case iState% = statePulsedOpto% then
+        
+        if tunPulsedOptoIPImax <> tunPulsedOptoIPImin then
+            'Set random IPI on every trial
+            tunPulsedOptoIPI := Rand(tunPulsedOptoIPImax-tunPulsedOptoIPImin,tunPulsedOptoIPImin);  'this will work if max=min or even if max<min.  Simple.  Nice.
+            SetPulsedOptoSequencerVariables();
+            SampleText("Pulsed Opto IPI is " + str$(tunPulsedOptoIPI));
+        endif        
+        
         SafeSampleKey("P");  'start pulsed opto, the whole sequence is controlled by the sequencer
         tOpt := View(DataWindow%).MaxTime();
         SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
@@ -396,15 +404,7 @@ func IdleProcessing%()
         
 
     case iState% = stateStartTrial% then
-        
-        
-        if tunPulsedOptoIPImax <> tunPulsedOptoIPImin and tunOptoUsePulse% = 1 then
-            'Set random IPI on every trial
-            tunPulsedOptoIPI := Rand(tunPulsedOptoIPImax-tunPulsedOptoIPImin,tunPulsedOptoIPImin);  'this will work if max=min or even if max<min.  Simple.  Nice.
-            SetPulsedOptoSequencerVariables();
-            SampleText("Pulsed Opto IPI is " + str$(tunPulsedOptoIPI));
-        endif
-        
+       
         
         ' Start trial. Put up stimulus.
         LogStatus("StartTrial", "Request stimulus");
@@ -496,8 +496,8 @@ func IdleProcessing%()
             tTrigger := tNow;  'faking a trigger time if Render is broken
         endif
         
-        if tunTriggerHack% = 0  or renderIsBroken% = 1 then
-            if View(DataWindow%).FindFallingEdge%(StimChannel%, tLast, tTrigger) = 1 then
+        if tunTriggerHack% = 0 then
+            if View(DataWindow%).FindFallingEdge%(StimChannel%, tLast, tTrigger) = 1  or renderIsBroken% = 1 then
                 ' Advance
                 SafeSampleKey("a");
 
@@ -1707,7 +1707,7 @@ func Start%()
     
     
     if renderIsBroken% = 1 then
-        message("Variable renderIsBroken has been set!  We are FLYING BLIND, IGNORING ALL INCOMING PULSES!");
+        message("Variable renderIsBroken has been set!  \nWe are FLYING BLIND, IGNORING ALL INCOMING PULSES!");
     endif;
     
     
