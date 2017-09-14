@@ -11,12 +11,23 @@ const tunCVSID$ := "$Id$";
 #include "UsreyGratings.s2s"
 #include "UsreyDAQ.s2s"
 
-
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
 ' Tuning Curve script START
 '
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+'render fallback IP, NOTE: this *MUST* by updated manually following render system reboots
+'this *SHOULD* be set in Config under "DAQ->Remote IP"
+const RENDERDEFAULTIP$ := "128.120.140.27";
+
+'Port number for stim and ready channels
+const STIMCHANNELPORT% := 3; 'MUST be 0-7
+const READYCHANNELPORT% := 2;
+
+'bit representation of the port number (port 3 = bit 3 = 0010 = 4)
+var STIMCHANNELCODE%;
+STIMCHANNELCODE% := Pow(2, STIMCHANNELPORT%);
 
 ' replace vars herezzzzzzzzzzzzzzzz
 
@@ -285,13 +296,13 @@ func IdleProcessing%()
             LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
             Yield(1.0);
             tLastTrigger := tFall;
-            ChangeStateTo(stateCheckTurnOnOpto%, tFall);
-            'if tunCameraMode% = cameraModeWait% then
-            '    ChangeStateTo(stateWaitCameraTrigger%, tFall);
-            'else
-            '    'ChangeStateTo(stateInterTrialInterval%, tFall);
-            '    ChangeStateTo(stateCheckTurnOnOpto%, tFall);
-            'endif;
+            'ChangeStateTo(stateCheckTurnOnOpto%, tFall);
+            if tunCameraMode% = cameraModeWait% then
+                ChangeStateTo(stateWaitCameraTrigger%, tFall);
+            else
+                'ChangeStateTo(stateInterTrialInterval%, tFall);
+                ChangeStateTo(stateCheckTurnOnOpto%, tFall);
+            endif;
         else
             if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                 LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
@@ -1223,14 +1234,12 @@ proc CreateSampleConfiguration()
     
     
 	'Channel recording definitions
-	'SampleEvent(StimChannel%,3,2,3600); 'Trigger channel, level
-    SampleEvent(StimChannel%,2,2,3600);  'temporary until we figure out the channels from Render, port 3 is normally correct
-	SampleComment$(StimChannel%,"Stim");
-	SampleTitle$(StimChannel%,"Stim");
+	SampleEvent(StimChannel%, STIMCHANNELPORT%, 2, 3600); 'Trigger channel, level
+	SampleComment$(StimChannel%, "Stim");
+	SampleTitle$(StimChannel%, "Stim");
     
 	'SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
-    'SampleEvent(ReadyChannel%, 2, 2, 3600); 'Trigger channel, level, moved to port 2 in order to allow port 1 (front of 1401) to carry camera signal
-	SampleEvent(ReadyChannel%, 3, 2, 3600);  'temporary until we figure out the channels from Render, port 2 is normally correct
+    SampleEvent(ReadyChannel%, READYCHANNELPORT%, 2, 3600); 'Trigger channel, level, moved to port 2 in order to allow port 1 (front of 1401) to carry camera signal
     SampleComment$(ReadyChannel%,"VSG Ready");
 	SampleTitle$(ReadyChannel%,"VSG Ready");
     
@@ -1781,7 +1790,6 @@ func Start%()
         
     endif;
     
-    
     'build background gray level string
     tunBGStr$ := "(" + Str$(tunBackgroundGrayLevel%) + "/" + Str$(tunBackgroundGrayLevel%) + "/" + Str$(tunBackgroundGrayLevel%) + ") ";
     
@@ -1789,28 +1797,38 @@ func Start%()
 	Values$ := tunValuesStringified$;
     'Extras$ := " -b " + tunBackgroundColor$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 2 -v";
     'Extras$ := " -b " + tunBGStr$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 2 -v";
-    Extras$ := " -b " + tunBGStr$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 4 -v";  'changed ready pulse (-p) to 4 so that it comes on port 2 - this is bitmapped, not linear mapped
+    Extras$ := " -b " + tunBGStr$ + " -d " + GetAcuteDistanceToScreenMM$();
+    Extras$ := Extras$ + " -p " + Str$(STIMCHANNELCODE%) + " -v";  'changed ready pulse (-p) to 4 so that it comes on port 2 - this is bitmapped, not linear mapped
+
+    'DisplayHardwareIndex%
+    'RemoteStimulusIP$
     
-    var preArgs$;
-    var jsonFilePre$;
-    jsonFilePre$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
+    tempBinDir$ := bin$;
+    PrintLog("bin$ = %s\n", bin$);
     
     
     'By default, set ProgName$ to be FIXSTIM
-    if DisplayHardwareIndex% = 0 then  'Display hardware is VSG/ViSaGe
-        ProgName$ := "\\fixstim.exe ";  'for VSG
-        preArgs$ := "";  'preArgs$ is for RENDER only, set to empty for FIXSTIM 
-    else  'Display hardware is RENDER
-        'ProgName$ := "\\render_relay.exe ";
-        'bin$ := "C:\\Users\\Lab\\Dekstop\\render_relay";
-        tempBinDir$ := bin$;  'Hey Scottie, we have to assign our temp value before we change the original value!
-        bin$ := "";
-        ProgName$ := "C:\\Users\\Lab\\Desktop\\render_relay\\render_relay.exe ";
-        preArgs$ := "-ip 128.120.140.14 -prefix " + jsonFilePre$ + " ";
+    if DisplayHardwareIndex% = 0 then
+        ProgName$ := "\\fixstim.exe ";
+    else
+        ProgName$ := "\\render_relay.exe ";        
+        bin$ := "C:\\Users\\Lab\\Desktop\\render_relay";
+        
+        var jsonFilePre$;
+        var RenderIP$;
+        jsonFilePre$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
+        
+        'if the user has selected to use remote stimulus then assume that the IP given if for render
+        'otherwise fall back to the hardcoded constant at the top of this script (which needs to be
+        'changed each time the render machine is rebooted)
+        if UseRemoteStimulus% = 1 then            
+            RenderIP$ := RemoteStimulusIP$;
+        else
+            RenderIP$ := RENDERDEFAULTIP$;
+        endif
+        
+        ProgName$ := ProgName$ + "-ip " + RenderIP$ + " -prefix " + jsonFilePre$ + " ";
     endif
-    
-
-    
     
 	docase 
     case tunType$ = tunTypeContrast$ then
@@ -1822,28 +1840,10 @@ func Start%()
         ' ==================================================================== '
         ' NOTE: 20170410 PCA
         var Flag$;
-        if tunOriUsePlaid% > 0 then            
-            ' we are overwriting the <bin$> directory here so that we can call
-            ' fixstim_mod, after the cmd text is created (<cmdline$>) we set
-            ' bin$ back to its original value so as not to upset any non-plaid
-            ' stimuli etc.
-            
-            'tempBinDir$ := bin$;
-            'bin$ := "C:\\Users\\Lab\\Desktop\\test\\";
-            'ProgName$ := "fixstim_mod.exe";
-            
-            ' verify location of fixstim_mod executable
-            'if FileOpen(bin$ + ProgName$, 9, 0) < 0 then
-            '    Message("Failed to locate executable: " + bin$ + ProgName$);
-            '    FileClose(0);
-            '    halt;
-            'else
-            '    FileClose(0);
-            'endif
-            
+        if tunOriUsePlaid% > 0 then
             Flag$ := " -X "; ' -X is for plaids
         else
-            Flag$ := " -O "; ' -O is for regular orientation
+            Flag$ := " -O "; ' -O is for regular grating orientation
         endif
         'Tune$ := Dual$ + " -O " + Values$;
         Tune$ := Flag$ + Values$;
@@ -1908,8 +1908,8 @@ func Start%()
 
 	endcase;
     
-    cmdLine$ := "cmd /k " + bin$ + ProgName$ + preArgs$ + Extras$ + Stim$ + Tune$;
-    
+    cmdLine$ := "cmd /k " + bin$ + ProgName$ + Extras$ + Stim$ + Tune$;
+
     ' ==================================================================== '
     ' NOTE: 20170410 PCA
     ' reset bin$ back to its original value so we don't screw anything
