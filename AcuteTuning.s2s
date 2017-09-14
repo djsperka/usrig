@@ -82,6 +82,7 @@ var tunRateCum[16];
 
 ' djs 10-19-11 trigger hack for Visage trigger bug.
 var tunTriggerHack% := 0;  'setting to 0 to read from stim channel due to RENDER trigger line hell
+var renderIsBroken% := 1;  'if 1, Render is not sending pulses, just fly blind!!!
 
 var memorychannel% := 28;
 var memorychannel2% := 29;
@@ -401,6 +402,7 @@ func IdleProcessing%()
             'Set random IPI on every trial
             tunPulsedOptoIPI := Rand(tunPulsedOptoIPImax-tunPulsedOptoIPImin,tunPulsedOptoIPImin);  'this will work if max=min or even if max<min.  Simple.  Nice.
             SetPulsedOptoSequencerVariables();
+            SampleText("Pulsed Opto IPI is " + str$(tunPulsedOptoIPI));
         endif
         
         
@@ -414,9 +416,13 @@ func IdleProcessing%()
 
     case iState% = stateWaitForStimTrigger% then
         
-                
+        
+        if renderIsBroken% = 1 then
+            tTrigger := tNow;  'faking a trigger time if Render is broken
+        endif
+        
         if tunTriggerHack% = 0 then
-            if View(DataWindow%).FindRisingEdge%(StimChannel%, tLast, tTrigger) = 0 then
+            if View(DataWindow%).FindRisingEdge%(StimChannel%, tLast, tTrigger) = 0 or renderIsBroken% = 1 then
                 ' Stimulus has begun
                 LogStatus("WaitForStimTrigger", "Stim sequence started at " + str$(tTrigger));
                 tStimOn := tTrigger;
@@ -433,7 +439,7 @@ func IdleProcessing%()
                 endcase;                
             endif
         else
-            if View(DataWindow%).FindPulseUp%(FrameChannel%, tStateStart, tRise, tFall) = 1 then
+            if View(DataWindow%).FindPulseUp%(FrameChannel%, tStateStart, tRise, tFall) = 1  or renderIsBroken% = 1 then
                 ' Stimulus has begun
                 LogStatus("WaitForStimTrigger", "Stim sequence started at " + str$(tRise));
                 tStimOn := tRise;
@@ -486,7 +492,11 @@ func IdleProcessing%()
         
     case iState% = stateWaitForStimOff% then
         
-        if tunTriggerHack% = 0 then
+        if renderIsBroken% = 1 then
+            tTrigger := tNow;  'faking a trigger time if Render is broken
+        endif
+        
+        if tunTriggerHack% = 0  or renderIsBroken% = 1 then
             if View(DataWindow%).FindFallingEdge%(StimChannel%, tLast, tTrigger) = 1 then
                 ' Advance
                 SafeSampleKey("a");
@@ -495,7 +505,7 @@ func IdleProcessing%()
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
             endif
         else
-            if View(DataWindow%).FindPulseUp%(FrameChannel%, tStateStart, tRise, tFall) = 1 then
+            if View(DataWindow%).FindPulseUp%(FrameChannel%, tStateStart, tRise, tFall) = 1  or renderIsBroken% = 1 then
                 ' Advance
                 SafeSampleKey("a");
 
@@ -1694,7 +1704,13 @@ func Start%()
     var tempSeqVarValue;
     var tempSeqVarValue%;
     var tempBinDir$;
-
+    
+    
+    if renderIsBroken% = 1 then
+        message("Variable renderIsBroken has been set!  We are FLYING BLIND, IGNORING ALL INCOMING PULSES!");
+    endif;
+    
+    
     if tunCameraMode% = cameraModeTrigger% then
         SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
         SendSerialMsg(serialCOMPort%, GetParameterString$(), "\n");
