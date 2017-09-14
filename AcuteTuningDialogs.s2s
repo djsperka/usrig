@@ -172,6 +172,8 @@ var tunOptoNPulses%;
 var tunPulsedOptoOnset;
 var tunPulsedOptoWidth;
 var tunPulsedOptoIPI;
+var tunPulsedOptoIPImin;
+var tunPulsedOptoIPImax;
 var tunPulsedOptoOnsetClockSteps%;
 var tunPulsedOptoOffsetClockSteps%;
 var tunPulsedOptoWidthClockSteps%;
@@ -649,6 +651,8 @@ proc GetTunOptoParameters()
     tunPulsedOptoOnset := GetFloatRegistryValue(key$, "PulsedOptoOnset", tunPulsedOptoOnset);
     tunPulsedOptoWidth := GetFloatRegistryValue(key$, "PulsedOptoWidth", tunPulsedOptoWidth);
     tunPulsedOptoIPI := GetFloatRegistryValue(key$, "PulsedOptoIPI", tunPulsedOptoIPI);
+    tunPulsedOptoIPImin := GetFloatRegistryValue(key$, "PulsedOptoIPImin", tunPulsedOptoIPImin);
+    tunPulsedOptoIPImax := GetFloatRegistryValue(key$, "PulsedOptoIPImax", tunPulsedOptoIPImax);
     
     
     'tunRecOptoBox% := GetIntRegistryValue%(key$, "RecOptoBox", tunRecOptoBox%);
@@ -670,6 +674,9 @@ proc SaveTunOptoParameters()
     SetFloatRegistryValue(key$, "PulsedOptoOnset", tunPulsedOptoOnset);
     SetFloatRegistryValue(key$, "PulsedOptoWidth", tunPulsedOptoWidth);
     SetFloatRegistryValue(key$, "PulsedOptoIPI", tunPulsedOptoIPI);
+    SetFloatRegistryValue(key$, "PulsedOptoIPImin", tunPulsedOptoIPImin);
+    SetFloatRegistryValue(key$, "PulsedOptoIPImax", tunPulsedOptoIPImax);
+    
     
     'SetIntRegistryValue(key$, "RecOptoBox", tunRecOptoBox%);
     'SetIntRegistryValue(key$, "RecStimulator", tunRecStimulator%);
@@ -1330,7 +1337,9 @@ func TunOptoDialog%()
     DlgInteger(8, "Opto # Pulses ",0,1000,20,11);
     DlgReal(9, "Opto Period Onset (s)",0,stimdur,20,12);
     DlgReal(10, "Opto Pulse Width (s)",0,stimdur,20,13);
-    DlgReal(11, "Opto Interpulse Interval (s)",0,100,20,14);
+    'DlgReal(11, "Opto Interpulse Interval (s)",0,100,20,14);
+    DlgReal(11, "Min Opto Interpulse Interval (s)",0,100,20,14);
+    DlgReal(12, "Max Opto Interpulse Interval (s)",0,100,20,15);
     
     'DlgCheck(6, "Record control box voltage");
     'DlgCheck(7, "Record stimulator");
@@ -1339,7 +1348,7 @@ func TunOptoDialog%()
     
 	'i% := DlgShow(tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoVoltageOut,tunOptoStartState%);',tunRecOptoBox%,tunRecStimulator%);
 	'changing order with bigger dialog - note that with addition of the dialogChanged function the above will not be terribly relevant ever again
-    i% := DlgShow(tunOptoVoltageOut,tunOptoStartState%,tunOptoUsePulse%,tunLaserDiode%,tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoNPulses%,tunPulsedOptoOnset,tunPulsedOptoWidth,tunPulsedOptoIPI);
+    i% := DlgShow(tunOptoVoltageOut,tunOptoStartState%,tunOptoUsePulse%,tunLaserDiode%,tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoNPulses%,tunPulsedOptoOnset,tunPulsedOptoWidth,tunPulsedOptoIPImin,tunPulsedOptoIPImax);
     ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
     ' 
