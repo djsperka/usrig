@@ -3,6 +3,9 @@ const tunCVSID$ := "$Id$";
 
 'var TuningCurveScriptDialogAllowOK%;  'allows OK to button to work on main dialog
 
+' CHANGELOG:
+'   
+
 #include "../../Spike2Util/ChannelUtilities.s2s"
 #include "../../Spike2Util/UsreyUtil.s2s"
 #include "../../Spike2Util/LogUtilities.s2s"
@@ -19,13 +22,14 @@ const tunCVSID$ := "$Id$";
 
 'render fallback IP, NOTE: this *MUST* by updated manually following render system reboots
 'this *SHOULD* be set in Config under "DAQ->Remote IP"
-const RENDERDEFAULTIP$ := "128.120.140.27";
+const RENDERDEFAULTIP$ := "128.120.140.49";
 
 'Port number for stim and ready channels
 const STIMCHANNELPORT% := 3; 'MUST be 0-7
 const READYCHANNELPORT% := 2;
 
-'bit representation of the port number (port 3 = bit 3 = 0010 = 4)
+'bit representation of the port number (port 3 = bit 4 = 0001 = 8)
+'NOTE: ports are 0-based so port 3 is the 4th port and thus 4th bit
 var STIMCHANNELCODE%;
 STIMCHANNELCODE% := Pow(2, STIMCHANNELPORT%);
 
@@ -82,7 +86,7 @@ var tunRateCum[16];
 
 ' djs 10-19-11 trigger hack for Visage trigger bug.
 var tunTriggerHack% := 0;  'setting to 0 to read from stim channel due to RENDER trigger line hell
-var renderIsBroken% := 1;  'if 1, Render is not sending pulses, just fly blind!!!
+var renderIsBroken% := 0;  'if 1, Render is not sending pulses, just fly blind!!!
 
 var memorychannel% := 28;
 var memorychannel2% := 29;
@@ -162,11 +166,14 @@ endif
 XChannel% := 21;
 YChannel% := 22;
 StimChannel% := 25;
-ReadyChannel% := 27;            ' Look for ready signal on port 2 (same as fixpt). 
-FrameChannel% := 19;
-StimulatorChannel% := 18;
-OptoEfferenceChannel% := 23;
-CameraTriggerChannel% := 26;
+ReadyChannel% := 26;            ' Look for ready signal on port 2 (same as fixpt). 
+FrameChannel% := 27;
+StimulatorChannel% := 35;
+OptoEfferenceChannel% := 36;
+CameraTriggerChannel% := 37;
+
+ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 39;  'leaving a bit of room, right now 37 is highest channel used
 
 
 ' Fetch electrode information. 
@@ -189,7 +196,14 @@ InitializeToolbar();
 ' not set here. That's done when the user hits the start button.
 '
 proc InitializeToolbar()
-
+    
+    if DisplayHardwareIndex% = 1 then
+        'reset render: while this doesn't fix the pin-stuck-high issue (that is fixed in stop() )
+        'it does remove the green calibration square if render is in that state (e.g. it's been restarted)
+        'the backgroud is not set (usually ends up black, but that is set by the tuning scripts so it's fine)
+        ProgRun("cmd /c C:\\Users\\Lab\\Desktop\\render_relay\\reset.bat");
+    endif
+    
 	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
 	ToolbarVisible(1);
 	ToolbarSet(1,"Sample start",Start%);
@@ -291,18 +305,23 @@ func IdleProcessing%()
     case iState% = stateVSGWait% then
         ' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
         'if View(DataWindow%).FindPulseUp%(ReadyChannel%, -1, tRise, tFall) = 1 then
-        pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
-        if pulseFound% = 1 or DisplayHardwareIndex% = 1 then  'RENDER does not give a ready pulse.  In the future, it will, and the second half of this statement will need to be removed
-            yield(0.5);  'this pause is because we can't find the ready pulse from Render
+        if DisplayHardwareIndex% = 1 then  'RENDER does not give a ready pulse.  In the future, it will, and the first half of this statement will need to be removed
+            pulseFound% := 1;
+            tFall := tNow;
+        else
+            pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
+        endif;
+        if pulseFound% = 1 then  
+            'yield(0.5);  'this pause is because we can't find the ready pulse from Render
             LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
-            Yield(1.0);
+            'Yield(1.0);
             tLastTrigger := tFall;
             'ChangeStateTo(stateCheckTurnOnOpto%, tFall);
             if tunCameraMode% = cameraModeWait% then
                 ChangeStateTo(stateWaitCameraTrigger%, tFall);
             else
-                'ChangeStateTo(stateInterTrialInterval%, tFall);
-                ChangeStateTo(stateCheckTurnOnOpto%, tFall);
+                ChangeStateTo(stateInterTrialInterval%, tFall);
+                'ChangeStateTo(stateCheckTurnOnOpto%, tFall);
             endif;
         else
             if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
@@ -431,11 +450,11 @@ func IdleProcessing%()
                 'ChangeStateTo(stateHoldFixation%, tTrigger);
                 docase
                 case tunType$ = tunTypeCRG$ then
-                    ChangeStateTo(stateCRGPlaying%, tRise);
+                    ChangeStateTo(stateCRGPlaying%, tTrigger);
                 case tunType$ = tunTypeDriftingBar$ then
-                    ChangeStateTo(stateBarPlaying%, tRise);
+                    ChangeStateTo(stateBarPlaying%, tTrigger);
                 else
-                    ChangeStateTo(stateStimulusPlaying%, tRise);
+                    ChangeStateTo(stateStimulusPlaying%, tTrigger);
                 endcase;                
             endif
         else
@@ -666,17 +685,19 @@ func IdleProcessing%()
         
 
     case iState% = stateInterTrialInterval% then
-        ' HERE is where we write to the SerialPort        
-        'if (tNow - tStateStart) > (tInterTrialTime - tunCameraBaselinePeriod) then
-        '    if ((tunCameraMode% = cameraModeTrigger%) and (triggeredCamera% = 0)) then
-        '        var msg$;
-        '        msg$ := str$(tunValues[tunValuesIndices%[nTrialsCompleted%]]);                
-        '        SendSerialMsg(serialCOMPort%, msg$, "\n");
-        '        triggeredCamera% := 1;
-        '        samplekey("z");
-        '    endif
-        'endif
-        if tNow - tStateStart > tInterTrialTime then
+        ' HERE is where we write to the SerialPort
+        if ((tunCameraMode% = cameraModeTrigger%) and (triggeredCamera% = 0)) then
+            'printlog("tnow = %f, tstatestart = %f, tintertrial = %f, camerabaseline = %f\n",tNow,tStateStart,tInterTrialTime,tunCameraBaselinePeriod);
+            if (tNow - tStateStart) > (tInterTrialTime - tunCameraBaselinePeriod) then
+                var msg$;
+                msg$ := str$(tunValues[tunValuesIndices%[nTrialsCompleted%]]);                
+                SendSerialMsg(serialCOMPort%, msg$, "\n");
+                triggeredCamera% := 1;
+                samplekey("z");
+            endif
+        endif
+        'printlog("tnow = %f, tstatestart = %f, tintertrial = %f\n",tNow,tStateStart,tInterTrialTime);
+        if (tNow - tStateStart) > tInterTrialTime then
             ChangeStateTo(stateCheckTurnOnOpto%, tNow);
         endif
         
@@ -1258,10 +1279,11 @@ proc CreateSampleConfiguration()
     SampleTitle$(FrameChannel%,"Frame");
     
     'Camera frame trigger channel
-    SampleEvent(CameraTriggerChannel%, 1, 2, 3600); 'Camera trigger channel, level
-	SampleComment$(CameraTriggerChannel%, "CamTrg");
-	SampleTitle$(CameraTriggerChannel%, "CamTrg");
-    
+    if not (tunCameraMode% = cameraModeNone%) then
+        SampleEvent(CameraTriggerChannel%, 1, 2, 3600); 'Camera trigger channel, level
+        SampleComment$(CameraTriggerChannel%, "CamTrg");
+        SampleTitle$(CameraTriggerChannel%, "CamTrg");
+    endif
 '    SampleEvent(40,4,2,3600); 'Trigger channel, level
 '	SampleComment$(40,"4");
 '	SampleTitle$(40,"4");
@@ -1330,39 +1352,40 @@ proc CreateSampleConfiguration()
     ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
     ' and M waveform channels. 
     ' Changed!  To avoid confusion wavemarks now are place on channels (Port+1) and waveforms on channels (Port+8)
-    for i% := 0 to tunNWavemarks%-1 do
-		'SampleWaveMark(i% + 1, tunWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
-		'SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%])); 
-        'Trying here to avoid collapsing channel numbers
-        SampleWaveMark(tunWavemarkPorts%[i%]+1, tunWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
-		SampleTitle$(tunWavemarkPorts%[i%]+1, "WMrk " + str$(tunWavemarkPorts%[i%]));
-        
-        ' djs 7-29-2014 Hack to allow all 8 ports. See djs comments. 
-' djs        if tunWavemarkPorts%[i%] > 6 then
-        if tunWavemarkPorts%[i%] > 7 then
-' djs            message("The rig should only be set up to collect data from Ports 0-6!  Quitting!");
-            message("The rig should only be set up to collect data from Ports 0-7!  Quitting!");
-            'This message comes up because of the non-collapsed (i.e. non-continuous) channel numbers.  There is a "hack" a few lines below
-            'which sets the continuous waveforms to live on channels numbered 7 greater than the corresponding WaveMark channel.  We can get
-            'away with this because the Thomas system which feeds into the CED has only 7 electrode channels which are fed to Ports 0-6 on
-            'the CED.  As of now, the channels that can legally hold WaveMarks are channels 1-7 and the channels that can legally hold
-            'continuous waveforms are channels 8-14.  Since channel 19 holds pulses, there isn't a lot more room to work under this scheme
-            'before needing to reposition other channels anyway (this non-collapsed scheme would work up to a hard-coded 9 rather than 7 Ports).
-            'So if you need to use Port 7/8, you'll need to change the hardcode here and for tunNContinuous% below to 8/9.  If you need
-            'to go beyond Port 8, you'll have to either move some of the hardcoded pulse channels, or dump the non-collapsed numbering scheme. -jj
-            halt;
-        endif;
-	next
-    for i% := 0 to tunNContinuous%-1 do
-        'SampleWaveform(tunNWavemarks% + i% + 1, tunContinuousPorts%[i%], 20000);
-        'SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
-        'Trying here to avoid collapsing channel numbers
-'djs        SampleWaveform(tunContinuousPorts%[i%]+8, tunContinuousPorts%[i%], 20000);  'this hack only works because wavemark chans are limited to channels 1-7
-'djs        SampleTitle$(tunContinuousPorts%[i%]+8, "Cont " + str$(tunContinuousPorts%[i%]));
-        SampleWaveform(tunContinuousPorts%[i%]+9, tunContinuousPorts%[i%], 20000);  'this hack only works because wavemark chans are limited to channels 1-7
-        SampleTitle$(tunContinuousPorts%[i%]+9, "Cont " + str$(tunContinuousPorts%[i%]));
-    next
+'    for i% := 0 to tunNWavemarks%-1 do
+'		'SampleWaveMark(i% + 1, tunWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+'		'SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%])); 
+'        'Trying here to avoid collapsing channel numbers
+'        SampleWaveMark(tunWavemarkPorts%[i%]+1, tunWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+'		SampleTitle$(tunWavemarkPorts%[i%]+1, "WMrk " + str$(tunWavemarkPorts%[i%]));
+'        
+'        ' djs 7-29-2014 Hack to allow all 8 ports. See djs comments. 
+'' djs        if tunWavemarkPorts%[i%] > 6 then
+'        if tunWavemarkPorts%[i%] > 7 then
+'' djs            message("The rig should only be set up to collect data from Ports 0-6!  Quitting!");
+'            message("The rig should only be set up to collect data from Ports 0-7!  Quitting!");
+'            'This message comes up because of the non-collapsed (i.e. non-continuous) channel numbers.  There is a "hack" a few lines below
+'            'which sets the continuous waveforms to live on channels numbered 7 greater than the corresponding WaveMark channel.  We can get
+'            'away with this because the Thomas system which feeds into the CED has only 7 electrode channels which are fed to Ports 0-6 on
+'            'the CED.  As of now, the channels that can legally hold WaveMarks are channels 1-7 and the channels that can legally hold
+'            'continuous waveforms are channels 8-14.  Since channel 19 holds pulses, there isn't a lot more room to work under this scheme
+'            'before needing to reposition other channels anyway (this non-collapsed scheme would work up to a hard-coded 9 rather than 7 Ports).
+'            'So if you need to use Port 7/8, you'll need to change the hardcode here and for tunNContinuous% below to 8/9.  If you need
+'            'to go beyond Port 8, you'll have to either move some of the hardcoded pulse channels, or dump the non-collapsed numbering scheme. -jj
+'            halt;
+'        endif;
+'	next
+'    for i% := 0 to tunNContinuous%-1 do
+'        'SampleWaveform(tunNWavemarks% + i% + 1, tunContinuousPorts%[i%], 20000);
+'        'SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
+'        'Trying here to avoid collapsing channel numbers
+''djs        SampleWaveform(tunContinuousPorts%[i%]+8, tunContinuousPorts%[i%], 20000);  'this hack only works because wavemark chans are limited to channels 1-7
+''djs        SampleTitle$(tunContinuousPorts%[i%]+8, "Cont " + str$(tunContinuousPorts%[i%]));
+'        SampleWaveform(tunContinuousPorts%[i%]+9, tunContinuousPorts%[i%], 20000);  'this hack only works because wavemark chans are limited to channels 1-7
+'        SampleTitle$(tunContinuousPorts%[i%]+9, "Cont " + str$(tunContinuousPorts%[i%]));
+'    next
     
+    CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
     
     'Set channel for Opto box efference copy, if needed - turned off because opto box won't output for the analog input
     'if tunRecOptoBox% > 0 then
@@ -1399,10 +1422,18 @@ func Stop%()
     'turn off opto if it happens to be on
     SafeSampleKey("o");
     
+    'turn the stimulus off if it happens to be on
+    'NOTE: this is extremely important for render to ensure that the stim digout pin is set low
+    SafeSampleKey("X");
     
-	' Tell stim app to shut down
+	' Tell stim app to shut down    
 	SafeSampleKey("Q");
-	Yield(.1);
+    if tunCameraMode% = cameraModeTrigger% then
+        Yield(((tunCameraBaselinePeriod+tunStimulusDuration)*0.2)+0.5);
+    else
+        Yield(0.1);
+    endif
+
 	SampleStop();
 
 	ProgKill(StimHandle%);
@@ -1434,11 +1465,11 @@ func Stop%()
     ExportChanList(0,view(datawindow%).maxtime(),chanToExport%[]);
     
     ' Write matlab file
-    fn$ := FileName$();  'get current file name
-    mylen% := Len(fn$);
-    fn$ := Left$(fn$,mylen%-4);
-    fn$ := fn$ + ".mat";
-    j% := view(datawindow%).FileSaveAs(fn$,100,0,"",0,"UseSName=0"); 'Do not overwrite the .mat file - should have a different name and if it doesn't that is a red flag
+    'fn$ := FileName$();  'get current file name
+    'mylen% := Len(fn$);
+    'fn$ := Left$(fn$,mylen%-4);
+    'fn$ := fn$ + ".mat";
+    'j% := view(datawindow%).FileSaveAs(fn$,100,0,"",0,"UseSName=0"); 'Do not overwrite the .mat file - should have a different name and if it doesn't that is a red flag
 
     
     
@@ -1705,7 +1736,6 @@ func Start%()
     var tempSeqVarValue%;
     var tempBinDir$;
     
-    
     if renderIsBroken% = 1 then
         message("Variable renderIsBroken has been set!  \nWe are FLYING BLIND, IGNORING ALL INCOMING PULSES!");
     endif;
@@ -1834,7 +1864,7 @@ func Start%()
         var RenderIP$;
         jsonFilePre$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
         
-        'if the user has selected to use remote stimulus then assume that the IP given if for render
+        'if the user has selected to use remote stimulus then assume that the IP given is for render
         'otherwise fall back to the hardcoded constant at the top of this script (which needs to be
         'changed each time the render machine is rebooted)
         if UseRemoteStimulus% = 1 then            
@@ -1924,7 +1954,7 @@ func Start%()
 
 	endcase;
     
-    cmdLine$ := "cmd /k " + bin$ + ProgName$ + Extras$ + Stim$ + Tune$;
+    cmdLine$ := "cmd /c " + bin$ + ProgName$ + Extras$ + Stim$ + Tune$;
 
     ' ==================================================================== '
     ' NOTE: 20170410 PCA
@@ -1964,7 +1994,17 @@ func Start%()
 	ToolbarEnable(6,0);
 	ToolbarEnable(7,0);
 	View(DataWindow%);
-	Yield(.1);
+    
+    'Given a large number of trials (i.e. a long json file) render need a bit of time
+    'to parse the whole thing and get ready, so just make sure there is enough time
+    '(about a second seems sufficient) for render to finish preping before we roll...
+    'NOTE: this is especially important if no WaveMark channels are being recorded as
+    'there is no pause for thresholding etc.
+    tInterTrialTime := tunInterTrialTime;
+    while ProgStatus(StimHandle%) = 1 and DisplayHardwareIndex% = 1 do  'wait for render app to close, VSG does not close
+        yield(0.1);
+    wend;
+    
 return 1;
 end;
 
