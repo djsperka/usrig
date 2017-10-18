@@ -81,6 +81,25 @@ var starOptoOffMidStimTime;  'used to turn off the opto laser mid-stimulus, if r
 var smallAreaTextItemNumber%;
 
 
+'Grating Bar variables
+var starGratingBarIsSquarewave%;
+var starGratingBarWidth;
+var starGratingBarHeight;
+var starGratingBarYCenter;
+var starGratingBarXCenter;
+var starGratingBarSpFreq;
+var starGratingBarPhase;
+var starGratingBarColorAtCenter%;  'for this, 0 = white, 1 = black, 2 = use phase value
+var starGratingBarTargetWidth;
+var starGratingBarTargetHeight;
+var starGratingBarTargetIsCircle%;
+var starGratingBarTargetIsWidthOfStripe%;
+
+var starGratingBarWidthOfStripe;
+var starGratingBarNStripes%;
+var starTargetXPosition;
+
+
 proc GetStarStimScriptParameters()
 	var key$;
     key$ := GetRegistryKey$(1) + "\\Scripts\\StarStim";
@@ -152,9 +171,18 @@ end;
 
 func StarStimScriptDialog%()
 	var i%;
+    var gratingAsTargetOpts$[3];
+    
+    gratingAsTargetOpts$[0] := "Use dot for target";
+    gratingAsTargetOpts$[1] := "Use grating for target";
+    gratingAsTargetOpts$[2] := "Do squarewave bar";
+    
+    'Get various parameters, in case we don't click on these buttons but still use the function
 	GetStarStimScriptParameters();
     GetStarStimOptoParameters();
-	DlgCreate("StarSac2 Script Parameters", 27, 10);
+    GetStarStimGratingBarParameters();
+    
+	DlgCreate("StarSac2 Script Parameters");
 	DlgReal(1, "Fixation duration min(s):", .01, 10);
 	DlgReal(2, "Fixation duration max(s):", .01, 10);
 	DlgReal(3, "Acquisition time(s):", .01, 10);
@@ -176,9 +204,11 @@ func StarStimScriptDialog%()
     DlgCheck(18, "Use fixpt diameter for target");
     DlgReal(19, "Target diameter", 0.1, 100);
     smallAreaTextItemNumber% := DlgText("Text Here",2,20,25);
-    DlgCheck(20, "Use grating for target",2,21);
+    'DlgCheck(20, "Use grating for target",2,21);
+    DlgList(20,30,gratingAsTargetOpts$[],3,0,21);
     DlgButton(101, "SmallArea", StarStimSmallAreaDialog%,2,22);
     DlgButton(102, "Opto Parameters", StarStimOptoDialog%,20,22);
+    DlgButton(103, "Squarewave Bar Parameters", StarStimGratingBarDialog%,2,23);
     DlgAllow(0xffff, 0, StarStimScriptDialogChanged%);
 	i%:=DlgShow(starFixationDurationMin, starFixationDurationMax, starAcquisitionTime, starInterTrialTime, starAnswerTime, starNumTargets%, 
     starNumBlocks%, starNumPerBlock%, starDoOpto%, starUseStimulusXY%, starTargetX, starTargetY,
@@ -372,6 +402,116 @@ func StarStimOptoDialog%()
 end;
 
 
+
+proc GetStarStimGratingBarParameters()
+	var stmp$;
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\StarStim\\GratingBar";
+    
+    starGratingBarIsSquarewave% := GetIntRegistryValue%(key$, "GratingBarIsSquarewave", starGratingBarIsSquarewave%);
+    starGratingBarWidth := GetFloatRegistryValue(key$, "GratingBarWidth", starGratingBarWidth);
+    starGratingBarHeight := GetFloatRegistryValue(key$, "GratingBarHeight", starGratingBarHeight);
+    starGratingBarXCenter := GetFloatRegistryValue(key$, "GratingBarXCenter", starGratingBarXCenter);
+    starGratingBarYCenter := GetFloatRegistryValue(key$, "GratingBarYCenter", starGratingBarYCenter);
+    starGratingBarSpFreq := GetFloatRegistryValue(key$, "GratingBarSpFreq", starGratingBarSpFreq);
+    starGratingBarPhase := GetFloatRegistryValue(key$, "GratingBarPhase", starGratingBarPhase);
+    starGratingBarColorAtCenter% := GetIntRegistryValue%(key$, "GratingBarColorAtCenter", starGratingBarColorAtCenter%);
+    starGratingBarTargetWidth := GetFloatRegistryValue(key$, "GratingBarTargetWidth", starGratingBarTargetWidth);
+    starGratingBarTargetHeight := GetFloatRegistryValue(key$, "GratingBarTargetHeight", starGratingBarTargetHeight);
+    starGratingBarTargetIsCircle% := GetIntRegistryValue%(key$, "GratingBarTargetIsCircle", starGratingBarTargetIsCircle%);
+    starGratingBarTargetIsWidthOfStripe% := GetIntRegistryValue%(key$, "GratingBarTargetIsWidthOfStripe", starGratingBarTargetIsWidthOfStripe%);
+
+
+end;
+
+proc SaveStarStimGratingBarParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\StarStim\\GratingBar";
+    
+    'TODO - everything
+    SetIntRegistryValue(key$, "GratingBarIsSquarewave", starGratingBarIsSquarewave%);
+    SetFloatRegistryValue(key$, "GratingBarWidth", starGratingBarWidth);
+    SetFloatRegistryValue(key$, "GratingBarHeight", starGratingBarHeight);
+    SetFloatRegistryValue(key$, "GratingBarXCenter", starGratingBarXCenter);
+    SetFloatRegistryValue(key$, "GratingBarYCenter", starGratingBarYCenter);
+    SetFloatRegistryValue(key$, "GratingBarSpFreq", starGratingBarSpFreq);
+    SetFloatRegistryValue(key$, "GratingBarPhase", starGratingBarPhase);
+    SetIntRegistryValue(key$, "GratingBarColorAtCenter", starGratingBarColorAtCenter%);
+    SetFloatRegistryValue(key$, "GratingBarTargetWidth", starGratingBarTargetWidth);
+    SetFloatRegistryValue(key$, "GratingBarTargetHeight", starGratingBarTargetHeight);
+    SetIntRegistryValue(key$, "GratingBarTargetIsCircle", starGratingBarTargetIsCircle%);
+    SetIntRegistryValue(key$, "GratingBarTargetIsWidthOfStripe", starGratingBarTargetIsWidthOfStripe%);
+
+end;
+
+
+func StarStimGratingBarDialog%()
+
+	var iReturn% := 1;
+	var i%;
+    var colorAtCenterLabel$[3];
+    colorAtCenterLabel$[0] := "Center is White";
+    colorAtCenterLabel$[1] := "Center is Black";
+    colorAtCenterLabel$[2] := "Use Phase (0=White)";
+    
+	GetStarStimGratingBarParameters();
+    
+	DlgCreate("Grating Bar Parameters");
+    DlgCheck(1, "Use Squarewave");
+    DlgReal(2, "Grating Bar Width (deg)",0.1,50);
+    DlgReal(3, "Grating Bar Height (deg)",0.1,50);
+    DlgReal(4, "Grating Bar X Center (deg)",-30,30);
+    DlgReal(5, "Grating Bar Y Center (deg)",-30,30);
+    DlgReal(6, "Grating Bar Spatial Freq (cyc/deg)",.01,100);
+    DlgReal(7, "Grating Bar Phase (deg)",0,360);
+    DlgList(8, 30, colorAtCenterLabel$[]);
+    DlgReal(9, "Target Width (deg)",0.01,30);
+    DlgReal(10, "Target Height (deg)",0.01,30);
+    DlgCheck(11, "Target Is Circle");
+    DlgCheck(12, "Target Is Width Of Stripe");
+    
+    DlgAllow(0xffff, 0, StarStimGratingBarDialogChanged%);
+     
+    
+    i% := DlgShow(starGratingBarIsSquarewave%,starGratingBarWidth,starGratingBarHeight,starGratingBarXCenter,starGratingBarYCenter,
+    starGratingBarSpFreq,starGratingBarPhase,starGratingBarColorAtCenter%,starGratingBarTargetWidth,starGratingBarTargetHeight,
+    starGratingBarTargetIsCircle%,starGratingBarTargetIsWidthOfStripe%);
+    ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
+
+    'starMaximalDiam := starAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
+	if i% = 1 then
+		SaveStarStimGratingBarParameters();    
+	endif;
+    
+    if starGratingBarColorAtCenter% = 2 then
+        message("Sorry, intermediate phases have not yet been implemented!  Quitting!");
+        halt;
+    endif;
+    
+	return iReturn%;
+end;
+
+
+
+func StarStimGratingBarDialogChanged%(item%)
+    if DlgValue(11) = 1 then 'If circle target is selected, do not allow target height
+        DlgEnable(0,10);  'Disable target height
+    else
+        DlgEnable(1,10);  'Enable target height
+    endif;
+    if DlgValue(8) < 2 then 'If color is specified, disable phase
+        DlgEnable(0,7);  'Disable phase
+    else
+        DlgEnable(1,7);  'Enable phase
+    endif;
+    if DlgValue(12) = 1 then 'If width is width of target, do not allow target width
+        DlgEnable(0,9);  'Disable target width
+    else
+        DlgEnable(1,9);  'Enable target width
+    endif;
+    return 1;
+end;
 
 
 
@@ -1178,6 +1318,31 @@ func TargGrating$(x, y)
     return " -g " + newgr$ + " ";
 end
 
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func TargRect$(x,y,w,h,c)
+    var localcolor$;
+    if c = 0 then
+        localcolor$ := "(255/255/255) ";
+    else
+        localcolor$ := "(0/0/0) ";
+    endif;
+    
+    return " -r " + str$(x) + "," + str$(y) + "," + str$(w) + "," + str$(h) + "," + localcolor$; 
+end
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func TargCircle$(x,y,w,c)
+    var localcolor$;
+    if c = 0 then
+        localcolor$ := "(255/255/255) ";
+    else
+        localcolor$ := "(0/0/0) ";
+    endif;
+    
+    return " -t " + str$(x) + "," + str$(y) + "," + str$(w) + "," + localcolor$; 
+end
+
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Start%()
@@ -1186,6 +1351,7 @@ func Start%()
 	var Extras$;
 	var tmp$;
 	var TargetArg$;
+    var progName$;
     var targx, targy, w, h;
     var count% := 0;
     var fpx, fpy, fpd, fpr;     ' fixpt parameters
@@ -1315,15 +1481,57 @@ func Start%()
         'iEyePosChannel% += 1;
     next
     
-    ' Generate target args for startstim program
+    'Do lots of preliminary calcs for using a grating bar
+    'Number of targets is different if we are using a grating bar
+    'Calculate number of stripes (half-cycles) and width of stripes, only is using a grating bar
+    if starTargetIsGrating% = 2 then
+        starGratingBarWidthOfStripe := 0.5/starGratingBarSpFreq;  'Two stripes per cycle
+        'note that if the phase is 0 or 180 that a stripe will be centered in the created grating
+        'the number of full stripes will be 1 (center stripe) + 2*floor((0.5*width)-half a stripe) (how many stripes on each side)
+        starGratingBarNStripes% := 1 + 2*(floor ((0.5*starGratingBarWidth)-(starGratingBarWidthOfStripe/2)));
+        'we are NOT making any adjustments for if the phase is not centered, because...too much work and right now it won't be done
+        'As of now if the user selects a phase, the program says "NOPE!" and quits.  But the dialog is capable.
+        
+        'Calculate starting X position
+        starTargetXPosition := starGratingBarXCenter - ((starGratingBarNStripes%-1)/2)*starGratingBarWidthOfStripe;
+        starNTargetPositions% := starGratingBarNStripes%;  'Set one target per stripe
+        starNumTargets% := starGratingBarNStripes%;  'Set one target per stripe
+        for i% := 0 to starNTargetPositions%-1 do
+            starTargetPositions[i%][0] := starTargetXPosition;
+            starTargetPositions[i%][1] := starGratingBarYCenter;
+            starTargetXPosition := starTargetXPosition + starGratingBarWidthOfStripe;
+        next
+        
+        
+    endif
+    
+    
+    
+    
+    ' Generate target args for starstim program
     for i% := 0 to starNTargetPositions% -1 do
         LogInfo("target pos[" + str$(i%) + "] " + str$(starTargetPositions[i%][0]) + ", " + str$(starTargetPositions[i%][1]));
-        if starTargetIsGrating% = 0 then
+        docase
+        case starTargetIsGrating% = 0 then
             TargetArg$ += Targ$(starTargetPositions[i%][0], starTargetPositions[i%][1], fpd, starTargetColor$);
-        else
+        case starTargetIsGrating% = 1 then
             TargetArg$ += TargGrating$(starTargetPositions[i%][0], starTargetPositions[i%][1]);
-        endif;
+        case starTargetIsGrating% = 2 and starGratingBarTargetIsCircle% = 0 then
+            TargetArg$ += TargRect$(starTargetPositions[i%][0],starTargetPositions[i%][1],starGratingBarTargetWidth,starGratingBarTargetHeight,starGratingBarColorAtCenter%);
+        case starTargetIsGrating% = 2 and starGratingBarTargetIsCircle% = 1 then
+            TargetArg$ += TargCircle$(starTargetPositions[i%][0],starTargetPositions[i%][1],starGratingBarTargetWidth,starGratingBarColorAtCenter%);
+        endcase;
     next
+    
+    
+    ' Generate Bar argument for barstim program, assign program name
+    if starTargetIsGrating% = 2 then
+        progName$ := " barstim ";  'use BARSTIM
+        TargetArg$ := TargetArg$ + StringifyBar$();  'Add a bar spec for BARSTIM
+    else
+        progName$ := " starstim ";  'use STARSTIM
+    endif;
+    
     
     ' Randomize target order
     if GenerateTrials%(starTargetOrder%[], starNTargetOrder%, starNumTargets%, starNumSmall%, starNumBlocks%, starNumPerBlock%) <> 0 then
@@ -1345,7 +1553,7 @@ func Start%()
     ' Clear any trigger bits on digout lines.
     SafeSampleKey("0");      
     
-	CommandLine$ := "cmd /k " + GetBinDir$(1) + "remote " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() +  " starstim " + TargetArg$ + Extras$;
+	CommandLine$ := "cmd /k " + GetBinDir$(1) + "remote " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() +  progName$ + TargetArg$ + Extras$;
     
     
     
@@ -1693,3 +1901,36 @@ endif;
 return v32%;
 end
 
+
+
+func StringifyBar$()
+    var out$;
+    var localphase;
+    
+    out$ := " -B ";  'bar indicator
+    out$ := out$ + Str$(starGratingBarXCenter) + ",";
+    out$ := out$ + Str$(starGratingBarYCenter) + ",";
+    out$ := out$ + Str$(starGratingBarWidth) + ",";
+    out$ := out$ + Str$(starGratingBarHeight) + ",";
+    out$ := out$ + "0,0,100,";  'inner width of 0, inner height of 0, contrast of 100
+    out$ := out$ + Str$(starGratingBarSpFreq) + ",";
+    out$ := out$ + "0,90,";  'temporal frequency of 0, orientation of 90 (vertical bar)
+    docase
+    case starGratingBarColorAtCenter% = 0 then
+        localphase := 0;  'Center is white, use phase 0
+    case starGratingBarColorAtCenter% = 1 then
+        localphase := 180; 'Center is black, use phase 180
+    else
+        localphase := starGratingBarPhase;  'Use specified phase value
+    endcase
+    out$ := out$ + Str$(localphase) + ",";
+    out$ := out$ + "b,";  'Use b/w color vector
+    if starGratingBarIsSquarewave% = 1 then
+        out$ := out$ + "q,";  'Use squarewave grating
+    else
+        out$ := out$ + "s,";  'Use sinewave grating
+    endif;
+    out$ := out$ + "r ";  'Use rectangular aperture  
+    
+    return out$;
+end
