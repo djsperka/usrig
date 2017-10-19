@@ -1333,7 +1333,7 @@ end
 func TargRect$(x,y,w,h,barcont,targcont)
     var localcolor$;
     var localval%;
-    if barcont = 0 then 'bar white, target dark
+    if barcont = 1 then 'bar white, target dark
         localval% := 127.5 - (127.5*targcont/100);
         localcolor$ := "(" + str$(localval%) + "/" + str$(localval%) + "/" + str$(localval%) + ") ";
     else 'bar black, target light
@@ -1349,7 +1349,7 @@ end
 func TargCircle$(x,y,w,barcont,targcont)
     var localcolor$;
     var localval%;
-    if barcont = 0 then 'bar white, target dark
+    if barcont = 1 then 'bar white, target dark
         localval% := 127.5 - (127.5*targcont/100);
         localcolor$ := "(" + str$(localval%) + "/" + str$(localval%) + "/" + str$(localval%) + ") ";
     else 'bar black, target light
@@ -1521,7 +1521,7 @@ func Start%()
         starTargetXPosition := starGratingBarXCenter - ((starGratingBarNStripes%-1)/2)*starGratingBarWidthOfStripe;
         starNTargetPositions% := starGratingBarNStripes%;  'Set one target per stripe
         starNumTargets% := starGratingBarNStripes%;  'Set one target per stripe
-        starNumSmall% := 0;  'No small targets!
+        starNumSmall% := 1;  'No small targets! -- ah, but it has to be 1 anyway due to the function below subtracting 1 when dealing out targets!
         for i% := 0 to starNTargetPositions%-1 do
             starTargetPositions[i%][0] := starTargetXPosition;
             starTargetPositions[i%][1] := starGratingBarYCenter;
@@ -1529,6 +1529,12 @@ func Start%()
             starBarContrastAtTarget[i%] := starGratingBarFirstTargetColor%;
             starGratingBarFirstTargetColor% := 1 - starGratingBarFirstTargetColor%;  'invert for next target
         next
+        
+        'This doesn't quite work, there is an offset
+        if starGratingBarTargetIsWidthOfStripe% = 1 then
+            starGratingBarTargetWidth := starGratingBarWidthOfStripe;
+            starGratingBarTargetHeight := starGratingBarWidthOfStripe;
+        endif;
         
         
     endif
