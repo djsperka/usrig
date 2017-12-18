@@ -827,11 +827,12 @@ func Start%()
     endif;
     'Now, regardless of source, fvImageList$ contains a full path to a list of images and fvFileLen% contains the number of images
     'Use GRPP to get a list of indices determining presentation order - this is easier than writing new code, even if it does some extra stuff
+    fvNValues% := fvFileLen%*fvNRepeats%;
     GetRepeatedParameterProgression%(fvFileLen%, fvNRepeats%, dummyResult[], fvImageOrder%[], 1, 2, 0, fvRandomProgression%);  'We will ignore dummyResult, which holds values between (1) and (2) that are not logspaced (0)
     'Create the file to send to the VSG, use order created in line above
     fh% := FileOpen(ImageFileLoc$,8,1);  'Open a new text file for writing, replace current file
     printlog("result of opening text file is %d\n",fh%);
-    for j% := 0 to fvFileLen% -1 do
+    for j% := 0 to fvNValues% -1 do
         view(fh%).Print("%s\n",fvImageList$[fvImageOrder%[j%]]);
     next
     FileClose(fh%);  'Close the VSG image list file
