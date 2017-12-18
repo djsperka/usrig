@@ -56,7 +56,7 @@ var iScript%;
 var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
 var tLast:=-1;		' last time we checked for a trigger. 
 var xEye, yEye;		' eye positions
-var tLastUpdate:=-1;	' last time view was updated
+var tLastFixPtDisplayUpdate:=-1;	' last time view was updated
 var vTrigger;		' set by NextTime to indicate trigger transition
 var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
 var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
@@ -64,7 +64,7 @@ var tTrigger:=-1;	' temp var for newly discovered trigger times
 var tInterTrialTime := 0;	' Time spent waiting between trials (i.e. after screen is blank, but before image is presented)
 var tRise, tFall;
 var tKludge := 0.06;    ' Add to Fixation time to account for stim sequence. Ugly hack, admittedly, but one does what one must. 
-
+var fvFixationWasBroken% := 0;  'this allows us to monitor fixation through the individual image "periods"
 
 ' Constants for states
 
@@ -77,15 +77,14 @@ const stateWaitForStimOff%:=5;		   ' Wait for stimulus return trigger (off)
 const stateInterStimulusInterval%:=6;  ' Wait until it is time to present the next stimulus
 const stateLookAwayTO%:=7;             ' Wait through timeout for breaking fixation
 const stateTrialCompleted%:=8;		   ' trial has been completed successfully
+const statePrepareOpto%:=9;            ' Set up opto on a trial-by-trial basis
+const stateBeginImagePeriod%:=10;      ' Determine if we will do opto this period, branch
+const stateOptoPeriod%:=11;
+const stateOptoOff%:=12;
+const stateNoOptoPeriod%:=13;
+const stateRewardPeriod%:=14;
+const stateWaitReward%:=15;
 
-'const stateStartOpto%:=18;
-'const stateWaitOptoPrestim%:=19;
-'const stateCheckTurnOnOpto%:=20;
-'const stateCheckTurnOffOpto%:=21;
-'const stateTurnOffOpto%:=22;
-'const stateWaitOptoPoststim%:=23;
-'const statePulsedOpto%:=24;
-'const stateWaitPulsedOpto%:=25;
 
 var iState% := stateVSGWait%;	' present state
 var stateBegin% := 1;  'For fun, in this script let's keep track of whether it is the first time through a state, for logging purposes
@@ -97,13 +96,11 @@ var nTrialsAborted% :=0;
 var tic;  'Set a tick value equal to the duration of one clock tick in seconds, used to prevent finding
           'the same "pulse" twice
 var pulseFound%;
-var pulseFoundSlave%;
+'var pulseFoundSlave%;
 var tOpt;
 
 'variables for reading image files
-var fvFileLen%; 'not sure right now why there are three of these...may be carried over from other scripts?
-var fv1FileLen%;
-var fv2FileLen%;
+var fvFileLen%; 
 var fvdlgFileSelectButton% := 100;
 var fvdlgFolderSelectButton% := 101;
 var fvdlgTextItem%;
@@ -111,8 +108,11 @@ var fvStimFolder$;
 var fvStimFile$;
 var fvUseFile%;  '1 if use file, 0 if use folder
 var fvDefaultStimPath$ := "D:\\experiments\\stimuli\\";  'TODO - set this folder for Henry's computer
+var fvDefaultStimFile$ := "DefaultStimFile.txt";  'this file will be updated 
 var fvDialogText$;
-
+var fvImageList$[2000];  'allow up to 2000 unique images
+var fvImageOrder%[10000];  'allow up to 10000 images to be presented total
+var dummyResult[10000];  'This just lets me run GRPP to get the index order on fvImageOrder%[] instead of writing new code, just allows return of dummy values
 
 ' Wavemarks and continuous ports
 var fvNWavemarks% := 0;
@@ -121,27 +121,21 @@ var fvNContinuous% := 0;
 var fvContinuousPorts%[16];
 
 
-' Optogenetics variables
-var fvPreStimOptoTime;
-var fvPostStimOptoTime;
-var fvOptoStaysOn%;
-var fvOptoVoltageOut;
-var fvOptoStartState%;  'essentially an index, 0 = off first, 1 = on first (those are logical), 2 = random
-var fvOptoState% := 0;  'current opto state, will toggle, can set here in dialog box
-var dontToggleOpto% := 0;  'by default, toggle opto on every block
-var fvOptoNPulses%;
-var fvPulsedOptoOnset;
-var fvPulsedOptoWidth;
-var fvPulsedOptoIPI;
-var fvPulsedOptoOnsetClockSteps%;
-var fvPulsedOptoOffsetClockSteps%;
-var fvPulsedOptoWidthClockSteps%;
-var fvPulsedOptoIPIClockSteps%;
-var fvDoOpto%;                     ' New, 1 if doing optogenetics
-var fvOptoUsePulse% := 0;  'Are we using a "pulsing stimulation"?
-var fvLaserDiode% := 0;  'Are we recording the output of the laser using a photodiode?
-var fvInterBlockTime := 0;        ' New, time between blocks, important for opto
+' Reward variables
+var fvProbRewardEachPeriod;
+var fvRewardDurSec;
+fvRewardDurSec := (GetJuiceRewardMS%()+20)/1000;  'Set reward duration up top.  If we have any reason to think this will change through the experiment, then set it say each idle loop
+                                                  'I am paranoid and I'm adding another 20 ms following the reward.
 
+
+' Optogenetics variables
+var fvOptoVoltageOut;
+var fvDoOpto%; 
+var fvOptoState% := 0;      'might be useful to keep track of opto state?  Possibly not, as the sequencer is going to be doing the heavy lifting
+var fvLaserDiode% := 0;     'Are we recording the output of the laser using a photodiode?
+var fvOptoOrderThisTrial%;  'Set to 1 for opto first, and 2 for opto second
+var fvPeriodCount%;         'How many periods we have completed
+var fvLastPeriodStart;      'When did the last period start?
 
 ' Dialog box variables
 var fvAlwaysLooking% := 1; ' If set eye signals ignored - subject presumed to be looking always. TESTING ONLY.
@@ -150,8 +144,10 @@ var fvNRepeats%;
 var fvTrialISI;
 var fvAcquisitionTime;
 var fvAcquisitionTO;
-var fvMinTimeForAdvance;
-var fvMaxImageTime;
+var fvNumPeriods%;
+var fvNumPeriodsPerBlock%;
+var fvPeriodDuration;
+var fvMinViewPeriodsForAdvance%;
 var fvLookAwayTO;
 var fvScreenMMX;  'we will assume that the 0,0 coordinate of fixation is at the center of the screen, and calculate the screen size from there
 var fvScreenMMY;
@@ -161,6 +157,19 @@ var fvGiveLookingTO%;
 var fvAdvance%;
 var fvNValues%;
 var fvNAdvances%;
+
+
+'Deprecated variables
+'var fvRewardMinDelay;  'minimum time allowed between rewards
+'var fvRewardMaxDelay;  'maximum time allowed between rewards
+'var fvRewardDelay;     'actual time requested between rewards
+'var fvOptoMaxNumPulses%;
+'var fvOptoMinDelay;
+'var fvOptoMaxDelay;
+'var fvOptoDur;
+'var fvMinTimeForAdvance;
+'var fvMaxImageTime;
+
 
 GetFreeViewerScriptParameters();  'We will just get these right off the bat, this supports the pre-dialog box
                                   'that warns about AlwaysLooking - though this pre-dialog is currently disabled
@@ -199,8 +208,8 @@ ReadyChannel% := 40;
 FrameChannel% := 41;
 StimChannel% := 43;
 ReadySlaveChannel% := 44;
-FrameSlaveChannel% := 45;
-StimSlaveChannel% := 47;
+'FrameSlaveChannel% := 45;
+'StimSlaveChannel% := 47;
 DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
 OptoCopyChannel% := 49;
 
@@ -280,16 +289,8 @@ func FreeViewerScriptDialog%()
     var screenMMPerDegree;
     var pi := 3.141592653589793;  'There is a pre-defined constant "_pi", but only on 8.03 and beyond, explicitly defining pi for back-compatibility
 
-'    GetTunOptoParameters();  'We must get these or the user has to open the opto dialog every time.
-'    docase 'And recalculate tunOptoState, in case the user doesn't click on opto parameters button
-'    case tunOptoStartState% = 3 then
-'        dontToggleOpto% := 1;
-'        tunOptoState% := 1;
-'    case tunOptoStartState% = 2 then
-'        tunOptoState% := round(Rand());
-'    else
-'        tunOptoState% := tunOptoStartState%;
-'    endcase;
+    'Since the opto is incorporated into this dialog (for now) we don't have to do a separate parameter grab for opto
+    GetFreeViewerScriptParameters();
     
     
     if fvUseFile% = 0 then
@@ -308,37 +309,69 @@ func FreeViewerScriptDialog%()
     
         
     DlgCreate("FreeViewer Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
-    DlgInteger(1, "Number of repeats", 1, 1000);
-    DlgCheck(2, "Random Progression?");
-    DlgReal(3, "Interstimulus Interval, s", 0.05, 100);
-    DlgReal(4, "Maximum Image Display Time, s", 0.1, 1000);
-    DlgReal(5, "Fixation Acquisition Time, s", 0.1, 100);
-    DlgReal(6, "Acquisition Time Out, s", 0, 100);
-    DlgReal(7, "Minimum View Time For Advance, s", 0.1, 1000);
-    DlgReal(8, "Look Away Time Out, s", 0, 100);
-    DlgCheck(9, "Always Looking?");
-    DlgReal(10, "Screen Width, mm", 10, 3000);
-    DlgReal(11, "Screen Height, mm", 10, 3000);
-    fvdlgTextItem% := DlgText(fvDialogText$, 1, 13, 40);
-    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 1, 14);
-    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 20, 14);
-   
+    DlgGroup("Stimulus and Fixation", 1, 1, 50, 11);
+    DlgInteger(1, "Number of repeats", 1, 1000, 0, 2);
+    DlgCheck(2, "Random Progression?", 0, 3);
+    DlgReal(3, "Period Duration, s", 0.05, 100, 0, 4);
+    DlgInteger(4, "Number of periods per block", 1, 1000, 0, 5);
+    DlgInteger(5, "Minimum Viewed Periods To Advance", 1, 1000, 0, 6);
+    DlgReal(6, "Interstimulus Interval, s", 0.05, 100, 0, 7);
+    DlgReal(7, "Fixation Acquisition Time, s", 0.1, 100, 0, 8);
+    DlgReal(8, "Acquisition Time Out, s", 0, 100, 0, 9);
+    DlgReal(9, "Look Away Time Out, s", 0, 100, 0, 10);
+    DlgCheck(10, "Always Looking?", 0, 11);
     
-'    DlgButton(tundlgOptogeneticsButton%, "Optogenetics Parameters", TunOptoDialog%, 18, 19);    
+    DlgGroup("Screen", 1, 12, 50, 3);
+    DlgReal(11, "Screen Width, mm", 10, 3000, 0, 13);
+    DlgReal(12, "Screen Height, mm", 10, 3000, 0, 14);
+    
+    DlgGroup("Reward", 1, 15, 50, 2);
+    DlgReal(13, "Prob of reward each period", 0, 1, 0, 16);
+    
+    DlgGroup("Optogenetics", 1, 17, 50, 7);
+    DlgCheck(14, "Use Opto", 0, 18);
+    DlgReal(15, "Opto Voltage Out (V)", 0.0002, 5, 0, 19); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+    
+    
+    DlgGroup("Images", 1, 20, 50, 3);
+    fvdlgTextItem% := DlgText(fvDialogText$, 3, 21, 40);
+    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 22);
+    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 23, 22);
+   
+    'these have been removed from the dialog before ever being used, just a guide
+    'DlgReal(4, "Maximum Image Display Time, s", 0.1, 1000, 0, 5);  
+    'DlgReal(7, "Minimum View Time For Advance, s", 0.1, 1000, 0, 8);
+    'DlgReal(12, "Reward minimum delay, s", 0.05, 1000, 0, 15);
+    'DlgReal(13, "Reward maximum delay, s", 0.05, 1000, 0, 16);  
+    'DlgInteger(16, "Max number of pulses per image", 1, 1000, 0, 20);
+    'DlgReal(17, "Opto pulse duration, s", 0.05, 1000, 0, 21);
+    'DlgReal(18, "Opto minimum delay, s", 0.05, 1000, 0, 22);
+    'DlgReal(19, "Opto maximum delay, s", 0.05, 1000, 0, 23);    
+    
+'    DlgButton(tundlgOptogeneticsButton%, "Optogenetics Parameters", TunOptoDialog%, 18, 19);  'for now, keep them in the same dialog   
     
     'Right now we don't seem to need a callback, it's ready directly below if we do 
 '    DlgAllow(0xffff, 0, FreeViewerScriptDialogChanged%);
 
-    i%:=DlgShow(fvNRepeats%, fvRandomProgression%, fvTrialISI, fvMaxImageTime, fvAcquisitionTime, fvAcquisitionTO,
-    fvMinTimeForAdvance, fvLookAwayTO, fvAlwaysLooking%, fvScreenMMX, fvScreenMMY);
-
-
+    i%:=DlgShow(fvNRepeats%, fvRandomProgression%, fvPeriodDuration, fvNumPeriodsPerBlock%, fvMinViewPeriodsForAdvance%, 
+    fvTrialISI, fvAcquisitionTime, fvAcquisitionTO, fvLookAwayTO, fvAlwaysLooking%, fvScreenMMX, fvScreenMMY, 
+    fvProbRewardEachPeriod, fvDoOpto%,fvOptoVoltageOut);
+    
     if i% = 1 then
 		SaveFreeViewerScriptParameters();
         'Calculate screen values in degrees here
         screenMMPerDegree := Val(GetDistanceToScreenMM$())*pi/180;  
         fvScreenXDeg := (fvScreenMMX/2)/screenMMPerDegree;  'we are defining fvScreenX(Y)Deg as HALF the screen so it is the distance from fixation to the edge
         fvScreenYDeg := (fvScreenMMY/2)/screenMMPerDegree;
+        
+        
+        fvNumPeriods% := fvNumPeriodsPerBlock%*2;   'always two "blocks"
+        
+'        if fvRewardMinDelay > fvRewardMaxDelay then
+'            fvRewardMinDelay := fvRewardMaxDelay;
+'            message("Reward min delay was greater than max delay!\nBoth values set to max delay!");
+'        endif;
+        
         
 	endif;
 
@@ -362,14 +395,31 @@ proc GetFreeViewerScriptParameters()
     fvTrialISI := GetFloatRegistryValue(key$, "TrialISI", fvTrialISI);
     fvAcquisitionTime := GetFloatRegistryValue(key$, "AcquisitionTime", fvAcquisitionTime);
     fvAcquisitionTO := GetFloatRegistryValue(key$, "AcquisitionTO", fvAcquisitionTO);
-    fvMinTimeForAdvance := GetFloatRegistryValue(key$, "MinTimeForAdvance", fvMinTimeForAdvance);
-    fvMaxImageTime := GetFloatRegistryValue(key$, "MaxImageTime", fvMaxImageTime);
     fvLookAwayTO := GetFloatRegistryValue(key$, "LookAwayTO", fvLookAwayTO);
     fvScreenMMX := GetFloatRegistryValue(key$, "ScreenMMX", fvScreenMMX);
     fvScreenMMY := GetFloatRegistryValue(key$, "ScreenMMY", fvScreenMMY);
     fvUseFile% := GetIntRegistryValue%(key$, "UseFile", fvUseFile%);
     fvStimFolder$ := GetStringRegistryValue$(key$, "StimFolder", fvStimFolder$);
     fvStimFile$ := GetStringRegistryValue$(key$, "StimFile", fvStimFile$);
+    fvOptoVoltageOut := GetFloatRegistryValue(key$, "OptoVoltageOut", fvOptoVoltageOut);
+    fvDoOpto% := GetIntRegistryValue%(key$, "DoOpto", fvDoOpto%);
+    fvNumPeriodsPerBlock% := GetIntRegistryValue%(key$, "NumPeriodsPerBlock", fvNumPeriodsPerBlock%);
+    fvMinViewPeriodsForAdvance% := GetIntRegistryValue%(key$, "MinViewPeriodsForAdvance", fvMinViewPeriodsForAdvance%);
+    fvPeriodDuration := GetFloatRegistryValue(key$, "PeriodDuration", fvPeriodDuration);
+    fvProbRewardEachPeriod := GetFloatRegistryValue(key$, "ProbRewardEachPeriod", fvProbRewardEachPeriod);
+    
+    
+    'from an older conception, not used
+    'fvMinTimeForAdvance := GetFloatRegistryValue(key$, "MinTimeForAdvance", fvMinTimeForAdvance);
+    'fvMaxImageTime := GetFloatRegistryValue(key$, "MaxImageTime", fvMaxImageTime);
+    'fvRewardMinDelay := GetFloatRegistryValue(key$, "RewardMinDelay", fvRewardMinDelay);
+    'fvRewardMaxDelay := GetFloatRegistryValue(key$, "RewardMaxDelay", fvRewardMaxDelay);
+    'fvOptoMaxNumPulses% := GetIntRegistryValue%(key$, "OptoMaxNumPulses", fvOptoMaxNumPulses%);
+    'fvOptoMinDelay := GetFloatRegistryValue(key$, "OptoMinDelay", fvOptoMinDelay);
+    'fvOptoMaxDelay := GetFloatRegistryValue(key$, "OptoMaxDelay", fvOptoMaxDelay);
+    'fvOptoDur := GetFloatRegistryValue(key$, "OptoDur", fvOptoDur);
+    
+    
   
 end;
 
@@ -383,14 +433,28 @@ proc SaveFreeViewerScriptParameters()
     SetFloatRegistryValue(key$, "TrialISI", fvTrialISI);
     SetFloatRegistryValue(key$, "AcquisitionTime", fvAcquisitionTime);
     SetFloatRegistryValue(key$, "AcquisitionTO", fvAcquisitionTO);
-    SetFloatRegistryValue(key$, "MinTimeForAdvance", fvMinTimeForAdvance);
-    SetFloatRegistryValue(key$, "MaxImageTime", fvMaxImageTime);
     SetFloatRegistryValue(key$, "LookAwayTO", fvLookAwayTO);
     SetFloatRegistryValue(key$, "ScreenMMX", fvScreenMMX);
     SetFloatRegistryValue(key$, "ScreenMMY", fvScreenMMY);
     SetIntRegistryValue(key$, "UseFile", fvUseFile%);
     SetStringRegistryValue(key$, "StimFolder", fvStimFolder$);
     SetStringRegistryValue(key$, "StimFile", fvStimFile$);
+    SetFloatRegistryValue(key$, "OptoVoltageOut", fvOptoVoltageOut);
+    SetIntRegistryValue(key$, "DoOpto", fvDoOpto%);
+    SetIntRegistryValue(key$, "NumPeriodsPerBlock", fvNumPeriodsPerBlock%);
+    SetIntRegistryValue(key$, "MinViewPeriodsForAdvance", fvMinViewPeriodsForAdvance%);
+    SetFloatRegistryValue(key$, "PeriodDuration", fvPeriodDuration);
+    SetFloatRegistryValue(key$, "ProbRewardEachPeriod", fvProbRewardEachPeriod);
+    
+    'From an older conception, not used
+    'SetFloatRegistryValue(key$, "MinTimeForAdvance", fvMinTimeForAdvance);
+    'SetFloatRegistryValue(key$, "MaxImageTime", fvMaxImageTime);
+    'SetFloatRegistryValue(key$, "RewardMinDelay", fvRewardMinDelay);
+    'SetFloatRegistryValue(key$, "RewardMaxDelay", fvRewardMaxDelay);
+    'SetIntRegistryValue(key$, "OptoMaxNumPulses", fvOptoMaxNumPulses%);
+    'SetFloatRegistryValue(key$, "OptoMinDelay", fvOptoMinDelay);
+    'SetFloatRegistryValue(key$, "OptoMaxDelay", fvOptoMaxDelay);
+    'SetFloatRegistryValue(key$, "OptoDur", fvOptoDur);
     
 end;
 
@@ -433,52 +497,11 @@ proc CreateSampleConfiguration()
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
     
-    'read tuning file, if one is specified
-    'TODO this must be updated to read a file with paths to images
-'    if fvUseFile% = 1 then
-'        eof%:=1;
-'        readsetup(",","	 ","","","	");  'Standard read setup
-'        FileOpen(fvTuningFile$,8,0);  'open specified file
-'        while eof% > 0 do
-'            eof% := read(fvValues$[fvFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
-'            fvFileLen%+=1;  'increment tuning file length
-'        wend
-'        fvFileLen%-=1;  'decrement tuning file length because we increment when we find EOF.
-'        FileClose();  'close the file
-'        'Now deal out the values to tun1Values and tun2Values
-'        fv1FileLen% := 0;
-'        fv2FileLen% := 0;
-'        eof% := 0;  'Just reusing this variable, no longer is end of file, is now a label for fvValues1 or fvValues2
-'        for i% := 0 to fvFileLen%-1 do
-'            docase
-'            case fvValues$[i%] = "-" then
-'                eof% := 1;  'change to fvValues2[] on the "-"
-'            case eof% = 0 then  'otherwise it is expected to be a number
-'                fvValues[fv1FileLen%] := Val(fvValues$[i%]);  'may use fvValues or fv1Values later, let's not worry about which right now, fill both
-'                fv1Values[fv1FileLen%] := Val(fvValues$[i%]);
-'                fv1FileLen%+=1;  'increment tuning file length
-'            case eof% = 1 then
-'                fv2Values[fv2FileLen%] := Val(fvValues$[i%]);
-'                fv2FileLen%+=1;  'increment tuning file length
-'            endcase
-'        next;
-'    endif 
-    
     
     key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
     
-    
-'TODO update this to do whatever is necessary here, will probably need to know syntax of call to write this.
-'    DoSampleAutoName(key$,"dots","dot",masterTxt$,slaveTxt$);
-'    
-'    fvNAdvances% := fvDotsNSteps%;
-'    fvNRepeats% := fvDotsNRepeats%*(1+fvDoOpto%);  'double number of blocks if doing optogenetics
-'    GetRepeatedParameterProgression%(fvDotsNSteps%+1, fvDotsNRepeats%, fvValues[], fvValuesIndices%[], fvDotsMinOrientation, fvDotsMaxOrientation, 0, fvDotsProgression%);  'Note - linear spacing for orientation, not log
-'    fvNValues% := (fvDotsNSteps%+1)*fvDotsNRepeats%;
-'    fvValuesStringified$ := StringifyProgression$(fvNValues%, fvValues, fvValuesIndices%);        
-
-    
-    
+    DoSampleAutoName(key$,"imgs","img",masterTxt$,slaveTxt$);
+       
     SampleAutoFile(1);  'Enable automatic file naming
     
     ' Text marks make extraction easier
@@ -527,8 +550,7 @@ proc CreateSampleConfiguration()
     
     'Add a waveform channel for efference copy.  This can come from either the 1401 itself or
     'from the stimulator, it doesn't really matter.
-    'It would be nice to have these as level channels on event inputs, but that does not fly with the VSG box. (Several months later, I do not know how to interpret that comment...jj)
-    if fvOptoUsePulse% = 1 and fvDoOpto% = 1 then
+    if fvDoOpto% = 1 then
         SampleWaveform(OptoCopyChannel%,31,5000);  'on adc31, which is Henry's max, hardcoded for now
         SampleTitle$(OptoCopyChannel%, "OptoCopy");
     endif;
@@ -571,7 +593,7 @@ proc CreateSampleConfiguration()
 	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
 	SampleTitle$(YChannel%,"Eye Y");
     
-	SampleSequencer(script$ + "tuning.pls"); 'TODO - new PLS file???
+	SampleSequencer(script$ + "tuning.pls");
 	docase
     case UsePlexon% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
         SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
@@ -744,52 +766,15 @@ end
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Start%()
 	var cmdLine$;
-    var cmdLineM$;
-    var cmdLineS$;
-    var tailM$, tailS$;
-    var fileM$, fileS$;
     var Opener$;
-    var OpenerM$;
-    var OpenerS$;
     var ProgName$;
-    var ProgNameM$;
-    var ProgNameS$;
     var RemoteArg$:="";     'Extra arg needed if vsg is not on local machine...
-    var RemoteArgM$:="";     'Extra arg needed if vsg is not on local machine...
-    var RemoteArgS$:="";     'Extra arg needed if vsg is not on local machine...
-    var XHairArg$:="";  'Note that all variables are used to construct cmdLine$, if unused, must be empty
     var BGColor$;
     var Dist2Screen$;
     var TriggerPort$;
-    var Verbose$:=" -v ";  'For now, verbose is always on
-    var RefrLock$:="";
-    var OffsetFile$:="";
-    var StimDur$:="";
-    var MGrat$:=" -s ";
-    var M2Grat$:="";  'start this empty, fill it only if necessary
-    var SGrat$:=" -s ";
-    var DGrat$:="";
-    var MGratParam$:="";
-    var M2GratParam$:="";
-	var SGratParam$:="";
-    var DGratParam$:="";  'for donut stimulus, uses Distractor1
-    var MasterIndicator$:="";  'Do not use Master Indicator
-    var SlaveIndicator$:="";  'or Slave Indicator for fixstim, set if needed
-    var KlugeArg$:=" -H ";  'this is for a Jerry-rigged "hole" in Box O' Donuts slave stimuli 
-    var MValues$:="";
-    var M2Values$:="";
-    var SValues$:="";   
-    var S2Values$:="";  'won't be used except for Box O' Donuts, rivalry
-    var DValues$:="";  'won't be used except for Box O' Donuts, two-grating version
-    var KlugeValues$:="";  'this is for a Jerry-rigged "hole" in Box O' Donuts slave stimuli
-    var MConstantLag$:="";  
-    var SConstantLag$:=""; 
-    var key$;
-    var i%;
-    'var CRGPrimaryArg$;  'This is always "-R", hard code
-    var CRGPrimaryValues$;
-    var CRGSecondaryArg$;
-    var CRGSecondaryValues$;
+    var ImageFileLoc$ := fvDefaultStimPath$+fvDefaultStimFile$;  'We can just set this outright
+    var FixationArg$;
+    var Verbose$:=" -v ";  'For now, verbose is always on 
     'vars for opto setup
     var voltageInteger%;
     var stimRemaining;
@@ -797,10 +782,54 @@ func Start%()
     var tempCount%;
     var tempSeqVarValue;
     var tempSeqVarValue%;
+    var i%;
+    var j%;
+    var returnToPath$;  'this is where we start, we'll move back here after reading the folder
+    var fh%;
+    var readInputFile% := 1;
+    var readTemp$;
     
     
-    
+    'Get list of images, either from folder or from file, and create a randomized order (via list of indices),
+    'write entire randomized trial-by-trial image list to text file for passing to VSG
+    if fvUseFile% = 0 then  'if using folder
+        returnToPath$ := FilePath$();  'keep track of current directory
+        FilePathSet(fvStimFolder$);  'move to selected folder
+        fvFileLen% := FileList(fvImageList$[],-1,"*.bmp");  'return the list of all .bmps and the number in fvFileLen%
+        FilePathSet(returnToPath$);  'return current directory to where it was
+        'and finally, convert fvImageList$[] to full-path
+        for i% := 0 to fvFileLen%-1 do
+            fvImageList$[i%] := fvStimFolder$ + fvImageList$[i%];  'fvStimFolder$ will have the trailing slashie
+        next
+    else 'if using file
+        fvFileLen% := 0;
+        fh% := FileOpen(fvStimFile$,8,0);  'open file for reading only
+        if fh% < 0 then
+            message("File " + fvStimFile$ + " failed to open!!!  Quitting!");
+            halt
+        endif;
+        while readInputFile% do
+            j% := Read(readTemp$);
+            if j% = 1 then
+                fvImageList$[fvFileLen%] := readTemp$;  'by expectation, these will have full paths
+                fvFileLen% += 1;
+            else
+                readInputFile% := 0;
+            endif;
+        wend
+        FileClose(fh%);
+    endif;
+    'Now, regardless of source, fvImageList$ contains a full path to a list of images and fvFileLen% contains the number of images
+    'Use GRPP to get a list of indices determining presentation order - this is easier than writing new code, even if it does some extra stuff
+    GetRepeatedParameterProgression%(fvFileLen%, fvNRepeats%, dummyResult[], fvImageOrder%[], 1, 2, 0, fvRandomProgression%);  'We will ignore dummyResult, which holds values between (1) and (2) that are not logspaced (0)
+    'Create the file to send to the VSG, use order created in line above
+    fh% := FileOpen(ImageFileLoc$,8,1);  'Open a new text file for writing, replace current file
+    for j% := 0 to fvFileLen% -1 do
+        view(fh%).Print("%s\n",fvImageList$[fvImageOrder%[j%]]);
+    next
+    FileClose(fh%);  'Close the VSG image list file
 	
+    
 	'start sampling
     if UseTwo1401s% = 1 then
         SampleStart(1);  'set sampling to start on a trigger
@@ -819,91 +848,24 @@ func Start%()
     
     SequencerPeriodMS := SampleSeqClock(1);  'Get the clock period of the sequencer, in MS, must do this after starting sampling
     
-    'TODO - get opto right for FV
+
     if fvDoOpto% = 1 then
         'set sequencer variable 4 for opto voltage
         'Please note that the input for this has to be a 32-bit variable. Use vdac32% to get the right value.
         voltageInteger% := vdac32%(fvOptoVoltageOut, 1, 0);
         SampleSeqVar(4,voltageInteger%);
-        printlog("Voltage integer is %d\n",voltageInteger%);
-        
-        'If pulsing, because the user could have changed the duration of the stimulus after setting the opto
-        'parameters, we need to check the parameters again (even though the opto dialog box did it already)
-        if fvOptoUsePulse% = 1 then
-            
-            
-            stimRemaining := stimRemaining - fvPulsedOptoOnset;  'duration of stimulus after onset delay
-            stimRemaining := stimRemaining - fvPulsedOptoWidth;  'duration of stimulus after first opto pulse
-            if stimRemaining < 0 then  'if first pulse will extend beyond stimulus duration
-                fvOptoNPulses% := 0;  'turn off opto by using no pulses
-                'tell user they blew it
-                Message("The first opto pulse will extend beyond the stimulus!  Quitting!!!");
-                Quit%();
-            else
-                tempNPulses% := fvOptoNPulses% - 1;  'how many more pulses are left?
-                tempCount% := 1;  'temporary successful pulse count
-                while tempNPulses% > 0 do
-                    stimRemaining := stimRemaining - fvPulsedOptoWidth - fvPulsedOptoIPI;  'subtract duration of one more pulse+IPI
-                    if stimRemaining < 0 then  'if this pulse will extend beyond stimulus duration
-                        Message("Due to stimulus length, only " + Str$(tempCount%) + " pulses can be completed!");
-                        fvOptoNPulses% := tempCount%;  'only use this many pulses if user does not recalculate
-                        stimRemaining := stimRemaining + fvPulsedOptoWidth + fvPulsedOptoIPI;  'add back duration of one more pulse+IPI, gets actual stimulus duration remaining
-                        tempNPulses% := 0;  'break while
-                    else  'if this pulse is OK
-                        tempCount% += 1;  'increment temporary successful pulse count
-                    endif;
-                    tempNPulses% -= 1;  'decrement temporary pulse count remaining
-                wend
-            endif;
-        endif;
-        
-        'If pulsing, set sample sequencer variables
-        if fvOptoUsePulse% = 1 then  'yes, this is the same "if" as above, just seems cleaner this way
-            SampleSeqVar(6,fvOptoNPulses%);  'set number of pulses
-            printlog("Opto N pulses is %d\n",fvOptoNPulses%);
-            'For below calculations, the standard numbers we are getting are in seconds, sequencer period is in MS (because that's how it comes)
-            
-            tempSeqVarValue := fvPulsedOptoWidth*1000/SequencerPeriodMS;  'do math in float
-            tempSeqVarValue% := tempSeqVarValue-2;  'now convert to integer, subtract two ticks for sequencer instructions
-            SampleSeqVar(7,tempSeqVarValue%);  'set duration of pulse in clock ticks
-            printlog("Opto width is %d\n",tempSeqVarValue%);
-            
-            tempSeqVarValue := fvPulsedOptoIPI*1000/SequencerPeriodMS;  'do math in float
-            tempSeqVarValue% := tempSeqVarValue-3;  'now convert to integer, subtract three ticks for sequencer instructions
-            SampleSeqVar(8,tempSeqVarValue%);  'set interpulse interval in clock ticks
-            printlog("Opto IPI width is %d\n",tempSeqVarValue%);
-            
-            tempSeqVarValue := fvPulsedOptoOnset*1000/SequencerPeriodMS;  'do math in float
-            tempSeqVarValue% := tempSeqVarValue-1;  'now convert to integer, subtract one tick for sequencer instructions
-            SampleSeqVar(9,tempSeqVarValue%);  'set pre-pulse stimulus duration in clock ticks
-            printlog("Opto onset is %d\n",tempSeqVarValue%);
-            
-            tempSeqVarValue := stimRemaining*1000/SequencerPeriodMS;  'do math in float
-            tempSeqVarValue% := tempSeqVarValue-3;  'now convert to integer, subtract three ticks for sequencer instructions
-            SampleSeqVar(10,tempSeqVarValue%);  'set post-pulse stimulus duration in clock ticks
-            printlog("Opto remaining time is %d\n",tempSeqVarValue%);
-        endif;
-        
+        printlog("Voltage integer is %d\n",voltageInteger%);        
     endif;
     
 
-    'TODO - get this right
     'Begin building the command line argument
     Opener$ := "cmd /k " + bin$;
-    OpenerM$ := Opener$;
-    'OpenerS$ := "cmd/k D:\\work\\PsTools\\psexec \\\\192.168.1.2 -w c:\\work -i -f -c " + bin$;
-    OpenerS$ := "cmd /k " + bin$;
     
     ' Get remote args if needed
     if GetUseRemoteStimulus%() = 1 then
         RemoteArg$  := " " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
-        RemoteArgM$ := " " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
-        RemoteArgS$ := " " + GetSlaveStimulusIP$() + " " + GetSlaveStimulusPort$() + " fixstim ";
     endif;
-    
-         
-    'Set rivalry options
-    RefrLock$ := "";  'do not lock frame refresh
+        
     if GetUseRemoteStimulus%() = 1 then
         ProgName$ := "\\remote.exe "; 'set program name for one VSG
     else
@@ -923,16 +885,20 @@ func Start%()
     'Turn on verbose
     Verbose$ := " -v ";
     
+    'For now, explicitly no fixation
+    FixationArg$ := "";
+    'FixationArg$ := "-f 0,0,1,red";  'this is a sample, if we want fixation later
+    
+    
+    
 
     'Build command line, any values that are unnecessary will be empty, so the build should work no matter what type of command line is required
-    'TODO - get this right
-'    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$; 'prelim stuff
-'    cmdLine$ := cmdLine$ + RefrLock$ + OffsetFile$ + StimDur$;  'Dual VSG stuff
-'    cmdLine$ := cmdLine$ + MasterIndicator$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$;  'Master grating stuff
-'    cmdLine$ := cmdLine$ + M2Grat$ + M2GratParam$ + TunCurveM2Arg$ + M2Values$;  'Master grating stuff, second grating (only box o' donuts on two gratings)
-'    cmdLine$ := cmdLine$ + SlaveIndicator$ + SGrat$ + SGratParam$ + TunCurveSArg$ + SValues$;  'Slave grating stuff
-'    cmdLine$ := cmdLine$ + TunCurveS2Arg$ + S2Values$;  'Second slave parameters (for Box O' Donuts, more possible)
-    cmdLine$ := "ha ha ha";  'TODO - fix this, I just want to check the dialog box and leave for the day
+    ' ------ Here is a sample command line ------
+    'cmdLine$ := "remote.exe 127.0.0.1 7000 fixstim -v -d 500 -i c:/Users/location/stimulus-images.txt";  'This has no fixation point
+    'cmdLine$ := "remote.exe 127.0.0.1 7000 fixstim -v -d 500 -f 0,0,1,red -i c:/Users/location/stimulus-images.txt";  'This has a fixation point
+    ' ------ So that looks like this ------
+    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + ImageFileLoc$;  'Not sure about the TriggerPort and BGColor but this might work.
+    
     
     ' Initial text marks
     ' djs Always version 3. NO difference if maintainmode is used or not. 
@@ -995,7 +961,6 @@ func Stop%()
 
 	' Increment daily totals and save then
 	TotalTrials% += nTrialsStarted%;
-	TotalRewards% += nTrialsCompleted%;
 	SaveDailyTotals();
     
 end;
@@ -1044,11 +1009,11 @@ end;
 
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'TODO - opto if necessary
 proc WriteParameterFile()
 	var parFileName$;
 	var parFileBase$;
 	var parHandle%;
+    var ii%;
 
 
 	' get filename for parfile (data file + "par" extension) and open it
@@ -1075,41 +1040,37 @@ proc WriteParameterFile()
 	Print("\nExperimental parameters\n");
 	Print("-------------------------\n\n");
 
-    Print("Always Looking?          : %d\n", fvAlwaysLooking%);
-	Print("Random Progression?      : %d\n", fvRandomProgression%);
-	Print("Number of repeats        : %d\n", fvNRepeats%);
-	Print("Inter-image interval     : %f\n", fvTrialISI);
-    Print("Acquisition time (s)     : %f\n", fvAcquisitionTime);
-    Print("Acquisition time out (s) : %f\n", fvAcquisitionTO);
-    Print("Min time to advance (s)  : %f\n", fvMinTimeForAdvance);
-    Print("Max image duration (s)   : %f\n", fvMaxImageTime);
-    Print("Look away time out (s)   : %f\n", fvLookAwayTO);
-    Print("Screen width (mm)        : %f\n", fvScreenMMX);
-    Print("Screen Height (mm)       : %f\n", fvScreenMMY);
+    Print("Always Looking?                          : %d\n", fvAlwaysLooking%);
+	Print("Random Progression?                      : %d\n", fvRandomProgression%);
+	Print("Number of repeats                        : %d\n", fvNRepeats%);
+    Print("Number of periods per block              : %d\n", fvNumPeriodsPerBlock%);
+    Print("Min number of periods viewed for advance : %d\n", fvMinViewPeriodsForAdvance%);
+    Print("Period duration (s)                      : %f\n", fvPeriodDuration);
+    Print("Probability of reward each period        : %f\n", fvProbRewardEachPeriod);
+	Print("Inter-image interval                     : %f\n", fvTrialISI);
+    Print("Acquisition time (s)                     : %f\n", fvAcquisitionTime);
+    Print("Acquisition time out (s)                 : %f\n", fvAcquisitionTO);
+    Print("Look away time out (s)                   : %f\n", fvLookAwayTO);
+    Print("Screen width (mm)                        : %f\n", fvScreenMMX);
+    Print("Screen Height (mm)                       : %f\n", fvScreenMMY);
+     
     
     
-'    if tunDoOpto% = 1 then
-'        Print("\nOptogenetics parameters\n");
-'        Print("-------------------------\n\n");
-'        if tunLaserDiode% = 1 then
-'            Print("Laser Diode recorded\n");
-'        endif;
-'        Print("Opto Voltage Out: %f\n", tunOptoVoltageOut);
-'        var label$[4]; 
-'        label$[0] := "Opto Off First";
-'        label$[1] := "Opto On First";
-'        label$[2] := "Random First";
-'        label$[3] := "Opto On All Blocks";
-'        Print("Order of blocks : %s\n", label$[tunOptoStartState%]);
-'        if tunOptoUsePulse% = 1 then
-'            Print("Pulsing Opto selected\n");
-'            Print("Opto#Pulses,OptoPeriodOnset,OptoPulseWidth,OptoInterpulseInterval: %d,%f,%f,%f\n",tunOptoNPulses%,tunPulsedOptoOnset,tunPulsedOptoWidth,tunPulsedOptoIPI);
-'        else
-'            Print("Wraparound Opto selected\n");
-'            Print("PreStimulusOptoOn,PostStimulusOptoOn,KeepOptoOnBetweenStims: %f,%f,%d\n",tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%);
-'        endif;
-'        
-'    endif;    
+    if fvDoOpto% = 1 then
+        Print("\nOptogenetics parameters\n");
+        Print("-------------------------\n\n");
+        if fvLaserDiode% = 1 then
+            Print("Laser Diode recorded\n");
+        endif;
+        Print("Opto Voltage Out: %f\n", fvOptoVoltageOut);       
+    endif;    
+    
+    
+    'Write out image list
+    Print("\nImage List\n");
+    for ii% := 0 to fvFileLen%-1 do 
+        Print("Image %d: %s",ii%+1,fvImageList$[ii%]);
+    next
     
     
 	' close parfile
@@ -1119,7 +1080,7 @@ end;
 
 
 
-'TODO - Idle Processing Loop mostly done, but there's no OPTO if Henry wants that, and a question here and there
+
 func IdleProcessing%()
 	var iStatus% := 1;	
     var xval;
@@ -1131,19 +1092,20 @@ func IdleProcessing%()
     
     ' First time through (tLast<0) just update tLast. Crosstalk on vsg dig outputs leads to erroneous
     ' triggers. Maybe this will help. 
-    if tLast < 0 then
-        tLast := 1;
-        return 1;
-    endif
+    'unused
+'    if tLast < 0 then
+'        tLast := 1;
+'        return 1;
+'    endif
     
     
 	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
 	yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
 
 	' Don't update display every time....
-	if tNow-tLastUpdate > .005 then
+	if tNow-tLastFixPtDisplayUpdate > .005 then
 		View(XYWindow%).XYAddData(1,xEye,yEye);
-		tLastUpdate := tNow;
+		tLastFixPtDisplayUpdate := tNow;
 	endif
 
 	docase 
@@ -1160,13 +1122,30 @@ func IdleProcessing%()
             LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
             Yield(1.0);
             tLastTrigger := tFall;
-            ChangeStateTo(stateWaitForAcquisition%, tFall);
+            fvAdvance% := 0;  'Ensure value is 0 on first run
+            ChangeStateTo(statePrepareOpto%, tFall);
         else
             if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                 LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
                 tLastTrigger := tFall;
             endif;
         endif;
+        
+    case iState% = statePrepareOpto% then
+        if fvDoOpto% = 1 then
+            fvOptoOrderThisTrial% := round(rand(1,1));  'set this to 1 or 2 (1 = opto first, 2 = opto second)
+            if fvOptoOrderThisTrial% = 1 then
+                LogStatus("PrepareOpto", "Opto order for trial " + Str$(nTrialsCompleted%+1) + "is opto first");
+            else
+                LogStatus("PrepareOpto", "Opto order for trial " + Str$(nTrialsCompleted%+1) + "is opto second");
+            endif;
+        else
+            LogStatus("PrepareOpto", "No opto in this experiment")
+        endif;
+        
+        fvOptoState% := 0;  'This value will toggle, but we need to start at zero for each trial
+        fvPeriodCount% := 0; 'Also reset period count
+        ChangeStateTo(stateWaitForAcquisition%, tNow);
 
     case iState% = stateWaitForAcquisition% then
         ' Wait for animal to acquire the screen
@@ -1225,59 +1204,44 @@ func IdleProcessing%()
     case iState% = stateHoldImage% then
         'Probably not useful to put a log statement up top here...
         
+        'Note that the structure here is somewhat interesting (and will be a pain in the rear if...when...Henry
+        'decides to mix it up).  We are breaking each image up into two halves.  Each half is broken into a 
+        'number of periods, the same number for each half.  One half will have no opto presentations - during all
+        'periods the laser will be off.  The other half will have alternating opto and non-opto periods, with the
+        'laser on for one period and off for the next.  There will be a short (however long it takes) inter-period
+        'time during which we will randomly determine if the animal is rewarded.  Any reward will be administered
+        'during the inter-period time, so that the sequencer is not asked to deliver both laser and reward 
+        'simultaneously (greatly easing the process).  After each period, we will return to this state to 
+        'determine what to do next (image done, fixation broken, paused, image continues).
+        
         docase
-        case tNow - tStateStart > fvMaxImageTime then  'if fixation is held throughout full image time
-            ' turn off stimulus and advance it
+        case fvPeriodCount% >= fvNumPeriods% then 'if fixation is held through all periods
+            ' turn off stimulus, get ready to advance
             SafeSampleKey("X");  'Turn off all
-            SampleText("+");  'indicates successful trial
+            SampleText("++");  'indicates fully successful trial
             LogStatus("HoldImage", "Image time complete. Turn off and advance stimulus at " + str$(tNow));
             
-            Yield();
+            fvAdvance% := 1;  'Advance, but not until stimulus is off
+            fvFixationWasBroken% := 0;  'We didn't check to see if there was a fixation break in the last period, but reset just in case there was
             
-            ' Reward
-            DefaultReward();
-
-            Yield();
-            
-            fvAdvance% := 1;  'Don't advance until stimulus is off
-            'SafeSampleKey("a");
-            
-            ' Now wait until stim is off
+            'And wait for stim to turn off
             fvGiveLookingTO% := 0;  'no timeout on successful fixation
             ChangeStateTo(stateWaitForStimOff%, tNow);
             
-        case tNow - tStateStart > fvMinTimeForAdvance and LookingAtScreen%(xEye,yEye) = 0 then  'if fixation is held throughout min time to advance, then lost    
-            ' turn off stimulus and advance it
+        case fvPeriodCount% >= fvMinViewPeriodsForAdvance% and (LookingAtScreen%(xEye,yEye) = 0 or fvFixationWasBroken% = 1) then 'if fixation is held through enough periods to advance, then broken
+            ' turn off stimulus, get ready to advance
             SafeSampleKey("X");  'Turn off all
             SampleText("+");  'indicates successful trial  TODO - check to see if that's what Henry wants
             LogStatus("HoldImage", "Fixation broken after minimum view time. Turn off and advance stimulus at " + str$(tNow));
             
-            Yield();
-            
-            ' Reward
-            'DefaultReward();  'TODO - Not sure if we want a reward here...if so, the animal will figure out to break fixation as early as possible.  They are jerks that way.
-
-            Yield();
-            
-            fvAdvance% := 1;  'Don't advance until stimulus is off
-            'SafeSampleKey("a");
+            fvAdvance% := 1;  'Advance, but not until stimulus is off
+            fvFixationWasBroken% := 0;  'Reset, we got this fixation break
             
             ' Now wait until stim is off
-            fvGiveLookingTO% := 1; 'TODO - Not sure about setting this to 1
+            fvGiveLookingTO% := 0; 'TODO - Not sure about setting this to 0, animal might try to look for minimum no-TO time
             ChangeStateTo(stateWaitForStimOff%, tNow);
             
-        case LookingAtScreen%(xEye,yEye) = 0 then
-            'If animal breaks fixation, turn off image and penalize, do not advance
-            SafeSampleKey("X");  'Turn off all, do not advance
-            LogStatus("HoldImage", "Fixation broken, aborting trial at " + str$(tNow));
-            SampleText("-");  'indicates failed trial
-            
-            ' Now wait until stim is off
-            fvGiveLookingTO% := 1;
-            fvAdvance% := 0;
-            ChangeStateTo(stateWaitForStimOff%, tNow); 
-            
-        case Pause% = 1 then
+        case Pause% = 1 then  'putting PAUSE here.  Image done will supercede PAUSE, but magnanimously, PAUSE will supercede fixation break
             'If pause is pressed, turn off image, do not penalize, do not advance
             SafeSampleKey("X");  'Turn off all, do not advance
             LogStatus("HoldImage", "Experiment paused, removing image at " + str$(tNow));
@@ -1286,8 +1250,97 @@ func IdleProcessing%()
             ' Now wait until stim is off
             fvGiveLookingTO% := 0;
             fvAdvance% := 0;
+            fvFixationWasBroken% := 0;  'Reset, in case there was a break.  Benevolence!
             ChangeStateTo(stateWaitForStimOff%, tNow); 
+            
+        case LookingAtScreen%(xEye,yEye) = 0 or fvFixationWasBroken% = 1 then
+            'If animal breaks fixation, turn off image and penalize, do not advance
+            SafeSampleKey("X");  'Turn off all, do not advance
+            LogStatus("HoldImage", "Fixation broken, aborting trial at " + str$(tNow));
+            SampleText("-");  'indicates failed trial
+
+            fvGiveLookingTO% := 1;
+            fvAdvance% := 0;
+            fvFixationWasBroken% := 0;  'Reset, we got this fixation break
+            
+            ' Now wait until stim is off
+            ChangeStateTo(stateWaitForStimOff%, tNow); 
+  
+        else
+            'If no other cases are met, begin next image period
+            ChangeStateTo(stateBeginImagePeriod%, tNow); 
         endcase        
+           
+    case iState% = stateBeginImagePeriod% then
+        tNow := View(DataWindow%).MaxTime();  'update tNow so the duration of the period is as precise as possible
+        'Determine if we are in the opto half or no-opto half of the image
+        docase
+        case fvDoOpto% = 0 then 'we are not doing opto, it is not an opto period
+            ChangeStateTo(stateNoOptoPeriod%,tNow);
+        case (fvPeriodCount% < fvNumPeriodsPerBlock% and fvOptoOrderThisTrial% = 1) or (fvPeriodCount% >= fvNumPeriodsPerBlock% and fvOptoOrderThisTrial% = 2) then
+            'If we are in an opto block
+            fvOptoState% := 1-fvOptoState%;  'toggle opto state
+            if fvOptoState% = 1 then
+                'toggle opto on
+                SafeSampleKey("O");  'turn on opto
+                tOpt := View(DataWindow%).MaxTime();
+                SampleText("OptoOn",tOpt);
+                ChangeStateTo(stateOptoPeriod%,tNow);
+            else 'this time it is not an opto period
+                ChangeStateTo(stateNoOptoPeriod%,tNow);
+            endif;
+        else 'we are not in an opto block, it is not an opto period
+            ChangeStateTo(stateNoOptoPeriod%,tNow);
+        endcase;
+        
+        
+    case iState% = stateNoOptoPeriod% then
+        'Wait for period to be over
+        docase
+        case tNow >= tStateStart + fvPeriodDuration then
+            ChangeStateTo(stateRewardPeriod%,tNow);
+        case LookingAtScreen%(xEye,yEye) = 0 then
+            fvFixationWasBroken% := 1;  'but don't end the period, wait it out
+        endcase
+
+        
+        
+    case iState% = stateOptoPeriod% then
+        'Wait for period to be over, opto is already on
+        docase
+        case tNow >= tStateStart + fvPeriodDuration then
+            'toggle opto off
+            SafeSampleKey("o");  'turn it off
+            tOpt := View(DataWindow%).MaxTime();
+            SampleText("OptoOff",tOpt);
+            ChangeStateTo(stateRewardPeriod%,tNow);
+        case LookingAtScreen%(xEye,yEye) = 0 then
+            fvFixationWasBroken% := 1;  'but don't end the period, wait it out, turn off the opto once we're done
+        endcase
+
+        
+        
+    case iState% = stateRewardPeriod% then
+        fvPeriodCount% += 1;  'increment number of periods
+        'Determine if reward should be given (random, or if all periods finished)
+        if fvPeriodCount% >= fvNumPeriods% or (Rand() < fvProbRewardEachPeriod) then
+            'Give reward if appropriate
+            DefaultReward();
+            tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
+            TotalRewards% += 1;
+            ChangeStateTo(stateWaitReward%,tNow);
+            'wait for reward to be done
+        else
+            ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
+        endif;
+        
+        
+    case iState% = stateWaitReward% then
+        if tNow > tStateStart + fvRewardDurSec then
+            ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
+        endif;
+        
+        
         
         
     case iState% = stateWaitForStimOff% then
@@ -1303,6 +1356,7 @@ func IdleProcessing%()
             ' Decide what state to go to
             docase
             case fvAdvance% = 1 then 'If we advance the stimulus
+                fvAdvance% := 0;  'reset advance variable
                 ChangeStateTo(stateTrialCompleted%, tLastTrigger);
             case fvGiveLookingTO% = 0 then  'If we do not advance the stimulus, but do not give a TO penalty, go to ISI
                 ChangeStateTo(stateInterStimulusInterval%, tLastTrigger); 
@@ -1320,7 +1374,7 @@ func IdleProcessing%()
         
         if tNow > tStateStart + fvTrialISI then
             LogStatus("InterStimulusInterval", "InterStimulusInterval ended at " + str$(tNow));
-            ChangeStateTo(stateWaitForAcquisition%, tNow);
+            ChangeStateTo(statePrepareOpto%, tNow);
         endif
         
         
@@ -1332,7 +1386,7 @@ func IdleProcessing%()
         
         if tNow > tStateStart + fvLookAwayTO + fvTrialISI then  'this state just encompasses the ISI as well
             LogStatus("LookAwayTO", "Timeout for looking away ended at " + str$(tNow));
-            ChangeStateTo(stateWaitForAcquisition%, tNow);
+            ChangeStateTo(statePrepareOpto%, tNow);
         endif   
         
         
@@ -1356,226 +1410,17 @@ func IdleProcessing%()
             endif
         endif
         
-            
-            
-            
-'        if tunOptoUsePulse% = 1 and tunOptoState% = 1 then  'it is a pulsed opto trial 
-'            if View(DataWindow%).FindFallingEdge%(StimChannel%, tLastTrigger, tTrigger) = 1 then  'needs to be tLastTrigger if pulsing opto
-'                ' Advance
-'                SafeSampleKey("a");
-'                
-'                tLastTrigger := tTrigger;
-'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-'            else
-'                if tunType$ = tunTypeDanish$ and tunUseMaintainMode% >= 3 and View(DataWindow%).FindRisingEdge%(FrameChannel%, tLast, tTrigger) then
-'                    ' Advance, in specific case that we are doing danishes and maintaining the core - there will not be a falling edge on the stim channel in this case
-'                    SafeSampleKey("a");
-'                    
-'                    tLastTrigger := tTrigger;
-'                    ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-'                endif
-'            endif
-'        else
-'            if View(DataWindow%).FindFallingEdge%(StimChannel%, tLast, tTrigger) = 1 then
-'                ' Advance
-'                SafeSampleKey("a");
-'                
-'                tLastTrigger := tTrigger;
-'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-'            else
-'                if tunType$ = tunTypeDanish$ and tunUseMaintainMode% >= 3 and View(DataWindow%).FindRisingEdge%(FrameChannel%, tLast, tTrigger) then
-'                    ' Advance, in specific case that we are doing danishes and maintaining the core - there will not be a falling edge on the stim channel in this case
-'                    SafeSampleKey("a");
-'                    
-'                    tLastTrigger := tTrigger;
-'                    ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-'                endif
-'            endif
-'        endif        
-        
-'    case iState% = stateCheckTurnOnOpto% then
-'        docase
-'        case tunDoOpto% = 0 then 'if this is not an opto trial, just start it
-'            ChangeStateTo(stateRequestStimulus%, tNow);
-'            printlog("Not an opto trial, doOpto = %d, optoState = %d, time = %f\n",tunDoOpto%,tunOptoState%,tNow);
-'        case tunOptoUsePulse% = 1 and tunOptoState% = 0 then 'if this is a pulsed opto scenario, but not an opto trial, just start it
-'            'This is the same as the above step, separated to make the logic of the case statement easier
-'            ChangeStateTo(stateRequestStimulus%, tNow);
-'            printlog("Not an opto trial, doOpto = %d, optoState = %d, time = %f\n",tunDoOpto%,tunOptoState%,tNow);
-'        case tunOptoUsePulse% = 1 and tunOptoState% = 1 then  'it is a pulsed opto trial, the sequencer will time this
-'            ChangeStateTo(statePulsedOpto%,tNow);
-'        case tunOptoStaysOn% = 1 and (nTrialsCompleted% mod (tunNAdvances%+1)) <> 0 then 'this is for when we're keeping the opto on and it's mid block
-'            ChangeStateTo(stateRequestStimulus%, tNow);
-'            printlog("Opto is already on, OptoStaysOn = %d, TrialsComplete = %d, time = %f\n",tunOptoStaysOn%,(nTrialsCompleted% mod (tunNAdvances%+1)),tNow);
-'        else 'otherwise it is a wraparound opto trial and we need to turn opto on
-'            ChangeStateTo(stateStartOpto%, tNow);
-'            printlog("Turning Opto On at time = %f\n",tNow);
-'        endcase
-'        
-'        
-'    case iState% = stateStartOpto% then
-'        if tunOptoState% = 1 then 'this is an opto-on trial
-'            SafeSampleKey("O");  'turn on opto
-'            tOpt := View(DataWindow%).MaxTime();
-'            'printlog("OptoOn at %f\n",tOpt);
-'            SampleText("OptoOn",tOpt);
-'        else 'this is an opto-off trial
-'            SafeSampleKey("N");  'don't turn on opto
-'            tOpt := View(DataWindow%).MaxTime();
-'            'printlog("OptoOn at %f\n",tOpt);
-'            SampleText("NoOpto",tOpt);
-'        endif;
-'        
-'        ChangeStateTo(stateWaitOptoPrestim%, tNow);
-'        
-'        
-'    case iState% = stateWaitOptoPrestim% then
-'        if tNow > tStateStart + tunPreStimOptoTime then
-'            ChangeStateTo(stateRequestStimulus%, tNow);
-'        endif;      
-'        
-'        
-'    case iState% = statePulsedOpto% then
-'        SafeSampleKey("P");  'start pulsed opto, the whole sequence is controlled by the sequencer, this does the "S" implicitly
-'        tOpt := View(DataWindow%).MaxTime();
-'        SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)),tOpt);
-'        printlog("Started opto trial at %f\n",tOpt);
-'        'ChangeStateTo(stateWaitPulsedOpto%, tOpt);
-'        ChangeStateTo(stateWaitForStimTrigger%, tOpt);
-'        
-'        
-''    case iState% = stateWaitPulsedOpto% then 'wait for sequencer-controlled timing to complete
-''        if tNow > tStateStart + tunStimulusDuration + 0.1 then 'wait an extra tenth of a second just in case
-''            ChangeStateTo(stateTrialCompleted%,tNow);
-''            'the "X" is not necessary as the pulsed opto sequence does the stimulus-off.  But maybe somebody someday will want to SEE the "X"...can uncomment if so
-''            'SafeSampleKey("X"); 
-''            'Advance, this we DO have to do
-''            SafeSampleKey("a");
-''            nTrialsCompleted% += 1;  'trial is complete
-''            SampleSeqVar(6,tunOptoNPulses%);  'reset number of pulses, otherwise bad stuff happens on trial #2
-''            printlog("Completed opto trial at %f\n",tNow);
-''        endif;        
-'        
-       
-'        
-'    case iState% = stateAbort% then
-'
-'        ' Signal "X" turns off fixpt and stimulus. The next state 'stateWaitForBlank' only checks for 
-'        ' fixpt off. 
-'        docase
-'        case tunOptoUsePulse% = 1 and tunOptoState% = 1 then  'it is a pulsed opto trial
-'            'on a pulsed opto abort, we need to turn off the laser and break out of the opto loop
-'            SampleKey("B");  'NOT SafeSampleKey - sequencer is in use and we're killing it anyway, by design
-'            SafeSampleKey("X");  'just turn off stimulus, follow up to get fixation channel down
-'        case tunDoOpto% = 1 and tunOptoUsePulse% = 0 then  'any other opto trial, kill opto on abort
-'            if tunOptoState% = 1 then
-'                SafeSampleKey("o");  'turn it off
-'                tOpt := View(DataWindow%).MaxTime();
-'                'printlog("OptoOff at %f\n",tOpt);
-'                SampleText("OptoOff",tOpt);
-'            else
-'                SafeSampleKey("n");  'turn it off
-'                tOpt := View(DataWindow%).MaxTime();
-'                'printlog("OptoOff at %f\n",tOpt);
-'                SampleText("NoOptoSoNoOff",tOpt);
-'            endif;
-'            SafeSampleKey("X");  'just turn off stimulus
-'        else
-'            SafeSampleKey("X");  'just turn off stimulus
-'        endcase;
-'        ChangeStateTo(stateWaitForBlank%, tNow); 
-'        
-'
-'
-'         
-'        
-'        
-'    case iState% = stateCheckTurnOffOpto% then
-'        nTrialsCompleted% += 1;  'trial is complete, change of count here makes logic easier 
-'        docase
-'        case tunDoOpto% = 0 or (tunOptoState% = 0 and tunOptoUsePulse% = 1) then 'if this is not an opto trial, trial is complete
-'            ChangeStateTo(stateTrialCompleted%, tStateStart);
-'            printlog("Trial complete, Not an opto trial, doOpto = %d, optoState = %d, time = %f\n",tunDoOpto%,tunOptoState%,tStateStart);
-'        case tunOptoStaysOn% = 1 and (nTrialsCompleted% mod (tunNAdvances%+1)) <> 0 then 'this is for when we're keeping the opto on and it's mid block
-'            ChangeStateTo(stateTrialCompleted%, tStateStart);
-'            printlog("Opto is staying on, OptoStaysOn = %d, TrialsComplete = %d, time = %f\n",tunOptoStaysOn%,(nTrialsCompleted% mod (tunNAdvances%+1)),tStateStart);
-'        case tunOptoUsePulse% = 1 and tunOptoState% = 1 then  'it is a pulsed opto trial
-'            printlog("Trial complete, Pulsed opto trial, time = %f\n",tStateStart);
-'            ChangeStateTo(stateTrialCompleted%, tStateStart);
-'            SampleSeqVar(6,tunOptoNPulses%);  'reset number of pulses, otherwise bad stuff happens
-'        else 'otherwise it is an opto trial and we need to turn opto off
-'            ChangeStateTo(stateWaitOptoPoststim%, tStateStart);
-'            printlog("Turning Opto Off at time = %f\n",tStateStart);
-'        endcase
-'        
-'        
-'        
-'    case iState% = stateWaitOptoPoststim% then
-'        if tNow > tStateStart + tunPostStimOptoTime then
-'            ChangeStateTo(stateTurnOffOpto%, tNow);
-'        endif;
-'        
-'        
-'    case iState% = stateTurnOffOpto% then
-'        if tunOptoState% = 1 then
-'            SafeSampleKey("o");  'turn it off
-'            tOpt := View(DataWindow%).MaxTime();
-'            'printlog("OptoOff at %f\n",tOpt);
-'            SampleText("OptoOff",tOpt);
-'        else
-'            SafeSampleKey("n");  'turn it off
-'            tOpt := View(DataWindow%).MaxTime();
-'            'printlog("OptoOff at %f\n",tOpt);
-'            SampleText("NoOptoSoNoOff",tOpt);
-'        endif;
-'        
-'        ChangeStateTo(stateTrialCompleted%,tNow); 
-'        
-'        
-'
-'    case iState% = stateTrialCompleted% then
-'        
-'        'nTrialsCompleted% += 1;  'now done above in stateCheckTurnOffOpto%
-'        printlog("number of trials completed is %d\n",nTrialsCompleted%);
-'		ToolbarText(str$(nTrialsCompleted%) + "/" + str$(tunNValues%) + " trials completed."); 
-'        docase
-'		case nTrialsCompleted% = tunNValues% then
-'            ' We're all done - appears to not reward on final trial.  How chintzy!
-'            ChangeStateTo(stateDone%, tNow);
-'            Stop%();
-'            iStatus% := 0;
-'        case (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 then 'toggle tunOptoState at the end of a block, use interblock time
-'            if tunDoOpto% = 1 and dontToggleOpto% = 0 then
-'                tunOptoState% := 1-tunOptoState%;  'but only toggle if we're actually doing opto, and we haven't been told to not toggle opto
-'            endif;
-'            if tunUseMaintainMode% >= 1 then
-'                SafeSampleKey("X");  'turn everything off, fixation wasn't turned off previously because of maintain mode
-'            endif;
-'            if tunDoOpto% = 1 then
-'                tInterTrialTime := tunStdInterTrialTime + tunInterBlockTime;
-'            else
-'                tInterTrialTime := tunStdInterTrialTime;
-'            endif;
-'            ChangeStateTo(stateInterTrialInterval%, tNow);  'at end of block, we do not maintain fixation, it will start again for next time
-'        else
-'            if tunUseMaintainMode% >= 1 then
-'                ChangeStateTo(stateMaintainFixation%, tNow);
-'            else
-'                'tInterTrialTime := tunMaintainFailTime;
-'                tInterTrialTime := tunStdInterTrialTime;
-'                ChangeStateTo(stateInterTrialInterval%, tNow);
-'            endif
-'        endcase
 
     else
         
         ' Unknown state!
         Message("Unknown state=" + str$(iState%));
+        SafeSampleKey("o");  'turn opto off, just in case
         halt;
 
 	endcase;
 
-	tLast := tNow;
+	'tLast := tNow;  'unused
 	return iStatus%;
 end;
 
@@ -1637,6 +1482,12 @@ end;
 ' It is important that this function be disabled once sampling is started!!!
 
 func Quit%()
+    
+    'turn off opto just in case it might be on (it shouldn't, but...)
+    if fvDoOpto% = 1 then
+        SafeSampleKey("o");
+    endif;
+    
 	FileClose(-1,-1);
 	return 0;
 end;
