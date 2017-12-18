@@ -107,7 +107,7 @@ var fvdlgTextItem%;
 var fvStimFolder$;
 var fvStimFile$;
 var fvUseFile%;  '1 if use file, 0 if use folder
-var fvDefaultStimPath$ := "D:\\experiments\\stimuli\\";  'TODO - set this folder for Henry's computer
+var fvDefaultStimPath$ := "F:\\Images\\";  'Set this folder for Henry's computer - how about just F:\Images?
 var fvDefaultStimFile$ := "DefaultStimFile.txt";  'this file will be updated 
 var fvDialogText$;
 var fvImageList$[2000];  'allow up to 2000 unique images
@@ -171,8 +171,10 @@ var fvNAdvances%;
 'var fvMaxImageTime;
 
 
+
 GetFreeViewerScriptParameters();  'We will just get these right off the bat, this supports the pre-dialog box
                                   'that warns about AlwaysLooking - though this pre-dialog is currently disabled
+
 
 ' Init logging
 LogInit(1);
@@ -190,9 +192,10 @@ LogInit(1);
 'endif
 
 
-
 iScript% := FreeViewerScriptDialog%();
-halt;  'this is just so I can test out the dialog box but not go any farther...
+
+
+'halt;  'this is just so I can test out the dialog box but not go any farther... TODO - COMMENT THIS OUT, DUH
 if iScript% = 1 then
     LogInfo("Proceed with DAQ.");
 else
@@ -372,6 +375,7 @@ func FreeViewerScriptDialog%()
 '            message("Reward min delay was greater than max delay!\nBoth values set to max delay!");
 '        endif;
         
+        iReturn% := 1;  'set return value to success, otherwise we'll just quit.
         
 	endif;
 
@@ -772,8 +776,10 @@ func Start%()
     var BGColor$;
     var Dist2Screen$;
     var TriggerPort$;
-    var ImageFileLoc$ := fvDefaultStimPath$+fvDefaultStimFile$;  'We can just set this outright
+    var ImageFileLoc$;  'We can just set this outright
+    ImageFileLoc$ := fvDefaultStimPath$ + fvDefaultStimFile$;
     var FixationArg$;
+    var ImageArg$;
     var Verbose$:=" -v ";  'For now, verbose is always on 
     'vars for opto setup
     var voltageInteger%;
@@ -824,6 +830,7 @@ func Start%()
     GetRepeatedParameterProgression%(fvFileLen%, fvNRepeats%, dummyResult[], fvImageOrder%[], 1, 2, 0, fvRandomProgression%);  'We will ignore dummyResult, which holds values between (1) and (2) that are not logspaced (0)
     'Create the file to send to the VSG, use order created in line above
     fh% := FileOpen(ImageFileLoc$,8,1);  'Open a new text file for writing, replace current file
+    printlog("result of opening text file is %d\n",fh%);
     for j% := 0 to fvFileLen% -1 do
         view(fh%).Print("%s\n",fvImageList$[fvImageOrder%[j%]]);
     next
@@ -889,7 +896,7 @@ func Start%()
     FixationArg$ := "";
     'FixationArg$ := "-f 0,0,1,red";  'this is a sample, if we want fixation later
     
-    
+    ImageArg$ := " -i " + ImageFileLoc$;
     
 
     'Build command line, any values that are unnecessary will be empty, so the build should work no matter what type of command line is required
@@ -897,7 +904,7 @@ func Start%()
     'cmdLine$ := "remote.exe 127.0.0.1 7000 fixstim -v -d 500 -i c:/Users/location/stimulus-images.txt";  'This has no fixation point
     'cmdLine$ := "remote.exe 127.0.0.1 7000 fixstim -v -d 500 -f 0,0,1,red -i c:/Users/location/stimulus-images.txt";  'This has a fixation point
     ' ------ So that looks like this ------
-    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + ImageFileLoc$;  'Not sure about the TriggerPort and BGColor but this might work.
+    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + ImageArg$;  'Not sure about the TriggerPort and BGColor but this might work.
     
     
     ' Initial text marks
