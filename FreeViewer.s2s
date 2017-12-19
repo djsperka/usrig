@@ -666,17 +666,17 @@ proc InitializeWindows()
 
 	'Create a new channel in the XY view to show the monitor's location
 	iMonitorChannel% := XYSetChan(0);
-	XYColour(4,13);
-	XYDrawMode(4,3,1);
-	XYJoin(4,2);
+	XYColour(iMonitorChannel%,13);
+	XYDrawMode(iMonitorChannel%,3,1);
+	XYJoin(iMonitorChannel%,2);
 '	XYAddData(4,-9,-7);  'this assumes an 18x14 degree monitor, could literally calculate it, and should
 '	XYAddData(4,9,-7);
 '	XYAddData(4,9,7);
 '	XYAddData(4,-9,7);
-    XYAddData(4,-fvScreenXDeg,-fvScreenYDeg);  'this calculates it instead
-	XYAddData(4,fvScreenXDeg,-fvScreenYDeg);
-	XYAddData(4,fvScreenXDeg,fvScreenYDeg);
-	XYAddData(4,-fvScreenXDeg,fvScreenYDeg);
+    XYAddData(iMonitorChannel%,-fvScreenXDeg,-fvScreenYDeg);  'this calculates it instead
+	XYAddData(iMonitorChannel%,fvScreenXDeg,-fvScreenYDeg);
+	XYAddData(iMonitorChannel%,fvScreenXDeg,fvScreenYDeg);
+	XYAddData(iMonitorChannel%,-fvScreenXDeg,fvScreenYDeg);
 
 end;
 
@@ -956,7 +956,7 @@ func Stop%()
 	SafeSampleKey("Q");
 	SampleStop();
     
-
+    
     ProgKill(StimHandle%);
     while ProgStatus(StimHandle%) > 0 do
         Yield();
@@ -1167,6 +1167,7 @@ func IdleProcessing%()
             docase
             case LookingAtScreen%(xEye,yEye) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
                 SafeSampleKey("S");  'request stimulus
+                sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tNow);
                 LogStatus("WaitForAcquisition", "Request stimulus at " + str$(tNow));
                 ChangeStateTo(stateWaitForStimOn%, tNow);
             case tNow - tStateStart > fvAcquisitionTime then
