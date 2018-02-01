@@ -39,8 +39,8 @@ var fixCalibrationFlag%;			' 1 for calibration run
 var fixCalibrationOffset;			' degree offset for calibration dots
 var fixAlwaysLooking% := 0;
 var fixPendingCalMode% := 0;        ' Set when user hits Horizontal, Vertical, Corners, or Center key. See UpdateCalMode().
-var fixInterleaveLED%;              'If 1, interleave fixation LED with fixation point
-var fixSimultaneousLED%;
+'var fixInterleaveLED%;              'If 1, interleave fixation LED with fixation point
+'var fixSimultaneousLED%;
 var fixSaveData%;                   'If 1, save data to fixSaveDataName$;
 var fixSaveDataName$ := "F:\\Experiments\\fixation\\fixdata.mat";
 
@@ -68,8 +68,8 @@ proc GetFixationScriptParameters()
 	Profile(key$, "UseDistractor3Flag", 0, fixDistractor3Flag%);
 	Profile(key$, "UseDistractor4Flag", 0, fixDistractor4Flag%);
 	Profile(key$, "DoCalibrationFlag", 0, fixCalibrationFlag%);
-    Profile(key$, "InterleaveLED", 0, fixInterleaveLED%);
-    Profile(key$, "SimultaneousLED", 0, fixSimultaneousLED%);
+    'Profile(key$, "InterleaveLED", 0, fixInterleaveLED%);
+    'Profile(key$, "SimultaneousLED", 0, fixSimultaneousLED%);
     Profile(key$, "SaveData", 0, fixSaveData%);
 	Profile(key$, "CalibrationOffset", "5.0", stmp$);
 	fixCalibrationOffset := val(stmp$);
@@ -93,8 +93,8 @@ proc SaveFixationScriptParameters()
 	Profile(key$, "UseDistractor3Flag", fixDistractor3Flag%);
 	Profile(key$, "UseDistractor4Flag", fixDistractor4Flag%);
 	Profile(key$, "DoCalibrationFlag", fixCalibrationFlag%);
-    Profile(key$, "InterleaveLED", fixInterleaveLED%);
-    Profile(key$, "SimultaneousLED", fixSimultaneousLED%);
+    'Profile(key$, "InterleaveLED", fixInterleaveLED%);
+    'Profile(key$, "SimultaneousLED", fixSimultaneousLED%);
     Profile(key$, "SaveData", fixSaveData%);
 	Profile(key$, "CalibrationOffset", str$(fixCalibrationOffset));
     Profile(key$, "DualStim", str$(fixDualStim%));
@@ -121,20 +121,23 @@ func FixationScriptDialog%()
 	DlgReal(3, "Intertrial time(s):", .01, 10);
 	DlgInteger(4, "Number of Trials:", 1, 1000);
 	DlgList(5, "Background color:", bcl$);
-    DlgCheck(6, "Interleave Fixation LED?");
-    DlgCheck(7, "LED and Fixation Simultaneous?");
-    DlgCheck(8, "Save Data?");
-	DlgCheck(9, "Use stimulus?");
-	DlgCheck(10, "Use distractor 1?"); 
-	DlgCheck(11, "Use distractor 2?");
-	DlgCheck(12, "Use distractor 3?");
-	DlgCheck(13, "Use distractor 4?");
-    DlgCheck(14, "Dual stim?");
-	DlgCheck(15, "Calibration run?");
-	DlgReal(16, "Calibration offset (deg):", 0, 10);
-    DlgCheck(17, "Always looking?");
-	i%:=DlgShow(fixFixationDuration, fixAcquisitionTime, fixInterTrialTime, fixNumberOfTrials%, ibcl%, fixInterleaveLED%,
-    fixSimultaneousLED%,fixSaveData%, fixStimulusFlag%, fixDistractor1Flag%, fixDistractor2Flag%, fixDistractor3Flag%, fixDistractor4Flag%, 
+    'DlgCheck(6, "Interleave Fixation LED?");        'these are deprecated - they were used by Ben on the dichoptic rig, and they use DIGLOWs that 
+    'DlgCheck(7, "LED and Fixation Simultaneous?");  'conflict with the new ability to trigger ASL file output, code is commented and retained -jj
+    DlgCheck(6, "Save Data?");
+	DlgCheck(7, "Use stimulus?");
+	DlgCheck(8, "Use distractor 1?"); 
+	DlgCheck(9, "Use distractor 2?");
+	DlgCheck(10, "Use distractor 3?");
+	DlgCheck(11, "Use distractor 4?");
+    DlgCheck(12, "Dual stim?");
+	DlgCheck(13, "Calibration run?");
+	DlgReal(14, "Calibration offset (deg):", 0, 10);
+    DlgCheck(15, "Always looking?");
+	'i%:=DlgShow(fixFixationDuration, fixAcquisitionTime, fixInterTrialTime, fixNumberOfTrials%, ibcl%, fixInterleaveLED%,
+    'fixSimultaneousLED%,fixSaveData%, fixStimulusFlag%, fixDistractor1Flag%, fixDistractor2Flag%, fixDistractor3Flag%, fixDistractor4Flag%, 
+    'fixDualStim%, fixCalibrationFlag%, fixCalibrationOffset, fixAlwaysLooking%);
+    i%:=DlgShow(fixFixationDuration, fixAcquisitionTime, fixInterTrialTime, fixNumberOfTrials%, ibcl%,
+    fixSaveData%, fixStimulusFlag%, fixDistractor1Flag%, fixDistractor2Flag%, fixDistractor3Flag%, fixDistractor4Flag%, 
     fixDualStim%, fixCalibrationFlag%, fixCalibrationOffset, fixAlwaysLooking%);
 	if i% = 1 then
 		fixBackgroundColor$ := bcl$[ibcl%];
@@ -196,10 +199,10 @@ if FixationScriptDialog%() = 0 then
     halt;
 endif
 
-if fixCalibrationFlag% = 1 and fixInterleaveLED% = 1 then
-    message("Calibration Flag and Interleave LED flag cannot be simultaneously implemented!");
-    halt;
-endif
+'if fixCalibrationFlag% = 1 and fixInterleaveLED% = 1 then
+'    message("Calibration Flag and Interleave LED flag cannot be simultaneously implemented!");
+'    halt;
+'endif
 
 
 ' Assign channel numbers for eye X,Y and trigger. 
@@ -237,13 +240,13 @@ const stateInterval%		:= 9;
 const stateDone%		:= 10;
 const stateVSGWait%:=10;		' wait for vsg to send ready signal #1
 const stateVSGWaitConfirm%:=11;		' waif for vsg to send ready signal #2
-const statePreLEDInterval%:=12;
-const stateStartLEDTrial%:=13;
-const stateWaitForLEDAcquisition%:=14;
-const stateHoldLEDFixation%:=15;
-const stateLEDFailure%:=16;
-const stateLEDSuccess%:=17;
-const stateLEDIsOff%:=18;
+'const statePreLEDInterval%:=12;
+'const stateStartLEDTrial%:=13;
+'const stateWaitForLEDAcquisition%:=14;
+'const stateHoldLEDFixation%:=15;
+'const stateLEDFailure%:=16;
+'const stateLEDSuccess%:=17;
+'const stateLEDIsOff%:=18;
 const stateNextAfterFixation%:=19;
 
 var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
@@ -258,10 +261,10 @@ var tTrigger:=-1;	' temp var for newly discovered trigger times
 var nTrialsStarted%:=0;
 var nTrialsSuccess%:=0;
 var nTrialsFail%:=0;
-var nLEDTrialsStarted%:=0;
-var nLEDTrialsSuccess%:=0;
-var nLEDTrialsFail%:=0;
-var LEDSuccess%:=0;
+'var nLEDTrialsStarted%:=0;
+'var nLEDTrialsSuccess%:=0;
+'var nLEDTrialsFail%:=0;
+'var LEDSuccess%:=0;
 var fixSuccess% := 0;
 
 ' Run real time analysis here. 
@@ -341,9 +344,9 @@ func IdleProcessing%()
                 
                  ' djs - calibration x,y are set at trial end. 
                 SafeSampleKey("F");
-                if fixSimultaneousLED% = 1 then
-                    SafeSampleKey("L");
-                endif
+                'if fixSimultaneousLED% = 1 then
+                '    SafeSampleKey("L");
+                'endif
                 
                 iState% := stateWaitForStim%;
                 '			PrintLog("State 0 - Start new trial - stimulus trigger sent\n");
@@ -409,9 +412,9 @@ func IdleProcessing%()
             ' Turn off stimulus
             DrawStim(0);
             SafeSampleKey("X");
-            if fixSimultaneousLED% = 1 then
-                SafeSampleKey("M");
-            endif
+            'if fixSimultaneousLED% = 1 then
+            '    SafeSampleKey("M");
+            'endif
             ChangeStateTo(stateWaitForBlank%, tNow);            
             
             
@@ -460,119 +463,119 @@ func IdleProcessing%()
         
         case iState% = stateNextAfterFixation% then
             
-            if fixInterleaveLED% = 0 then  'If no interleaved LED, go to next Fixation Point
+            'if fixInterleaveLED% = 0 then  'If no interleaved LED, go to next Fixation Point
                 ChangeStateTo(stateCheckTrial%, tNow);
                 stayInLoop% := 1;  'No reason to wait
-            else
-                if fixSuccess% = 1 then  'if success during interleaved LED, go to LED
-                    fixSuccess% := 0; 'reset success variable
-                    ChangeStateTo(statePreLEDInterval%, tNow);
-                    stayInLoop% := 1;  'No reason to wait
-                else 'if failure, go back to fixation point
-                    ChangeStateTo(stateCheckTrial%, tNow);
-                    stayInLoop% := 1;  'No reason to wait
-                endif;
-            endif;
+            'else
+            '    if fixSuccess% = 1 then  'if success during interleaved LED, go to LED
+            '        fixSuccess% := 0; 'reset success variable
+            '        ChangeStateTo(statePreLEDInterval%, tNow);
+            '        stayInLoop% := 1;  'No reason to wait
+            '    else 'if failure, go back to fixation point
+            '        ChangeStateTo(stateCheckTrial%, tNow);
+            '        stayInLoop% := 1;  'No reason to wait
+            '    endif;
+            'endif;
         
             
-        case iState% = statePreLEDInterval% then
-            ' Inter-trial wait time
-            if tNow - tStateStart > fixInterTrialTime then
-                
-                ChangeStateTo(stateStartLEDTrial%, tNow);
-                stayInLoop% := 1;  'No reason to wait
-                
-            endif
+        'case iState% = statePreLEDInterval% then
+        '    ' Inter-trial wait time
+        '    if tNow - tStateStart > fixInterTrialTime then
+        '        
+        '        ChangeStateTo(stateStartLEDTrial%, tNow);
+        '        stayInLoop% := 1;  'No reason to wait
+        '        
+        '    endif
             
             
             
-        case iState% = stateStartLEDTrial% then
-            
-            ' initial state on startup. 
-            ' DIGOUT to present stimulus
-            ' Enter state 1
-            
-            if Pause% = 0 then
-                nLEDTrialsStarted% += 1;
-                'iStimIndex% := (iStimIndex% + 1) mod 8;
-                
-                SafeSampleKey("L");
-                
-                ChangeStateTo(stateWaitForLEDAcquisition%, tNow);
-                
-                UpdateToolbarText();
-            endif
-            
-            
-            
-        case iState% = stateWaitForLEDAcquisition% then
-            
-            if tNow-tStateStart < fixAcquisitionTime then
-                
-                ' Acquisition happens when the eye falls within the fixation window.
-                if InFixationWindow%(xEye, yEye) > 0 then
-                    
-                    ChangeStateTo(stateHoldLEDFixation%, tNow);
-                    
-                endif
-                
-            else
-                
-                ' Failed. Turn off stim and try again.
-                ' Turn off stimulus immediately
-                SafeSampleKey("M");
-                ChangeStateTo(stateLEDFailure%, tNow);
-                stayInLoop% := 1;  'No reason to wait
-            endif
-            
-        case iState% = stateHoldLEDFixation% then
-            
-            ' Waiting for fixation....
-            if InFixationWindow%(xEye, yEye) <= 0 then
-                ' Turn off stimulus immediately
-                SafeSampleKey("M");
-                ChangeStateTo(stateLEDFailure%, tNow);
-                stayInLoop% := 1;  'No reason to wait
-            else
-                
-                if tNow - tStateStart >= fixFixationDuration then
-                    
-                    ' Turn off stimulus immediately
-                    SafeSampleKey("M");
-                    ' Fixation. Reward. New trial.
-                    ChangeStateTo(stateLEDSuccess%, tNow);
-                    stayInLoop% := 1;  'No reason to wait
-                endif
-                
-            endif
-            
-        case iState% = stateLEDSuccess% then
-            
-            nLEDTrialsSuccess% += 1;
-            DefaultReward();
-            LEDSuccess% := 1;
-            ' tally successful trials
-            ChangeStateTo(stateLEDIsOff%, tNow);
-            stayInLoop% := 1;  'No reason to wait
-            
-        case iState% = stateLEDFailure% then
-            
-            LEDSuccess% := 0;
-            nLEDTrialsFail% += 1;
-            ChangeStateTo(stateLEDIsOff%, tNow);
-            stayInLoop% := 1;  'No reason to wait
-            
-        case iState% = stateLEDIsOff% then
+        'case iState% = stateStartLEDTrial% then
+        '    
+        '    ' initial state on startup. 
+        '    ' DIGOUT to present stimulus
+        '    ' Enter state 1
+        '    
+        '    if Pause% = 0 then
+        '        nLEDTrialsStarted% += 1;
+        '        'iStimIndex% := (iStimIndex% + 1) mod 8;
+        '        
+        '        SafeSampleKey("L");
+        '        
+        '        ChangeStateTo(stateWaitForLEDAcquisition%, tNow);
+        '        
+        '        UpdateToolbarText();
+        '    endif
             
             
-            'must be interleaved to get here
-            if LEDSuccess% = 1 then  'If LED trial was OK, 
-                LEDSuccess%:=0; 'reset LED success variables
-                ChangeStateTo(stateCheckTrial%, tNow); 'prepare for next Fixation trial
-                stayInLoop% := 1;  'No reason to wait
-            else
-                ChangeStateTo(statePreLEDInterval%, tNow);  'return to LED
-            endif;
+            
+        'case iState% = stateWaitForLEDAcquisition% then
+        '    
+        '    if tNow-tStateStart < fixAcquisitionTime then
+        '        
+        '        ' Acquisition happens when the eye falls within the fixation window.
+        '        if InFixationWindow%(xEye, yEye) > 0 then
+        '            
+        '            ChangeStateTo(stateHoldLEDFixation%, tNow);
+        '            
+        '        endif
+        '        
+        '    else
+        '        
+        '        ' Failed. Turn off stim and try again.
+        '        ' Turn off stimulus immediately
+        '        SafeSampleKey("M");
+        '        ChangeStateTo(stateLEDFailure%, tNow);
+        '        stayInLoop% := 1;  'No reason to wait
+        '    endif
+            
+        'case iState% = stateHoldLEDFixation% then
+        '    
+        '    ' Waiting for fixation....
+        '    if InFixationWindow%(xEye, yEye) <= 0 then
+        '        ' Turn off stimulus immediately
+        '        SafeSampleKey("M");
+        '        ChangeStateTo(stateLEDFailure%, tNow);
+        '        stayInLoop% := 1;  'No reason to wait
+        '    else
+        '        
+        '        if tNow - tStateStart >= fixFixationDuration then
+        '            
+        '            ' Turn off stimulus immediately
+        '            SafeSampleKey("M");
+        '            ' Fixation. Reward. New trial.
+        '            ChangeStateTo(stateLEDSuccess%, tNow);
+        '            stayInLoop% := 1;  'No reason to wait
+        '        endif
+        '        
+        '    endif
+            
+        'case iState% = stateLEDSuccess% then
+        '    
+        '    nLEDTrialsSuccess% += 1;
+        '    DefaultReward();
+        '    LEDSuccess% := 1;
+        '    ' tally successful trials
+        '    ChangeStateTo(stateLEDIsOff%, tNow);
+        '    stayInLoop% := 1;  'No reason to wait
+            
+        'case iState% = stateLEDFailure% then
+        '    
+        '    LEDSuccess% := 0;
+        '    nLEDTrialsFail% += 1;
+        '    ChangeStateTo(stateLEDIsOff%, tNow);
+        '    stayInLoop% := 1;  'No reason to wait
+            
+        'case iState% = stateLEDIsOff% then
+        '    
+        '    
+        '    'must be interleaved to get here
+        '    if LEDSuccess% = 1 then  'If LED trial was OK, 
+        '        LEDSuccess%:=0; 'reset LED success variables
+        '        ChangeStateTo(stateCheckTrial%, tNow); 'prepare for next Fixation trial
+        '        stayInLoop% := 1;  'No reason to wait
+        '    else
+        '        ChangeStateTo(statePreLEDInterval%, tNow);  'return to LED
+        '    endif;
             
             
         case iState% = stateCheckTrial% then
@@ -625,11 +628,11 @@ end;
 proc UpdateToolbarText()
 
 	var s$;
-    if fixInterleaveLED% = 0 then
+    'if fixInterleaveLED% = 0 then
         s$ := Print$("Trial#/Total %d/%d Success/Failure %d/%d", nTrialsStarted%, fixNumberOfTrials%, nTrialsSuccess%, nTrialsFail%);
-    else        
-        s$ := Print$("Trial#/Total %d/%d Success/Failure %d/%d LEDSuccess/LEDFail %d/%d", nTrialsStarted%, fixNumberOfTrials%, nTrialsSuccess%, nTrialsFail%, nLEDTrialsSuccess%, nLEDTrialsFail%);
-    endif;
+    'else        
+    '    s$ := Print$("Trial#/Total %d/%d Success/Failure %d/%d LEDSuccess/LEDFail %d/%d", nTrialsStarted%, fixNumberOfTrials%, nTrialsSuccess%, nTrialsFail%, nLEDTrialsSuccess%, nLEDTrialsFail%);
+    'endif;
 	ToolbarText(s$);
 
 end;
@@ -966,8 +969,10 @@ func Stop%()
 	wend
 
 	' Increment daily totals and save then
-	TotalTrials% += (nTrialsStarted% + nLEDTrialsStarted%);
-	TotalRewards% += (nTrialsSuccess% + nLEDTrialsSuccess%);
+	'TotalTrials% += (nTrialsStarted% + nLEDTrialsStarted%);  'deprecated
+	'TotalRewards% += (nTrialsSuccess% + nLEDTrialsSuccess%);
+    TotalTrials% += nTrialsStarted%;
+	TotalRewards% += nTrialsSuccess%;
 	SaveDailyTotals();
 
 	s$ := Print$("Trial#/Total %d/%d Success/Failure %d/%d", nTrialsStarted%, fixNumberOfTrials%, nTrialsSuccess%, nTrialsFail%);
