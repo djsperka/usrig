@@ -77,6 +77,9 @@ var ignore2RGB%[3];
 var ignore3RGB%[3];
 var ignore4RGB%[3];
 var noattenRGB%[3];
+var noinfoRGB%[3];  'This was deprecated before it was ever used, but I'm not pulling it out of the dialog box because
+                    'A) it will be a pain and B) as soon as I do it will be asked for again.  So it's just sitting
+                    'there kind of orphaned.  Won't hurt anything.
 var attCueCircleContrastAttend%;
 var attCueCircleContrastIgnore1%;
 var attCueCircleContrastIgnore2%;
@@ -85,6 +88,8 @@ var attCueCircleContrastIgnore4%;
 
 var attStartBlock%;
 var attNoChangeCondition%;
+var attNoInfoCondition%;
+var attNoChangeNoInfoCondition%;  'This variable simply allows us to keep track of both NoChange and NoInfo in one dialog box, we break it out later
 var attSwapCueCircle%;
 var attCueCircleStrokeWidth%;
 var attUseFlashers%;
@@ -257,7 +262,9 @@ var attcolorsdlgCueCircleColorIgnore4B% := 37;
 var attcolorsdlgCueCircleColorNoAttenR% := 38;
 var attcolorsdlgCueCircleColorNoAttenG% := 39;
 var attcolorsdlgCueCircleColorNoAttenB% := 40;
-
+var attcolorsdlgCueCircleColorNoInfoR% := 41;
+var attcolorsdlgCueCircleColorNoInfoG% := 42;
+var attcolorsdlgCueCircleColorNoInfoB% := 43;
 
 'variables for Henry's tuning curve version
 const attMaxTrl% := 1000;
@@ -277,18 +284,20 @@ var attBlockList%[attMaxTrl%];    'A list of which block a trial comes in - this
 var attEasyList%[attMaxTrl%];     '1 if the trial is an easy trial, 0 if not - need to keep track of this because there are no flashers on easy trials
 var thisContrast%;                 'for sampletexty stuff
 var fixColor$;                  'more sampletexty stuff
+var thisIsNoInfo%;              'more sampletexty stuff
 var FAIsResponse%;              'if 1, use "response abort", otherwise use regular abort
 var expectedAnswer%;            'keeps track of expected answer, saves a bunch of redundant code
 'var useSpikeTemplate%;          'not sure where to put it, allows us to load up the most recent spike template, not used
 'For fixation/cue colors, use a master list so we don't get a bunch of values redefined, and have to change them all if a change is made
-var masterColorList$[6];  'human readable, updated to hold 6 (1 on-RF, 4 distractor, 1 No-change)
-var masterColorListVSG$[6];  'VSG readable
+var masterColorList$[7];  'human readable, updated to hold 6 (1 on-RF, 4 distractor, 1 No-change)
+var masterColorListVSG$[7];  'VSG readable
 const attMaxFlashers% := 30;  'use a maximum of 30 flashers per trial
 var flasherTimes[attMaxTrl%][attMaxFlashers%];  'hold flasher times, this is 2-d because we can have multiple per trial
 var flasherX[attMaxTrl%][attMaxFlashers%];  'hold flasher x position
 var flasherY[attMaxTrl%][attMaxFlashers%];  'hold flasher y position
 var flasherCount%[attMaxTrl%];  'hold number of flashers on each trial
 var flasherCountThisTrial%;  'keep track of number of flashers played on the current trial
+var attNoInfoThisTrial%[attMaxTrl%];  'hold whether or not this is a no-info trial
 
 
 'we need to explicitly know the position of the gratings to place the answer windows on the gratings
@@ -336,7 +345,7 @@ var attOptoUsePulse% := 0;  'Are we using a "pulsing stimulation"?
 var attLaserDiode% := 0;  'Are we recording the output of the laser using a photodiode?
 var attInterBlockTime := 0;        ' New, time between blocks, important for opto
 var SequencerPeriodMS;
-var DigitalLaserChannel%;
+'var DigitalLaserChannel%;
 var OptoCopyChannel%;
 
 var autoNameTemplate$;
@@ -390,7 +399,8 @@ proc GetAttentionScriptParameters()
 	Profile(key$, "AnswerPointWindowRadius", "2.0", stmp$);
 	attAnswerPointWindowRadius := val(stmp$);
    
-    Profile(key$, "NoChangeCondition", 0, attNoChangeCondition%);
+    Profile(key$, "NoChangeCondition", 0, attNoChangeCondition%);  'not really used FROM REGISTRY anymore
+    Profile(key$, "NoChangeNoInfoCondition", 0, attNoChangeNoInfoCondition%);
     Profile(key$, "SwapCueCircle", 0, attSwapCueCircle%);
     Profile(key$, "CueCircleStrokeWidth", 0, attCueCircleStrokeWidth%);
     
@@ -413,6 +423,8 @@ proc GetAttentionScriptParameters()
     
     Profile(key$, "DoPhase", 1, attPhaseCheck%);
     Profile(key$, "PhaseDeg", 1, attPhaseDeg%);
+    Profile(key$, "StartBlock", 1, attStartBlock%);
+    
     
 end;
 
@@ -448,7 +460,8 @@ proc SaveAttentionScriptParameters()
 	Profile(key$, "AnswerPointOffset", str$(attAnswerPointOffset));
 	Profile(key$, "AnswerPointWindowRadius", str$(attAnswerPointWindowRadius));
     'Profile(key$, "AnswerPointWindowRadius", str$(1.5));
-    Profile(key$, "NoChangeCondition", attNoChangeCondition%);
+    Profile(key$, "NoChangeCondition", attNoChangeCondition%);  'not really used FROM REGISTRY anymore
+    Profile(key$, "NoChangeNoInfoCondition", attNoChangeNoInfoCondition%);
     Profile(key$, "SwapCueCircle", attSwapCueCircle%);  
     Profile(key$, "CueCircleStrokeWidth", attCueCircleStrokeWidth%);
     Profile(key$, "UseLowReward", attUseLowReward%);
@@ -466,6 +479,7 @@ proc SaveAttentionScriptParameters()
     
     Profile(key$, "DoPhase", attPhaseCheck%);
     Profile(key$, "PhaseDeg", attPhaseDeg%);
+    Profile(key$, "StartBlock", attStartBlock%);
 
     
 end;
@@ -598,6 +612,9 @@ proc GetColorsDialogParameters()
     Profile(key$, "CueCircleColorNoAttenR", 0, noattenRGB%[0]);
     Profile(key$, "CueCircleColorNoAttenG", 0, noattenRGB%[1]);
     Profile(key$, "CueCircleColorNoAttenB", 0, noattenRGB%[2]);
+    Profile(key$, "CueCircleColorNoInfoR", 0, noinfoRGB%[0]);
+    Profile(key$, "CueCircleColorNoInfoG", 0, noinfoRGB%[1]);
+    Profile(key$, "CueCircleColorNoInfoB", 0, noinfoRGB%[2]);
     
 end;
 
@@ -644,6 +661,9 @@ proc SaveColorsDialogParameters()
     Profile(key$, "CueCircleColorNoAttenR", noattenRGB%[0]);
     Profile(key$, "CueCircleColorNoAttenG", noattenRGB%[1]);
     Profile(key$, "CueCircleColorNoAttenB", noattenRGB%[2]);
+    Profile(key$, "CueCircleColorNoInfoR", noinfoRGB%[0]);
+    Profile(key$, "CueCircleColorNoInfoG", noinfoRGB%[1]);
+    Profile(key$, "CueCircleColorNoInfoB", noinfoRGB%[2]);
 
     
 end;
@@ -660,8 +680,9 @@ func AttentionScriptDialog%()
     var fiveints%[5];
     var tenmoreints%[10];
     var blockAlternateList$[3];
-    var blockStartList$[7];
-    var cueCircleList$[3];
+    var blockStartList$[8];
+    var cueCircleList$[4];
+    var noChangeNoInfoList$[4];
     
     GetAttOptoParameters();  'We must get these or the user has to open the opto dialog every time.
 '    docase 'And recalculate tunOptoState, in case the user doesn't click on opto parameters button
@@ -686,10 +707,18 @@ func AttentionScriptDialog%()
     blockStartList$[4] := "Start Block: Distracter 3";
     blockStartList$[5] := "Start Block: Distracter 4";
     blockStartList$[6] := "Start Block: No Change";
+    blockStartList$[7] := "Start Block: No Info";
     
     cueCircleList$[0] := "No Cue Circles";
     cueCircleList$[1] := "Cue Circles";
     cueCircleList$[2] := "Cue Circles + Cue Points";
+    cueCircleList$[3] := "Cue Points Only";  'should be ready to go
+    
+    noChangeNoInfoList$[0] := "Only Regular Trials";
+    noChangeNoInfoList$[1] := "Include No-Change Trials";
+    noChangeNoInfoList$[2] := "Include No-Info Trials";
+    noChangeNoInfoList$[3] := "Include Both No-Change and No-Info";
+    
     
 	GetAttentionScriptParameters();
     GetColorsDialogParameters();  'we need to GET the parameters here, even though we may not use any of them...but we WILL use backgroundColor$, that's why
@@ -705,7 +734,7 @@ func AttentionScriptDialog%()
     
     tenmoreints%[0] := distracterOffForEasy%;
     tenmoreints%[1] := attStartBlock%;
-    tenmoreints%[2] := attNoChangeCondition%;
+    tenmoreints%[2] := attNoChangeNoInfoCondition%;  'this will be broken out later
     tenmoreints%[3] := attSwapCueCircle%; 
     tenmoreints%[4] := attUseLowReward%;
     tenmoreints%[5] := attLowReward%;
@@ -728,8 +757,9 @@ func AttentionScriptDialog%()
     DlgReal(5, "No-Go Trial pct (0-100)", 0, 100, 22, 8);
 	'DlgCheck(6, "Alternate cue type by block", 2, 9);
     DlgList(6, 30, blockAlternateList$[], 3, 4, 9);
-    DlgCheck(7, "Select random contrast each trial", 2, 10);  '"Do NOT randomize by block"
-    DlgList(attdlgStartBlock%, 30, blockStartList$, 7, 4, 11);  'I put it in, don't want to take it out just because it does nothing, in principle it can be repurposed easier than it can be removed (the whole fourmoreints thing)
+    'DlgCheck(attdlgNoChangeCondition%, "Include no-change condition", 2, 10); 'position WAS 37,11 now swapped, ALSO WAS check box for no-change, now selector for no-change/no-info
+    DlgList(attdlgNoChangeCondition%, 30, noChangeNoInfoList$, 4, 4, 10);
+    DlgList(attdlgStartBlock%, 30, blockStartList$, 8, 4, 11);  'I put it in, don't want to take it out just because it does nothing, in principle it can be repurposed easier than it can be removed (the whole fourmoreints thing)
     
     'Moving this group to the right, so we have to use DlgText because otherwise CED justifies the text all the way left
     DlgGroup("Contrast",36,1,34,11);
@@ -742,7 +772,8 @@ func AttentionScriptDialog%()
 	DlgInteger(attdlgTrainingContrastPct%, "", 0, 100, 56, 8);  DlgText("Training Contrast(%)",37,8);
     DlgCheck(attdlgOnlyOneCatch%, "Use only one catch value", 37,9);
     DlgInteger(attdlgOneCatchContrast%,"",0,100,56,10);  DlgText("Single Catch Cont (%)",37,10);
-    DlgCheck(attdlgNoChangeCondition%, "Include no-change condition", 37, 11);  
+    DlgCheck(7, "Select random contrast each trial", 37, 11);  '"Do NOT randomize by block", position WAS 2,10 now swapped 
+    
     
     DlgGroup("Phase", 1, 12, 34, 3);
     DlgCheck(attdlgPhaseCheck%, "Set phase at contrast change", 2, 13);
@@ -756,7 +787,7 @@ func AttentionScriptDialog%()
     
     DlgGroup("Cue Circles", 1, 15, 34, 5);
     'DlgCheck(attdlgUseCueCircles%, "Use Cue Circles", 2, 16);
-    DlgList(attdlgUseCueCircles%, 30, cueCircleList$[], 3, 4, 16);
+    DlgList(attdlgUseCueCircles%, 30, cueCircleList$[], 4, 4, 16);
     DlgCheck(attdlgSwapCueCircle%, "Swap Cue Circles (if used)", 2, 17);
 	DlgReal(attdlgCueCircleExtraRadius%, "Cue extra radius (deg)", 0, 5, 22, 18);
     DlgInteger(attdlgCueCircleStrokeWidth%, 4, 0, 20, 30, 19); DlgText("Cue Circle Stroke Width (integer)",2,19);
@@ -800,10 +831,10 @@ func AttentionScriptDialog%()
         attNumPatches% := fiveints%[3];
         attGetGPFromMainStim% := fiveints%[4];
         
-        'put sixmoreints values back into variables
+        'put tenmoreints values back into variables
         distracterOffForEasy% := tenmoreints%[0];
         attStartBlock% := tenmoreints%[1];
-        attNoChangeCondition% := tenmoreints%[2];
+        attNoChangeNoInfoCondition% := tenmoreints%[2];
         attSwapCueCircle% := tenmoreints%[3];
         attUseLowReward% := tenmoreints%[4];
         attLowReward% := tenmoreints%[5];
@@ -811,6 +842,22 @@ func AttentionScriptDialog%()
         attUseFlashers% := tenmoreints%[7];
         attCatchIsNoGo% := tenmoreints%[8];
         attDoOpto% := tenmoreints%[9];
+        
+        docase 
+        case attNoChangeNoInfoCondition% = 0 then
+            attNoChangeCondition% := 0;
+            attNoInfoCondition% := 0;
+        case attNoChangeNoInfoCondition% = 1 then
+            attNoChangeCondition% := 1;
+            attNoInfoCondition% := 0;
+        case attNoChangeNoInfoCondition% = 2 then
+            attNoChangeCondition% := 0;
+            attNoInfoCondition% := 1;
+        case attNoChangeNoInfoCondition% = 3 then
+            attNoChangeCondition% := 1;
+            attNoInfoCondition% := 1;
+        endcase;
+        
         
         
         'Check values of attStartBlock% for legality
@@ -820,6 +867,11 @@ func AttentionScriptDialog%()
                 message("Error: No Change was selected as the start block, but 'No Change' is OFF!!!");
                 Quit%();
             endif
+        case attStartBlock% = 7 then
+            if attNoInfoCondition% = 0 then
+                message("Error: No Info was selected as the start block, but 'No Info' is OFF!!!");
+                Quit%();
+            endif    
         case attStartBlock% > 1 and attNumPatches% < attStartBlock% then
             message("Error: The requested start block is for an undefined distracter!!!  Check 'number of patches'!");
             Quit%();
@@ -924,20 +976,25 @@ func AttentionScriptDialog%()
         
         
         'Commented out - useful for testing the creation of the trial order
-        var Contrast$;
-        CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%);
-        'var specFileName$:="E:\\AttentionSpecFile.txt";
-        'var specHandle%;
-        'specHandle% := FileOpen(specFileName$, 8, 1);
-        ''print to spec file
-        'Print("%s",Contrast$);  'file should be everything starting from FixationArg$ on
-        ''close spec file
-        'FileClose(0);
-        'printlog("Temp trial order list is %d\n",attTrialOrderTemp%[0:attNumberOfBlocks%*(attTrialsPerBlock%+attEasyTrialsPerBlock%)]);
-        'printlog("Contrast list is %d\n",attContrastList%[0:attNumberOfBlocks%*(attTrialsPerBlock%+attEasyTrialsPerBlock%)]);
-        'printlog("Valid list is %d\n",attValidList%[0:attNumberOfBlocks%*(attTrialsPerBlock%+attEasyTrialsPerBlock%)]);
-        'printlog("contrasts are %d\n",attContrastList[]);
-        'halt;
+'        var Contrast$;
+'        CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,
+'                           attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,attNoInfoThisTrial%);
+'        var specFileName$:="E:\\AttentionSpecFile.txt";
+'        var specHandle%;
+'        specHandle% := FileOpen(specFileName$, 8, 1);
+'        'print to spec file
+'        
+'        Print("%s %s",Contrast$,Flashers$);  'file should be everything starting from FixationArg$ on
+'        var thingy$;
+'        thingy$ := CreateCueCircleColorSets$();
+'        Print("\n %s",thingy$);
+'        'close spec file
+'        FileClose(0);
+'        'printlog("Temp trial order list is %d\n",attTrialOrderTemp%[0:attNumberOfBlocks%*(attTrialsPerBlock%+attEasyTrialsPerBlock%)]);
+'        printlog("Contrast list is %d\n",attContrastList%[0:attNumberOfBlocks%*(attTrialsPerBlock%+attEasyTrialsPerBlock%)]);
+'        printlog("Valid list is %d\n",attValidList%[0:attNumberOfBlocks%*(attTrialsPerBlock%+attEasyTrialsPerBlock%)]);
+'        printlog("contrasts are %d\n",attContrastList[]);
+'        halt;
 	endif;
 	return i%;
 end;
@@ -987,11 +1044,11 @@ func AttentionScriptDialogChanged%(item%)
     case item% = attdlgUseFlashers% then
         DlgEnable(DlgValue(attdlgUseFlashers%),-4);
     case item% = 0 then
-        DlgEnable(attTrainingContrastCheck%, attdlgTrainingContrastPct%);
-        DlgEnable(attPhaseCheck%, attPhaseDeg%);
-        DlgEnable(attOnlyOneCatch%, attdlgOneCatchContrast%);
-        DlgEnable(attOnlyOneCatch%, attdlgDoUncatch%);
-        DlgEnable(attdlgUseCueCircles%, attdlgCueCircleExtraRadius%);
+        DlgEnable(DlgValue(attdlgTrainingContrastCheck%), attdlgTrainingContrastPct%);
+        DlgEnable(DlgValue(attdlgPhaseCheck%), attdlgPhaseDeg%);
+        DlgEnable(DlgValue(attdlgOnlyOneCatch%), attdlgOneCatchContrast%);
+        DlgEnable(DlgValue(attdlgOnlyOneCatch%), attdlgDoUncatch%);
+        DlgEnable(DlgValue(attdlgUseCueCircles%), attdlgCueCircleExtraRadius%);
         DlgEnable(DlgValue(attdlgUseLowReward%), attdlgLowReward%);
         'DlgEnable(0,attdlgAnsWindowRadius%);  'Turn off answer window radius, it is currently unused, OK, now it is used
         DlgEnable(DlgValue(attdlgUseFlashers%),-4);
@@ -1066,7 +1123,7 @@ func ColorsDialog%()
 	var bcl$[4];
 	var ibcl%:=0;
     var fiveints%[5];
-    var eighteenints%[18];
+    var twentyoneints%[21];
     
     GetColorsDialogParameters();
     
@@ -1077,25 +1134,28 @@ func ColorsDialog%()
     fiveints%[3] := attCueCircleContrastIgnore3%;  'but the old syntax still works so it's much easier to change back, if desired,
     fiveints%[4] := attCueCircleContrastIgnore4%;  'just undo the changes (noted) in the dialog-changed function.
     
-    'put defaults into eighteenints%[]
-    eighteenints%[0] := attendRGB%[0];
-    eighteenints%[1] := attendRGB%[1];
-    eighteenints%[2] := attendRGB%[2];
-    eighteenints%[3] := ignore1RGB%[0];
-    eighteenints%[4] := ignore1RGB%[1];
-    eighteenints%[5] := ignore1RGB%[2];
-    eighteenints%[6] := ignore2RGB%[0];
-    eighteenints%[7] := ignore2RGB%[1];
-    eighteenints%[8] := ignore2RGB%[2];
-    eighteenints%[9] := ignore3RGB%[0];
-    eighteenints%[10] := ignore3RGB%[1];
-    eighteenints%[11] := ignore3RGB%[2];
-    eighteenints%[12] := ignore4RGB%[0];
-    eighteenints%[13] := ignore4RGB%[1];
-    eighteenints%[14] := ignore4RGB%[2];
-    eighteenints%[15] := noattenRGB%[0];
-    eighteenints%[16] := noattenRGB%[1];
-    eighteenints%[17] := noattenRGB%[2];
+    'put defaults into twentyoneints%[]
+    twentyoneints%[0] := attendRGB%[0];
+    twentyoneints%[1] := attendRGB%[1];
+    twentyoneints%[2] := attendRGB%[2];
+    twentyoneints%[3] := ignore1RGB%[0];
+    twentyoneints%[4] := ignore1RGB%[1];
+    twentyoneints%[5] := ignore1RGB%[2];
+    twentyoneints%[6] := ignore2RGB%[0];
+    twentyoneints%[7] := ignore2RGB%[1];
+    twentyoneints%[8] := ignore2RGB%[2];
+    twentyoneints%[9] := ignore3RGB%[0];
+    twentyoneints%[10] := ignore3RGB%[1];
+    twentyoneints%[11] := ignore3RGB%[2];
+    twentyoneints%[12] := ignore4RGB%[0];
+    twentyoneints%[13] := ignore4RGB%[1];
+    twentyoneints%[14] := ignore4RGB%[2];
+    twentyoneints%[15] := noattenRGB%[0];
+    twentyoneints%[16] := noattenRGB%[1];
+    twentyoneints%[17] := noattenRGB%[2];
+    twentyoneints%[18] := noinfoRGB%[0];
+    twentyoneints%[19] := noinfoRGB%[1];
+    twentyoneints%[20] := noinfoRGB%[2];
 
     
 	GetAttentionScriptParameters();
@@ -1121,7 +1181,7 @@ func ColorsDialog%()
     DlgInteger(3, "Background green (0-255)", 0, 255);
     DlgInteger(4, "Background blue (0-255)", 0, 255);
     
-    DlgGroup("Cue Circles",1,5,72,8);
+    DlgGroup("Cue Circles",1,5,72,9);
     DlgInteger(attcolorsdlgCueContrastAttend%, "Attend Cue Circle Contrast", 0, 100, 27, 7);
     DlgInteger(attcolorsdlgCueContrastIgnore1%, "Ignore1 Cue Circle Contrast", 0, 100, 27, 8);
     DlgInteger(attcolorsdlgCueContrastIgnore2%, "Ignore2 Cue Circle Contrast", 0, 100, 27, 9);
@@ -1135,6 +1195,8 @@ func ColorsDialog%()
     DlgText("FixPt 4",47,10);
     DlgText("FixPt 5",47,11);
     DlgText("No Atten FixPt",41,12);  'no cue circles will match this color if not multiply defined
+    'DlgText("No Info FixPt",41,13);  'no cue circles will match this color if not multiply defined
+    DlgText("Deprecated!!",41,13);  'no cue circles will match this color if not multiply defined
     DlgInteger(attcolorsdlgCueCircleColorAttendR%, 5, 0, 255, 55, 7);
     DlgInteger(attcolorsdlgCueCircleColorAttendG%, 5, 0, 255, 61, 7);
     DlgInteger(attcolorsdlgCueCircleColorAttendB%, 5, 0, 255, 67, 7);
@@ -1153,36 +1215,39 @@ func ColorsDialog%()
     DlgInteger(attcolorsdlgCueCircleColorNoAttenR%, 5, 0, 255, 55, 12);
     DlgInteger(attcolorsdlgCueCircleColorNoAttenG%, 5, 0, 255, 61, 12);
     DlgInteger(attcolorsdlgCueCircleColorNoAttenB%, 5, 0, 255, 67, 12);
+    DlgInteger(attcolorsdlgCueCircleColorNoInfoR%, 5, 0, 255, 55, 13);
+    DlgInteger(attcolorsdlgCueCircleColorNoInfoG%, 5, 0, 255, 61, 13);
+    DlgInteger(attcolorsdlgCueCircleColorNoInfoB%, 5, 0, 255, 67, 13);
     
     
-    DlgCheck(attcolorsdlgCustomGratingColorCheck%, "Custom grating colors",2,13);
-    DlgGroup("Stimulus", 1, 14, 35, 7);
-    DlgInteger(attcolorsdlgCustomGratingColorStimFromRed%, "From Red (0-255)", 0, 255, 20, 15);
-    DlgInteger(attcolorsdlgCustomGratingColorStimFromGreen%, "From Green (0-255)", 0, 255, 20, 16);
-    DlgInteger(attcolorsdlgCustomGratingColorStimFromBlue%, "From Blue (0-255)", 0, 255, 20, 17);
-    DlgInteger(attcolorsdlgCustomGratingColorStimToRed%, "To Red (0-255)", 0, 255, 20, 18);
-    DlgInteger(attcolorsdlgCustomGratingColorStimToGreen%, "To Green (0-255)", 0, 255, 20, 19);
-    DlgInteger(attcolorsdlgCustomGratingColorStimToBlue%, "To Blue (0-255)", 0, 255, 20, 20);
-    DlgGroup("Distractor", 37, 14, 35, 7);
-    DlgInteger(attcolorsdlgCustomGratingColorDistractorFromRed%, 12, 0, 255, 56, 15);  'make these width 12, will match the default ones above for Stim
-    DlgInteger(attcolorsdlgCustomGratingColorDistractorFromGreen%, 12, 0, 255, 56, 16);  
-    DlgInteger(attcolorsdlgCustomGratingColorDistractorFromBlue%, 12, 0, 255, 56, 17);  
-    DlgInteger(attcolorsdlgCustomGratingColorDistractorToRed%, 12, 0, 255, 56, 18);  
-    DlgInteger(attcolorsdlgCustomGratingColorDistractorToGreen%, 12, 0, 255, 56, 19);  
-    DlgInteger(attcolorsdlgCustomGratingColorDistractorToBlue%, 12, 0, 255, 56, 20);  
-    attCustomGratingDialogLabel%[0] := DlgText("From Red (0-255)",38,15);  'will match the default labels above from Stim, return value allows us to gray them out
-    attCustomGratingDialogLabel%[1] := DlgText("From Green (0-255)",38,16);
-    attCustomGratingDialogLabel%[2] := DlgText("From Blue (0-255)",38,17);
-    attCustomGratingDialogLabel%[3] := DlgText("To Red (0-255)",38,18);
-    attCustomGratingDialogLabel%[4] := DlgText("To Green (0-255)",38,19);
-    attCustomGratingDialogLabel%[5] := DlgText("To Blue (0-255)",38,20);
+    DlgCheck(attcolorsdlgCustomGratingColorCheck%, "Custom grating colors",2,14);
+    DlgGroup("Stimulus", 1, 15, 35, 7);
+    DlgInteger(attcolorsdlgCustomGratingColorStimFromRed%, "From Red (0-255)", 0, 255, 20, 16);
+    DlgInteger(attcolorsdlgCustomGratingColorStimFromGreen%, "From Green (0-255)", 0, 255, 20, 17);
+    DlgInteger(attcolorsdlgCustomGratingColorStimFromBlue%, "From Blue (0-255)", 0, 255, 20, 18);
+    DlgInteger(attcolorsdlgCustomGratingColorStimToRed%, "To Red (0-255)", 0, 255, 20, 19);
+    DlgInteger(attcolorsdlgCustomGratingColorStimToGreen%, "To Green (0-255)", 0, 255, 20, 20);
+    DlgInteger(attcolorsdlgCustomGratingColorStimToBlue%, "To Blue (0-255)", 0, 255, 20, 21);
+    DlgGroup("Distractor", 37, 15, 35, 7);
+    DlgInteger(attcolorsdlgCustomGratingColorDistractorFromRed%, 12, 0, 255, 56, 16);  'make these width 12, will match the default ones above for Stim
+    DlgInteger(attcolorsdlgCustomGratingColorDistractorFromGreen%, 12, 0, 255, 56, 17);  
+    DlgInteger(attcolorsdlgCustomGratingColorDistractorFromBlue%, 12, 0, 255, 56, 18);  
+    DlgInteger(attcolorsdlgCustomGratingColorDistractorToRed%, 12, 0, 255, 56, 19);  
+    DlgInteger(attcolorsdlgCustomGratingColorDistractorToGreen%, 12, 0, 255, 56, 20);  
+    DlgInteger(attcolorsdlgCustomGratingColorDistractorToBlue%, 12, 0, 255, 56, 21);  
+    attCustomGratingDialogLabel%[0] := DlgText("From Red (0-255)",38,16);  'will match the default labels above from Stim, return value allows us to gray them out
+    attCustomGratingDialogLabel%[1] := DlgText("From Green (0-255)",38,17);
+    attCustomGratingDialogLabel%[2] := DlgText("From Blue (0-255)",38,18);
+    attCustomGratingDialogLabel%[3] := DlgText("To Red (0-255)",38,19);
+    attCustomGratingDialogLabel%[4] := DlgText("To Green (0-255)",38,20);
+    attCustomGratingDialogLabel%[5] := DlgText("To Blue (0-255)",38,21);
     
 	i% := DlgShow(ibcl%, attBackgroundRed%, attBackgroundGreen%, attBackgroundBlue%, 
     fiveints%,attCustomGratingColorCheck%, 
     attCustomGratingColorStimFrom%[0], attCustomGratingColorStimFrom%[1], attCustomGratingColorStimFrom%[2], 
     attCustomGratingColorStimTo%[0], attCustomGratingColorStimTo%[1], attCustomGratingColorStimTo%[2], 
     attCustomGratingColorDistractorFrom%[0], attCustomGratingColorDistractorFrom%[1], attCustomGratingColorDistractorFrom%[2], 
-    attCustomGratingColorDistractorTo%[0], attCustomGratingColorDistractorTo%[1], attCustomGratingColorDistractorTo%[2], eighteenints%);
+    attCustomGratingColorDistractorTo%[0], attCustomGratingColorDistractorTo%[1], attCustomGratingColorDistractorTo%[2], twentyoneints%);
     
     
     
@@ -1204,25 +1269,28 @@ func ColorsDialog%()
         
         
         'unpack the cue circle colors
-        'put defaults into eighteenints%[]
-        attendRGB%[0] := eighteenints%[0];
-        attendRGB%[1] := eighteenints%[1];
-        attendRGB%[2] := eighteenints%[2];
-        ignore1RGB%[0] := eighteenints%[3];
-        ignore1RGB%[1] := eighteenints%[4];
-        ignore1RGB%[2] := eighteenints%[5];
-        ignore2RGB%[0] := eighteenints%[6];
-        ignore2RGB%[1] := eighteenints%[7];
-        ignore2RGB%[2] := eighteenints%[8];
-        ignore3RGB%[0] := eighteenints%[9];
-        ignore3RGB%[1] := eighteenints%[10];
-        ignore3RGB%[2] := eighteenints%[11];
-        ignore4RGB%[0] := eighteenints%[12];
-        ignore4RGB%[1] := eighteenints%[13];
-        ignore4RGB%[2] := eighteenints%[14];
-        noattenRGB%[0] := eighteenints%[15];
-        noattenRGB%[1] := eighteenints%[16];
-        noattenRGB%[2] := eighteenints%[17];
+        'put defaults into twentyoneints%[]
+        attendRGB%[0] := twentyoneints%[0];
+        attendRGB%[1] := twentyoneints%[1];
+        attendRGB%[2] := twentyoneints%[2];
+        ignore1RGB%[0] := twentyoneints%[3];
+        ignore1RGB%[1] := twentyoneints%[4];
+        ignore1RGB%[2] := twentyoneints%[5];
+        ignore2RGB%[0] := twentyoneints%[6];
+        ignore2RGB%[1] := twentyoneints%[7];
+        ignore2RGB%[2] := twentyoneints%[8];
+        ignore3RGB%[0] := twentyoneints%[9];
+        ignore3RGB%[1] := twentyoneints%[10];
+        ignore3RGB%[2] := twentyoneints%[11];
+        ignore4RGB%[0] := twentyoneints%[12];
+        ignore4RGB%[1] := twentyoneints%[13];
+        ignore4RGB%[2] := twentyoneints%[14];
+        noattenRGB%[0] := twentyoneints%[15];
+        noattenRGB%[1] := twentyoneints%[16];
+        noattenRGB%[2] := twentyoneints%[17];
+        noinfoRGB%[0] := twentyoneints%[18];
+        noinfoRGB%[1] := twentyoneints%[19];
+        noinfoRGB%[2] := twentyoneints%[20];
         
         
         'masterColorList$ and masterColorListVSG$ define fixation colors and should have the same progression as cue circle colors
@@ -1257,6 +1325,11 @@ func ColorsDialogChanged%(item%)
     DlgValue(attcolorsdlgCueContrastIgnore3%,constantContrast%);
     DlgValue(attcolorsdlgCueContrastIgnore4%,constantContrast%);
     
+    'I'm keeping this around in case things change, but it was deprecated before usage
+    DlgEnable(0,attcolorsdlgCueCircleColorNoInfoR%);
+    DlgEnable(0,attcolorsdlgCueCircleColorNoInfoG%);
+    DlgEnable(0,attcolorsdlgCueCircleColorNoInfoB%);
+    
     if item% = 0 or item% = attcolorsdlgBackgroundColor% then
         docase
         case DlgValue(attcolorsdlgBackgroundColor%) = 3 then
@@ -1274,7 +1347,7 @@ func ColorsDialogChanged%(item%)
             DlgEnable(0, attcolorsdlgBackgroundBlue%);
             DlgEnable(1, attcolorsdlgCueContrastAttend%);  'Allow changing cue circle contrast if background is gray
             DlgEnable(1, attcolorsdlgCueContrastIgnore1%);
-'            DlgEnable(1, attcolorsdlgCueContrastIgnore2%);
+'            DlgEnable(1, attcolorsdlgCueContrastIgnore2%);  'Now unsure why this is specifically disallowed.  But until there is a complaint...
 '            DlgEnable(1, attcolorsdlgCueContrastIgnore3%);
 '            DlgEnable(1, attcolorsdlgCueContrastIgnore4%);
         else
@@ -1407,8 +1480,8 @@ FixationPointChannel% := 26;
 StimChannel% := 27;
 StimChangeChannel% := 28;
 ReadyChannel% := 29;
-SynchChannel% := 32;
-DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
+SynchChannel% := 32;  'note - this should be default be 32
+'DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff - not sure this is being assigned to "48" anyway...
 OptoCopyChannel% := 49;
 
 ExcludedChans%[0] := 23;  'XChannel is lowest non-electrode channel used by this function
@@ -1718,6 +1791,17 @@ func IdleProcessing%()
             PrintLog("state stateVSGWaitConfirm: Got trailing edge of trigger\n");
             tLastTrigger := tTrigger;
             ChangeStateTo(stateStartBlock%, tTrigger);
+            if RecordEyeTrackerOutputFile% = 1 then
+                'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+            endif;
         endif;
         
         
@@ -1732,7 +1816,14 @@ func IdleProcessing%()
         UpdateToolbarText();
         PrepareTrial();
         attCountAllTrials% += 1;
-        'SafeSampleKey("W");
+        
+        'put timing marker in both eyetracker file, smr file
+        if RecordEyeTrackerOutputFile% = 1 then
+            SafeSampleKey("1");
+            yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
+        endif;
+        
+        
         docase
         case trialType% = trialtypeAttendToward% then
             attCountTowardTrials% += 1;
@@ -1780,7 +1871,7 @@ func IdleProcessing%()
             ChangeStateTo(stateHoldFixationToStimOn%, tNow);
             SampleText("Fixation Acquired",tNow);
             'getPreciseTiming := 0;
-        case attUseCueCircles% = 2 and LookingAtCuePoint%(xEye, yEye, 1) <> 0 then  'using a hardcoded radius of 1 degree, only check if we are using cue circles
+        case attUseCueCircles% >= 2 and LookingAtCuePoint%(xEye, yEye, 1) <> 0 then  'using a hardcoded radius of 1 degree, only check if we are using cue points
             'Simple abort on acquisition of cue point instead of fixpt.  Note that IF fixpt window and cue point windows overlap, priority is given to the fixpt window...
             PrintLog("stateWaitForAcquisition: eye in cue circle window, aborting trial.\n");
             ChangeStateTo(stateAbort%, tNow);
@@ -1902,7 +1993,7 @@ func IdleProcessing%()
                 tLastTrigger := tTrigger;
                 ChangeStateTo(stateHoldFixationToCC%, tTrigger);
                 SampleText("Stimulus on, Fixation color " + fixColor$ + ", Base contrast " + Str$(attContrastBase%) + ", hazard dur " + Str$(trialHazardFunctionTime)
-                + ", attend location " + Str$(trialAttendLoc%) + ", change location " + Str$(trialIsTarget%) + ", change contrast " + Str$(thisContrast%),tTrigger);
+                + ", attend location " + Str$(trialAttendLoc%) + ", change location " + Str$(trialIsTarget%) + ", change contrast " + Str$(thisContrast%) + ", is No-Info trial: " + Str$(thisIsNoInfo%),tTrigger);
             else
                 updateTLast% := 0;  'waiting for sampling to catch up
             endif;
@@ -2109,21 +2200,27 @@ func IdleProcessing%()
                 docase
                 case trialType% = trialtypeAttendToward% then
                     if trialIsTarget% > 0 then
-                        if trialCatch% = 0 then
+                        docase
+                        case trialCatch% = 0 then
                             Sampletext("Contrast Change, Level " + Str$(thisContrast%) + ", Attend Toward",tLastTrigger);
-                        else
+                        case trialCatch% =1 then
                             Sampletext("Contrast Change, Level " + Str$(thisContrast%) + ", Attend Toward (catch)",tLastTrigger);
-                        endif
+                        else
+                            Sampletext("Contrast Change, Level " + Str$(thisContrast%) + ", Respond Toward (No Info)",tLastTrigger);
+                        endcase
                     else
                         Sampletext("Attend Toward, No Contrast Change",tLastTrigger);
                     endif
                 case trialType% = trialtypeAttendAway% then
                     if trialIsTarget% > 0 then
-                        if trialCatch% = 0 then
+                        docase
+                        case trialCatch% = 0 then
                             Sampletext("Contrast Change, Level " + Str$(thisContrast%) + ", Attend Away",tLastTrigger);
-                        else
+                        case trialCatch% = 1 then
                             Sampletext("Contrast Change, Level " + Str$(thisContrast%) + ", Attend Away (catch)",tLastTrigger);
-                        endif
+                        else
+                            Sampletext("Contrast Change, Level " + Str$(thisContrast%) + ", Respond Away (No Info)",tLastTrigger);
+                        endcase
                     else
                         Sampletext("Attend Away, No Contrast Change",tLastTrigger);
                     endif
@@ -2163,7 +2260,7 @@ func IdleProcessing%()
                     SampleSeqVar(6,attOptoNPulses%);  'reset number of pulses, otherwise bad stuff happens
                     attOptoStarted% := 0;  'opto is now off, as is the stimulus (but not the fixpt)
                 endif;
-                SafeSampleKey("X");  'turn off animation
+                'SafeSampleKey("X");  'turn off animation, now done in stateCheckTurnOffOpto%
                 PrintLog("stateWaitForAnswer: no response on catch-as-no-go trial, correct rejection\n");
                 docase
                 case trialType% = trialtypeAttendToward% then
@@ -2190,7 +2287,7 @@ func IdleProcessing%()
                     SampleSeqVar(6,attOptoNPulses%);  'reset number of pulses, otherwise bad stuff happens
                     attOptoStarted% := 0;  'opto is now off, as is the stimulus (but not the fixpt)
                 endif;
-                SafeSampleKey("X");  'turn off animation
+                'SafeSampleKey("X");  'turn off animation, now done in stateCheckTurnOffOpto%
                 PrintLog("stateWaitForAnswer: no response on go trial, miss\n");
                 docase
                 case trialType% = trialtypeAttendToward% then
@@ -2210,7 +2307,7 @@ func IdleProcessing%()
                     SampleSeqVar(6,attOptoNPulses%);  'reset number of pulses, otherwise bad stuff happens
                     attOptoStarted% := 0;  'opto is now off, as is the stimulus (but not the fixpt)
                 endif;
-                SafeSampleKey("X");  'turn off animation
+                'SafeSampleKey("X");  'turn off animation, now done in stateCheckTurnOffOpto%
                 PrintLog("stateWaitForAnswer: no response on no-go trial, correct rejection\n");
                 docase
                 case trialType% = trialtypeAttendToward% then
@@ -2498,6 +2595,14 @@ func IdleProcessing%()
         
         ' Unknown state!
         Message("Unknown state=" + str$(iState%));
+        
+        'If the eyetracker is recording an output file, stop recording and close the file
+        if RecordEyeTrackerOutputFile% = 1 then
+            SafeSampleKey("w");  'Stop recording
+            yield(0.1);
+            SafeSampleKey("i");  'Close the file
+        endif
+        
         halt;
         
     endcase;
@@ -2572,9 +2677,15 @@ proc PrepareTrial()
         attTimeToAnswerPerTrial := attTimeToAnswer;  'Use the standard time to answer
     endif
     
+    'Record if this trial is no-info
+    thisIsNoInfo% := attNoInfoThisTrial%[attCurrTrialIndex%];
 
     'Determine if trial is catch trial
     trialCatch% := 1-attValidList%[attCurrTrialIndex%];
+    if thisIsNoInfo% = 1 then
+        trialCatch% := 2;
+        PrintLog("NO INFO TRIAL\n");
+    endif;
     if trialCatch% = 1 then
         if attCatchIsNoGo% = 0 then
             PrintLog("CATCH\n");
@@ -2614,6 +2725,8 @@ proc PrepareTrial()
     
     'Record actual contrast level on this trial
     thisContrast% := attContrastList%[attCurrTrialIndex%];
+    
+    
     
     'Calculate expected answer
     docase
@@ -2722,7 +2835,8 @@ proc InitializeWindows()
 '    ParseGratingParametersBrief%(flasherSpec$, xF1, yF1, wF1, hF1);
 '    'run ScreenBounds to get max size of x/y on screen, to be used to make flashers in random locations
 '    ScreenBounds(screenXmm,screenYmm,screenXmax,screenYmax);
-'    CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%);
+    '    CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,
+    '                       attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,attNoInfoThisTrial%);
 '    printlog("Contrast list is %s\n",Contrast$);
 '    printlog("Flasher list is %s\n",Flashers$);
 '    halt;  'No-1401 halt
@@ -2982,10 +3096,18 @@ proc CreateSampleConfiguration()
     'Add a digital marker channel for pulsing optogenetics
     'Do it for every opto, easy enough to add this into the wraparound calls in the PLS
     'Will record a '1' for laser on and a '0' for laser off
-    if attDoOpto% = 1 then
+    'Will record a '101' for eyetracker timing pulses.
+    'Note that Opto and eyetracker output are not exclusive.  If both, the channel will be
+    'labeled as the laser channel, but both pulses will be present.
+    docase
+    case attDoOpto% = 1 then
         SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
-        SampleTitle$(DigitalLaserChannel%,"Laser On");
-    endif
+        'SampleTitle$(DigitalLaserChannel%,"Laser On");
+        SampleTitle$(32,"Laser On");  'Digital marker is by definition channel 32
+    case RecordEyeTrackerOutputFile% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
+    endcase
     
     'Add a waveform channel for efference copy.  This can come from either the 1401 itself or
     'from the stimulator, it doesn't really matter.
@@ -3062,6 +3184,14 @@ end
 ' It is important that this function be disabled once sampling is started!!!
 
 func Quit%()
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+    endif
+    
 	FileClose(-1,-1);
 	return 0;
 end;
@@ -3083,6 +3213,13 @@ func Stop%()
         SafeSampleKey("o");
     endif;
     
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+    endif
+    
 	' Tell stim app to shut down
 	SafeSampleKey("Q");
 	Yield(.1);
@@ -3101,24 +3238,25 @@ func Stop%()
 '    ExportChanList(); 
 '    chanToExport%[1] := 30;  'channels to export go in elements 1:...'30 is the textmark channel
 '    chanToExport%[2] := 31;  '31 is the keyboard channel
-'    chanToExport%[3] := StimChannel%;  'stim channel
+'    chanToExport%[3] := 32;  '32 is the digital marker channel
+'    chanToExport%[4] := StimChannel%;  'stim channel
 '    docase
 '    case UsePlexon% = 1 then  'use hardcoded Plexon values - 18 WaveMarks and 24 LFPs for now, on the micro it's 
 '        for i% := 0 to 12 do
-'            chanToExport%[i%+4] := i%+1;  'wavemark channels are in order
+'            chanToExport%[i%+5] := i%+1;  'wavemark channels are in order
 '        next;
 '        chanToExport%[0] := 3+i%;  'total number of channels goes in element 0
 '    case UsePlexon7WM15CN% = 1 then  'use hardcoded Plexon values - 7 WaveMarks and 15 LFPs
 '        for i% := 0 to 13 do
-'            chanToExport%[i%+4] := i%+1;  'wavemark channels are in order
+'            chanToExport%[i%+5] := i%+1;  'wavemark channels are in order
 '        next;
 '        for i% := 14 to 21 do
-'            chanToExport%[i%+4] := i%+3;  'wavemark channels are in order, but we're skipping eye channels
+'            chanToExport%[i%+5] := i%+3;  'wavemark channels are in order, but we're skipping eye channels
 '        next;
 '        chanToExport%[0] := 3+i%;  'total number of channels goes in element 0
 '    else
 '        for i% := 0 to NumWavemarkPorts% do
-'            chanToExport%[i%+4] := i%+1;  'wavemark channels are in order
+'            chanToExport%[i%+5] := i%+1;  'wavemark channels are in order
 '        next;
 '        chanToExport%[0] := 3+i%;  'total number of channels goes in element 0
 '    endcase;
@@ -3250,7 +3388,8 @@ func Start%()
 	' Set Sequencer Variable #3 based on juicer type 
     SetJuicerSequencerVariable%();
     ' Clear any trigger bits on digout lines.
-    SafeSampleKey("0");
+    SafeSampleKey("0");  'this is DIGOUT
+    SafeSampleKey("Z");  'this is DIGLOW
     ttemp := View(DataWindow%).MaxTime();
     Yield();
     tLast := View(DataWindow%).MaxTime();
@@ -3424,7 +3563,8 @@ func Start%()
     ScreenBounds(screenXmm,screenYmm,screenXmax,screenYmax);
     
     'Fills Contrast$/Flashers$ with the big ol' list, plus some vars to make it easier on us all
-	CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%);     
+	CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,
+                       attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,attNoInfoThisTrial%);     
 
     
 
@@ -3493,6 +3633,15 @@ func Start%()
 	if StimHandle% <0 then Message("Could not start stimulus."); halt; endif
 	'Yield(5);	'Wait a few seconds to make sure the VSG has time to initialize.
 	
+    'If we are asking the eyetracker to record an output file, open the file and start recording
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("I");  'Open the file (this is done by setting a DIGLOW bit), file name will be saved in a sampletext
+        yield(0.5);
+        SafeSampleKey("W");  'Begin recording the file
+        yield(0.5);
+    endif
+    
+    
 	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
 	ToolbarEnable(2,1);
 	ToolbarEnable(1,0);
@@ -3562,10 +3711,11 @@ end;
 'and flashTimes[][] with the times of the flashers
 'and flashX[][] with the x location of the flashers
 'and flashY[][] with the y location of the flashers
-'and flashN[] with the number of flashers per trial
+'and flashN%[] with the number of flashers per trial
+'and noInfoList%[] with whether it is a no-info trial or not
 'Creating all of these here (including easy trials) allows us to just blast through once we get to the actual experiment
 'without too much counting going on.
-Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&hazList[],&offList%[],&rotList%[],&fixColor%[],&blockList%[],&easyList%[],&flashTimes[][],&flashX[][],&flashY[][],&flashN%[])
+Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&hazList[],&offList%[],&rotList%[],&fixColor%[],&blockList%[],&easyList%[],&flashTimes[][],&flashX[][],&flashY[][],&flashN%[],&noInfoList%[])
         'hja looking at current function
     var i%;
     var ii%;
@@ -3579,6 +3729,7 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
     var blockCount%;
     var attDirection%;
     var attColor%;
+    var noInfoChangeLoc%;
     var alloff%;  'this is for the bitwise "off" indicator
     var cueCircleRotation% := 0;
     var trialDur;
@@ -3587,6 +3738,8 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
     var btIndices%[6];  'index, for the shuffle
     var nBlockTypes%;
     var blockTypeIndex% := 0;
+    var isNoInfoBlock% := 0;  'set this to 1 if this is a no-info block
+    var isNoInfoTrial% := 0;  'and this controls it on a trial-by-trial basis
     
     'variables for allowing blocks to have the same list of hazard times
     var randHazValList[attTrialsPerBlock%];  'allows us to reassign hazard values, "rand" because we're going to shuffle it
@@ -3602,22 +3755,32 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
     'Get Flasher dialog parameters, gets width and height
     GetFlasherDialogParameters();
     
-    'preliminaries for no-change condition, which messes with numbering because the number of distractors is variable
+    'preliminaries for no-change/no-info condition, which messes with numbering because the number of distractors is variable
     if attNoChangeCondition% = 1 then    
         'If we are asked to "alternate" blocks and to use a No-Change condition, here's the protocol:
         'Create a list of legal block numbers (1 = on-RF, 2-5 = existing distractors, 6 = no-change)
         for i% := 0 to attNumPatches%-1 do
             blockTypes%[i%] := i%+1;
         next
+        
         blockTypes%[attNumPatches%] := 6;  'no change value is hardcoded 
-        'printlog("original blocktype is %d\n",blockTypes%[]);
         'and shuffle the list
         Shuffle%(attNumPatches%+1,btIndices%[]); 'hja comment:  Shuffle% ia a function in MiscUtilities.
-      
+
         'when you pass a variable into a function, any changes made inside the function may apply to the value in the
         'original domain (even with no output).
         'printlog("shuffled blocktype is %d\n",blockTypes%[]);
     endif
+    
+    'If we have a no-info condition, decide whether the first block is no-info
+    if attNoInfoCondition% = 1 then
+        if attStartBlock% = 7 then
+            isNoInfoBlock% := 1;
+        else
+            isNoInfoBlock% := round(rand());
+        endif;
+    endif;
+    
     
     
     'calculate the value of alloff%, this is bitwise indicator if all stimuli are shut off
@@ -3630,30 +3793,31 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
     
     for i% := 1 to attNumberOfBlocks% do
         
-        'If we are alternating by block or randomizing by block, set attDirection% here, otherwise we set it on a trial-by-trial basis
+        'If we are alternating by block or randomizing by block, set attColor% (which becomes attDirection%) here, otherwise we set it on a trial-by-trial basis
         docase 
         'if randomizing by trial do nothing, this is dealt with later
         case attBlockAlternate% = 0 then
         'if a start block is specified and it is the first block, use that start block
-        case i% = 1 and attStartBlock% > 0 then
+        case i% = 1 and attStartBlock% > 0 and attStartBlock% <> 7 then  'if attStartBlock% is 7 (no info) we will pick a random color below as if attStartBlock% was 0
             attColor% := attStartBlock%; 
             'Also, for the alternate+no change condition, get starting block index, because this cycles
-            if attBlockAlternate% = 2 and attNoChangeCondition% = 1 then 
+            'if attBlockAlternate% = 2 and attNoChangeCondition% = 1 then 
+            if attBlockAlternate% = 2 and attNoChangeCondition% then  
                 for k% := 0 to len(btIndices%[])-1 do
                     if attStartBlock% = blockTypes%[btIndices%[k%]] then
                         blockTypeIndex% := k%+1;
                         'and cycle back to index zero if we go past the end
-                        if blockTypeIndex% > attNumPatches% then  'attNumPatches% is right because there are attNumPatches%+1 total legal indices
+                        if blockTypeIndex% > attNumPatches% then  'attNumPatches% is right because there are that many colors plus a noChange, but we are dealing with an index so subtract 1
                             blockTypeIndex% := 0;
                         endif;
                     endif
                 next
             endif
         'if randomizing by block without a no-change, select random stim to attend (block > 1 or start block not specified)
-        case attBlockAlternate% = 1 and attNoChangeCondition% = 0 then  'randomize by block, choose a random stimulus to attend for each block, all stims have equal probability
+        case attBlockAlternate% = 1 and attNoChangeCondition% then  'randomize by block, choose a random stimulus to attend for each block, all stims have equal probability
             attColor% := Floor(Rand(attNumPatches%,1));  'offset by 1 so the value comes out 1:N instead of 0:N-1    
         'if randomizing by block with a no-change, select random stim to attend (block > 1 or start block not specified)    
-        case attBlockAlternate% = 1 and attNoChangeCondition% = 1 then  'randomize by block, choose a random stimulus to attend for each block, all stims including no-change have equal probability 
+        case attBlockAlternate% = 1 and attNoChangeCondition% = 1 then  'randomize by block, choose a random stimulus to attend for each block, all stims including no-change/no-info have equal probability 
             attColor% := blockTypes%[btIndices%[Floor(Rand(attNumPatches%+1,0))]];  'do not offset by one, we are shuffling indices
         'if alternating without a no-change condition, every other block is on RF...note that randBlockOrderVar is appropriately changed above (in dialog code) if attStartOrder is set  
         case attBlockAlternate% = 2 and attNoChangeCondition% = 0 then  'alternate by block, every other block is on receptive field, blocks off RF are randomly selected
@@ -3669,7 +3833,7 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
             'update blockTypeIndex%
             blockTypeIndex% += 1;
             'and cycle back to index zero if we go past the end
-            if blockTypeIndex% > attNumPatches% then  'attNumPatches% is right because there are attNumPatches%+1 total legal indices
+            if blockTypeIndex% > attNumPatches% then  'see note about 26 lines above
                 blockTypeIndex% := 0;
             endif;
         endcase
@@ -3677,6 +3841,12 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
         'get color of first block type (only on first block, obviously) to allow reset of randomizing hazard variables
         if i% = 1 then
             firstBlockType% := attColor%;
+        else ' and if it is NOT the first block, we need to update isNoInfoBlock%
+            if attColor% <> 6 and attNoInfoCondition% = 1 then  'so, if we are NOT doing a no-change, make noInfo random
+                isNoInfoBlock% := round(rand());
+            else 'no-change/lack of no-info condition means not no-info
+                isNoInfoBlock% := 0;
+            endif;
         endif;
         
         'reset variables as necessary, at the beginning of each block
@@ -3706,9 +3876,26 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                 else
                     attColor% := Floor(Rand(attNumPatches%-1,2));  'choose a random stim to attend that is not the main
                 endif
+                if attNoInfoCondition% = 1 then
+                    isNoInfoTrial% := round(rand()); 'each trial is random if there isn't a no-change
+                else 'just be explicit, this shouldn't be necessary but in case there's a booboo somewhere this will fix it
+                    isNoInfoTrial% := 0;
+                endif;                
             case attBlockAlternate% = 0 and attNoChangeCondition% = 1 then
-                attColor% := blockTypes%[btIndices%[Floor(Rand(attNumPatches%+1,0))]];  'choose a straight-up random color, unless Hank sez otherwise
+                attColor% := blockTypes%[btIndices%[Floor(Rand(attNumPatches%+1,0))]];  'choose a straight-up random color/condition, unless Hank sez otherwise
+                if attNoInfoCondition% = 1 and attColor% <> 6 then
+                    isNoInfoTrial% := round(rand());  'each trial is random if there isn't a no-change
+                else 
+                    isNoInfoTrial% := 0;
+                endif;
+            case attBlockAlternate% > 0 then
+                isNoInfoTrial% := isNoInfoBlock%;  'all trials on this block are the same, and we determined what they were above
             endcase;
+            
+            'and if we have a no-info trial, pick a random direction for grating change
+            if isNoInfoTrial% = 1 then
+                noInfoChangeLoc% := Floor(Rand(attNumPatches%,1));  'choose a random stim to attend
+            endif;
             
             fixColor%[totalCount%] := attColor%;  'this is the color of the fixation point, which is the same regardless of attention/valid/etc.  It's kind of ground truth and everything builds from there.            
             
@@ -3748,7 +3935,11 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                     if attDirection% = 0 then 'and then fix if modulus comes out to 0
                         attDirection% := attNumPatches%;
                     endif
+                    
                     rotList%[totalCount%] := (attNumPatches%*cueCircleRotation%)+attDirection%-1; 'this selects the correct brightness distribution for this rotation
+                    if isNoInfoTrial% = 1 then
+                        rotList%[totalCount%] := rotList%[totalCount%] + (attNumPatches%*attNumPatches%);
+                    endif;
                 endif;
                            
                 attList%[totalCount%] := attDirection%;  'set direction of attention, same for regular or no-change trials
@@ -3760,11 +3951,16 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                 blockList%[totalCount%] := attColor%;  'remember block for potential use in making flashers
                 hazList[totalCount%] := attHazardMinTime;  'don't calculate a hazard time, just use the minimum
                 flashN%[totalCount%] := 0;  'no flashers on easy trials, this is redundant since it should be 0 to start, but...
+                noInfoList%[totalCount%] := isNoInfoTrial%;
                 
                 'rotList%[totalCount%] := 0;  'no rotation on easy trials, this was replaced by cue-circle-swapping code above
                 'rotList%[totalCount%] := attNumPatches%*(attColor%-1);  'no rotation on easy trials, but get cue circle contrast correct - this is the oldest version of this line
                 UpdateFlasherSpecString(f$,0,flashX[totalCount%][],flashY[totalCount%][],attFlasherWidth,attFlasherHeight,flashTimes[totalCount%][],0,firstRun);  'On easy trials, num of flashers is zero, remainder of function does not run
                 if attDirection% <> 6 then 'for all blocks that are not no-change blocks, do this
+                    if isNoInfoTrial% = 1 then  'change location of change for no-info trials, because this is random
+                        attDirection% := noInfoChangeLoc%;
+                    endif
+                    
                     chgList%[totalCount%] := attDirection%;  'set stimulus that changes
                     cList%[totalCount%] := 100;  'change easy trials to 100% contrast            
                     if distracterOffForEasy% = 1 then
@@ -3810,6 +4006,8 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                 if attSwapCueCircle% = 1 then
                     cueCircleRotation% := Floor(Rand(attNumPatches%,0));  '0 for no rotation, 1 for cycle forward 1, etc.
                 endif
+                                
+                
                 'determine stimulus being attended (i.e., which stimulus has the same cue circle color as the fixation point)
                 if attColor% = 6 then 'on a no-change trial, just set direction to the arbitrary 6
                     attDirection% := 6;  
@@ -3822,12 +4020,16 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                     if attDirection% = 0 then 'and then fix if modulus comes out to 0
                         attDirection% := attNumPatches%;
                     endif
+                    
                     rotList%[totalCount%] := (attNumPatches%*cueCircleRotation%)+attDirection%-1; 'this selects the correct brightness distribution for this rotation
+                    if isNoInfoTrial% = 1 then
+                        rotList%[totalCount%] := rotList%[totalCount%] + (attNumPatches%*attNumPatches%);
+                    endif;
                 endif;
                 
                 
                 attList%[totalCount%] := attDirection%;  'set direction of attention, same for regular or no-change trials
-                            
+                noInfoList%[totalCount%] := isNoInfoTrial%;   'set noInfoList, will not be affected by below code
                 
                 'Get a new hazard time and new set of flasher times for this trial - the one caveat is that
                 'follow-up blocks have to have the same hazard times and flasher times as the first block if
@@ -3934,12 +4136,20 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                         chgList%[totalCount%] := attDirection%;  'set stimulus that changes
                         'insert uncatch trial
                         UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                    case isNoInfoTrial% = 1 then
+                        'not valid, make changed contrast random
+                        vList%[totalCount%] := 0;  'not valid
+                        cList%[totalCount%] := attContrastList[attTrialOrder%[stdCount%]];
+                        offList%[totalCount%] := 0;  'show all grating patches
+                        chgList%[totalCount%] := noInfoChangeLoc%;  'set stimulus that changes
+                        'insert trial
+                        UpdateTrialSpecString(c$,attColor%,noInfoChangeLoc%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
                     else  'valid trial
                         vList%[totalCount%] := 1;  'valid
                         cList%[totalCount%] := attContrastList[attTrialOrder%[stdCount%]];
                         offList%[totalCount%] := 0;  'show all grating patches
                         chgList%[totalCount%] := attDirection%;  'set stimulus that changes
-                        'insert uncatch trial
+                        'insert trial
                         UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
                         stdCount% += 1;
                     endcase;
@@ -4768,6 +4978,8 @@ func CreateCueCircleColorSets$()
         cueFlag$ := "-Q ";
     case attUseCueCircles% = 2 then
         cueFlag$ := "-q ";
+    case attUseCueCircles% = 3 then
+        cueFlag$ := "-r ";  'this ought to work as of 1/24/18
     else
         message("Error!  UseCueCircles% holds an illegal value!  Quitting!");
         quit%();
@@ -4816,6 +5028,43 @@ func CreateCueCircleColorSets$()
             endif
         next
     next
+    
+    'add NoInfo at the end if we have one - this is actually doing what I want, first try!!
+    conIdx% := 0;  'Reset contrast index
+    if attNoInfoCondition% = 1 then
+        for i% := 0 to attNumPatches%-1 do 'loop through outer rotations
+            for j% := 0 to attNumPatches%-1 do 'loop through inner rotations
+                for k% := 0 to attNumPatches%-1 do 'loop through contrasts
+                    CueCirc$ := CueCirc$ + ",";  'always insert comma for this
+                    CueCirc$ := CueCirc$ + RadAndWid$;  'insert radius and width, always the same here.
+                    'get index of correct color - here we don't mod based on k%, all the same color!
+                    colIdx% := (j%) mod attNumPatches%;
+                    
+                    tempCol%[0] := RGBList%[colIdx%][0];
+                    tempCol%[1] := RGBList%[colIdx%][1];
+                    tempCol%[2] := RGBList%[colIdx%][2];
+                    
+                    'put in correct color/contrast, which starts on the very first list as index zero and then is very complicatedly updated to behave as desired
+                    CueCirc$ := CueCirc$ + FadeColorToGray$(tempCol%[],ContrastList%[conIdx%]);
+                    
+                    'update index of correct contrast
+                    'for each cue circle in an individual set, advance the contrast index, and reset to zero if we go past the end
+                    conIdx% += 1;
+                    if conIdx% = attNumPatches% then
+                        conIdx% := 0;
+                    endif
+                next
+                'update index of correct contrast
+                'for each new cue circle set, back the index up once, which makes the high contrast come one position later, reset to the end if go go lower than zero
+                conIdx% -= 1;
+                if conIdx% = -1 then
+                    conIdx% := attNumPatches%-1;
+                endif
+            next
+        next
+    endif;
+    
+    
     
     'put in closing space
     CueCirc$ := CueCirc$ + " ";
@@ -5094,7 +5343,7 @@ end
 'but due to the command line need to be in a text format.  Use cue circle colors to fill these variables.
 'This function will allow any integer color values from 0-255 even though the dialog box code currently will not.
 proc CreateMasterColorLists()
-    var temp%[3][6];  'our list of colors
+    var temp%[3][7];  'our list of colors
     var i%;
     var r%;
     var g%;
@@ -5119,9 +5368,12 @@ proc CreateMasterColorLists()
     temp%[0][5] := noattenRGB%[0];
     temp%[1][5] := noattenRGB%[1];
     temp%[2][5] := noattenRGB%[2];
+    temp%[0][6] := noinfoRGB%[0];
+    temp%[1][6] := noinfoRGB%[1];
+    temp%[2][6] := noinfoRGB%[2];
     
     'not ready to do this yet
-    for i% := 0 to 5 do
+    for i% := 0 to 6 do
         r% := temp%[0][i%];
         g% := temp%[1][i%];
         b% := temp%[2][i%];
