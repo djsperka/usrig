@@ -100,3 +100,237 @@ end;
 '	Fixation Point parameters END
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+'	ASL Output File Control START
+'
+'	These vars and funcs control the DIGLOW outputs to manage the ASL output file 
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+var ASLOutputFileIsOpen%;
+var ASLOutputFileIsRecording%;
+var ASLOutputFilename$;
+
+proc OpenASLOutputFile()
+    if ASLOutputFileIsOpen% = 0 then
+        SafeSampleKey("I");  'Open output file
+        ASLOutputFileIsOpen% := 1;  'Note that it is open
+    else
+        message("Coding error, attempt to open ASL file but file is currently open!  Tell Jeff!");
+    endif;
+    
+    ASLOutputFilename$ := FindCurrentASLFile$();
+    SampleText("ASL output file opened, file name is: " + ASLOutputFilename$);
+    printlog("ASL output file opened, file name is: %s\n",ASLOutputFilename$);
+end
+
+
+proc CloseASLOutputFile()
+    var whoops%;
+    'Force recording to stop if we are currently recording.  This is improper usage, but check just in case
+    if ASLOutputFileIsRecording% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        ASLOutputFileIsRecording% := 0;  'Note that we are not recording
+        SampleText("ASL output file recording stopped");
+        whoops% := 1;
+    endif;
+      
+    if ASLOutputFileIsOpen% = 1 then
+        SafeSampleKey("i");  'Close output file
+        ASLOutputFileIsOpen% := 0;  'Note that it is closed
+        SampleText("ASL output file closed");
+    else
+        message("Coding error, attempt to close ASL file but no file is currently open!  Tell Jeff!");
+    endif;
+    
+    if whoops% = 1 then
+        message("Coding error, ASL file closed while recording!  Recording successfully stopped, but tell Jeff!");
+    endif;
+end
+
+proc StartASLRecording()
+    docase
+    case ASLOutputFileIsOpen% = 0 then 
+        message("Coding error, attempt to begin recording on ASL file but no file is currently open!  Tell Jeff!");
+    case ASLOutputFileIsRecording% = 0 then
+        SafeSampleKey("W");  'Begin recording
+        ASLOutputFileIsRecording% := 1;  'Note that we are recording
+        SampleText("ASL output file recording started");
+    else
+        message("Coding error, attempt to begin recording on ASL file but file is currently recording!  Tell Jeff!");
+    endcase;
+end
+
+
+proc StopASLRecording()
+    docase
+    case ASLOutputFileIsOpen% = 0 then 
+        message("Coding error, attempt to stop recording on ASL file but no file is currently open!  Tell Jeff!");
+    case ASLOutputFileIsRecording% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        ASLOutputFileIsRecording% := 0;  'Note that we are not recording
+        SampleText("ASL output file recording stopped");
+    else
+        message("Coding error, attempt to stop recording on ASL file but file is not currently recording!  Tell Jeff!");
+    endcase;
+end
+
+
+func FindCurrentASLFile$()
+    'This function finds the newest ASL file in the known location of the ASL files - this should be the current file
+    'The whole point of this is so that we can report the name of the associated ASL file in the .smr file.
+    const maxFiles% := 1000;  'seems reasonable
+    var publicDir$;
+    var ASLDir$;
+    var oldDir$;
+    var numFiles%;
+    var listOfFiles$[maxFiles%];
+    var year%[maxFiles%];
+    var month%[maxFiles%];
+    var day%[maxFiles%];
+    var hour%[maxFiles%];
+    var minute%[maxFiles%];
+    var second%[maxFiles%];
+    var i%;
+    var j%;
+    var retStr$;
+    
+    'Get directories
+    publicDir$ := System$("PUBLIC");  'get public user directory
+    ASLDir$ := publicDir$ + "\\Documents\\Applied Science Laboratories\\Eye-Trac 6 data\\";  'add known location of ASL files    
+    oldDir$ := FilePath$();  'we will come back to wherever we were
+    
+    'Move to directory where ASL files are written
+    FilePathSet(ASLDir$);
+    
+    'Get a list of ASL files (.eyd)
+    numFiles% := FileList(listOfFiles$[],-1,"*.eyd");
+    
+    'Return working directory to wherever it was
+    FilePathSet(oldDir$); 
+    
+    'Parse all filenames
+    'File format is YYYY-MM-DD-HH.MM.SS
+    for i% := 0 to numFiles%-1 do
+        year%[i%] := Val(Mid$(listOfFiles$[i%],1,4));
+        month%[i%] := Val(Mid$(listOfFiles$[i%],6,2));
+        day%[i%] := Val(Mid$(listOfFiles$[i%],9,2));
+        hour%[i%] := Val(Mid$(listOfFiles$[i%],12,2));
+        minute%[i%] := Val(Mid$(listOfFiles$[i%],15,2));
+        second%[i%] := Val(Mid$(listOfFiles$[i%],18,2));
+    next
+    
+    'Find position of most recent file in ListOfFiles$[] based on filename
+    j% := NewestASLFile%(year%[],month%[],day%[],hour%[],minute%[],second%[],numFiles%);
+    
+    if j% = -1 then
+        message("Unable to find name of current ASL file!!!");
+        retStr$ := "Most recent ASL file not found in " + ASLDir$;
+        return retStr$;
+    else
+        retStr$ := ASLDir$ + listOfFiles$[j%];
+        return retStr$;
+    endif;
+    
+end
+
+func NewestASLFile%(year%[],month%[],day%[],hour%[],minute%[],second%[],numFiles%);
+    
+    var count%;
+    var position%;
+    var myloc%;
+    var mymax%;
+    var i%;
+    
+    'Check to see if one file has a latest year, etc.
+    myloc% := Max(year%[]);
+    mymax% := year%[myloc%];
+    count% := 0;
+    for i% := 0 to numFiles%-1 do
+        if year%[i%] = mymax% then
+            count% += 1;
+            position% := i%;
+        endif;
+    next
+    if count% = 1 then
+        return position%
+    endif
+    
+    myloc% := Max(month%[]);
+    mymax% := month%[myloc%];
+    count% := 0;
+    for i% := 0 to numFiles%-1 do
+        if month%[i%] = mymax% then
+            count% += 1;
+            position% := i%;
+        endif;
+    next
+    if count% = 1 then
+        return position%
+    endif
+    
+    myloc% := Max(day%[]);
+    mymax% := day%[myloc%];
+    count% := 0;
+    for i% := 0 to numFiles%-1 do
+        if day%[i%] = mymax% then
+            count% += 1;
+            position% := i%;
+        endif;
+    next
+    if count% = 1 then
+        return position%
+    endif
+    
+    myloc% := Max(hour%[]);
+    mymax% := hour%[myloc%];
+    count% := 0;
+    for i% := 0 to numFiles%-1 do
+        if hour%[i%] = mymax% then
+            count% += 1;
+            position% := i%;
+        endif;
+    next
+    if count% = 1 then
+        return position%
+    endif
+    
+    myloc% := Max(minute%[]);
+    mymax% := minute%[myloc%];
+    count% := 0;
+    for i% := 0 to numFiles%-1 do
+        if minute%[i%] = mymax% then
+            count% += 1;
+            position% := i%;
+        endif;
+    next
+    if count% = 1 then
+        return position%
+    endif
+    
+    myloc% := Max(second%[]);
+    mymax% := second%[myloc%];
+    count% := 0;
+    for i% := 0 to numFiles%-1 do
+        if second%[i%] = mymax% then
+            count% += 1;
+            position% := i%;
+        endif;
+    next
+    if count% = 1 then
+        return position%
+    else
+        return -1;  'failure
+    endif
+    
+end
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+'	ASL Output File Control END
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''

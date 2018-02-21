@@ -34,6 +34,7 @@ var RemoteStimulusIP$ := "192.168.1.2";
 var RemoteStimulusPort$ := "7000";
 var SlaveStimulusIP$ := "192.168.1.2";
 var SlaveStimulusPort$ := "7000";
+var RecordEyeTrackerOutputFile%;  'if checked, use 1401 to start/stop eyetracke output file, send "heartbeat"
 'var WavemarkPorts%[16];
 'var NumWavemarkPorts%;
 'var ContinuousPorts%[16];
@@ -268,12 +269,14 @@ func DAQParametersDialog%()
     DlgString(17, "Slave ip", 21);
     DlgString(18, "Slave port", 5);
     DlgList(19, "Display Hardware:",displayHardwareList$,2);
+    DlgCheck(20, "Create Eyetracker Output File");
     DlgAllow(0xffff, 0, DAQParametersDialogChanged%);
 	iReturn% := DlgShow(NumberOfElectrodes%, DegreesPerVoltX, DegreesPerVoltY, 
                         CalibrationOffsetDegrees, CalibrationComPort%,
                         EyeCoilSamplingFrequency%, pReward, JuicePerReward%, JuiceRewardMS%,
                         JuicerIndexDecremented%, EyeXPort%, EyeYPort%, JoystickPort%, 
-                        UseRemoteStimulus%, RemoteStimulusIP$, RemoteStimulusPort$, SlaveStimulusIP$, SlaveStimulusPort$,DisplayHardwareIndex%);
+                        UseRemoteStimulus%, RemoteStimulusIP$, RemoteStimulusPort$, SlaveStimulusIP$, 
+                        SlaveStimulusPort$,DisplayHardwareIndex%,RecordEyeTrackerOutputFile%);
 
 	if iReturn% = 1 then
         JuicerIndex% := JuicerIndexDecremented% + 1; 'Correct JuicerIndex%
@@ -318,6 +321,7 @@ proc GetDAQParameters()
     SlaveStimulusIP$ := GetStringRegistryValue$(key$, "SlaveStimulusIP", "192.168.1.2");
     SlaveStimulusPort$ := GetStringRegistryValue$(key$, "SlaveStimulusPort", "7000");
     DisplayHardwareIndex% := GetIntRegistryValue%(key$, "DisplayHardwareIndex", DisplayHardwareIndex%);
+    RecordEyeTrackerOutputFile% := GetIntRegistryValue%(key$, "RecordEyeTrackerOutputFile", 0);
     GetElectrodeParameters();
 end;
 
@@ -347,6 +351,7 @@ proc SaveDAQParameters()
     SetStringRegistryValue(key$, "SlaveStimulusIP", SlaveStimulusIP$);
     SetStringRegistryValue(key$, "SlaveStimulusPort", SlaveStimulusPort$);
     SetIntRegistryValue(key$, "DisplayHardwareIndex", DisplayHardwareIndex%);
+    SetIntRegistryValue(key$, "RecordEyeTrackerOutputFile", 0);
     SaveElectrodeParameters();
 end;
 

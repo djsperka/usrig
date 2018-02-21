@@ -46,7 +46,7 @@ var ReadyChannel%;
 var ReadySlaveChannel%;
 var FixationPointSlaveChannel%;
 var StimSlaveChannel%;
-var DigitalLaserChannel%;
+'var DigitalLaserChannel%;
 var OptoCopyChannel%;
 var SequencerPeriodMS;
 var ButtonChannel%;
@@ -265,7 +265,7 @@ ReadySlaveChannel% := 44;
 FrameSlaveChannel% := 45;
 FixationPointSlaveChannel% := 46;
 StimSlaveChannel% := 47;
-DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
+'DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
 OptoCopyChannel% := 49;
 
 ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
@@ -401,6 +401,17 @@ func IdleProcessing%()
                 Yield(1.0);
                 tLastTrigger := tFall;
                 ChangeStateTo(stateStartTrial%, tFall);
+                if RecordEyeTrackerOutputFile% = 1 then
+                    'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+                    SafeSampleKey("1");
+                    yield(0.2);
+                    SafeSampleKey("1");
+                    yield(0.2);
+                    SafeSampleKey("1");
+                    yield(0.2);
+                    SafeSampleKey("1");
+                    yield(0.2);
+                endif;
             else
                 if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                     LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
@@ -414,6 +425,17 @@ func IdleProcessing%()
                 Yield(1.0);
                 tLastTrigger := tFall;
                 ChangeStateTo(stateStartTrial%, tFall);
+                if RecordEyeTrackerOutputFile% = 1 then
+                    'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+                    SafeSampleKey("1");
+                    yield(0.2);
+                    SafeSampleKey("1");
+                    yield(0.2);
+                    SafeSampleKey("1");
+                    yield(0.2);
+                    SafeSampleKey("1");
+                    yield(0.2);
+                endif;
             else
                 ' TODO - do this for slave also
                 if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
@@ -424,6 +446,13 @@ func IdleProcessing%()
         endif
 
     case iState% = stateStartTrial% then
+        
+        'put timing marker in both eyetracker file, smr file
+        if RecordEyeTrackerOutputFile% = 1 then
+            SafeSampleKey("1");
+            yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
+        endif;
+        
 
         ' Start trial. Put up fixation point.
         LogStatus("StartTrial", "Request fixpt");
@@ -966,6 +995,14 @@ func IdleProcessing%()
         
         ' Unknown state!
         Message("Unknown state=" + str$(iState%));
+        
+        'If the eyetracker is recording an output file, stop recording and close the file
+        if RecordEyeTrackerOutputFile% = 1 then
+            SafeSampleKey("w");  'Stop recording
+            yield(0.1);
+            SafeSampleKey("i");  'Close the file
+        endif
+        
         halt;
 
 	endcase;
@@ -2334,13 +2371,21 @@ proc CreateSampleConfiguration()
 	SampleTitle$(StimSlaveChannel%,"Stim-Slave");
     
     
-    'Add a digital marker channel for pulsing optogenetics
+    'Add a digital marker channel for pulsing optogenetics OR eye tracker output file
     'Do it for every opto, easy enough to add this into the wraparound calls in the PLS
     'Will record a '1' for laser on and a '0' for laser off
-    if tunDoOpto% = 1 then
+    'Will record a '101' for eyetracker timing pulses.
+    'Note that Opto and eyetracker output are not exclusive.  If both, the channel will be
+    'labeled as the laser channel, but both pulses will be present.
+    docase
+    case tunDoOpto% = 1 then
         SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
-        SampleTitle$(DigitalLaserChannel%,"Laser On");
-    endif
+        'SampleTitle$(DigitalLaserChannel%,"Laser On");
+        SampleTitle$(32,"Laser On");  'Digital marker is by definition channel 32
+    case RecordEyeTrackerOutputFile% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
+    endcase
     
     'Add a waveform channel for efference copy.  This can come from either the 1401 itself or
     'from the stimulator, it doesn't really matter.
@@ -2439,6 +2484,13 @@ end;
 ' It is important that this function be disabled once sampling is started!!!
 
 func Quit%()
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+    endif
+    
 	FileClose(-1,-1);
 	return 0;
 end;
@@ -2457,6 +2509,13 @@ func Stop%()
     if tunDoOpto% = 1 then
         SafeSampleKey("o");
     endif;
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+    endif
     
     ' Tell stim app to shut down.
     ' DJS - removed the 'X' sample key here. 
@@ -2495,24 +2554,25 @@ func Stop%()
 '    ExportChanList(); 
 '    chanToExport%[1] := 30;  'channels to export go in elements 1:...'30 is the textmark channel
 '    chanToExport%[2] := 31;  '31 is the keyboard channel
-'    chanToExport%[3] := StimChannel%;  'stim channel
+'    chanToExport%[3] := 32;  '32 is the digital marker channel
+'    chanToExport%[4] := StimChannel%;  'stim channel
 '    docase
 '    case UsePlexon% = 1 then  'use hardcoded Plexon values - 18 WaveMarks and 24 LFPs for now, on the micro it's 
 '        for i% := 0 to 12 do
-'            chanToExport%[i%+4] := i%+1;  'wavemark channels are in order
+'            chanToExport%[i%+5] := i%+1;  'wavemark channels are in order
 '        next;
 '        chanToExport%[0] := 3+i%;  'total number of channels goes in element 0
 '    case UsePlexon7WM15CN% = 1 then  'use hardcoded Plexon values - 7 WaveMarks and 15 LFPs
 '        for i% := 0 to 13 do
-'            chanToExport%[i%+4] := i%+1;  'wavemark channels are in order
+'            chanToExport%[i%+5] := i%+1;  'wavemark channels are in order
 '        next;
 '        for i% := 14 to 21 do
-'            chanToExport%[i%+4] := i%+3;  'wavemark channels are in order, but we're skipping eye channels
+'            chanToExport%[i%+5] := i%+3;  'wavemark channels are in order, but we're skipping eye channels
 '        next;
 '        chanToExport%[0] := 3+i%;  'total number of channels goes in element 0
 '    else
 '        for i% := 0 to NumWavemarkPorts% do
-'            chanToExport%[i%+4] := i%+1;  'wavemark channels are in order
+'            chanToExport%[i%+5] := i%+1;  'wavemark channels are in order
 '        next;
 '        chanToExport%[0] := 3+i%;  'total number of channels goes in element 0
 '    endcase;
@@ -3213,7 +3273,8 @@ func Start%()
 	' Set Sequencer Variable #3 based on juicer type 
     SetJuicerSequencerVariable%();
     ' Clear any trigger bits on digout lines.
-    SafeSampleKey("0");
+    SafeSampleKey("0");  'this is DIGOUT
+    SafeSampleKey("Z");  'this is DIGLOW
     
     SequencerPeriodMS := SampleSeqClock(1);  'Get the clock period of the sequencer, in MS, must do this after starting sampling
     
@@ -3900,6 +3961,17 @@ func Start%()
         StimHandle% := ProgRun(cmdLineM$, 1);       
         StimHandleSlave% := ProgRun(cmdLineS$, 1);
     endif
+    
+    
+    
+    'If we are asking the eyetracker to record an output file, open the file and start recording
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("I");  'Open the file (this is done by setting a DIGLOW bit), file name will be saved in a sampletext
+        yield(0.5);
+        SafeSampleKey("W");  'Begin recording the file
+        yield(0.5);
+    endif
+    
     
 	
 	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function

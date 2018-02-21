@@ -1116,6 +1116,13 @@ end;
 ' It is important that this function be disabled once sampling is started!!!
 
 func Quit%()
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+    endif
+    
 	FileClose(-1,-1);
 	return 0;
 end;
@@ -1233,6 +1240,12 @@ proc CreateSampleConfiguration()
     
 	SampleTextMark(200);  'increase number of allowed characters, 1 is so stingy!
     
+    
+    'Set up digital marker channel, regardless of whether we are recording the eyetracker data file or not
+    SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+    SampleTitle$(32,"Heartbeat");  '32 is the default digital marker channel
+    
+
 	'SampleSequencer(script$ + "Attention.pls");
     SampleSequencer(script$ + "Tuning.pls");
     'if UsePlexon% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
@@ -1426,7 +1439,8 @@ func Start%()
 	' Set Sequencer Variable #3 based on juicer type 
     SetJuicerSequencerVariable%();
     ' Clear any trigger bits on digout lines.
-    SafeSampleKey("0");
+    SafeSampleKey("0");  'this is DIGOUT
+    SafeSampleKey("Z");  'this is DIGLOW
     
     'Change offset of joystick channel
     'View(DataWindow%).ChanOffset(JoyChannel%,-2.386);  'try this value, looks pretty good
@@ -1521,6 +1535,15 @@ func Start%()
     else
         iState% := stateWaitForJoystickInCenter%;  'set initial state for the idle loop
 	endif;
+    
+    'If we are asking the eyetracker to record an output file, open the file and start recording
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("I");  'Open the file (this is done by setting a DIGLOW bit), file name will be saved in a sampletext
+        yield(0.5);
+        SafeSampleKey("W");  'Begin recording the file
+        yield(0.5);
+    endif
+    
 	
 	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
 	ToolbarEnable(2,1);  'enable sample stop
@@ -1545,7 +1568,15 @@ func Stop%()
 	' Disable idle process func
 	ToolbarSet(0,"");  
     
-    'Allow quit
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+    endif
+    
+    
+    'Allow quit, but do not do this before the eyetracker file is closed, just in case
     ToolbarEnable(7,1);
     
     ToolbarEnable(8,0);  'disable optimize y (don't really need to because we don't close the dataWindow, but may as well...)
@@ -1583,8 +1614,9 @@ func Stop%()
     ExportChanList(); 
     chanToExport%[1] := 30;  'channels to export go in elements 1:...'30 is the textmark channel
     chanToExport%[2] := 31;  '31 is the keyboard channel
-    chanToExport%[3] := StimChannel%;  'stim channel
-    totalChanToExport% := 3;  'so far, three hardcoded channels to export
+    chanToExport%[3] := 32;  '32 is the digital marker channel
+    chanToExport%[4] := StimChannel%;  'stim channel
+    totalChanToExport% := 4;  'so far, four hardcoded channels to export
     
     
     'Note that this commented section does NOT include an update to use the "totalChanToExport%" syntax and may no longer work as-is
@@ -1804,6 +1836,15 @@ func IdleProcessing%()
         case iState% = stateInitialDeadTime% then
             'waiting through an initial dead period that Evan wants before the first stimulus
             if tNow > caInitialDeadTime then  'was tNow - tStateStart, but dead time can easily go from start of recording, makes Unic Server check easier
+                'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                tNow := View(DataWindow%).MaxTime();  'update tNow, because we've paused a lot here
                 if caRequireSaccadeResponse% = 1 then
                     'if we require a saccade response, skip the joystick centering step, joystick will not be used
                     if caEEGIsRecording% = 1 then
@@ -1825,6 +1866,7 @@ func IdleProcessing%()
                     nextStateImmed% := 1;
                     SampleText("Dead Time Over",tNow);
                 endif;
+                
             endif;
             
 
@@ -2101,7 +2143,9 @@ func IdleProcessing%()
             printlog("Starting trial #%d\n",caCurrTrialIndex%+1);
             SampleText("Start Trial "+Str$(caCurrTrialIndex%+1),tNow);
             caCountAllTrials% += 1;
-            'SafeSampleKey("W");
+            'Give heartbeat signal at start of each trial  
+            SafeSampleKey("1");
+            yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
             if caTrainingOptions% <= 4 then 'go/no-go
                 docase
                 case trialType% = trialtypeAttendToward% then
@@ -3185,6 +3229,12 @@ func IdleProcessing%()
         else
             
             ' Unknown state!
+            'If the eyetracker is recording an output file, stop recording and close the file
+            if RecordEyeTrackerOutputFile% = 1 then
+                SafeSampleKey("w");  'Stop recording
+                yield(0.1);
+                SafeSampleKey("i");  'Close the file
+            endif
             Message("Unknown state=" + str$(iState%));
             halt;
             

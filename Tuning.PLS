@@ -1,7 +1,7 @@
 ; $Id$
 ;
 
-                SET      0.010 1 0     ;Get rate & scaling OK
+                SET    0.010,1,0       ;Get rate & scaling OK
                 VAR    V2=0            ;V2 logs whether the sequencer is in use for SafeSampleKey
                                        ;V3 determines whether juicer is open-high or open-low
                                        ;V4 is a voltage out variable for setting level on the opto
@@ -13,7 +13,7 @@
                                        ;V10 is the post-pulse stimulus duration, for pulsed opto
 
 ; zero out all trigger lines, close juicer
-0000 ZERO:   '0 MOVI   V2,1            ;Log that sequencer is in use
+0000 ZERO:  '0  MOVI   V2,1            ;Log that sequencer is in use
 0001            BLT    V3,1,ZOPENHI    ;Branch, if V3 is 0, go to ZOPENHI
 0002            DIGOUT [00000001]      ;Set juicer bit to closed (1 is closed)
 0003            JUMP   ZERODONE        ;Jump over ZOPENHI to MOVI
@@ -22,7 +22,7 @@
 0006            HALT                   ;End of this sequence section
 
 
-0007 FIXON:  'F MOVI   V2,1            ;Log that sequencer is in use
+0007 FIXON: 'F  MOVI   V2,1            ;Log that sequencer is in use
 0008            DIGOUT [......1.]      ;Signals the fixation point on
 0009            BEQ    V5,1,VWAIT
 0010            MOVI   V2,0            ;Log that sequencer is not in use
@@ -46,7 +46,7 @@
 
 0025 STIMADV: 'a MOVI  V2,1            ;Log that sequencer is in use
 0026            DIGOUT [....i...]      ;Signals the tuned parameter to advance
-;0028            BEQ    V5,1,VWAIT     ;no branch for triggering, cmdline to fixstim should 
+;                BEQ    V5,1,VWAIT     ;no branch for triggering, cmdline to fixstim should 
 ;                     ;omit 'a' from V arg, e.g. "-V 128,FS" , not "-V 128,FSa" or "-V 128"
 0027            MOVI   V2,0            ;Log that sequencer is not in use
 0028            HALT                   ;End of this sequence section
@@ -61,14 +61,14 @@
 0035            MOVI   V2,0            ;Log that sequencer is not in use
 0036            HALT                   ;End of this sequence section
 
-0037 QUIT:   'Q MOVI   V2,1            ;Log that sequencer is in use
+0037 QUIT:  'Q  MOVI   V2,1            ;Log that sequencer is in use
 0038            DIGOUT [...1....]      ;tells stim we are finished. Program should exit.
 0039            MOVI   V2,0            ;Log that sequencer is not in use
 0040            HALT                   ;End of this sequence section
 
-0041 CLEAR:  'X MOVI   V2,1            ;Log that sequencer is in use
+0041 CLEAR: 'X  MOVI   V2,1            ;Log that sequencer is in use
 0042            DIGOUT [.....00.]      ;Clears fixation and stim triggers
-;0045            BEQ    V5,1,VWAIT      ; no branch for triggering, cmdline to fixstim should 
+;                BEQ    V5,1,VWAIT      ; no branch for triggering, cmdline to fixstim should 
 ;                       ;omit 'X' from V arg, e.g. "-V 128,FS" , not "-V 128,FSX" or "-V 128"
 0043            MOVI   V2,0            ;Log that sequencer is not in use
 0044            HALT                   ;End of this sequence section
@@ -77,14 +77,14 @@
 0046 TRIGGER: 'V MOVI  V2,1            ;Log that sequencer is in use
 0047            DIGOUT [1.......]      ;Trigger to present stim chg.
 0048            DELAY  ms(50)
-;0050            DELAY  ms(100)
+;                DELAY  ms(100)
 0049            DIGOUT [0.......]
 0050            MOVI   V2,0            ;Log that sequencer is not in use
 0051            HALT                   ;End of this sequence section
 
 
 ; Reward
-0052 REW:    'R MOVI   V2,1            ;Log that sequencer is in use
+0052 REW:   'R  MOVI   V2,1            ;Log that sequencer is in use
 0053            BLT    V3,1,REWHI      ;Branch, if V3 is 0, go to REWHI
 0054            DIGOUT [.......1]      ;Assert that juicer is closed
 0055            DIGOUT [.......0]      ;Downward pulse delivers juice
@@ -101,7 +101,7 @@
 0066            HALT                   ;End of this sequence section
 
 ; Reward, compatible with 'J'uicer command from Farran's rig, just do same thing as 'R'
-0067 JCR:    'J MOVI   V2,1            ;Log that sequencer is in use
+0067 JCR:   'J  MOVI   V2,1            ;Log that sequencer is in use
 0068            BLT    V3,1,JCRHI      ;Branch, if V3 is 0, go to JCRHI
 0069            DIGOUT [.......1]      ;Assert that juicer is closed
 0070            DIGOUT [.......0]      ;Downward pulse delivers juice
@@ -159,11 +159,69 @@
 0113            MOVI   V2,0            ;Log that sequencer is not in use
 0114            HALT                   ;End of this sequence section
 
-; LED commands for fixation LED
-0115 LEDON:  'L MOVI   V2,1            ;Log that sequencer is in use
-0116            DIGLOW [1.......]      ;Turn on LED - don't know which digout yet
-0117            JUMP   LDONE           ;Jump over LEDOFF to a HALT
-0118 LEDOFF: 'M MOVI   V2,1            ;Log that sequencer is in use
-0119            DIGLOW [0.......]      ;Turn off LED - don't know which digout yet
-0120 LDONE:     MOVI   V2,0            ;Log that sequencer is not in use
-0121            HALT                   ;End of this sequence section
+; LED commands for fixation LED - these were for Ben, DIGLOWS now for ASL file 
+;     LEDON:  'L MOVI   V2,1            ;Log that sequencer is in use
+;                DIGLOW [1.......]      ;Turn on LED - don't know which digout yet
+;                JUMP   LDONE           ;Jump over LEDOFF to a HALT
+;     LEDOFF: 'M MOVI   V2,1            ;Log that sequencer is in use
+;                DIGLOW [0.......]      ;Turn off LED - don't know which digout yet
+;     LDONE:     MOVI   V2,0            ;Log that sequencer is not in use
+;                HALT                   ;End of this sequence section
+
+
+; zero out all DIGLOW lines
+0115 ZEROLOW: 'Z MOVI  V2,1            ;Log that sequencer is in use
+0116            DIGLOW [00000000]
+0117            MOVI   V2,0            ;Log that sequencer is not in use
+0118            HALT   
+
+; give heartbeat 1 pulse
+0119 HB1:   '1  MOVI   V2,1            ;Log that sequencer is in use
+0120            DIGLOW [.......1]
+0121            MARK   101             ;Mark heartbeat on digital marker channel
+0122            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+0123            DIGLOW [.......0]
+0124            MOVI   V2,0            ;Log that sequencer is not in use
+0125            HALT   
+
+; give heartbeat 2 pulse
+0126 HB2:   '2  MOVI   V2,1            ;Log that sequencer is in use
+0127            DIGLOW [......1.]
+0128            MARK   102             ;Mark heartbeat on digital marker channel
+0129            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+0130            DIGLOW [......0.]
+0131            MOVI   V2,0            ;Log that sequencer is not in use
+0132            HALT   
+
+; give heartbeat 3 pulse
+0133 HB3:   '3  MOVI   V2,1            ;Log that sequencer is in use
+0134            DIGLOW [.....1..]
+0135            MARK   103             ;Mark heartbeat on digital marker channel
+0136            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+0137            DIGLOW [.....0..]
+0138            MOVI   V2,0            ;Log that sequencer is not in use
+0139            HALT   
+
+; Tell ASL to open file for output 
+0140 ASLOPEN: 'I MOVI  V2,1            ;Log that sequencer is in use
+0141            DIGLOW [.1......]      ;open file, XDAT bit 6
+0142            MOVI   V2,0            ;Log that sequencer is not in use
+0143            HALT   
+
+; Tell ASL to close output file
+0144 ASLCLOSE: 'i MOVI V2,1            ;Log that sequencer is in use
+0145            DIGLOW [.0......]      ;close file
+0146            MOVI   V2,0            ;Log that sequencer is not in use
+0147            HALT   
+
+; Tell ASL to start recording to open output file
+0148 ASLREC: 'W MOVI   V2,1            ;Log that sequencer is in use
+0149            DIGLOW [1.......]      ;start recording, XDAT bit 7
+0150            MOVI   V2,0            ;Log that sequencer is not in use
+0151            HALT   
+
+; Tell ASL to stop recording; do not close output file
+0152 ASLSTOPR: 'w MOVI V2,1            ;Log that sequencer is in use
+0153            DIGLOW [0.......]      ;stop recording, XDAT bit 7
+0154            MOVI   V2,0            ;Log that sequencer is not in use
+0155            HALT
