@@ -699,6 +699,12 @@ func IdleProcessing%()
 '            SafeSampleKey("S");  'request stimulus
 '            ChangeStateTo(stateWaitForStimTrigger%, tNow);
             
+            'put timing marker in both eyetracker file, smr file
+            if RecordEyeTrackerOutputFile% = 1 then
+                SafeSampleKey("1");
+                yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
+            endif;
+            
             'going to stateWaitForAcqusition allows opto to happen
             ChangeStateTo(stateWaitForAcquisition%, tNow-tunAcquisitionTime);  'do not allow acquisition window, if animal is not fixating during maintain, this is an abort
         endif    
