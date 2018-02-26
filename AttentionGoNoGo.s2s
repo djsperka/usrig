@@ -354,78 +354,51 @@ proc GetAttentionScriptParameters()
 	var stmp$;
 	var key$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
+     
+    attNumberOfBlocks% := GetIntRegistryValue%(key$, "NumberOfBlocks", 1);
+	attTrialsPerBlock% := GetIntRegistryValue%(key$, "TrialsPerBlock", 1);
+    attEasyTrialsPerBlock% := GetIntRegistryValue%(key$, "EasyTrialsPerBlock", 1);
+    distracterOffForEasy% := GetIntRegistryValue%(key$, "DistracterOffForEasy", 1);
+    attDoUncatch% := GetIntRegistryValue%(key$, "DoUncatch", 1);
+    attNumPatches% := GetIntRegistryValue%(key$, "NumPatches", 1);
+    attUseFlashers% := GetIntRegistryValue%(key$, "UseFlashers", 1);
+    attGetGPFromMainStim% := GetIntRegistryValue%(key$, "GetGPFromMainStim", 1);
+    attUseCueCircles% := GetIntRegistryValue%(key$, "UseCueCircles", 1);
+    attCueCircleExtraRadius := GetFloatRegistryValue(key$, "CueCircleExtraRadius", 0.0);
+	attCatchTrialPercentage := GetFloatRegistryValue(key$, "CatchTrialPercentage", 0.0);
+    attNoGoTrialPercentage := GetFloatRegistryValue(key$, "NoGoTrialPercentage", 0.0);
+	attBlockAlternate% := GetIntRegistryValue%(key$, "BlockAlternate", 1);
+    attSelectRandomContrastEachTrial% := GetIntRegistryValue%(key$, "NoBlockRand", 1);
+	attTrainingContrastCheck% := GetIntRegistryValue%(key$, "TrainingContrastCheck", 0);
+	attTrainingContrastPct% := GetIntRegistryValue%(key$, "TrainingContrastPct", 0);
+    attOnlyOneCatch% := GetIntRegistryValue%(key$, "OnlyOneCatch", 0);
+    attOneCatchContrast% := GetIntRegistryValue%(key$, "OneCatchContrast", 0);
+    attContrastBase% := GetIntRegistryValue%(key$, "ContrastBase", 50);
+    attNContLevels% := GetIntRegistryValue%(key$, "NContrastLevels", 20);
+    attMaxContChange := GetFloatRegistryValue(key$, "ContrastMax", 1); 
+    attMinContChange := GetFloatRegistryValue(key$, "ContrastMin", 1);
+	attAnswerPointDiameter := GetFloatRegistryValue(key$, "AnswerPointDiameter", 0.5);
+	attAnswerPointOffset := GetFloatRegistryValue(key$, "AnswerPointOffset", 5.0);
+	attAnswerPointWindowRadius := GetFloatRegistryValue(key$, "AnswerPointWindowRadius", 2.0);
+    attNoChangeCondition% := GetIntRegistryValue%(key$, "NoChangeCondition", 0);  'not really used FROM REGISTRY anymore
+    attNoChangeNoInfoCondition% := GetIntRegistryValue%(key$, "NoChangeNoInfoCondition", 0);
+    attSwapCueCircle% := GetIntRegistryValue%(key$, "SwapCueCircle", 0);
+    attCueCircleStrokeWidth% := GetIntRegistryValue%(key$, "CueCircleStrokeWidth", 0);
+    attUseLowReward% := GetIntRegistryValue%(key$, "UseLowReward", 0);
+    attLowReward% := GetIntRegistryValue%(key$, "LowReward", 0);
+    attCatchIsNoGo% := GetIntRegistryValue%(key$, "CatchIsNoGo", 0);
+    attDoOpto% := GetIntRegistryValue%(key$, "DoOpto", 0);
+    attPhaseCheck% := GetIntRegistryValue%(key$, "DoPhase", 1);
+    attPhaseDeg% := GetIntRegistryValue%(key$, "PhaseDeg", 1);
+    attStartBlock% := GetIntRegistryValue%(key$, "StartBlock", 1);
     
-	Profile(key$, "NumberOfBlocks", 1, attNumberOfBlocks%);
-	Profile(key$, "TrialsPerBlock", 1, attTrialsPerBlock%);
-    Profile(key$, "EasyTrialsPerBlock", 1, attEasyTrialsPerBlock%);
-    Profile(key$, "DistracterOffForEasy", 1, distracterOffForEasy%);
-    Profile(key$, "DoUncatch", 1, attDoUncatch%);
-    Profile(key$, "NumPatches", 1, attNumPatches%);
-    Profile(key$, "UseFlashers", 1, attUseFlashers%);
-    Profile(key$, "GetGPFromMainStim", 1, attGetGPFromMainStim%);
-    Profile(key$, "UseCueCircles", 1, attUseCueCircles%);
-    Profile(key$, "CueCircleExtraRadius", "0.0", stmp$);
-    attCueCircleExtraRadius := val(stmp$);
-	Profile(key$, "CatchTrialPercentage", "0.0", stmp$);
-	attCatchTrialPercentage := val(stmp$);
-    Profile(key$, "NoGoTrialPercentage", "0.0", stmp$);
-	attNoGoTrialPercentage := val(stmp$);
-	Profile(key$, "BlockAlternate", 1, attBlockAlternate%);
-    Profile(key$, "NoBlockRand", 1, attSelectRandomContrastEachTrial%);
-	Profile(key$, "TrainingContrastCheck", 0, attTrainingContrastCheck%);
-	Profile(key$, "TrainingContrastPct", 0, attTrainingContrastPct%);
-    Profile(key$, "OnlyOneCatch", 0, attOnlyOneCatch%);
-    Profile(key$, "OneCatchContrast", 0, attOneCatchContrast%);
-
-    
-    Profile(key$, "ContrastBase", 50, attContrastBase%);
-	'Profile(key$, "ContrastMax", 80, attMaxContChange);  ;now reals, have to do pull a string and convert
-	'Profile(key$, "ContrastMin", 20, attMinContChange);
-    Profile(key$, "NContrastLevels", 20, attNContLevels%);
-    
-    
-    Profile(key$, "ContrastMax", "1", stmp$);
-	attMaxContChange := val(stmp$);
-    
-    Profile(key$, "ContrastMin", "1", stmp$);
-	attMinContChange := val(stmp$);
-    
-	Profile(key$, "AnswerPointDiameter", "0.5", stmp$);
-	attAnswerPointDiameter := val(stmp$);
-    
-	Profile(key$, "AnswerPointOffset", "5.0", stmp$);
-	attAnswerPointOffset := val(stmp$);
-    
-	Profile(key$, "AnswerPointWindowRadius", "2.0", stmp$);
-	attAnswerPointWindowRadius := val(stmp$);
+	'attLollipopCheck% := GetIntRegistryValue%(key$, "LollipopCheck", 0);
+	'attCueLinePct := GetFloatRegistryValue(key$, "CueLinePct", 100.0);
+    'attCircleDiameterDiff := GetFloatRegistryValue(key$, "CircleDiameterDiff", 0.1);
+    'attLollipopContrast% := GetIntRegistryValue%(key$, "LollipopContrast", 100);
+    'attLollipopStickContrast% := GetIntRegistryValue%(key$, "LollipopStickContrast", 100);
+	'attCueLineGap := GetFloatRegistryValue(key$, "CueLineGap", 0.5);
    
-    Profile(key$, "NoChangeCondition", 0, attNoChangeCondition%);  'not really used FROM REGISTRY anymore
-    Profile(key$, "NoChangeNoInfoCondition", 0, attNoChangeNoInfoCondition%);
-    Profile(key$, "SwapCueCircle", 0, attSwapCueCircle%);
-    Profile(key$, "CueCircleStrokeWidth", 0, attCueCircleStrokeWidth%);
-    
-    Profile(key$, "UseLowReward", 0, attUseLowReward%);
-    Profile(key$, "LowReward", 0, attLowReward%);
-    
-    Profile(key$, "CatchIsNoGo", 0, attCatchIsNoGo%);
-
-    Profile(key$, "DoOpto", 0, attDoOpto%);
-    
-	'Profile(key$, "LollipopCheck", 0, attLollipopCheck%);
-	'Profile(key$, "CueLinePct", "100.0", stmp$);
-    'attCueLinePct := val(stmp$);
-    'Profile(key$, "CircleDiameterDiff", "0.1", stmp$);
-    'attCircleDiameterDiff := val(stmp$);
-    'Profile(key$, "LollipopContrast", 100, attLollipopContrast%);
-    'Profile(key$, "LollipopStickContrast", 100, attLollipopStickContrast%);
-	'Profile(key$, "CueLineGap", "0.5", stmp$);
-    'attCueLineGap := val(stmp$);
-    
-    Profile(key$, "DoPhase", 1, attPhaseCheck%);
-    Profile(key$, "PhaseDeg", 1, attPhaseDeg%);
-    Profile(key$, "StartBlock", 1, attStartBlock%);
-    
-    
 end;
 
 proc SaveAttentionScriptParameters()
@@ -433,54 +406,50 @@ proc SaveAttentionScriptParameters()
 	var stmp$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
     
+	SetIntRegistryValue(key$, "NumberOfBlocks", attNumberOfBlocks%);
+	SetIntRegistryValue(key$, "TrialsPerBlock", attTrialsPerBlock%);
+    SetIntRegistryValue(key$, "EasyTrialsPerBlock", attEasyTrialsPerBlock%);
+    SetIntRegistryValue(key$, "DistracterOffForEasy", distracterOffForEasy%);
+    SetIntRegistryValue(key$, "DoUncatch", attDoUncatch%);
+    SetIntRegistryValue(key$, "NumPatches", attNumPatches%);
+    SetIntRegistryValue(key$, "UseFlashers", attUseFlashers%);
+    SetIntRegistryValue(key$, "GetGPFromMainStim", attGetGPFromMainStim%);
+    SetIntRegistryValue(key$, "UseCueCircles", attUseCueCircles%);
+    SetFloatRegistryValue(key$, "CueCircleExtraRadius", attCueCircleExtraRadius);
+	SetFloatRegistryValue(key$, "CatchTrialPercentage", attCatchTrialPercentage);
+    SetFloatRegistryValue(key$, "NoGoTrialPercentage", attNoGoTrialPercentage);
+	SetIntRegistryValue(key$, "BlockAlternate", attBlockAlternate%);
+    SetIntRegistryValue(key$, "NoBlockRand", attSelectRandomContrastEachTrial%);
+	SetIntRegistryValue(key$, "TrainingContrastCheck", attTrainingContrastCheck%);
+	SetIntRegistryValue(key$, "TrainingContrastPct", attTrainingContrastPct%);
+    SetIntRegistryValue(key$, "OnlyOneCatch", attOnlyOneCatch%);
+    SetIntRegistryValue(key$, "OneCatchContrast", attOneCatchContrast%);
+	SetIntRegistryValue(key$, "ContrastBase", attContrastBase%);
+	SetFloatRegistryValue(key$, "ContrastMax", attMaxContChange);
+	SetFloatRegistryValue(key$, "ContrastMin", attMinContChange);
+    SetIntRegistryValue(key$, "NContrastLevels", attNContLevels%);
+	SetFloatRegistryValue(key$, "AnswerPointDiameter", attAnswerPointDiameter);
+	SetFloatRegistryValue(key$, "AnswerPointOffset", attAnswerPointOffset);
+	SetFloatRegistryValue(key$, "AnswerPointWindowRadius", attAnswerPointWindowRadius);
+    SetIntRegistryValue(key$, "NoChangeCondition", attNoChangeCondition%);  'not really used FROM REGISTRY anymore
+    SetIntRegistryValue(key$, "NoChangeNoInfoCondition", attNoChangeNoInfoCondition%);
+    SetIntRegistryValue(key$, "SwapCueCircle", attSwapCueCircle%);  
+    SetIntRegistryValue(key$, "CueCircleStrokeWidth", attCueCircleStrokeWidth%);
+    SetIntRegistryValue(key$, "UseLowReward", attUseLowReward%);
+    SetIntRegistryValue(key$, "LowReward", attLowReward%);  
+    SetIntRegistryValue(key$, "CatchIsNoGo", attCatchIsNoGo%);    
+    SetIntRegistryValue(key$, "DoOpto", attDoOpto%);
+    SetIntRegistryValue(key$, "DoPhase", attPhaseCheck%);
+    SetIntRegistryValue(key$, "PhaseDeg", attPhaseDeg%);
+    SetIntRegistryValue(key$, "StartBlock", attStartBlock%);    
     
-	Profile(key$, "NumberOfBlocks", attNumberOfBlocks%);
-	Profile(key$, "TrialsPerBlock", attTrialsPerBlock%);
-    Profile(key$, "EasyTrialsPerBlock", attEasyTrialsPerBlock%);
-    Profile(key$, "DistracterOffForEasy", distracterOffForEasy%);
-    Profile(key$, "DoUncatch", attDoUncatch%);
-    Profile(key$, "NumPatches", attNumPatches%);
-    Profile(key$, "UseFlashers", attUseFlashers%);
-    Profile(key$, "GetGPFromMainStim", attGetGPFromMainStim%);
-    Profile(key$, "UseCueCircles", attUseCueCircles%);
-    Profile(key$, "CueCircleExtraRadius", str$(attCueCircleExtraRadius));
-	Profile(key$, "CatchTrialPercentage", str$(attCatchTrialPercentage));
-    Profile(key$, "NoGoTrialPercentage", str$(attNoGoTrialPercentage));
-	Profile(key$, "BlockAlternate", attBlockAlternate%);
-    Profile(key$, "NoBlockRand", attSelectRandomContrastEachTrial%);
-	Profile(key$, "TrainingContrastCheck", attTrainingContrastCheck%);
-	Profile(key$, "TrainingContrastPct", attTrainingContrastPct%);
-    Profile(key$, "OnlyOneCatch", attOnlyOneCatch%);
-    Profile(key$, "OneCatchContrast", attOneCatchContrast%);
-	Profile(key$, "ContrastBase", attContrastBase%);
-	Profile(key$, "ContrastMax", str$(attMaxContChange));
-	Profile(key$, "ContrastMin", str$(attMinContChange));
-    Profile(key$, "NContrastLevels", attNContLevels%);
-	Profile(key$, "AnswerPointDiameter", str$(attAnswerPointDiameter));
-	Profile(key$, "AnswerPointOffset", str$(attAnswerPointOffset));
-	Profile(key$, "AnswerPointWindowRadius", str$(attAnswerPointWindowRadius));
-    'Profile(key$, "AnswerPointWindowRadius", str$(1.5));
-    Profile(key$, "NoChangeCondition", attNoChangeCondition%);  'not really used FROM REGISTRY anymore
-    Profile(key$, "NoChangeNoInfoCondition", attNoChangeNoInfoCondition%);
-    Profile(key$, "SwapCueCircle", attSwapCueCircle%);  
-    Profile(key$, "CueCircleStrokeWidth", attCueCircleStrokeWidth%);
-    Profile(key$, "UseLowReward", attUseLowReward%);
-    Profile(key$, "LowReward", attLowReward%);  
-    Profile(key$, "CatchIsNoGo", attCatchIsNoGo%);    
-    Profile(key$, "DoOpto", attDoOpto%); 
-    
-	'Profile(key$, "LollipopCheck", attLollipopCheck%);
-	'Profile(key$, "CueLinePct", str$(attCueLinePct));
-    'Profile(key$, "CircleDiameterDiff", str$(attCircleDiameterDiff));
-    'Profile(key$, "LollipopContrast", attLollipopContrast%);
-    'Profile(key$, "LollipopContrast", attLollipopContrast%);
-    'Profile(key$, "LollipopStickContrast", attLollipopStickContrast%);
-	'Profile(key$, "CueLineGap", str$(attCueLineGap));
-    
-    Profile(key$, "DoPhase", attPhaseCheck%);
-    Profile(key$, "PhaseDeg", attPhaseDeg%);
-    Profile(key$, "StartBlock", attStartBlock%);
-
+	'SetIntRegistryValue(key$, "LollipopCheck", attLollipopCheck%);
+	'SetFloatRegistryValue(key$, "CueLinePct", attCueLinePct);
+    'SetFloatRegistryValue(key$, "CircleDiameterDiff", attCircleDiameterDiff);
+    'SetIntRegistryValue(key$, "LollipopContrast", attLollipopContrast%);
+    'SetIntRegistryValue(key$, "LollipopContrast", attLollipopContrast%);
+    'SetIntRegistryValue(key$, "LollipopStickContrast", attLollipopStickContrast%);
+	'SetFloatRegistryValue(key$, "CueLineGap", attCueLineGap);
     
 end;
 
@@ -492,47 +461,21 @@ proc GetTimingDialogParameters()
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
     
     
-	Profile(key$, "FixationCueMinTime", "1.0", stmp$);
-	attFixationCueMinTime := val(stmp$);
+	attFixationCueMinTime := GetFloatRegistryValue(key$, "FixationCueMinTime", 1.0);
+	attFixationCueMaxTime := GetFloatRegistryValue(key$, "FixationCueMaxTime", 1.0);
+	attHazardMinTime := GetFloatRegistryValue(key$, "HazardMinTime", 0.5);
+	attHazardExpMeanTime := GetFloatRegistryValue(key$, "HazardExpMeanTime", 1.0);
+   	attHazardCutoffTime := GetFloatRegistryValue(key$, "HazardCutoffTime", 5.0);
+	attAcquisitionTime := GetFloatRegistryValue(key$, "AcquisitionTime", 1.0);
+	attInterTrialTime := GetFloatRegistryValue(key$, "InterTrialTime", 1.0);
+	attTimeToAnswer := GetFloatRegistryValue(key$, "TimeToAnswer", 1.0);
+    attNoChangeDuration := GetFloatRegistryValue(key$, "NoChangeDuration", 1.0);
+	attAbortWaitTime := GetFloatRegistryValue(key$, "AbortWaitTime", 1.0);
+    attMissPenalty := GetFloatRegistryValue(key$, "MissPenalty", 1.0);
+    attFalseAlarmWaitTime := GetFloatRegistryValue(key$, "FalseAlarmWaitTime", 1.0);
+    attFalseAlarmCheckWindow := GetFloatRegistryValue(key$, "FalseAlarmCheckWindow", 1.0);
     
-	Profile(key$, "FixationCueMaxTime", "1.0", stmp$);
-	attFixationCueMaxTime := val(stmp$);
-    
-    '	Profile(key$, "WhitePointTime", "1.0", stmp$);
-    '	attWhitePointTime := val(stmp$);
-    
-	Profile(key$, "HazardMinTime", "0.5", stmp$);
-	attHazardMinTime := val(stmp$);
-    
-	Profile(key$, "HazardExpMeanTime", "1.0", stmp$);
-	attHazardExpMeanTime := val(stmp$);
-    
-   	Profile(key$, "HazardCutoffTime", "5.0", stmp$);
-	attHazardCutoffTime := val(stmp$);
-    
-	Profile(key$, "AcquisitionTime", "1.0", stmp$);
-	attAcquisitionTime := val(stmp$);
-    
-	Profile(key$, "InterTrialTime", "1.0", stmp$);
-	attInterTrialTime := val(stmp$);
-    
-	Profile(key$, "TimeToAnswer", "1.0", stmp$);
-	attTimeToAnswer := val(stmp$);
-    
-    Profile(key$, "NoChangeDuration", "1.0", stmp$);
-	attNoChangeDuration := val(stmp$);
-    
-	Profile(key$, "AbortWaitTime", "1.0", stmp$);
-	attAbortWaitTime := val(stmp$);
-    
-    Profile(key$, "MissPenalty", "1.0", stmp$);
-	attMissPenalty := val(stmp$);
-    
-    Profile(key$, "FalseAlarmWaitTime", "1.0", stmp$);
-	attFalseAlarmWaitTime := val(stmp$);
-    
-    Profile(key$, "FalseAlarmCheckWindow", "1.0", stmp$);
-	attFalseAlarmCheckWindow := val(stmp$);
+    '	attWhitePointTime := GetFloatRegistryValue(key$, "WhitePointTime", 1.0);
     
 end;
 
@@ -541,20 +484,21 @@ proc SaveTimingDialogParameters()
 	var stmp$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
     
-	Profile(key$, "FixationCueMinTime", str$(attFixationCueMinTime));
-	Profile(key$, "FixationCueMaxTime", str$(attFixationCueMaxTime));
-    '	Profile(key$, "WhitePointTime", str$(attWhitePointTime));
-	Profile(key$, "HazardMinTime", str$(attHazardMinTime));
-	Profile(key$, "HazardExpMeanTime", str$(attHazardExpMeanTime));
-    Profile(key$, "HazardCutoffTime", str$(attHazardCutoffTime));
-	Profile(key$, "AcquisitionTime", str$(attAcquisitionTime));
-	Profile(key$, "AbortWaitTime", str$(attAbortWaitTime));
-    Profile(key$, "MissPenalty", str$(attMissPenalty));
-    Profile(key$, "FalseAlarmWaitTime", str$(attFalseAlarmWaitTime));
-    Profile(key$, "FalseAlarmCheckWindow", str$(attFalseAlarmCheckWindow));
-	Profile(key$, "InterTrialTime", str$(attInterTrialTime));
-	Profile(key$, "TimeToAnswer", str$(attTimeToAnswer));
-    Profile(key$, "NoChangeDuration", str$(attNoChangeDuration));
+	SetFloatRegistryValue(key$, "FixationCueMinTime", attFixationCueMinTime);
+	SetFloatRegistryValue(key$, "FixationCueMaxTime", attFixationCueMaxTime);
+	SetFloatRegistryValue(key$, "HazardMinTime", attHazardMinTime);
+	SetFloatRegistryValue(key$, "HazardExpMeanTime", attHazardExpMeanTime);
+    SetFloatRegistryValue(key$, "HazardCutoffTime", attHazardCutoffTime);
+	SetFloatRegistryValue(key$, "AcquisitionTime", attAcquisitionTime);
+	SetFloatRegistryValue(key$, "AbortWaitTime", attAbortWaitTime);
+    SetFloatRegistryValue(key$, "MissPenalty", attMissPenalty);
+    SetFloatRegistryValue(key$, "FalseAlarmWaitTime", attFalseAlarmWaitTime);
+    SetFloatRegistryValue(key$, "FalseAlarmCheckWindow", attFalseAlarmCheckWindow);
+	SetFloatRegistryValue(key$, "InterTrialTime", attInterTrialTime);
+	SetFloatRegistryValue(key$, "TimeToAnswer", attTimeToAnswer);
+    SetFloatRegistryValue(key$, "NoChangeDuration", attNoChangeDuration);
+    
+    '	SetFloatRegistryValue(key$, "WhitePointTime", attWhitePointTime);
     
 end;
 
@@ -566,8 +510,7 @@ proc GetColorsDialogParameters()
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
     
 
-	Profile(key$, "BackgroundColor", "gray", attBackgroundColor$);
-    
+	attBackgroundColor$ := GetStringRegistryValue$(key$, "BackgroundColor", "gray");
     
     if InStr(attBackgroundColor$, "(") = 1 then
         if ParseColor%(attBackgroundColor$, attBackgroundRed%, attBackgroundGreen%, attBackgroundBlue%) <> 0 then
@@ -575,46 +518,45 @@ proc GetColorsDialogParameters()
         endif
     endif
     
-
-    Profile(key$, "CueCircleContrastStim", 0, attCueCircleContrastAttend%);
-    Profile(key$, "CueCircleContrastD1", 0, attCueCircleContrastIgnore1%);
-    Profile(key$, "CueCircleContrastD2", 0, attCueCircleContrastIgnore2%);
-    Profile(key$, "CueCircleContrastD3", 0, attCueCircleContrastIgnore3%);
-    Profile(key$, "CueCircleContrastD4", 0, attCueCircleContrastIgnore4%);
-    Profile(key$, "CustomGratingColorsCheck", 0, attCustomGratingColorCheck%);
-    Profile(key$, "CustomGratingColorsStimFromRed", 0, attCustomGratingColorStimFrom%[0]);
-    Profile(key$, "CustomGratingColorsStimFromGreen", 0, attCustomGratingColorStimFrom%[1]);
-    Profile(key$, "CustomGratingColorsStimFromBlue", 0, attCustomGratingColorStimFrom%[2]);
-    Profile(key$, "CustomGratingColorsStimToRed", 255, attCustomGratingColorStimTo%[0]);
-    Profile(key$, "CustomGratingColorsStimToGreen", 255, attCustomGratingColorStimTo%[1]);
-    Profile(key$, "CustomGratingColorsStimToBlue", 255, attCustomGratingColorStimTo%[2]);
-    Profile(key$, "CustomGratingColorsDistractorFromRed", 0, attCustomGratingColorDistractorFrom%[0]);
-    Profile(key$, "CustomGratingColorsDistractorFromGreen", 0, attCustomGratingColorDistractorFrom%[1]);
-    Profile(key$, "CustomGratingColorsDistractorFromBlue", 0, attCustomGratingColorDistractorFrom%[2]);
-    Profile(key$, "CustomGratingColorsDistractorToRed", 255, attCustomGratingColorDistractorTo%[0]);
-    Profile(key$, "CustomGratingColorsDistractorToGreen", 255, attCustomGratingColorDistractorTo%[1]);
-    Profile(key$, "CustomGratingColorsDistractorToBlue", 255, attCustomGratingColorDistractorTo%[2]);
-    Profile(key$, "CueCircleColorAttendR", 0, attendRGB%[0]);
-    Profile(key$, "CueCircleColorAttendG", 0, attendRGB%[1]);
-    Profile(key$, "CueCircleColorAttendB", 0, attendRGB%[2]);
-    Profile(key$, "CueCircleColorIgnore1R", 0, ignore1RGB%[0]);
-    Profile(key$, "CueCircleColorIgnore1G", 0, ignore1RGB%[1]);
-    Profile(key$, "CueCircleColorIgnore1B", 0, ignore1RGB%[2]);
-    Profile(key$, "CueCircleColorIgnore2R", 0, ignore2RGB%[0]);
-    Profile(key$, "CueCircleColorIgnore2G", 0, ignore2RGB%[1]);
-    Profile(key$, "CueCircleColorIgnore2B", 0, ignore2RGB%[2]);
-    Profile(key$, "CueCircleColorIgnore3R", 0, ignore3RGB%[0]);
-    Profile(key$, "CueCircleColorIgnore3G", 0, ignore3RGB%[1]);
-    Profile(key$, "CueCircleColorIgnore3B", 0, ignore3RGB%[2]);
-    Profile(key$, "CueCircleColorIgnore4R", 0, ignore4RGB%[0]);
-    Profile(key$, "CueCircleColorIgnore4G", 0, ignore4RGB%[1]);
-    Profile(key$, "CueCircleColorIgnore4B", 0, ignore4RGB%[2]);
-    Profile(key$, "CueCircleColorNoAttenR", 0, noattenRGB%[0]);
-    Profile(key$, "CueCircleColorNoAttenG", 0, noattenRGB%[1]);
-    Profile(key$, "CueCircleColorNoAttenB", 0, noattenRGB%[2]);
-    Profile(key$, "CueCircleColorNoInfoR", 0, noinfoRGB%[0]);
-    Profile(key$, "CueCircleColorNoInfoG", 0, noinfoRGB%[1]);
-    Profile(key$, "CueCircleColorNoInfoB", 0, noinfoRGB%[2]);
+    attCueCircleContrastAttend% := GetIntRegistryValue%(key$, "CueCircleContrastStim", 0);
+    attCueCircleContrastIgnore1% := GetIntRegistryValue%(key$, "CueCircleContrastD1", 0);
+    attCueCircleContrastIgnore2% := GetIntRegistryValue%(key$, "CueCircleContrastD2", 0);
+    attCueCircleContrastIgnore3% := GetIntRegistryValue%(key$, "CueCircleContrastD3", 0);
+    attCueCircleContrastIgnore4% := GetIntRegistryValue%(key$, "CueCircleContrastD4", 0);
+    attCustomGratingColorCheck% := GetIntRegistryValue%(key$, "CustomGratingColorsCheck", 0);
+    attCustomGratingColorStimFrom%[0] := GetIntRegistryValue%(key$, "CustomGratingColorsStimFromRed", 0);
+    attCustomGratingColorStimFrom%[1] := GetIntRegistryValue%(key$, "CustomGratingColorsStimFromGreen", 0);
+    attCustomGratingColorStimFrom%[2] := GetIntRegistryValue%(key$, "CustomGratingColorsStimFromBlue", 0);
+    attCustomGratingColorStimTo%[0] := GetIntRegistryValue%(key$, "CustomGratingColorsStimToRed", 255);
+    attCustomGratingColorStimTo%[1] := GetIntRegistryValue%(key$, "CustomGratingColorsStimToGreen", 255);
+    attCustomGratingColorStimTo%[2] := GetIntRegistryValue%(key$, "CustomGratingColorsStimToBlue", 255);
+    attCustomGratingColorDistractorFrom%[0] := GetIntRegistryValue%(key$, "CustomGratingColorsDistractorFromRed", 0);
+    attCustomGratingColorDistractorFrom%[1] := GetIntRegistryValue%(key$, "CustomGratingColorsDistractorFromGreen", 0);
+    attCustomGratingColorDistractorFrom%[2] := GetIntRegistryValue%(key$, "CustomGratingColorsDistractorFromBlue", 0);
+    attCustomGratingColorDistractorTo%[0] := GetIntRegistryValue%(key$, "CustomGratingColorsDistractorToRed", 255);
+    attCustomGratingColorDistractorTo%[1] := GetIntRegistryValue%(key$, "CustomGratingColorsDistractorToGreen", 255);
+    attCustomGratingColorDistractorTo%[2] := GetIntRegistryValue%(key$, "CustomGratingColorsDistractorToBlue", 255);
+    attendRGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorAttendR", 0);
+    attendRGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorAttendG", 0);
+    attendRGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorAttendB", 0);
+    ignore1RGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorIgnore1R", 0);
+    ignore1RGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorIgnore1G", 0);
+    ignore1RGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorIgnore1B", 0);
+    ignore2RGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorIgnore2R", 0);
+    ignore2RGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorIgnore2G", 0);
+    ignore2RGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorIgnore2B", 0);
+    ignore3RGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorIgnore3R", 0);
+    ignore3RGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorIgnore3G", 0);
+    ignore3RGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorIgnore3B", 0);
+    ignore4RGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorIgnore4R", 0);
+    ignore4RGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorIgnore4G", 0);
+    ignore4RGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorIgnore4B", 0);
+    noattenRGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorNoAttenR", 0);
+    noattenRGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorNoAttenG", 0);
+    noattenRGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorNoAttenB", 0);
+    noinfoRGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorNoInfoR", 0);
+    noinfoRGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorNoInfoG", 0);
+    noinfoRGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorNoInfoB", 0);
     
 end;
 
@@ -624,46 +566,46 @@ proc SaveColorsDialogParameters()
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
     
 
-	Profile(key$, "BackgroundColor", attBackgroundColor$);
-    Profile(key$, "CueCircleContrastStim", attCueCircleContrastAttend%);
-    Profile(key$, "CueCircleContrastD1", attCueCircleContrastIgnore1%);
-    Profile(key$, "CueCircleContrastD2", attCueCircleContrastIgnore2%);
-    Profile(key$, "CueCircleContrastD3", attCueCircleContrastIgnore3%);
-    Profile(key$, "CueCircleContrastD4", attCueCircleContrastIgnore4%);  
-    Profile(key$, "CustomGratingColorsCheck", attCustomGratingColorCheck%);
-    Profile(key$, "CustomGratingColorsStimFromRed", attCustomGratingColorStimFrom%[0]);
-    Profile(key$, "CustomGratingColorsStimFromGreen", attCustomGratingColorStimFrom%[1]);
-    Profile(key$, "CustomGratingColorsStimFromBlue", attCustomGratingColorStimFrom%[2]);
-    Profile(key$, "CustomGratingColorsStimToRed", attCustomGratingColorStimTo%[0]);
-    Profile(key$, "CustomGratingColorsStimToGreen", attCustomGratingColorStimTo%[1]);
-    Profile(key$, "CustomGratingColorsStimToBlue", attCustomGratingColorStimTo%[2]);
-    Profile(key$, "CustomGratingColorsDistractorFromRed", attCustomGratingColorDistractorFrom%[0]);
-    Profile(key$, "CustomGratingColorsDistractorFromGreen", attCustomGratingColorDistractorFrom%[1]);
-    Profile(key$, "CustomGratingColorsDistractorFromBlue", attCustomGratingColorDistractorFrom%[2]);
-    Profile(key$, "CustomGratingColorsDistractorToRed", attCustomGratingColorDistractorTo%[0]);
-    Profile(key$, "CustomGratingColorsDistractorToGreen", attCustomGratingColorDistractorTo%[1]);
-    Profile(key$, "CustomGratingColorsDistractorToBlue", attCustomGratingColorDistractorTo%[2]);
-    Profile(key$, "CueCircleColorAttendR", attendRGB%[0]);
-    Profile(key$, "CueCircleColorAttendG", attendRGB%[1]);
-    Profile(key$, "CueCircleColorAttendB", attendRGB%[2]);
-    Profile(key$, "CueCircleColorIgnore1R", ignore1RGB%[0]);
-    Profile(key$, "CueCircleColorIgnore1G", ignore1RGB%[1]);
-    Profile(key$, "CueCircleColorIgnore1B", ignore1RGB%[2]);
-    Profile(key$, "CueCircleColorIgnore2R", ignore2RGB%[0]);
-    Profile(key$, "CueCircleColorIgnore2G", ignore2RGB%[1]);
-    Profile(key$, "CueCircleColorIgnore2B", ignore2RGB%[2]);
-    Profile(key$, "CueCircleColorIgnore3R", ignore3RGB%[0]);
-    Profile(key$, "CueCircleColorIgnore3G", ignore3RGB%[1]);
-    Profile(key$, "CueCircleColorIgnore3B", ignore3RGB%[2]);
-    Profile(key$, "CueCircleColorIgnore4R", ignore4RGB%[0]);
-    Profile(key$, "CueCircleColorIgnore4G", ignore4RGB%[1]);
-    Profile(key$, "CueCircleColorIgnore4B", ignore4RGB%[2]);
-    Profile(key$, "CueCircleColorNoAttenR", noattenRGB%[0]);
-    Profile(key$, "CueCircleColorNoAttenG", noattenRGB%[1]);
-    Profile(key$, "CueCircleColorNoAttenB", noattenRGB%[2]);
-    Profile(key$, "CueCircleColorNoInfoR", noinfoRGB%[0]);
-    Profile(key$, "CueCircleColorNoInfoG", noinfoRGB%[1]);
-    Profile(key$, "CueCircleColorNoInfoB", noinfoRGB%[2]);
+	SetStringRegistryValue(key$, "BackgroundColor", attBackgroundColor$);
+    SetIntRegistryValue(key$, "CueCircleContrastStim", attCueCircleContrastAttend%);
+    SetIntRegistryValue(key$, "CueCircleContrastD1", attCueCircleContrastIgnore1%);
+    SetIntRegistryValue(key$, "CueCircleContrastD2", attCueCircleContrastIgnore2%);
+    SetIntRegistryValue(key$, "CueCircleContrastD3", attCueCircleContrastIgnore3%);
+    SetIntRegistryValue(key$, "CueCircleContrastD4", attCueCircleContrastIgnore4%);  
+    SetIntRegistryValue(key$, "CustomGratingColorsCheck", attCustomGratingColorCheck%);
+    SetIntRegistryValue(key$, "CustomGratingColorsStimFromRed", attCustomGratingColorStimFrom%[0]);
+    SetIntRegistryValue(key$, "CustomGratingColorsStimFromGreen", attCustomGratingColorStimFrom%[1]);
+    SetIntRegistryValue(key$, "CustomGratingColorsStimFromBlue", attCustomGratingColorStimFrom%[2]);
+    SetIntRegistryValue(key$, "CustomGratingColorsStimToRed", attCustomGratingColorStimTo%[0]);
+    SetIntRegistryValue(key$, "CustomGratingColorsStimToGreen", attCustomGratingColorStimTo%[1]);
+    SetIntRegistryValue(key$, "CustomGratingColorsStimToBlue", attCustomGratingColorStimTo%[2]);
+    SetIntRegistryValue(key$, "CustomGratingColorsDistractorFromRed", attCustomGratingColorDistractorFrom%[0]);
+    SetIntRegistryValue(key$, "CustomGratingColorsDistractorFromGreen", attCustomGratingColorDistractorFrom%[1]);
+    SetIntRegistryValue(key$, "CustomGratingColorsDistractorFromBlue", attCustomGratingColorDistractorFrom%[2]);
+    SetIntRegistryValue(key$, "CustomGratingColorsDistractorToRed", attCustomGratingColorDistractorTo%[0]);
+    SetIntRegistryValue(key$, "CustomGratingColorsDistractorToGreen", attCustomGratingColorDistractorTo%[1]);
+    SetIntRegistryValue(key$, "CustomGratingColorsDistractorToBlue", attCustomGratingColorDistractorTo%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorAttendR", attendRGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorAttendG", attendRGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorAttendB", attendRGB%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore1R", ignore1RGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore1G", ignore1RGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore1B", ignore1RGB%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore2R", ignore2RGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore2G", ignore2RGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore2B", ignore2RGB%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore3R", ignore3RGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore3G", ignore3RGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore3B", ignore3RGB%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore4R", ignore4RGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore4G", ignore4RGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore4B", ignore4RGB%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorNoAttenR", noattenRGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorNoAttenG", noattenRGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorNoAttenB", noattenRGB%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorNoInfoR", noinfoRGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorNoInfoG", noinfoRGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorNoInfoB", noinfoRGB%[2]);
 
     
 end;
@@ -2852,7 +2794,7 @@ proc InitializeWindows()
         var key$;
         var fn$;
         key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
-        Profile(key$, "microS2Rfile", "x", fn$);
+        fn$ := GetStringRegistryValue$(key$, "microS2Rfile", "x");
         printlog("S2R file name %s was retrieved from registry\n",fn$);
         
         'Apply the ,s2r resource file to the current data window, which will apply the spike shape templates
@@ -3147,7 +3089,7 @@ end;
 '	var key$;
 '	var stmp$;
 '	key$ := "AlertRig\\" + GetCurrentConfiguration$() + "\\Gratings";
-'	Profile(key$, type$, "", stmp$);
+'	stmp$ := GetStringRegistryValue$(key$, type$, "");
 '	return stmp$;
 'end;
 
@@ -3287,7 +3229,7 @@ func Stop%()
         fn$ := fn$ + ".s2r";
         var key$;
         key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
-        Profile(key$, "microS2Rfile", fn$);
+        SetStringRegistryValue(key$, "microS2Rfile", fn$);
         printlog("S2R file name %s was saved to registry\n",fn$);
     endif;
     
@@ -5190,27 +5132,13 @@ proc GetFlasherDialogParameters()
 	var key$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
     
-
-	Profile(key$, "FlasherDur", "1.0", stmp$);
-	attFlasherDur := val(stmp$);
-    
-    Profile(key$, "FlasherTemporalBuffer", "1.0", stmp$);
-	attFlasherTemporalBuffer := val(stmp$);
-    
-    Profile(key$, "FlasherSpatialBuffer", "1.0", stmp$);
-	attFlasherSpatialBuffer := val(stmp$);
-    
-    Profile(key$, "FlasherMaxDist", "1.0", stmp$);
-	attFlasherMaxDist := val(stmp$);
-    
-    Profile(key$, "FlasherHazardValue", "1.0", stmp$);
-	attFlasherHazardValue := val(stmp$);
-    
-    Profile(key$, "FlasherWidth", "1.0", stmp$);
-	attFlasherWidth := val(stmp$);
-    
-    Profile(key$, "FlasherHeight", "1.0", stmp$);
-	attFlasherHeight := val(stmp$);
+	attFlasherDur := GetFloatRegistryValue(key$, "FlasherDur", 1.0);
+    attFlasherTemporalBuffer := GetFloatRegistryValue(key$, "FlasherTemporalBuffer", 1.0);
+    attFlasherSpatialBuffer := GetFloatRegistryValue(key$, "FlasherSpatialBuffer", 1.0);;
+    attFlasherMaxDist := GetFloatRegistryValue(key$, "FlasherMaxDist", 1.0);
+    attFlasherHazardValue := GetFloatRegistryValue(key$, "FlasherHazardValue", 1.0);
+    attFlasherWidth := GetFloatRegistryValue(key$, "FlasherWidth", 1.0);
+    attFlasherHeight := GetFloatRegistryValue(key$, "FlasherHeight", 1.0);
 
 end;
 
@@ -5219,13 +5147,13 @@ proc SaveFlasherDialogParameters()
 	var stmp$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
     
-	Profile(key$, "FlasherDur", str$(attFlasherDur));
-    Profile(key$, "FlasherTemporalBuffer", str$(attFlasherTemporalBuffer));
-    Profile(key$, "FlasherSpatialBuffer", str$(attFlasherSpatialBuffer));
-    Profile(key$, "FlasherMaxDist", str$(attFlasherMaxDist));
-    Profile(key$, "FlasherHazardValue", str$(attFlasherHazardValue));
-    Profile(key$, "FlasherWidth", str$(attFlasherWidth));
-    Profile(key$, "FlasherHeight", str$(attFlasherHeight));
+	SetFloatRegistryValue(key$, "FlasherDur", attFlasherDur);
+    SetFloatRegistryValue(key$, "FlasherTemporalBuffer", attFlasherTemporalBuffer);
+    SetFloatRegistryValue(key$, "FlasherSpatialBuffer", attFlasherSpatialBuffer);
+    SetFloatRegistryValue(key$, "FlasherMaxDist", attFlasherMaxDist);
+    SetFloatRegistryValue(key$, "FlasherHazardValue", attFlasherHazardValue);
+    SetFloatRegistryValue(key$, "FlasherWidth", attFlasherWidth);
+    SetFloatRegistryValue(key$, "FlasherHeight", attFlasherHeight);
     
 end;
 
