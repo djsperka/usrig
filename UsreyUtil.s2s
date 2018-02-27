@@ -254,6 +254,7 @@ end;
 func SelectConfigurationDialog%()
 	var s$;
 	var i%;
+    var gr$, gr2$, gr3$, gr4$, gr5$, gr6$; 
 	var iReturn% := 0;
 	GetConfigurationParameters();
 	s$ := CurrentConfiguration$;
@@ -311,7 +312,7 @@ func SelectConfigurationDialog%()
     DlgCreate("Select configuration", 25, 10);
     DlgList(1,"Action",actionList$[],3);
     DlgList(2,"Select Configuration",configList$[],lengthConfigList%);
-    DlgString(3,"New Configuration Name",20);
+    DlgString(3,"New Configuration Name - will copy values from selected",20);
     
     DlgAllow(0, 0, SelectConfigurationDialogChanged%);
     
@@ -325,10 +326,44 @@ func SelectConfigurationDialog%()
             iReturn% := 1;
         case thisAction% = 1 then 'add to configuration list (and select)
             if len(newConfigName$) > 0 then 
+                'First, get the selected configuration from the dialog
+                CurrentConfiguration$ := configList$[configListIndex%];
+                'Save this as the current configuration
+                SaveConfigurationParameters();
+                'Using this configuration, grab ALL config dialog parameters
+                GetDataParameters();
+                GetDAQParameters();
+                GetElectrodeParameters();
+                'GetDailyTotals();  'Maybe not this one, actually...
+                GetFixationPointParameters();
+                gr$ := GetGratingParameters$("Stimulus");
+                gr2$ := GetGratingParameters$("SlaveStimulus");
+                gr3$ := GetGratingParameters$("Distractor1");
+                gr4$ := GetGratingParameters$("Distractor2");
+                gr5$ := GetGratingParameters$("Distractor3");
+                gr6$ := GetGratingParameters$("Distractor4");
+                
+                'Put new config name into list
                 ConfigurationList$ := ConfigurationList$ + "|" + newConfigName$;
+                'Update to new configuration name, update index
                 CurrentConfiguration$ := newConfigName$;
                 configListIndex% := lengthConfigList%;
+                'Save new config as current configuration
                 SaveConfigurationParameters();
+                'Using this configuration, save ALL config dialog parameters grabbed from initially-selected config
+                SaveDataParameters();
+                SaveDAQParameters();
+                SaveElectrodeParameters();
+                'SaveDailyTotals();  'Maybe not this one, actually...
+                SaveFixationPointParameters();
+                SaveGratingParameters("Stimulus", gr$);
+                SaveGratingParameters("SlaveStimulus", gr2$);
+                SaveGratingParameters("Distractor1", gr3$);
+                SaveGratingParameters("Distractor2", gr4$);
+                SaveGratingParameters("Distractor3", gr5$);
+                SaveGratingParameters("Distractor4", gr6$);
+                
+                
                 iReturn% := 1;
             else
                 message("No Name Entered!");
@@ -355,10 +390,10 @@ end;
 
 func SelectConfigurationDialogChanged%(item%)
     if DlgValue(1) = 1 then  'if adding configuration
-        DlgEnable(0,2);  'Disable selection
+        'DlgEnable(0,2);  'Disable selection
         DlgEnable(1,3);  'Enable typing
     else  'otherwise
-        DlgEnable(1,2);  'Enable selection
+        'DlgEnable(1,2);  'Enable selection
         DlgEnable(0,3);  'Disable typing
     endif;
     return 1;
