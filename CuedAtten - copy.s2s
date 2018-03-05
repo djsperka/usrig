@@ -1702,34 +1702,6 @@ proc ChangeStateTo(stateTo%, tStart)
 	if tStart > 0 then tStateStart := tStart; endif;
 end;
 
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'
-' ParseGratingParametersBrief%(gr$, &x, &y, &w, &h);
-' 
-' Given a grating parameter list, parse the individual values in to the given variable list. 
-' Simpler version than the full-blown one, as it doesn't return all values. 
-' This version will work for all possible variable list lengths - with/without phase/cv/pattern/aperture/inner/outer
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-
-func ParseGratingParametersBrief%(gr$, &x, &y, &w, &h)
-    var status% := 0;
-    var n%;
-	ReadSetup("", "", "", "", ",");
-	n% := ReadStr(gr$, x, y, w, h);
-    ReadSetup();
-    if n% <> 4 then status% := -1; endif;
-    return n%;
-end
-
-
-' Get grating p[arameters from registry AlertRig\\(config)\\Gratings\\type$
-func GetGratingParameters$(type$)
-	var key$;
-	var stmp$;
-	key$ := "AlertRig\\" + GetCurrentConfiguration$() + "\\Gratings";
-	Profile(key$, type$, "", stmp$);
-	return stmp$;
-end;
 
 
 
