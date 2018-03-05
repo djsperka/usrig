@@ -806,16 +806,6 @@ proc InitializeToolbar()
 
 end;
 
-'hja edit
-' Get grating p[arameters from registry AlertRig\\(config)\\Gratings\\type$
-'func GetGratingParameters$(type$)
-	'var key$;
-	'var stmp$;
-	'key$ := "AlertRig\\" + GetCurrentConfiguration$() + "\\Gratings";
-	'Profile(key$, type$, "", stmp$);
-	'return stmp$;
-'end;
-
 
 ' Used to hard-quit from toolbar. This will close data files without saving!!! 
 ' It is important that this function be disabled once sampling is started!!!
@@ -832,6 +822,7 @@ func Start%()
 	var FixationPoint$;
     var DualTrigger$ := "";
 	var Extras$;
+    var GrParams$;
 	var Distractors$:="";
     var DistractorFlag$ := " -g ";  ' -k for fixstim/remote
     var DistractorFixstimFlag$ := "";
@@ -867,47 +858,47 @@ func Start%()
 
 		' Use distractors? 
 		if fixStimulusFlag% = 1 then
-			Extras$ := GetGratingParameters$("Stimulus");
-			if Len(Extras$) = 0 then
+			GrParams$ := GetGratingParameters$("Stimulus");
+			if Len(GrParams$) = 0 then
 				Message("Warning! Use stimulus flag is set, but stimulus grating is not configured!");
 			else
-				Distractors$ += DistractorFlag$ + Extras$;
+				Distractors$ += DistractorFlag$ + GrParams$;
 			endif
 		endif
 		
 		if fixDistractor1Flag% = 1 then
-			Extras$ := GetGratingParameters$("Distractor1");
-			if Len(Extras$) = 0 then
+			GrParams$ := GetGratingParameters$("Distractor1");
+			if Len(GrParams$) = 0 then
 				Message("Warning! Use distractor 1 flag is set, but distractor 1 grating is not configured!");
 			else
-				Distractors$ += DistractorFlag$ + Extras$;
+				Distractors$ += DistractorFlag$ + GrParams$;
 			endif
 		endif
 		
 		if fixDistractor2Flag% = 1 then
-			Extras$ := GetGratingParameters$("Distractor2");
-			if Len(Extras$) = 0 then
+			GrParams$ := GetGratingParameters$("Distractor2");
+			if Len(GrParams$) = 0 then
 				Message("Warning! Use distractor 2 flag is set, but distractor 2 grating is not configured!");
 			else
-				Distractors$ += DistractorFlag$ + Extras$;
+				Distractors$ += DistractorFlag$ + GrParams$;
 			endif
 		endif
 		
 		if fixDistractor3Flag% = 1 then
-			Extras$ := GetGratingParameters$("Distractor3");
-			if Len(Extras$) = 0 then
+			GrParams$ := GetGratingParameters$("Distractor3");
+			if Len(GrParams$) = 0 then
 				Message("Warning! Use distractor 3 flag is set, but distractor 3 grating is not configured!");
 			else
-				Distractors$ += DistractorFlag$ + Extras$;
+				Distractors$ += DistractorFlag$ + GrParams$;
 			endif
 		endif
 		
 		if fixDistractor4Flag% = 1 then
-			Extras$ := GetGratingParameters$("Distractor4");
-			if Len(Extras$) = 0 then
+			GrParams$ := GetGratingParameters$("Distractor4");
+			if Len(GrParams$) = 0 then
 				Message("Warning! Use distractor 4 flag is set, but distractor 4 grating is not configured!");
 			else
-				Distractors$ += DistractorFlag$ + Extras$;
+				Distractors$ += DistractorFlag$ + GrParams$;
 			endif
 		endif
 		
