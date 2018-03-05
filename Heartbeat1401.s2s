@@ -265,9 +265,12 @@ func Start%()
     var dist1Spec$;
     var Opener$;
     
+    iState% := stateInit%;
     
     SampleStart(0); 'Start sampling now
     'endif;
+    
+    View(DataWindow%).XRange(-1,8);  'I think this will set the x-axis to scroll, with an 8-second width
     
 	' Set Sequencer Variable #3 based on juicer type 
     SetJuicerSequencerVariable%();
@@ -422,13 +425,16 @@ func IdleProcessing%()
         ChangeStateTo(stateHeartBeat%,tNow);
         
     case iState% = stateHeartBeat% then
+
         if tNow > tStateStart + 1 then
             SafeSampleKey("1");
+            tStateStart := tNow;  'just cycle this back, we will give pulses every second until we quit
         endif;
-        tStateStart := tNow;  'just cycle this back, we will give pulses every second until we quit
+        
         
     endcase
     
+    return iStatus%;
     
 end
 
