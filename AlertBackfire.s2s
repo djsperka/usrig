@@ -1,6 +1,10 @@
 ' $Log$
+' Revision 1.12  2018/03/05 18:35:18  devel
+' An #include update to UsreyUtil caused two problems here.  The first, which happened with many other functions, was that there is a local copy of GetGratingParameters that is now in conflict with an included version.  The local copy has been removed.  The second is that #include order has now changed so that UsreyDAQ cannot be included before UsreyUtil.  This appears to be the only function where that now-misordering of #includes occurred.  -jj
+'
 ' Revision 1.11  2016/03/03 00:16:44  devel
-' There has been a longstanding bug where the start and end times for a ChanMeasure looking at the eye channels are reversed. On Spike6 this does not cause any problem, but on Spike8 it now returns 0 instead of an actual eye position.  Now fixed for Spike8.  -jj
+' There has been a longstanding bug where the start and end times for a ChanMeasure looking at the eye channels are reversed. 
+' On Spike6 this does not cause any problem, but on Spike8 it now returns 0 instead of an actual eye position.  Now fixed for Spike8.  -jj
 '
 ' Revision 1.10  2011/11/16 00:48:00  jeff
 ' Update to dual juicer capability, moving majority of work to UsreyDAQ when possible
@@ -29,9 +33,10 @@
 ' Revision 1.2  2006-04-12 00:25:01  dan
 ' Ready for production.
 
+#include "../../Spike2Util/UsreyUtil.s2s"
 #include "UsreyDAQ.s2s"
 #include "UsreyFixationPoint.s2s"
-#include "../../Spike2Util/UsreyUtil.s2s"'
+
 
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -656,14 +661,6 @@ proc InitializeToolbar()
 end;
 
 
-' Get grating p[arameters from registry AlertRig\\(config)\\Gratings\\type$
-func GetGratingParameters$(type$)
-	var key$;
-	var stmp$;
-	key$ := "AlertRig\\" + GetCurrentConfiguration$() + "\\Gratings";
-	Profile(key$, type$, "", stmp$);
-	return stmp$;
-end;
 
 
 ' Used to hard-quit from toolbar. This will close data files without saving!!! 
