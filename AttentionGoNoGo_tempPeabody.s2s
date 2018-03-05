@@ -2137,15 +2137,6 @@ end;
 
 
 
-' Get grating p[arameters from registry AlertRig\\(config)\\Gratings\\type$
-func GetGratingParameters$(type$)
-	var key$;
-	var stmp$;
-	key$ := "AlertRig\\" + GetCurrentConfiguration$() + "\\Gratings";
-	Profile(key$, type$, "", stmp$);
-	return stmp$;
-end;
-
 ' Replace the color vector spec in a grating with the specified value
 func ReplaceGratingColorVector$(gspec$, cvspec$)
     var s$;
@@ -2687,24 +2678,6 @@ Proc CreateContrastList(&c$,&cList%[],&chgList%[],&vList%[],&attList%[],&hazList
 end;
 
 
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'
-' ParseGratingParametersBrief%(gr$, &x, &y, &w, &h);
-' 
-' Given a grating parameter list, parse the individual values in to the given variable list. 
-' Simpler version than the full-blown one, as it doesn't return all values. 
-' This version will work for all possible variable list lengths - with/without phase/cv/pattern/aperture/inner/outer
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-
-func ParseGratingParametersBrief%(gr$, &x, &y, &w, &h)
-    var status% := 0;
-    var n%;
-	ReadSetup("", "", "", "", ",");
-	n% := ReadStr(gr$, x, y, w, h);
-    ReadSetup();
-    if n% <> 4 then status% := -1; endif;
-    return n%;
-end
 
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -3047,43 +3020,6 @@ proc UpdateTrialSpecString(&c$,attdir%,chgdir%,base%,chg%,haz,phase%,off%,colLis
         endif;
     next;  
     
-end
-
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'
-' ParseGratingParameters%(gr$, &x, &y, &w, &h, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$)
-' 
-' Given a grating parameter list, parse the individual values in to the given variable list. 
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-
-func ParseGratingParameters%(gr$, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$)
-    var status% := 0;
-    var n%;
-    var str1$, str2$, str3$, str4$, str5$, str6$, str7$, str8$;
-    var str9$, str10$, str11$, str12$, str13$, str14$;
-	ReadSetup("", "", "", "", ",");
-    'Do initial read to determine how many variables are present
-    n% := ReadStr(gr$, str1$, str2$, str3$, str4$, str5$, str6$, str7$, str8$, str9$, str10$, str11$, str12$, str13$, str14$);
-    
-    docase
-    case n% = 8 or n% = 9 or n% = 12 then
-        'If the read gets 8 (no phase or strings), 9 (no strings) or 12 (everything) variables this is the correct read
-        n% := ReadStr(gr$, x, y, w, h, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
-    case n% = 11 then
-        'If there are 11 variables read (strings, no phase) the correct read omits phase
-        n% := ReadStr(gr$, x, y, w, h, contrast%, sf, tf, ori, cv$, pattern$, aperture$); 
-    case n% = 14 then
-        'If 14 parameters are present, inner width and outer width are set
-        n% := ReadStr(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
-    else
-        
-    endcase; 
-    ReadSetup();
-    if n% < 11 then 'Return -1 as status if there is no cv$/pattern$/aperture$
-        status% := -1; 'otherwise return 0 if cv$/pattern$/aperture$ are present
-                       'there is currently no return scheme to indicate that phase is present
-    endif;
-    return status%;
 end
 
 
