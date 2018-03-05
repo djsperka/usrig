@@ -1,24 +1,24 @@
 #include "../../Spike2Util/UsreyUtil.s2s"
 
-var grutilDisable%[11];
-var grutilNDisable% := 0;
+'var grutilDisable%[11];
+'var grutilNDisable% := 0;
 
 
-func SaveGratingParameters(type$, gr$)
-    var key$;
-    key$ := GetRegistryKey$(1) + "\\Gratings";
-    SetStringRegistryValue(key$, type$, gr$);
-    return 0;
-end
+'func SaveGratingParameters(type$, gr$)
+'    var key$;
+'    key$ := GetRegistryKey$(1) + "\\Gratings";
+'    SetStringRegistryValue(key$, type$, gr$);
+'    return 0;
+'end
 
 
 ' Get grating parameters from registry AlertRig\\(config)\\Gratings\\type$
-func GetGratingParameters$(type$)
-	var key$;
-	var stmp$;
-	key$ := GetRegistryKey$(1) + "\\Gratings";
-	return GetStringRegistryValue$(key$, type$, "");
-end;
+'func GetGratingParameters$(type$)
+'	var key$;
+'	var stmp$;
+'	key$ := GetRegistryKey$(1) + "\\Gratings";
+'	return GetStringRegistryValue$(key$, type$, "");
+'end;
 
 
 ' GratingParametersDialog%
@@ -46,7 +46,7 @@ end;
 ' Returns 1 (0) if the user hits OK (Cancel). 
 
 
-func GratingParametersDialog%(label$, &param$, disable%[], ndisable%, &x, &y, &w, &h, &contrast%, &sf, &tf, &ori, &mo$, &pattern$, &aperture$)
+func GratingParametersDialogKrub%(label$, &param$, disable%[], ndisable%, &x, &y, &w, &h, &contrast%, &sf, &tf, &ori, &mo$, &pattern$, &aperture$)
 
 	var i%;
 
@@ -80,7 +80,7 @@ func GratingParametersDialog%(label$, &param$, disable%[], ndisable%, &x, &y, &w
 
     ' If the passed params$ is non-empty, then parse it before opening the dialog. 
     if Len(param$)>0 then
-        if ParseGratingParameters%(param$, x, y, w, h, contrast%, sf, tf, ori, mo$, pattern$, aperture$) = 11 then
+        if ParseGratingParametersKrub%(param$, x, y, w, h, contrast%, sf, tf, ori, mo$, pattern$, aperture$) = 11 then
             imor% := FindMatchedStringIndex%(mo$, mor$[], 2, 0);
             ipl% := FindMatchedStringIndex%(pattern$, pl$[], 2, 0);
             ial% := FindMatchedStringIndex%(aperture$, al$, 3, 0);
@@ -127,19 +127,19 @@ end;
 ' Check function for the grating parameters dialog.
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-func GratingParametersDialogCheck%(item%)
-    var status% := 1;
-    var i%;
-    
-    docase 
-    case item% = 0 then
-        for i% := 0 to grutilNDisable%-1 do
-            DlgEnable(0, grutilDisable%[i%]);
-        next
-    endcase
-    
-    return status%;
-end
+'func GratingParametersDialogCheck%(item%)
+'    var status% := 1;
+'    var i%;
+'    
+'    docase 
+'    case item% = 0 then
+'        for i% := 0 to grutilNDisable%-1 do
+'            DlgEnable(0, grutilDisable%[i%]);
+'        next
+'    endcase
+'    
+'    return status%;
+'end
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -149,7 +149,7 @@ end
 ' Given a grating parameter list, parse the individual values in to the given variable list. 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-func ParseGratingParameters%(gr$, &x, &y, &w, &h, &contrast%, &sf, &tf, &ori, &cv$, &pattern$, &aperture$)
+func ParseGratingParametersKrub%(gr$, &x, &y, &w, &h, &contrast%, &sf, &tf, &ori, &cv$, &pattern$, &aperture$)
     var status% := 0;
     var n%;
 	ReadSetup("", "", "", "", ",");
@@ -168,15 +168,15 @@ end
 ' Simpler version than the full-blown one, as it doesn't return all values. 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-func ParseGratingParametersBrief%(gr$, &x, &y, &w, &h)
-    var status% := 0;
-    var n%;
-	ReadSetup("", "", "", "", ",");
-	n% := ReadStr(gr$, x, y, w, h);
-    ReadSetup();
-    if n% <> 4 then status% := -1; endif;
-    return n%;
-end
+'func ParseGratingParametersBrief%(gr$, &x, &y, &w, &h)
+'    var status% := 0;
+'    var n%;
+'	ReadSetup("", "", "", "", ",");
+'	n% := ReadStr(gr$, x, y, w, h);
+'    ReadSetup();
+'    if n% <> 4 then status% := -1; endif;
+'    return n%;
+'end
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -188,7 +188,7 @@ end
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-func EncodeGratingParameters$(x, y, w, h, contrast%, sf, tf, ori, cv$, pattern$, aperture$)
+func EncodeGratingParametersKrub$(x, y, w, h, contrast%, sf, tf, ori, cv$, pattern$, aperture$)
     return Print$("%.1f,%.1f,%.1f,%.1f,%d,%.2f,%.2f,%.1f,%s,%s,%s", x, y, w, h, contrast%, sf, tf, ori, cv$, pattern$, aperture$);
 end;
  
@@ -205,21 +205,21 @@ end;
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
     
-func FindMatchedStringIndex%(val$, list$[], nlist%, default%)
-    var i% := 0;
-    var isFound% := 0;
-    var index%;
-    index% := default%;
-    while isFound% = 0 and i% < nlist% do
-        if list$[i%] = val$ then
-            index% := i%;
-            isFound% := 1;
-        else
-            i% += 1;
-        endif
-    wend
-    return index%;
-end
+'func FindMatchedStringIndex%(val$, list$[], nlist%, default%)
+'    var i% := 0;
+'    var isFound% := 0;
+'    var index%;
+'    index% := default%;
+'    while isFound% = 0 and i% < nlist% do
+'        if list$[i%] = val$ then
+'            index% := i%;
+'            isFound% := 1;
+'        else
+'            i% += 1;
+'        endif
+'    wend
+'    return index%;
+'end
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
@@ -235,22 +235,22 @@ end
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
     
-func FindMatchedIntIndex%(val%, list%[], nlist%, default%)
-    var i% := 0;
-    var isFound% := 0;
-    var index%;
-    index% := default%;
-    while isFound% = 0 and i% < nlist% do
-        if list%[i%] = val% then
-            index% := i%;
-            isFound% := 1;
-        else
-            i% += 1;
-        endif
-    wend
-    return index%;
-end
-
+'func FindMatchedIntIndex%(val%, list%[], nlist%, default%)
+'    var i% := 0;
+'    var isFound% := 0;
+'    var index%;
+'    index% := default%;
+'    while isFound% = 0 and i% < nlist% do
+'        if list%[i%] = val% then
+'            index% := i%;
+'            isFound% := 1;
+'        else
+'            i% += 1;
+'        endif
+'    wend
+'    return index%;
+'end
+'
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -266,17 +266,17 @@ end
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 
-func ParseCustomColor%(s$, rgb%[])
-    var status% := -1;
-    var n;
-    ReadSetup("", "/(", "(", ")");
-    n := ReadStr(s$, rgb%[0], rgb%[1], rgb%[2]);
-    ReadSetup();
-    if n = 3 then
-        status% := 0;
-    endif
-    return status%;
-end
+'func ParseCustomColor%(s$, rgb%[])
+'    var status% := -1;
+'    var n;
+'    ReadSetup("", "/(", "(", ")");
+'    n := ReadStr(s$, rgb%[0], rgb%[1], rgb%[2]);
+'    ReadSetup();
+'    if n = 3 then
+'        status% := 0;
+'    endif
+'    return status%;
+'end
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -287,10 +287,10 @@ end
 ' elements) into a color string (r/g/b). 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-func EncodeCustomColor$(r%, g%, b%)
-    var s$;
-    s$ := Print$("(%d/%d/%d)", r%, g%, b%);
-    return s$;
-end
+'func EncodeCustomColor$(r%, g%, b%)
+'    var s$;
+'    s$ := Print$("(%d/%d/%d)", r%, g%, b%);
+'    return s$;
+'end
 
 

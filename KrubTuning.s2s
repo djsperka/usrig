@@ -757,7 +757,7 @@ proc WriteStimFileToStartPresentation()
     SetTuningCurveLabels();  'set up tuning curve labels once we're ready to start recording
 
     ' Before generating command file, fetch the base grating parameters.
-    ParseGratingParameters%(tunGratingParams$, x, y, w, h, contrast%, sf, tf, ori, mo$, pattern$, aperture$);
+    ParseGratingParametersKrub%(tunGratingParams$, x, y, w, h, contrast%, sf, tf, ori, mo$, pattern$, aperture$);
     
     ' Delete old stim file if there is one sitting there. 
     stimfile$ := tunStimFolder$ + "\\stim.txt";
@@ -784,13 +784,13 @@ proc WriteStimFileToStartPresentation()
     for i% := 0 to ((tunNSteps%+1)*tunNRepeats%)-1 do
         docase 
         case tuntypeSelected% = tuntypeOri% then
-            s$ := EncodeGratingParameters$(x, -y, w, h, contrast%, sf, tf, tunParameterValues[tunParameterIndices%[i%]], mo$, pattern$, aperture$);
+            s$ := EncodeGratingParametersKrub$(x, -y, w, h, contrast%, sf, tf, tunParameterValues[tunParameterIndices%[i%]], mo$, pattern$, aperture$);
         case tuntypeSelected% = tuntypeDom% then
-            s$ := EncodeGratingParameters$(x, -y, w, h, tunParameterValues[tunParameterIndices%[i%]], sf, tf, ori, mo$, pattern$, aperture$);
+            s$ := EncodeGratingParametersKrub$(x, -y, w, h, tunParameterValues[tunParameterIndices%[i%]], sf, tf, ori, mo$, pattern$, aperture$);
         case tuntypeSelected% = tuntypeSF% then
-            s$ := EncodeGratingParameters$(x, -y, w, h, contrast%, tunParameterValues[tunParameterIndices%[i%]], tf, ori, mo$, pattern$, aperture$);
+            s$ := EncodeGratingParametersKrub$(x, -y, w, h, contrast%, tunParameterValues[tunParameterIndices%[i%]], tf, ori, mo$, pattern$, aperture$);
         case tuntypeSelected% = tuntypeTF% then
-            s$ := EncodeGratingParameters$(x, -y, w, h, contrast%, sf, tunParameterValues[tunParameterIndices%[i%]], ori, mo$, pattern$, aperture$);
+            s$ := EncodeGratingParametersKrub$(x, -y, w, h, contrast%, sf, tunParameterValues[tunParameterIndices%[i%]], ori, mo$, pattern$, aperture$);
         else
             LogError("Start", "Unknown tuning curve type (" + str$(tuntypeSelected%) + ")");
             halt;
