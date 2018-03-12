@@ -37,6 +37,7 @@ var FixationPointChannel%;
 var StimChannel%;
 var StimChangeChannel%;
 var ReadyChannel%;
+var HeartbeatChannel%;
 
 ' tuning curves
 var TuningWindow%[8];	' one for each channel. There'd better not be more than 8 channels! 
@@ -55,6 +56,11 @@ var iState%;
 var stateInit% := 1;
 var stateHeartBeat% := 2;
 
+const heartbeatKey$ := "1"; ' This sequencer key triggers the diglow line used to record a heartbeat.
+                            ' Do not change it without also changing 1) the wiring in the breakout box
+                            ' 2) The SampleLevel calls that record this channel (unless box wiring preserves
+                            ' the same 1401 DIGIN port used
+
 ' Assign channel numbers for eye X,Y and trigger. 
 XChannel% := 23;
 YChannel% := 24;
@@ -64,7 +70,7 @@ StimChannel% := 27;
 StimChangeChannel% := 28;  '??
 ReadyChannel% := 29;
 JoyChannel% := 22;
-
+HeartbeatChannel% := 21;    ' 30 = keyboard?
 LogInit(1);
 
 ' Check for valid data file path
@@ -141,6 +147,11 @@ proc CreateSampleConfiguration()
     SampleEvent(StimChannel%,3,2,3600); 'Trigger channel, level
     SampleComment$(StimChannel%,"Stim");
     SampleTitle$(StimChannel%,"Stim");
+    
+    ' Event channel for recording the DIGLOW line used for heartbeats
+    SampleEvent(HeartbeatChannel%, 7, 2, 3600);
+    SampleComment$(ReadyChannel%,"Heartbeat");
+    SampleTitle$(ReadyChannel%,"Heartbeat");
     
     '''Note that the default joystick port is port 13
     'printlog("Joystick port is %d\n",GetJoystickPort%());
@@ -414,20 +425,20 @@ func IdleProcessing%()
     docase 
     case iState% = stateInit% then
         'Give pattern of four pulses
-        SafeSampleKey("1");
+        SafeSampleKey(heartbeatKey$);
         yield(0.2);
-        SafeSampleKey("1");
+        SafeSampleKey(heartbeatKey$);
         yield(0.2);
-        SafeSampleKey("1");
+        SafeSampleKey(heartbeatKey$);
         yield(0.2);
-        SafeSampleKey("1");
+        SafeSampleKey(heartbeatKey$);
         tNow := View(DataWindow%).MaxTime();
         ChangeStateTo(stateHeartBeat%,tNow);
         
     case iState% = stateHeartBeat% then
 
         if tNow > tStateStart + 1 then
-            SafeSampleKey("1");
+            SafeSampleKey(heartbeatKey$);
             tStateStart := tNow;  'just cycle this back, we will give pulses every second until we quit
         endif;
         
