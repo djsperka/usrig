@@ -49,9 +49,13 @@ var attFixationTime;
 'var attWhitePointTime;          ' xxxxx
 var attFixationCueMinTime;      ' xxxxx
 var attFixationCueMaxTime;      ' xxxxx
+var attCueOnsetTime;
+var attCueOffsetTime;
+var attStimOnsetTime;
 var attHazardMinTime;
 var attHazardExpMeanTime;
 var attHazardCutoffTime;
+var attAllOffsetTime;  'this needs to be given to the VSG, but we are going to use the idle loop to cut the animation off, so we will just make it large
 var attAcquisitionTime;
 var attInterTrialTime;
 var attInterTrialTime2;
@@ -213,9 +217,12 @@ const attdlgDoOpto% := 33;
 ' constants for timing dialog
 const atttimingdlgFixationCueMinTime% := 2;
 const atttimingdlgFixationCueMaxTime% := 3;
-const atttimingdlgHazardMinTime% := 4;
-const atttimingdlgHazardExpMeanTime% := 5;
-const atttimingdlgHazardCutoffTime% := 6;
+const atttimingdlgCueOnsetTime% := 4;
+const atttimingdlgCueOffsetTime% := 5;
+const atttimingdlgStimOnsetTime% := 6;
+const atttimingdlgHazardMinTime% := 7;
+const atttimingdlgHazardExpMeanTime% := 8;
+const atttimingdlgHazardCutoffTime% := 9;
 
 ' constants for color dialog
 var attdlgColorIndexGray% := 0;
@@ -282,6 +289,9 @@ var attRotationList%[attMaxTrl%]; 'A list of which rotation is being used for th
 var attFixColor%[attMaxTrl%];     'A list of which color fixation point (as a number) is being used for this trial
 var attBlockList%[attMaxTrl%];    'A list of which block a trial comes in - this is relative, useful for equalizing hazard times etc. across blocks
 var attEasyList%[attMaxTrl%];     '1 if the trial is an easy trial, 0 if not - need to keep track of this because there are no flashers on easy trials
+var attCueOnsetList[attMaxTrl%];  'A list of the cue onset time for each trial  - note that for now this is not a variable time, but it might be someday
+var attCueOffsetList[attMaxTrl%];  'A list of the cue offset time for each trial  - note that for now this is not a variable time, but it might be someday
+var attStimOnsetList[attMaxTrl%];  'A list of the stimulus onset time for each trial  - note that for now this is not a variable time, but it might be someday
 var thisContrast%;                 'for sampletexty stuff
 var fixColor$;                  'more sampletexty stuff
 var thisIsNoInfo%;              'more sampletexty stuff
@@ -475,6 +485,12 @@ proc GetTimingDialogParameters()
     attFalseAlarmWaitTime := GetFloatRegistryValue(key$, "FalseAlarmWaitTime", 1.0);
     attFalseAlarmCheckWindow := GetFloatRegistryValue(key$, "FalseAlarmCheckWindow", 1.0);
     
+    attCueOnsetTime := GetFloatRegistryValue(key$, "CueOnsetTime", 1.0);
+    attCueOffsetTime := GetFloatRegistryValue(key$, "CueOffsetTime", 2.0);
+    attStimOnsetTime := GetFloatRegistryValue(key$, "StimOnsetTime", 2.0);
+
+    
+    
     '	attWhitePointTime := GetFloatRegistryValue(key$, "WhitePointTime", 1.0);
     
 end;
@@ -497,6 +513,10 @@ proc SaveTimingDialogParameters()
 	SetFloatRegistryValue(key$, "InterTrialTime", attInterTrialTime);
 	SetFloatRegistryValue(key$, "TimeToAnswer", attTimeToAnswer);
     SetFloatRegistryValue(key$, "NoChangeDuration", attNoChangeDuration);
+    
+    SetFloatRegistryValue(key$, "CueOnsetTime", attCueOnsetTime);
+    SetFloatRegistryValue(key$, "CueOffsetTime", attCueOffsetTime);
+    SetFloatRegistryValue(key$, "StimOnsetTime", attStimOnsetTime);
     
     '	SetFloatRegistryValue(key$, "WhitePointTime", attWhitePointTime);
     
@@ -920,7 +940,8 @@ func AttentionScriptDialog%()
         'Commented out - useful for testing the creation of the trial order
 '        var Contrast$;
 '        CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,
-'                           attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,attNoInfoThisTrial%);
+'                                  attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,
+'                                  attNoInfoThisTrial%,attCueOnsetList,attCueOffsetList,attStimOnsetList);
 '        var specFileName$:="E:\\AttentionSpecFile.txt";
 '        var specHandle%;
 '        specHandle% := FileOpen(specFileName$, 8, 1);
@@ -1011,27 +1032,36 @@ func TimingDialog%()
 	DlgReal(1, "Acquisition time(s):", .01, 10);
 	DlgReal(atttimingdlgFixationCueMinTime%, "Fixation cue min time(s):", .01, 10);
 	DlgReal(atttimingdlgFixationCueMaxTime%, "Fixation cue max time(s):", .01, 10);  'We will presumably lose the ability to have a variable stimulus onset time when the animation is implemented
-	DlgReal(atttimingdlgHazardMinTime%, "Hazard min time(s):", 0, 10);
+    DlgReal(atttimingdlgCueOnsetTime%, "Cue onset time (s):", 0.1, 10);
+    DlgReal(atttimingdlgCueOffsetTime%, "Cue offset time (s):", 0.2, 20);
+    DlgReal(atttimingdlgStimOnsetTime%, "Grating onset time (s):", 0.2, 20); 
+    DlgReal(atttimingdlgHazardMinTime%, "Hazard min time(s):", 0, 10);
 	DlgReal(atttimingdlgHazardExpMeanTime%, "Hazard exp mean time(s):", 0, 10);
 	DlgReal(atttimingdlgHazardCutoffTime%, "Hazard cutoff time(s):", 0, 10);
-	DlgReal(7, "Time to answer(s):", 0.01, 10.0);
-    DlgReal(8, "No-Change duration(s):", 0.2, 10.0);
-	DlgReal(9, "Intertrial time(s):", .01, 10);
-	DlgReal(10, "Abort wait time(s):", .01, 10);
-    DlgReal(11, "False Alarm penalty time(s):", .01, 100);  'I'll let that be really really long
-    DlgReal(12, "False Alarm check window(s): ", .01, 1);
-    DlgReal(13, "Miss penalty time(s): ", 0, 100);
+	DlgReal(10, "Time to answer(s):", 0.01, 10.0);
+    DlgReal(11, "No-Change duration(s):", 0.2, 10.0);
+	DlgReal(12, "Intertrial time(s):", .01, 10);
+    DlgReal(13, "Generic penalty time(s):", .01, 10);
+	'DlgReal(13, "Abort wait time(s):", .01, 10);
+    'DlgReal(14, "False Alarm penalty time(s):", .01, 100);  'I'll let that be really really long
+    'DlgReal(15, "False Alarm check window(s): ", .01, 1);
+    'DlgReal(16, "Miss penalty time(s): ", 0, 100);      
     
     DlgAllow(0, 0, TimingDialogChanged%);
-	i%:=DlgShow(attAcquisitionTime, attFixationCueMinTime, attFixationCueMaxTime, 
+'	i%:=DlgShow(attAcquisitionTime, attFixationCueMinTime, attFixationCueMaxTime, attCueOnsetTime, attCueOffsetTime, attStimOnsetTime,
+'    attHazardMinTime, attHazardExpMeanTime, attHazardCutoffTime, attTimeToAnswer, attNoChangeDuration,
+'    attInterTrialTime, attAbortWaitTime,attFalseAlarmWaitTime,attFalseAlarmCheckWindow,attMissPenalty);
+    i%:=DlgShow(attAcquisitionTime, attFixationCueMinTime, attFixationCueMaxTime, attCueOnsetTime, attCueOffsetTime, attStimOnsetTime,
     attHazardMinTime, attHazardExpMeanTime, attHazardCutoffTime, attTimeToAnswer, attNoChangeDuration,
-    attInterTrialTime, attAbortWaitTime,attFalseAlarmWaitTime,attFalseAlarmCheckWindow,attMissPenalty);
+    attInterTrialTime, attAbortWaitTime);
     if i% = 1 then
-        if attAbortWaitTime < attFalseAlarmCheckWindow then
-            message("False Alarm Check Window is longer than Abort Wait Time!");
-            message("Reducing window to be equal to Abort Wait Time!");
-            attFalseAlarmCheckWindow := attAbortWaitTime;
-        endif;
+'        if attAbortWaitTime < attFalseAlarmCheckWindow then
+'            message("False Alarm Check Window is longer than Abort Wait Time!");
+'            message("Reducing window to be equal to Abort Wait Time!");
+'            attFalseAlarmCheckWindow := attAbortWaitTime;
+'        endif;
+        attFalseAlarmWaitTime := attAbortWaitTime;
+        attMissPenalty := attAbortWaitTime;
         
         SaveTimingDialogParameters();
         
@@ -1055,6 +1085,12 @@ func TimingDialogChanged%(item%)
             status% := 0;
             Message("Hazard min time <= Hazard mean time <= Hazard cutoff time");
         endif
+    case item% = atttimingdlgCueOnsetTime% or item% = atttimingdlgCueOffsetTime% or item% = atttimingdlgStimOnsetTime% then
+        if DlgValue(atttimingdlgCueOnsetTime%) >= DlgValue(atttimingdlgCueOffsetTime%) or DlgValue(atttimingdlgCueOnsetTime%) >= DlgValue(atttimingdlgStimOnsetTime%) then 
+            status% := 0;
+            Message("Cue onset time < Cue offset time; Cue onset time < Stim onset time");
+        endif;
+    
     endcase
     return status%;
 end
@@ -1783,7 +1819,8 @@ func IdleProcessing%()
         
     case iState% = stateWaitForFixPtOn% then
         tTrigger := View(DataWindow%).NextTime(FixationPointChannel%, tLast, vTrigger);
-        if tTrigger > tLast then
+        docase
+        case tTrigger > tLast then 'we have found a trigger
             if tTrigger < tNow then    'View(DataWindow%).MaxTime() then  'try using tNow to avoid rare double-catch
                 ' Fixation point is up
                 PrintLog("stateWaitForFixPtOn: signal received. " + str$(tTrigger) + "\n");
@@ -1801,7 +1838,14 @@ func IdleProcessing%()
             else
                 updateTLast% := 0;  'waiting for sampling to catch up
             endif;
-        endif
+        case tNow > tLast + 5 then
+            PrintLog("Waited 5 seconds for fixation point, trying again!\n");
+            SampleText("Waited 5 seconds for fixation point, trying again!",tNow);
+            SafeSampleKey("X");
+            yield(1.0);
+            ChangeStateTo(stateStartTrial%, tNow);
+        endcase
+        updateTLast% := 0;  'don't update tLast, we're waiting for this trigger
         
         
     case iState% = stateWaitForAcquisition% then
@@ -1813,11 +1857,11 @@ func IdleProcessing%()
             ChangeStateTo(stateHoldFixationToStimOn%, tNow);
             SampleText("Fixation Acquired",tNow);
             'getPreciseTiming := 0;
-        case attUseCueCircles% >= 2 and LookingAtCuePoint%(xEye, yEye, 1) <> 0 then  'using a hardcoded radius of 1 degree, only check if we are using cue points
-            'Simple abort on acquisition of cue point instead of fixpt.  Note that IF fixpt window and cue point windows overlap, priority is given to the fixpt window...
-            PrintLog("stateWaitForAcquisition: eye in cue circle window, aborting trial.\n");
-            ChangeStateTo(stateAbort%, tNow);
-            SampleText("Animal Fixated Cue Circle, Trial Aborted",tNow);
+'        case attUseCueCircles% >= 2 and LookingAtCuePoint%(xEye, yEye, 1) <> 0 then  'using a hardcoded radius of 1 degree, only check if we are using cue points
+'            'Simple abort on acquisition of cue point instead of fixpt.  Note that IF fixpt window and cue point windows overlap, priority is given to the fixpt window...
+'            PrintLog("stateWaitForAcquisition: eye in cue circle window, aborting trial.\n");
+'            ChangeStateTo(stateAbort%, tNow);
+'            SampleText("Animal Fixated Cue Circle, Trial Aborted",tNow);
         else 
             if tNow - tStateStart > attAcquisitionTime then  'simple abort on failure to acquire
                 PrintLog("stateWaitForAcquisition: failed.\n");
@@ -1839,28 +1883,31 @@ func IdleProcessing%()
                 PrintLog("stateHoldFixationToStimOn: Success. Checking to see if we do opto...\n");
                 ChangeStateTo(stateCheckTurnOnOpto%, tNow);
             endif
-        else 'if fixation fails before stim on, begin abort, check to see if it is a FA
-            tempanswer% := Answer%(xEye, yEye);
-            if tempanswer% < 0 then  'adjust tempanswer to correspond to trialAttendLoc syntax
-                tempanswer% := -tempanswer%+1;
-            endif;
-            if tempanswer% <> 0 then  'if it's in a response window, quit while you're ahead
-                docase
-                case tempanswer% = trialAttendLoc% then 'answer in "attend toward" window
-                    PrintLog("stateWaitForStimOn: in attend toward response window, aborting trial.\n");
-                    FAIsResponse% := 1;
-                    ChangeStateTo(stateAbort%, tNow);
-                    SampleText(Print$("Fixation broken, False Alarm to location %d (attend toward window) before stimulus on, trial aborted",tempanswer%),tNow);
-                case tempanswer% = -1 then 'answer in "attend away" = "down" window
-                    PrintLog("stateWaitForStimOn: in attend away response window, aborting trial.\n");
-                    FAIsResponse% := 1;
-                    ChangeStateTo(stateAbort%, tNow);
-                    SampleText(Print$("Fixation broken, False Alarm to location %d (attend away window) before stimulus on, trial aborted",tempanswer%),tNow);    
-                endcase;
-            else  'keep checking until false alarm check window is closed
-                ChangeStateTo(stateCheckFalseAlarm%, tNow);
-                temptext$ := "before stimulus on";
-            endif;
+        else 'if fixation fails before stim on, consider this an abort
+            PrintLog("stateHoldFixationToStimOn: failed.\n");
+            ChangeStateTo(stateAbort%, tNow);
+'        else 'if fixation fails before stim on, begin abort, check to see if it is a FA
+'            tempanswer% := Answer%(xEye, yEye);
+'            if tempanswer% < 0 then  'adjust tempanswer to correspond to trialAttendLoc syntax
+'                tempanswer% := -tempanswer%+1;
+'            endif;
+'            if tempanswer% <> 0 then  'if it's in a response window, quit while you're ahead
+'                docase
+'                case tempanswer% = trialAttendLoc% then 'answer in "attend toward" window
+'                    PrintLog("stateWaitForStimOn: in attend toward response window, aborting trial.\n");
+'                    FAIsResponse% := 1;
+'                    ChangeStateTo(stateAbort%, tNow);
+'                    SampleText(Print$("Fixation broken, False Alarm to location %d (attend toward window) before stimulus on, trial aborted",tempanswer%),tNow);
+'                case tempanswer% = -1 then 'answer in "attend away" = "down" window
+'                    PrintLog("stateWaitForStimOn: in attend away response window, aborting trial.\n");
+'                    FAIsResponse% := 1;
+'                    ChangeStateTo(stateAbort%, tNow);
+'                    SampleText(Print$("Fixation broken, False Alarm to location %d (attend away window) before stimulus on, trial aborted",tempanswer%),tNow);    
+'                endcase;
+'            else  'keep checking until false alarm check window is closed
+'                ChangeStateTo(stateCheckFalseAlarm%, tNow);
+'                temptext$ := "before stimulus on";
+'            endif;
         endcase
         
         
@@ -1927,7 +1974,8 @@ func IdleProcessing%()
         
     case iState% = stateWaitForStimOn% then
         tTrigger := View(DataWindow%).NextTime(StimChannel%, tLast, vTrigger);
-        if tTrigger > tLast and vTrigger = 0 then
+        docase
+        case tTrigger > tLast and vTrigger = 0 then
             if tTrigger < tNow then         'View(DataWindow%).MaxTime() then   'try using tNow to avoid rare double-catch
                 ' gratings et al are up
                 PrintLog("stateWaitForStimOn: stim is up.\n");
@@ -1939,7 +1987,14 @@ func IdleProcessing%()
             else
                 updateTLast% := 0;  'waiting for sampling to catch up
             endif;
-        endif
+        case tNow > tLast + 5 then
+            PrintLog("Waited 5 seconds for stim on, giving up and starting trial over!\n");
+            SampleText("Waited 5 seconds for stim on, giving up and starting trial over!",tNow);
+            SafeSampleKey("X");
+            yield(1.0);
+            ChangeStateTo(stateStartTrial%, tNow);
+        endcase
+        updateTLast% := 0;  'waiting for a trigger, don't update tLast
         
         
     case iState% = stateAbort% then
@@ -2018,7 +2073,8 @@ func IdleProcessing%()
         
         ' we just wait for fix point off signal in this case. 
         tTrigger := View(DataWindow%).NextTime(FixationPointChannel%, tLast, vTrigger);
-        if tTrigger > tLast then
+        docase
+        case tTrigger > tLast then
             ' Fixation point is off
             PrintLog("stateWaitForBlank: Fix pt is off.\n");
             tLastTrigger := tTrigger;
@@ -2033,7 +2089,12 @@ func IdleProcessing%()
                 ChangeStateTo(stateAbortWait%, tStateStart);  'don't update time, "credits" for time served
             endif;
             DrawStim(0);	' this undraws the location of the fixpt.
-        endif
+        case tNow > tLast + 10 then  'I don't quite know what to do here.  Hopefully this never triggers.  We've definitely sent the 'X', this can't be WORSE than pre-change, where we would just stick here
+            PrintLog("Waited 10 seconds for stim off, giving up and starting next trial!\n");
+            SampleText("Waited 10 seconds for stim on, giving up and starting next trial!",tNow);
+            ChangeStateTo(stateStartTrial%, tNow);
+        endcase
+        updateTLast% := 0;  'waiting for a trigger, don't update tLast
         
     case iState% = stateAbortWait% then
         
@@ -2044,30 +2105,30 @@ func IdleProcessing%()
         
        
         
-    case iState% = stateCheckFalseAlarm% then
-        
-        if tNow - tStateStart < attFalseAlarmCheckWindow then
-            tempanswer% := Answer% (xEye, yEye);
-            if tempanswer% < 0 then  'adjust tempanswer to correspond to trialAttendLoc syntax
-                tempanswer% := -tempanswer%+1;
-            endif;
-            docase
-            case tempanswer% = trialAttendLoc% then 'answer in "attend toward" window
-                PrintLog("stateCheckFalseAlarm: in attend toward response window, aborting trial.\n");
-                FAIsResponse% := 1;
-                ChangeStateTo(stateAbort%, tNow);
-                SampleText(Print$("Fixation broken, False Alarm to location %d (attend toward window) %s, trial aborted",tempanswer%,temptext$),tNow);
-            case tempanswer% = -1 then 'answer in "attend away" = "down" window
-                PrintLog("stateCheckFalseAlarm: in attend away response window, aborting trial.\n");
-                FAIsResponse% := 1;
-                ChangeStateTo(stateAbort%, tNow);
-                SampleText(Print$("Fixation broken, False Alarm to location %d (attend away window) %s, trial aborted",tempanswer%,temptext$),tNow);    
-            endcase;
-        else 'credit the animal for time served on the abort if it's not a response
-            PrintLog("stateCheckFalseAlarm: no response in window, aborting trial.\n");
-            ChangeStateTo(stateAbort%, tNow-attFalseAlarmCheckWindow); 
-            SampleText("Fixation broken, no response, trial aborted");
-        endif;
+'    case iState% = stateCheckFalseAlarm% then
+'        
+'        if tNow - tStateStart < attFalseAlarmCheckWindow then
+'            tempanswer% := Answer% (xEye, yEye);
+'            if tempanswer% < 0 then  'adjust tempanswer to correspond to trialAttendLoc syntax
+'                tempanswer% := -tempanswer%+1;
+'            endif;
+'            docase
+'            case tempanswer% = trialAttendLoc% then 'answer in "attend toward" window
+'                PrintLog("stateCheckFalseAlarm: in attend toward response window, aborting trial.\n");
+'                FAIsResponse% := 1;
+'                ChangeStateTo(stateAbort%, tNow);
+'                SampleText(Print$("Fixation broken, False Alarm to location %d (attend toward window) %s, trial aborted",tempanswer%,temptext$),tNow);
+'            case tempanswer% = -1 then 'answer in "attend away" = "down" window
+'                PrintLog("stateCheckFalseAlarm: in attend away response window, aborting trial.\n");
+'                FAIsResponse% := 1;
+'                ChangeStateTo(stateAbort%, tNow);
+'                SampleText(Print$("Fixation broken, False Alarm to location %d (attend away window) %s, trial aborted",tempanswer%,temptext$),tNow);    
+'            endcase;
+'        else 'credit the animal for time served on the abort if it's not a response
+'            PrintLog("stateCheckFalseAlarm: no response in window, aborting trial.\n");
+'            ChangeStateTo(stateAbort%, tNow-attFalseAlarmCheckWindow); 
+'            SampleText("Fixation broken, no response, trial aborted");
+'        endif;
         
          
     case iState% = stateFalseAlarmWait% then
@@ -2082,7 +2143,7 @@ func IdleProcessing%()
         
     case iState% = stateHoldFixationToCC% then
         
-        'Check to see if there was a trigger
+        'Check to see if there was a trigger - here there may be intervening triggers so updating tLast is important
         tTrigger := View(DataWindow%).NextTime(FrameTriggerChannel%, tLast, vTrigger);
         if tTrigger > tLast and vTrigger = 0 then  'only look at rising edge
             if tTrigger < tNow then      'View(DataWindow%).MaxTime() then  'try using tNow to avoid rare double-catch
@@ -2096,25 +2157,29 @@ func IdleProcessing%()
         
         docase            
         case Looking%(xEye, yEye) = 0 then  'begin abort procedure, check to see if it's a FA
-            tempanswer% := Answer% (xEye, yEye);
-            if tempanswer% < 0 then  'adjust tempanswer to correspond to trialAttendLoc syntax
-                tempanswer% := -tempanswer%+1;
-            endif;
-            docase
-            case tempanswer% = trialAttendLoc% then 'answer in "attend toward" window
-                PrintLog("stateHoldFixationToCC: in attend toward response window, aborting trial.\n");
-                FAIsResponse% := 1;
-                ChangeStateTo(stateAbort%, tNow);
-                SampleText(Print$("Fixation broken, False Alarm to location %d (attend toward window) during stimulus, trial aborted",tempanswer%),tNow);
-            case tempanswer% = -1 then 'answer in "attend away" = "down" window
-                PrintLog("stateHoldFixationToCC: in attend away response window, aborting trial.\n");
-                FAIsResponse% := 1;
-                ChangeStateTo(stateAbort%, tNow);
-                SampleText(Print$("Fixation broken, False Alarm to location %d (attend away window) during stimulus, trial aborted",tempanswer%),tNow);           
-            else  'keep checking
-                ChangeStateTo(stateCheckFalseAlarm%, tNow);
-                temptext$ := "during stimulus";
-            endcase;
+            'now, if it is before the contrast change it is just an abort
+            PrintLog("stateHoldFixationToCC: failed.\n");
+            ChangeStateTo(stateAbort%, tNow);
+            
+'            tempanswer% := Answer% (xEye, yEye);
+'            if tempanswer% < 0 then  'adjust tempanswer to correspond to trialAttendLoc syntax
+'                tempanswer% := -tempanswer%+1;
+'            endif;
+'            docase
+'            case tempanswer% = trialAttendLoc% then 'answer in "attend toward" window
+'                PrintLog("stateHoldFixationToCC: in attend toward response window, aborting trial.\n");
+'                FAIsResponse% := 1;
+'                ChangeStateTo(stateAbort%, tNow);
+'                SampleText(Print$("Fixation broken, False Alarm to location %d (attend toward window) during stimulus, trial aborted",tempanswer%),tNow);
+'            case tempanswer% = -1 then 'answer in "attend away" = "down" window
+'                PrintLog("stateHoldFixationToCC: in attend away response window, aborting trial.\n");
+'                FAIsResponse% := 1;
+'                ChangeStateTo(stateAbort%, tNow);
+'                SampleText(Print$("Fixation broken, False Alarm to location %d (attend away window) during stimulus, trial aborted",tempanswer%),tNow);           
+'            else  'keep checking
+'                ChangeStateTo(stateCheckFalseAlarm%, tNow);
+'                temptext$ := "during stimulus";
+'            endcase;
             
         else 
             if CCHappened% = 1 then
@@ -2448,7 +2513,8 @@ func IdleProcessing%()
         tTrigger := View(DataWindow%).NextTime(FixationPointChannel%, tLast, vTrigger);
         'tTrigger := View(DataWindow%).NextTime(FrameTriggerChannel%, tLast, vTrigger);
         'if tTrigger > tLast and vTrigger = 1 then
-        if tTrigger > tLast then
+        docase
+        case tTrigger > tLast then
             ' Fixation point is off
             PrintLog("stateTrialCompleteWaitForBlank: Fix pt is off.\n");
             tLastTrigger := tTrigger;
@@ -2456,7 +2522,12 @@ func IdleProcessing%()
             'SafeSampleKey("a");
             ChangeStateTo(stateTrialCompletedPause%, tTrigger);
             DrawStim(0);	' actually this draws the location of the fixpt.
-        endif
+        case tNow > tLast + 5 then
+            PrintLog("Waited 5 seconds for blank, giving up and starting next trial!\n");
+            SampleText("Waited 5 seconds for blank, giving up and starting next trial!",tNow);
+            ChangeStateTo(stateTrialCompleted%, tTrigger);
+        endcase
+        updateTLast% := 0;  'waiting for a trigger, don't update tLast
         
 '    case iState% = stateNoResponse% then
 '        
@@ -2778,7 +2849,8 @@ proc InitializeWindows()
 '    'run ScreenBounds to get max size of x/y on screen, to be used to make flashers in random locations
 '    ScreenBounds(screenXmm,screenYmm,screenXmax,screenYmax);
     '    CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,
-    '                       attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,attNoInfoThisTrial%);
+    '                       attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,
+    '                       attNoInfoThisTrial%,attCueOnsetList,attCueOffsetList,attStimOnsetList);
 '    printlog("Contrast list is %s\n",Contrast$);
 '    printlog("Flasher list is %s\n",Flashers$);
 '    halt;  'No-1401 halt
@@ -3506,7 +3578,8 @@ func Start%()
     
     'Fills Contrast$/Flashers$ with the big ol' list, plus some vars to make it easier on us all
 	CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,
-                       attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,attNoInfoThisTrial%);     
+    attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,
+    attNoInfoThisTrial%,attCueOnsetList,attCueOffsetList,attStimOnsetList);     
 
     
 
@@ -3655,9 +3728,13 @@ end;
 'and flashY[][] with the y location of the flashers
 'and flashN%[] with the number of flashers per trial
 'and noInfoList%[] with whether it is a no-info trial or not
+'and cueOnList[] with the actual cue onset time (right now not variable)
+'and cueOffList[] with the actual cue offset time (right now not variable)
+'and stimOnList[] with the stimulus onset time (right now not variable)
 'Creating all of these here (including easy trials) allows us to just blast through once we get to the actual experiment
 'without too much counting going on.
-Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&hazList[],&offList%[],&rotList%[],&fixColor%[],&blockList%[],&easyList%[],&flashTimes[][],&flashX[][],&flashY[][],&flashN%[],&noInfoList%[])
+Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&hazList[],&offList%[],&rotList%[],&fixColor%[],&blockList%[],&easyList%[],
+    &flashTimes[][],&flashX[][],&flashY[][],&flashN%[],&noInfoList%[],&cueOnList[],&cueOffList[],&stimOnList[])
         'hja looking at current function
     var i%;
     var ii%;
@@ -3730,7 +3807,8 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
     alloff% := pow(2,attNumPatches%)-1;
     
     
-    c$ := " -J " + Str$(attTimeToAnswer) + ",";  'put in the first two elements of the specifier string, the -J and the post-CC time
+    'c$ := " -J " + Str$(attTimeToAnswer) + ",";  'put in the first two elements of the specifier string, the -J and the post-CC time
+    c$ := " -m ";  'We no longer put the time to answer here with the new syntax, this is now part of every trial
     f$ := " -j ";  'Flasher list is led by a lower case -j
     
     for i% := 1 to attNumberOfBlocks% do
@@ -3894,6 +3972,9 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                 hazList[totalCount%] := attHazardMinTime;  'don't calculate a hazard time, just use the minimum
                 flashN%[totalCount%] := 0;  'no flashers on easy trials, this is redundant since it should be 0 to start, but...
                 noInfoList%[totalCount%] := isNoInfoTrial%;
+                cueOnList[totalCount%] := attCueOnsetTime;
+                cueOffList[totalCount%] := attCueOffsetTime;
+                stimOnList[totalCount%] := attStimOnsetTime;
                 
                 'rotList%[totalCount%] := 0;  'no rotation on easy trials, this was replaced by cue-circle-swapping code above
                 'rotList%[totalCount%] := attNumPatches%*(attColor%-1);  'no rotation on easy trials, but get cue circle contrast correct - this is the oldest version of this line
@@ -3909,18 +3990,24 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                         offList%[totalCount%] := alloff% - Pow(2,attDirection%-1);  'turn off all stimuli but the attended one
                         'insert easy trial with 100% contrast
                         'note that for easy trials cueCircleRotation is 0 by definition, but just keeping this so the logic is consistent 
-                        UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,100,attHazardMinTime,attPhaseDeg%,alloff%-Pow(2,attDirection%-1)+(256*rotList%[totalCount%]),masterColorListVSG$);  
+                        'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,100,attHazardMinTime,attPhaseDeg%,alloff%-Pow(2,attDirection%-1)+(256*rotList%[totalCount%]),masterColorListVSG$);  
+                        UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,100,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+attHazardMinTime,
+                        attStimOnsetTime+attHazardMinTime+attTimeToAnswer+2,attPhaseDeg%,alloff%-Pow(2,attDirection%-1)+(256*rotList%[totalCount%]),masterColorListVSG$);
                     else
                         offList%[totalCount%] := 0;  'show all grating patches                
                         'insert easy trial with 100% contrast
-                        UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,100,attHazardMinTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,100,attHazardMinTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,100,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+attHazardMinTime,
+                        attStimOnsetTime+attHazardMinTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
                     endif;
                 else
                     chgList%[totalCount%] := 0;  'no stimulus changes
                     cList%[totalCount%] := attContrastBase%;  'fill cList%[] with the base contrast
                     offList%[totalCount%] := 0;  'show all grating patches
                     'insert no-go trial
-                    UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attHazardMinTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                    'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attHazardMinTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                    UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+attHazardMinTime,
+                    attStimOnsetTime+attHazardMinTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
                 endif;
                 
               
@@ -3972,6 +4059,9 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                 
                 attList%[totalCount%] := attDirection%;  'set direction of attention, same for regular or no-change trials
                 noInfoList%[totalCount%] := isNoInfoTrial%;   'set noInfoList, will not be affected by below code
+                cueOnList[totalCount%] := attCueOnsetTime;
+                cueOffList[totalCount%] := attCueOffsetTime;
+                stimOnList[totalCount%] := attStimOnsetTime;
                 
                 'Get a new hazard time and new set of flasher times for this trial - the one caveat is that
                 'follow-up blocks have to have the same hazard times and flasher times as the first block if
@@ -4030,7 +4120,9 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                     cList%[totalCount%] := attContrastBase%;  'fill cList%[] with the base contrast
                     offList%[totalCount%] := 0;  'show all grating patches
                     'insert no-go trial
-                    UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                    'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                    UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
+                    attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
                 else    
                     docase
                     case attDirection% = 6 then  'no-change trial, these are the same as no-go trials, but with a different fix color
@@ -4040,7 +4132,9 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                         offList%[totalCount%] := 0;  'show all grating patches
                         hazList[totalCount%] := 0.1;  'override hazard time with 0.1 for no-change trials. This cannot be done above because we need to calculate the list of hazard times and keep them for block alternation.
                         'insert no-go trial  
-                        UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
+                        attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
                     case (Rand()*100 < attCatchTrialPercentage) then 'catch trial
                         vList%[totalCount%] := 0;  'catch = invalid
                         offList%[totalCount%] := 0;  'show all grating patches
@@ -4068,7 +4162,9 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                             cList%[totalCount%] := attOneCatchContrast%;  'there is only one contrast
                         endif;
                         'insert catch trial
-                        UpdateTrialSpecString(c$,attColor%,tempInvalid%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        'UpdateTrialSpecString(c$,attColor%,tempInvalid%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        UpdateTrialSpecStringNew(c$,attColor%,tempInvalid%,attContrastBase%,cList%[totalCount%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
+                        attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
                         catchCount% += 1;  
                     case (Rand()*100 < attUncatchTrialPercentage) then 'uncatch trial
                         'this is guaranteed to go along with attOnlyOneCatch% = 1
@@ -4077,7 +4173,9 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                         offList%[totalCount%] := 0;  'show all grating patches
                         chgList%[totalCount%] := attDirection%;  'set stimulus that changes
                         'insert uncatch trial
-                        UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
+                        attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
                     case isNoInfoTrial% = 1 then
                         'not valid, make changed contrast random
                         vList%[totalCount%] := 0;  'not valid
@@ -4085,14 +4183,18 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                         offList%[totalCount%] := 0;  'show all grating patches
                         chgList%[totalCount%] := noInfoChangeLoc%;  'set stimulus that changes
                         'insert trial
-                        UpdateTrialSpecString(c$,attColor%,noInfoChangeLoc%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        'UpdateTrialSpecString(c$,attColor%,noInfoChangeLoc%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        UpdateTrialSpecStringNew(c$,attColor%,noInfoChangeLoc%,attContrastBase%,cList%[totalCount%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
+                        attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
                     else  'valid trial
                         vList%[totalCount%] := 1;  'valid
                         cList%[totalCount%] := attContrastList[attTrialOrder%[stdCount%]];
                         offList%[totalCount%] := 0;  'show all grating patches
                         chgList%[totalCount%] := attDirection%;  'set stimulus that changes
                         'insert trial
-                        UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
+                        attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
                         stdCount% += 1;
                     endcase;
                 endif;
@@ -4635,6 +4737,71 @@ proc UpdateTrialSpecString(&c$,color%,chgdir%,base%,chg%,haz,phase%,off%,colList
     next;  
 
 end
+
+
+proc UpdateTrialSpecStringNew(&c$,color%,chgdir%,base%,chg%,cueOn,cueOff,stimOn,stimCC,allOff,phase%,off%,colListVSG$[])
+    var col$;
+    var trainbase%;
+    
+    'if we are using training contrast, set non-changing gratings to different base contrast
+    if attTrainingContrastCheck% = 1 then
+        trainbase% := attTrainingContrastPct%;
+    else
+        trainbase% := base%;  'by default we will use the same base
+    endif;
+                            
+    
+    'order of colors is taken from colors dialog
+    'printlog("color num is %d\n",color%);
+    col$ := colListVSG$[color%-1]; 
+    c$ := c$ + col$ + ",";  'add color spec
+    
+    'get temporal frequency of the changing grating
+    var tf;
+    var initphase%;
+    if attGetGPFromMainStim% = 1 then  'use main value if we're getting values from main
+        tf := GetStimulusTF(1);  '1 is Stimulus1 
+    else
+        
+        tf := GetStimulusTF(chgdir%);  'or actual changing value if not
+                                       '2 is Distracter1, 3 is Distracter2, etc.
+    endif;
+
+    'set phase
+    if phase% < 0 then
+        initphase% := 0;
+    else
+        initphase% := GetInitialPhase%(phase%,tf,stimCC);
+    endif;
+    
+    c$ := c$ + Str$(initphase%) + ",";  'add initial phase
+    
+    c$ := c$ + Str$(off%) + ",";  'add offbits, these are already updated based on the rotation of the cue circles
+    
+    c$ := c$ + Str$(cueOn) + ",";  'add cue on time
+    
+    c$ := c$ + Str$(cueOff) + ",";  'add cue off time
+    
+    c$ := c$ + Str$(stimOn) + ",";  'add stim on time
+    
+    c$ := c$ + Str$(stimCC) + ",";  'add stim contrast change (hazard) time
+    
+    c$ := c$ + Str$(allOff) + ",";  'add all off time
+    
+    
+    'now go through the base and change contrasts
+    var k%;
+    
+   for k% := 1 to attNumPatches% do
+        if k% = chgdir% then  'do base and change
+            c$ := c$ + Str$(base%) + "," + Str$(chg%) + ",";
+        else 'change is identical to original, typically trainbase% = base% but if training contrast is on that is not necessarily true
+            c$ := c$ + Str$(trainbase%) + "," + Str$(trainbase%) + ",";
+        endif;
+    next;  
+
+end
+
 
 
 proc UpdateFlasherSpecString(&f$,numFlashers%,x[],y[],w,h,onset[],dur,&fR)
