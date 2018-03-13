@@ -216,12 +216,12 @@
 
 ; Tell ASL to start recording to open output file
 0148 ASLREC: 'W MOVI   V2,1            ;Log that sequencer is in use
-0149            DIGLOW [1.......]      ;start recording, XDAT bit 7
+0149            DIGLOW [..1.....]      ;start recording, XDAT bit 5 (7 no worky)
 0150            MOVI   V2,0            ;Log that sequencer is not in use
 0151            HALT   
 
 ; Tell ASL to stop recording; do not close output file
 0152 ASLSTOPR: 'w MOVI V2,1            ;Log that sequencer is in use
-0153            DIGLOW [0.......]      ;stop recording, XDAT bit 7
+0153            DIGLOW [..0.....]      ;stop recording, XDAT bit 5 (7 no worky)
 0154            MOVI   V2,0            ;Log that sequencer is not in use
 0155            HALT
