@@ -5384,12 +5384,25 @@ func TagTriggerWithSampletext%(triggerTime,tStimOn,trialCount%,&flasherCount%)
     var cc%;  'did contrast change happen?
     var fTime;  'expected time of next flasher
     var ccTime; 'expected time of contrast change
-    var diffF;
-    var diffCC;
-    var diffEOW;
+    var cueOnTime;
+    var cueOffTime;
+    var gratingOnTime;
+'    var diffF;
+'    var diffCC;
+'    var diffCueOn;
+'    var diffCueOff;
+'    var diffGrOn;
+'    var diffEOW;
+    var diffArray[6];
+    var minLoc%;
+    var minVal;
+    
+    
+    'with the change in design, this has to be redone a bit
+    'tStimOn is the time that the animation starts.  attCueOnsetList[] ,attCueOffsetList[] ,attStimOnsetList[] are literal times
     
     'don't tag the very first trigger that coincides with the stim onset
-    if triggerTime - tStimOn < 0.005 then
+    if triggerTime - tStimOn < 0.015 then
         return cc%;  'instead return and indicate CC has not happened
     endif;
     
@@ -5398,34 +5411,75 @@ func TagTriggerWithSampletext%(triggerTime,tStimOn,trialCount%,&flasherCount%)
     else
         fTime := 9999999; 'there is no flasher, this will make diffF huge
     endif;
-    ccTime := tStimOn + attHazardList[trialCount%];
+    cueOnTime := tStimOn + attCueOnsetList[trialCount%];
+    cueOffTime := tStimOn + attCueOffsetList[trialCount%];
+    gratingOnTime := tStimOn + attStimOnsetList[trialCount%];
+    ccTime := gratingOnTime + attHazardList[trialCount%];
     
-    diffF := abs(fTime - triggerTime);
-    diffCC := abs(ccTime - triggerTime);
-    diffEOW := abs((ccTime + attTimeToAnswer) - triggerTime);
+'    diffF := abs(fTime - triggerTime);
+'    diffCueOn := abs(cueOnTime - triggerTime);
+'    diffCueOff := abs(cueOffTime - triggerTime);
+'    diffGrOn := abs(gratingOnTime - triggerTime);
+'    diffCC := abs(ccTime - triggerTime);
+'    diffEOW := abs((ccTime + attTimeToAnswer) - triggerTime);
+    
+    diffArray[0] := abs(ccTime - triggerTime);  'contrast change time goes first, because this has priority, if there is a tie, min will take the first value
+    diffArray[1] := abs(cueOnTime - triggerTime);
+    diffArray[2] := abs(cueOffTime - triggerTime);
+    diffArray[3] := abs(gratingOnTime - triggerTime);
+    diffArray[4] := abs(fTime - triggerTime);
+    diffArray[5]:= abs((ccTime + attTimeToAnswer) - triggerTime);
+    minLoc% := min(diffArray);  'find index of smallest difference
+    minVal := diffArray[minLoc%];
     
 'printlog("*** Tag Trigger - Flasher count is %d, expected flasher time is %f, expected ccTime is %f, trigger time is %f, delta was %f\n",flasherCount%,fTime,ccTime,triggerTime,Min(diffF,diffCC));    
     
     docase
-    case diffF > .05 and diffCC > .05 then  'if tolerance > 50 ms (eeek!), sampletext an error or end-of-window
-        if diffEOW < .1 then 'use big tolerance for end of window
+    case minVal > 0.05 then 'trigger is not within 50 ms of any expected time
+        if diffArray[5] < 0.1 then 'use big tolerance for end of window 
             SampleText("End of response window",triggerTime);
         else
             SampleText("Error - trigger time not recognized!",triggerTime);
         endif;
-    case diffF < diffCC and diffF > 0.05 then
+    case minLoc% = 0 then 'this is a contrast change
+        cc% := 1;
+        'Sampletext tag happens elsewhere, in idle processing loop
+    case minLoc% = 1 then 'this is cue on
+        SampleText("Cue On",triggerTime);
+    case minLoc% = 2 then 'this is cue off
+        SampleText("Cue Off",triggerTime);
+    case minLoc% = 3 then 'this is grating on
+        SampleText("Grating On",triggerTime);        
+    case minLoc% = 4 then 'this is a flasher
         SampleText("Flasher X = " + Str$(flasherX[trialCount%][flasherCount%]) + " Y = " + Str$(flasherY[trialCount%][flasherCount%]) + " Note, trigger time more than 2ms off!",triggerTime);
         flasherCount% += 1;
-    case diffCC < diffF and diffCC > 0.05 then
-        cc% := 1;
-    case diffF < diffCC then
-        SampleText("Flasher X = " + Str$(flasherX[trialCount%][flasherCount%]) + " Y = " + Str$(flasherY[trialCount%][flasherCount%]),triggerTime);
-        flasherCount% += 1;
-    case diffCC < diffF then
-        cc% := 1;
-    else
-        message("Trigger was exactly halfway between expected Flasher and Contrast Change.  This should never happen.  Argh.");
     endcase
+    
+'    docase
+'    case diffF > .05 and diffCC > .05 and diffCueOn > .05 and diffCueOff > .05 and diffGrOn > .05 then  'if tolerance > 50 ms (eeek!), sampletext an error or end-of-window
+'        if diffEOW < .1 then 'use big tolerance for end of window
+'            SampleText("End of response window",triggerTime);
+'        else
+'            SampleText("Error - trigger time not recognized!",triggerTime);
+'        endif;
+'    case diffF < diffCC and diffF > 0.05 then
+'        SampleText("Flasher X = " + Str$(flasherX[trialCount%][flasherCount%]) + " Y = " + Str$(flasherY[trialCount%][flasherCount%]) + " Note, trigger time more than 2ms off!",triggerTime);
+'        flasherCount% += 1;
+'    case diffCC < diffF and diffCC > 0.05 then
+'        cc% := 1;
+'    case diffF < diffCC then
+'        SampleText("Flasher X = " + Str$(flasherX[trialCount%][flasherCount%]) + " Y = " + Str$(flasherY[trialCount%][flasherCount%]),triggerTime);
+'        flasherCount% += 1;
+'    case diffCC < diffF then
+'        cc% := 1;
+'    else
+'        message("Trigger was exactly halfway between expected Flasher and Contrast Change.  This should never happen.  Argh.");
+'    endcase
+    
+
+    
+    
+    
     
     return cc%;
 end
