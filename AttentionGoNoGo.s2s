@@ -3811,7 +3811,7 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
     'this is simply 2^0 + 2^1 + 2^2 ... + 2^(n-1), which is (2^n)-1
     alloff% := pow(2,attNumPatches%)-1;
     
-    if attUseCueCircles% > 0 then
+    if attUseCueCircles% > 0  or 1=1 then  'for now, reintroduction of the old syntax does not work, VSG is crashing on parse, not sure why.  For now, force new syntax.
         c$ := " -m ";  'We no longer put the time to answer here with the new syntax, this is now part of every trial
     else  'use old-style, because -m flag will not work unless cue circles/points, etc. are specified
         c$ := " -J " + Str$(attTimeToAnswer) + ",";  'put in the first two elements of the specifier string, the -J and the post-CC time
@@ -5162,8 +5162,8 @@ func CreateCueCircleColorSets$()
                 tempCol%[2] := RGBList%[colIdx%][2];
                 
                 'put in correct color/contrast, which starts on the very first list as index zero and then is very complicatedly updated to behave as desired
-                'CueCirc$ := CueCirc$ + FadeColorToGray$(tempCol%[],ContrastList%[conIdx%]);
-                CueCirc$ := CueCirc$ + FadeColorToGray$(tempCol%[],ContrastList%[0]);  'Henry is asking for no-info trials to have *all* cues take the contrast value of the attend stimulus
+                CueCirc$ := CueCirc$ + FadeColorToGray$(tempCol%[],ContrastList%[conIdx%]);
+                
                 
                 'update index of correct contrast
                 'for each cue circle in an individual set, advance the contrast index, and reset to zero if we go past the end
@@ -5197,7 +5197,8 @@ func CreateCueCircleColorSets$()
                     tempCol%[2] := RGBList%[colIdx%][2];
                     
                     'put in correct color/contrast, which starts on the very first list as index zero and then is very complicatedly updated to behave as desired
-                    CueCirc$ := CueCirc$ + FadeColorToGray$(tempCol%[],ContrastList%[conIdx%]);
+                    'CueCirc$ := CueCirc$ + FadeColorToGray$(tempCol%[],ContrastList%[conIdx%]);
+                    CueCirc$ := CueCirc$ + FadeColorToGray$(tempCol%[],ContrastList%[0]);  'Henry is asking for no-info trials to have *all* cues take the contrast value of the attend stimulus
                     
                     'update index of correct contrast
                     'for each cue circle in an individual set, advance the contrast index, and reset to zero if we go past the end
