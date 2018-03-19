@@ -3811,9 +3811,12 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
     'this is simply 2^0 + 2^1 + 2^2 ... + 2^(n-1), which is (2^n)-1
     alloff% := pow(2,attNumPatches%)-1;
     
+    if attUseCueCircles% > 0 then
+        c$ := " -m ";  'We no longer put the time to answer here with the new syntax, this is now part of every trial
+    else  'use old-style, because -m flag will not work unless cue circles/points, etc. are specified
+        c$ := " -J " + Str$(attTimeToAnswer) + ",";  'put in the first two elements of the specifier string, the -J and the post-CC time
+    endif;
     
-    'c$ := " -J " + Str$(attTimeToAnswer) + ",";  'put in the first two elements of the specifier string, the -J and the post-CC time
-    c$ := " -m ";  'We no longer put the time to answer here with the new syntax, this is now part of every trial
     f$ := " -j ";  'Flasher list is led by a lower case -j
     
     for i% := 1 to attNumberOfBlocks% do
@@ -4002,24 +4005,33 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                         offList%[totalCount%] := alloff% - Pow(2,attDirection%-1);  'turn off all stimuli but the attended one
                         'insert easy trial with 100% contrast
                         'note that for easy trials cueCircleRotation is 0 by definition, but just keeping this so the logic is consistent 
-                        'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,100,attHazardMinTime,attPhaseDeg%,alloff%-Pow(2,attDirection%-1)+(256*rotList%[totalCount%]),masterColorListVSG$);  
-                        UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,100,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+attHazardMinTime,
-                        attStimOnsetTime+attHazardMinTime+attTimeToAnswer+2,attPhaseDeg%,alloff%-Pow(2,attDirection%-1)+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        if attUseCueCircles% > 0 then                        
+                            UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,100,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+attHazardMinTime,
+                            attStimOnsetTime+attHazardMinTime+attTimeToAnswer+2,attPhaseDeg%,alloff%-Pow(2,attDirection%-1)+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        else
+                            UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,100,attHazardMinTime,attPhaseDeg%,alloff%-Pow(2,attDirection%-1)+(256*rotList%[totalCount%]),masterColorListVSG$); 
+                        endif;
                     else
                         offList%[totalCount%] := 0;  'show all grating patches                
                         'insert easy trial with 100% contrast
-                        'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,100,attHazardMinTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
-                        UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,100,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+attHazardMinTime,
-                        attStimOnsetTime+attHazardMinTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        if attUseCueCircles% > 0 then
+                            UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,100,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+attHazardMinTime,
+                            attStimOnsetTime+attHazardMinTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        else
+                            UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,100,attHazardMinTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        endif;
                     endif;
                 else
                     chgList%[totalCount%] := 0;  'no stimulus changes
                     cList%[totalCount%] := attContrastBase%;  'fill cList%[] with the base contrast
                     offList%[totalCount%] := 0;  'show all grating patches
                     'insert no-go trial
-                    'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attHazardMinTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
-                    UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+attHazardMinTime,
-                    attStimOnsetTime+attHazardMinTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                    if attUseCueCircles% > 0 then
+                        UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+attHazardMinTime,
+                        attStimOnsetTime+attHazardMinTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                    else
+                        UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attHazardMinTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                    endif;
                 endif;
                 
               
@@ -4132,9 +4144,12 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                     cList%[totalCount%] := attContrastBase%;  'fill cList%[] with the base contrast
                     offList%[totalCount%] := 0;  'show all grating patches
                     'insert no-go trial
-                    'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
-                    UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
-                    attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                    if attUseCueCircles% > 0 then
+                        UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
+                        attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                    else
+                        UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                    endif;
                 else    
                     docase
                     case attDirection% = 6 then  'no-change trial, these are the same as no-go trials, but with a different fix color
@@ -4144,9 +4159,12 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                         offList%[totalCount%] := 0;  'show all grating patches
                         hazList[totalCount%] := 0.1;  'override hazard time with 0.1 for no-change trials. This cannot be done above because we need to calculate the list of hazard times and keep them for block alternation.
                         'insert no-go trial  
-                        'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
-                        UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
-                        attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        if attUseCueCircles% > 0 then
+                            UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
+                            attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        else
+                            UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,attContrastBase%,trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        endif;
                     case (Rand()*100 < attCatchTrialPercentage) then 'catch trial
                         vList%[totalCount%] := 0;  'catch = invalid
                         offList%[totalCount%] := 0;  'show all grating patches
@@ -4174,9 +4192,12 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                             cList%[totalCount%] := attOneCatchContrast%;  'there is only one contrast
                         endif;
                         'insert catch trial
-                        'UpdateTrialSpecString(c$,attColor%,tempInvalid%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
-                        UpdateTrialSpecStringNew(c$,attColor%,tempInvalid%,attContrastBase%,cList%[totalCount%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
-                        attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        if attUseCueCircles% > 0 then
+                            UpdateTrialSpecStringNew(c$,attColor%,tempInvalid%,attContrastBase%,cList%[totalCount%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
+                            attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        else
+                            UpdateTrialSpecString(c$,attColor%,tempInvalid%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        endif;
                         catchCount% += 1;  
                     case (Rand()*100 < attUncatchTrialPercentage) then 'uncatch trial
                         'this is guaranteed to go along with attOnlyOneCatch% = 1
@@ -4185,9 +4206,12 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                         offList%[totalCount%] := 0;  'show all grating patches
                         chgList%[totalCount%] := attDirection%;  'set stimulus that changes
                         'insert uncatch trial
-                        'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
-                        UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
-                        attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        if attUseCueCircles% > 0 then
+                            UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
+                            attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        else
+                            UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        endif;
                     case isNoInfoTrial% = 1 then
                         'not valid, make changed contrast random
                         vList%[totalCount%] := 0;  'not valid
@@ -4195,18 +4219,24 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                         offList%[totalCount%] := 0;  'show all grating patches
                         chgList%[totalCount%] := noInfoChangeLoc%;  'set stimulus that changes
                         'insert trial
-                        'UpdateTrialSpecString(c$,attColor%,noInfoChangeLoc%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
-                        UpdateTrialSpecStringNew(c$,attColor%,noInfoChangeLoc%,attContrastBase%,cList%[totalCount%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
-                        attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        if attUseCueCircles% > 0 then
+                            UpdateTrialSpecStringNew(c$,attColor%,noInfoChangeLoc%,attContrastBase%,cList%[totalCount%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
+                            attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        else
+                            UpdateTrialSpecString(c$,attColor%,noInfoChangeLoc%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        endif;
                     else  'valid trial
                         vList%[totalCount%] := 1;  'valid
                         cList%[totalCount%] := attContrastList[attTrialOrder%[stdCount%]];
                         offList%[totalCount%] := 0;  'show all grating patches
                         chgList%[totalCount%] := attDirection%;  'set stimulus that changes
                         'insert trial
-                        'UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
-                        UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
-                        attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        if attUseCueCircles% > 0 then
+                            UpdateTrialSpecStringNew(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,attStimOnsetTime+trialHazardFunctionTime,
+                            attStimOnsetTime+trialHazardFunctionTime+attTimeToAnswer+2,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        else
+                            UpdateTrialSpecString(c$,attColor%,attDirection%,attContrastBase%,cList%[totalCount%],trialHazardFunctionTime,attPhaseDeg%,0+(256*rotList%[totalCount%]),masterColorListVSG$);
+                        endif;
                         stdCount% += 1;
                     endcase;
                 endif;
@@ -5132,7 +5162,8 @@ func CreateCueCircleColorSets$()
                 tempCol%[2] := RGBList%[colIdx%][2];
                 
                 'put in correct color/contrast, which starts on the very first list as index zero and then is very complicatedly updated to behave as desired
-                CueCirc$ := CueCirc$ + FadeColorToGray$(tempCol%[],ContrastList%[conIdx%]);
+                'CueCirc$ := CueCirc$ + FadeColorToGray$(tempCol%[],ContrastList%[conIdx%]);
+                CueCirc$ := CueCirc$ + FadeColorToGray$(tempCol%[],ContrastList%[0]);  'Henry is asking for no-info trials to have *all* cues take the contrast value of the attend stimulus
                 
                 'update index of correct contrast
                 'for each cue circle in an individual set, advance the contrast index, and reset to zero if we go past the end
