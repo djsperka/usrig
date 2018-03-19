@@ -937,7 +937,8 @@ func AttentionScriptDialog%()
         GetRepeatedParameterProgression%(attNContLevels%,tempNBlocks%,attTrial[],attCatchTrialOrder%[],0,attNContLevels%-1,0,1);
         
         
-        'Commented out - useful for testing the creation of the trial order
+        '*** BEGIN USEFUL SECTION FOR TESTING CREATION OF TRIAL ORDER ON A MACHINE WITHOUT A 1401 ***
+        '*** If this section is active, the program will not run! ***
 '        var Contrast$;
 '        CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,
 '                                  attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,
@@ -957,7 +958,11 @@ func AttentionScriptDialog%()
 '        printlog("Contrast list is %d\n",attContrastList%[0:attNumberOfBlocks%*(attTrialsPerBlock%+attEasyTrialsPerBlock%)]);
 '        printlog("Valid list is %d\n",attValidList%[0:attNumberOfBlocks%*(attTrialsPerBlock%+attEasyTrialsPerBlock%)]);
 '        printlog("contrasts are %d\n",attContrastList[]);
+'        printlog("*** TESTING CREATION OF TRIAL ORDER, NOW QUITTING BEFORE DOING ANYTHING REQUIRING A 1401! ***\n");
 '        halt;
+        '*** END USEFUL SECTION FOR TESTING CREATION OF TRIAL ORDER ON A MACHINE WITHOUT A 1401 ***
+        
+        
 	endif;
 	return i%;
 end;
@@ -3834,8 +3839,8 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                 next
             endif
         'if randomizing by block without a no-change, select random stim to attend (block > 1 or start block not specified)
-        case attBlockAlternate% = 1 and attNoChangeCondition% then  'randomize by block, choose a random stimulus to attend for each block, all stims have equal probability
-            attColor% := Floor(Rand(attNumPatches%,1));  'offset by 1 so the value comes out 1:N instead of 0:N-1    
+        case attBlockAlternate% = 1 and attNoChangeCondition% = 0 then  'randomize by block, choose a random stimulus to attend for each block, all stims have equal probability
+            attColor% := Floor(Rand(attNumPatches%,1));  'offset by 1 so the value comes out 1:N instead of 0:N-1              
         'if randomizing by block with a no-change, select random stim to attend (block > 1 or start block not specified)    
         case attBlockAlternate% = 1 and attNoChangeCondition% = 1 then  'randomize by block, choose a random stimulus to attend for each block, all stims including no-change/no-info have equal probability 
             attColor% := blockTypes%[btIndices%[Floor(Rand(attNumPatches%+1,0))]];  'do not offset by one, we are shuffling indices
@@ -3856,6 +3861,10 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
             if blockTypeIndex% > attNumPatches% then  'see note about 26 lines above
                 blockTypeIndex% := 0;
             endif;
+        else
+            message("Uh-oh, crashing!  Save log file for Jeff!");
+            printlog("Did NOTHING in case statement in CreateContrastList, crash imminent!\n"); 
+            printlog("BlockAlternate is %d, i is %d, StartBlock is %d, NoChangeCondition is %d\n",attBlockAlternate%, i%, attStartBlock%, attNoChangeCondition%); 
         endcase
         
         'get color of first block type (only on first block, obviously) to allow reset of randomizing hazard variables
@@ -3918,6 +3927,9 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
             endif;
             
             fixColor%[totalCount%] := attColor%;  'this is the color of the fixation point, which is the same regardless of attention/valid/etc.  It's kind of ground truth and everything builds from there.            
+            
+            
+            
             
             if j% <= attEasyTrialsPerBlock% then  'Note that Easy trials will now only happen if the attend directions are blocked
                 
