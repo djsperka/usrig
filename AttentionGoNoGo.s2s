@@ -4411,17 +4411,39 @@ proc WriteParameterFile()
 	var parHandle%;
     var tempPrimary$;
     var tempSecondary$;
-
+    
+    'creating some lists for output, same as from dialog
+    var cueCircleList$[4];
+    cueCircleList$[0] := "No Cue Circles";
+    cueCircleList$[1] := "Cue Circles";
+    cueCircleList$[2] := "Cue Circles + Cue Points";
+    cueCircleList$[3] := "Cue Points Only";  'should be ready to go
+    
+    var blockStartList$[8];
+    blockStartList$[0] := "Random";
+    blockStartList$[1] := "Attend-Toward";
+    blockStartList$[2] := "Distracter 1";
+    blockStartList$[3] := "Distracter 2";
+    blockStartList$[4] := "Distracter 3";
+    blockStartList$[5] := "Distracter 4";
+    blockStartList$[6] := "No Change";
+    blockStartList$[7] := "No Info";
+    
+    var blockAlternateList$[3];
+    blockAlternateList$[0] := "Randomize cue type by trial";
+    blockAlternateList$[1] := "Randomize cue type by block";
+    blockAlternateList$[2] := "Alternate cue type by block";
+    
 	' get filename for parfile (data file + "par" extension) and open it
 	View(DataWindow%);
 	parFileBase$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
 	parFileName$ := parFileBase$ + ".par";
 	PrintLog("par filename is " + parFileName$ + "\n");
 	parHandle% := FileOpen(parFileName$, 8, 1);
-
+    
 	' write general info - eye coil gains, dist to screen
 	Print("Tuning parameters for %s\n\n", parFileBase$);
-
+    
 	Print("General information\n");
 	Print("-------------------\n\n");
 	Print("Distance to screen (MM)    : %s\n", GetDistanceToScreenMM$());
@@ -4432,7 +4454,7 @@ proc WriteParameterFile()
     Print("Continuous ports           : %s\n", GetContinuousPorts$());
 	Print("Reward size (ms)           : %d\n", GetJuiceRewardMS%());
 	'Print("Background color           : %s\n", tunBackgroundColor$);
-
+    
 	' write fixpoint parameters
 	Print("\nFixation point\n");
 	Print("-------------------\n\n");
@@ -4441,7 +4463,7 @@ proc WriteParameterFile()
 	Print("Position (y, degrees)      : %f\n", FixationY);
 	Print("Diameter (degrees)         : %f\n", FixationDiameter);
 	Print("Color                      : %s\n", FixationColor$);
-
+    
 	' write stimulus parameters
 	var Tstimstr$;
 	var Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$;
@@ -4467,7 +4489,13 @@ proc WriteParameterFile()
 	Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
 	Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
 	Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
-        
+    
+    if attUseCueCircles% > 0 then
+        Print("Attend Cue Circle Contrast      : %d\n", attCueCircleContrastAttend%);
+        Print("Attend Cue Circle Color (r/g/b) : %d %d %d\n", attendRGB%[0], attendRGB%[1], attendRGB%[2]);
+    endif;
+    
+    
     ' write distractor parameters
     if attNumPatches% > 1 then
         Print("\nDistractor1\n");  'Distractor grating
@@ -4491,6 +4519,12 @@ proc WriteParameterFile()
             Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
             Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
         endif;
+        
+        if attUseCueCircles% > 0 then
+            Print("Distractor1 Cue Circle Contrast : %d\n", attCueCircleContrastIgnore1%);
+            Print("Dist 1 Cue Circle Color (r/g/b) : %d %d %d\n", ignore1RGB%[0], ignore1RGB%[1], ignore1RGB%[2]);
+        endif;        
+        
     endif;
     if attNumPatches% > 2 then
         Print("\nDistractor2\n");  'Distractor grating
@@ -4514,6 +4548,12 @@ proc WriteParameterFile()
             Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
             Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
         endif;
+        
+        if attUseCueCircles% > 0 then
+            Print("Distractor2 Cue Circle Contrast : %d\n", attCueCircleContrastIgnore2%);
+            Print("Dist 2 Cue Circle Color (r/g/b) : %d %d %d\n", ignore2RGB%[0], ignore2RGB%[1], ignore2RGB%[2]);
+        endif;
+        
     endif;
     if attNumPatches% > 3 then
         Print("\nDistractor3\n");  'Distractor grating
@@ -4537,6 +4577,12 @@ proc WriteParameterFile()
             Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
             Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
         endif;
+        
+        if attUseCueCircles% > 0 then
+            Print("Distractor3 Cue Circle Contrast : %d\n", attCueCircleContrastIgnore3%);
+            Print("Dist3 Cue Circle Color (r/g/b) : %d %d %d\n", ignore3RGB%[0], ignore3RGB%[1], ignore3RGB%[2]);
+        endif;
+        
     endif;
     if attNumPatches% > 4 then
         Print("\nDistractor4\n");  'Distractor grating
@@ -4560,12 +4606,18 @@ proc WriteParameterFile()
             Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
             Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
         endif;
+        
+        if attUseCueCircles% > 0 then
+            Print("Distractor4 Cue Circle Contrast : %d\n", attCueCircleContrastIgnore4%);
+            Print("Dist 4 Cue Circle Color (r/g/b) : %d %d %d\n", ignore4RGB%[0], ignore4RGB%[1], ignore4RGB%[2]);
+        endif;
+        
     endif;
     
     
 	Print("\nExperimental parameters\n");
 	Print("-------------------------\n\n");
-
+    
 	Print("Acquisition time (s)   : %f\n", attAcquisitionTime);
     Print("Min fixation cue time (s)   : %f\n", attFixationCueMinTime);
     Print("Max fixation cue time (s)   : %f\n", attFixationCueMaxTime);
@@ -4626,12 +4678,23 @@ proc WriteParameterFile()
     Print("Do 'uncatch'     : %d\n", attDoUncatch%);
     Print("Do Catch-Trials-As-No-Go     : %d\n", attCatchIsNoGo%);
     Print("Use cue circles?    : %d\n", attUseCueCircles%);
+    if attUseCueCircles% > 0 then
+        Print("\tUsing: %s\n",cueCircleList$[attUseCueCircles%]);
+    endif;
     Print("Cue Circle extra radius    : %f\n", attCueCircleExtraRadius);
-    Print("Start Block     : %d\n", attStartBlock%);
+    Print("Start Block     : %d (%s)\n", attStartBlock%,blockStartList$[attStartBlock%]);
+    Print("Block Alternation   : %s\n",blockAlternateList$[attBlockAlternate%]);
     Print("No Change Condition    : %d\n", attNoChangeCondition%);
+    if attNoChangeCondition% > 0 then
+        Print("No Change Cue Circle Color (r/g/b) : %d %d %d\n", noattenRGB%[0], noattenRGB%[1], noattenRGB%[2]);
+    endif;
+    Print("No Info Condition     : %d\n", attNoInfoCondition%);
+    if attNoChangeCondition% > 0 then
+        Print("No Info Cue Circle Color (r/g/b) : %d %d %d\n", noinfoRGB%[0], noinfoRGB%[1], noinfoRGB%[2]);
+    endif;
     Print("Swap Cue Circle    : %d\n", attSwapCueCircle%);  
-            
-
+    
+    
     
     Print("Values: " + Contrast$ + "\n");
     Print("\n");
@@ -4666,7 +4729,7 @@ proc WriteParameterFile()
 	' close parfile
 	FileClose(0);
     
-
+    
 end;
 
 
