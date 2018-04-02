@@ -3903,11 +3903,16 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
             'if we are NOT alternating by block, choose a direction on each trial
             docase
             case attBlockAlternate% = 0 and attNoChangeCondition% = 0 then
-                if (Rand(0.0) < 0.5) then
-                    attColor% := 1;  'Attend main stimulus, this happens half the time
-                else
-                    attColor% := Floor(Rand(attNumPatches%-1,2));  'choose a random stim to attend that is not the main
-                endif
+                'This code has the main stimulus chosen half of the time
+                'if (Rand(0.0) < 0.5) then
+                '    attColor% := 1;  'Attend main stimulus, this happens half the time
+                'else
+                '    attColor% := Floor(Rand(attNumPatches%-1,2));  'choose a random stim to attend that is not the main
+                'endif
+                
+                'This code has all stimuli chose equally often
+                attColor% := Floor(Rand(attNumPatches%,1));  'choose a random stim to attend, all have equal probability
+                
                 if attNoInfoCondition% = 1 then
                     isNoInfoTrial% := round(rand()); 'each trial is random if there isn't a no-change
                 else 'just be explicit, this shouldn't be necessary but in case there's a booboo somewhere this will fix it
