@@ -23,6 +23,7 @@ var attCatchTrialPercentage;
 var attUncatchTrialPercentage;
 var attDoUncatch%;
 var attNoGoTrialPercentage;
+var attNoInfoTrialPercentage;
 var attNumPatches%;  'how many stimulus patches on the screen?
 var attGetGPFromMainStim%;  'check box variable, should we get the distractor grating parameters (except for XY position) from the main stimulus?
 var attUseCueCircles%;
@@ -213,6 +214,7 @@ const attdlgCueCircleStrokeWidth% := 30;
 const attdlgUseFlashers% := 31;
 const attdlgCatchIsNoGo% := 32;
 const attdlgDoOpto% := 33;
+const attdlgNoInfoPct% := 34;
 
 ' constants for timing dialog
 const atttimingdlgFixationCueMinTime% := 2;
@@ -377,6 +379,7 @@ proc GetAttentionScriptParameters()
     attCueCircleExtraRadius := GetFloatRegistryValue(key$, "CueCircleExtraRadius", 0.0);
 	attCatchTrialPercentage := GetFloatRegistryValue(key$, "CatchTrialPercentage", 0.0);
     attNoGoTrialPercentage := GetFloatRegistryValue(key$, "NoGoTrialPercentage", 0.0);
+    attNoInfoTrialPercentage := GetFloatRegistryValue(key$, "NoInfoTrialPercentage", 0.0);
 	attBlockAlternate% := GetIntRegistryValue%(key$, "BlockAlternate", 1);
     attSelectRandomContrastEachTrial% := GetIntRegistryValue%(key$, "NoBlockRand", 1);
 	attTrainingContrastCheck% := GetIntRegistryValue%(key$, "TrainingContrastCheck", 0);
@@ -428,6 +431,7 @@ proc SaveAttentionScriptParameters()
     SetFloatRegistryValue(key$, "CueCircleExtraRadius", attCueCircleExtraRadius);
 	SetFloatRegistryValue(key$, "CatchTrialPercentage", attCatchTrialPercentage);
     SetFloatRegistryValue(key$, "NoGoTrialPercentage", attNoGoTrialPercentage);
+    SetFloatRegistryValue(key$, "NoInfoTrialPercentage", attNoInfoTrialPercentage);
 	SetIntRegistryValue(key$, "BlockAlternate", attBlockAlternate%);
     SetIntRegistryValue(key$, "NoBlockRand", attSelectRandomContrastEachTrial%);
 	SetIntRegistryValue(key$, "TrainingContrastCheck", attTrainingContrastCheck%);
@@ -639,7 +643,7 @@ func AttentionScriptDialog%()
     var tempNBlocks%;
     var tempTotal;  'friggin integer math
     var tempWhoops;
-    var fiveints%[5];
+    var sixints%[6];
     var tenmoreints%[10];
     var blockAlternateList$[3];
     var blockStartList$[8];
@@ -688,11 +692,12 @@ func AttentionScriptDialog%()
     GetFlasherDialogParameters(); 'and this...
     CreateMasterColorLists();  'and this...
     
-    fiveints%[0] := attOnlyOneCatch%;
-    fiveints%[1] := attOneCatchContrast%;
-    fiveints%[2] := attDoUncatch%;
-    fiveints%[3] := attNumPatches%;
-    fiveints%[4] := attGetGPFromMainStim%;
+    sixints%[0] := attOnlyOneCatch%;
+    sixints%[1] := attOneCatchContrast%;
+    sixints%[2] := attDoUncatch%;
+    sixints%[3] := attNumPatches%;
+    sixints%[4] := attGetGPFromMainStim%;
+    sixints%[5] := attUseCueCircles%;
     
     tenmoreints%[0] := distracterOffForEasy%;
     tenmoreints%[1] := attStartBlock%;
@@ -708,8 +713,8 @@ func AttentionScriptDialog%()
     
     
     
-	DlgCreate("Attention Training Parameters",30,10);   'on Spike2 v6, must extend height, on v8, will auto-extend height
-    DlgGroup("Blocks", 1, 1, 34, 11);
+	DlgCreate("Attention Training Parameters",31,10);   'on Spike2 v6, must extend height, on v8, will auto-extend height
+    DlgGroup("Blocks", 1, 1, 34, 12);
 	DlgInteger(1, "Number of Blocks:", 1, 1000, 22, 2);
 	DlgInteger(2, "Reg. Trials per block:", 1, 1000, 22, 3);
     DlgInteger(3, "Easy Trials per block:", 0, 1000, 22, 4);
@@ -722,9 +727,11 @@ func AttentionScriptDialog%()
     'DlgCheck(attdlgNoChangeCondition%, "Include no-change condition", 2, 10); 'position WAS 37,11 now swapped, ALSO WAS check box for no-change, now selector for no-change/no-info
     DlgList(attdlgNoChangeCondition%, 30, noChangeNoInfoList$, 4, 4, 10);
     DlgList(attdlgStartBlock%, 30, blockStartList$, 8, 4, 11);  'I put it in, don't want to take it out just because it does nothing, in principle it can be repurposed easier than it can be removed (the whole fourmoreints thing)
+    DlgReal(attdlgNoInfoPct%, "No-Info Trial pct (0-100)", 0, 100, 22, 12);
+    
     
     'Moving this group to the right, so we have to use DlgText because otherwise CED justifies the text all the way left
-    DlgGroup("Contrast",36,1,34,11);
+    DlgGroup("Contrast",36,1,34,12);
     DlgInteger(8, "", 0, 100, 56, 2);  DlgText("Base contrast (%)",37,2);
 	DlgReal(9, "", 0, 10, 56, 3);  DlgText("Max dContrast (oct)",37,3);
 	DlgReal(10, "", 0, 10, 56, 4);  DlgText("Min dContrast (oct)",37,4);
@@ -737,32 +744,32 @@ func AttentionScriptDialog%()
     DlgCheck(7, "Select random contrast each trial", 37, 11);  '"Do NOT randomize by block", position WAS 2,10 now swapped 
     
     
-    DlgGroup("Phase", 1, 12, 34, 3);
-    DlgCheck(attdlgPhaseCheck%, "Set phase at contrast change", 2, 13);
-	DlgInteger(attdlgPhaseDeg%, 7, 0, 360, 27, 14);  DlgText("Phase at cc (deg, 0 = white)",2,14);
-    DlgCheck(attdlgUseFlashers%, "Use Flashers", 2, 15);
+    DlgGroup("Phase", 1, 13, 34, 3);
+    DlgCheck(attdlgPhaseCheck%, "Set phase at contrast change", 2, 14);
+	DlgInteger(attdlgPhaseDeg%, 7, 0, 360, 27, 15);  DlgText("Phase at cc (deg, 0 = white)",2,15);
+    DlgCheck(attdlgUseFlashers%, "Use Flashers", 2, 16);
     
-    DlgGroup("Stimuli", 36, 12, 34, 4);
-    DlgInteger(attdlgNumPatches%, 10, 1, 5, 58, 13); DlgText("Num of grating patches",37,13);
-    DlgCheck(attdlgGetGP%, "Get distracter params from main stim", 37, 14);
-    DlgCheck(attdlgUseFlashers%, "Use Flashers", 37, 15);
+    DlgGroup("Stimuli", 36, 13, 34, 4);
+    DlgInteger(attdlgNumPatches%, 10, 1, 5, 58, 14); DlgText("Num of grating patches",37,14);
+    DlgCheck(attdlgGetGP%, "Get distracter params from main stim", 37, 15);
+    DlgCheck(attdlgUseFlashers%, "Use Flashers", 37, 16);
     
-    DlgGroup("Cue Circles", 1, 15, 34, 5);
-    'DlgCheck(attdlgUseCueCircles%, "Use Cue Circles", 2, 16);
-    DlgList(attdlgUseCueCircles%, 30, cueCircleList$[], 4, 4, 16);
-    DlgCheck(attdlgSwapCueCircle%, "Swap Cue Circles (if used)", 2, 17);
-	DlgReal(attdlgCueCircleExtraRadius%, "Cue extra radius (deg)", 0, 5, 22, 18);
-    DlgInteger(attdlgCueCircleStrokeWidth%, 4, 0, 20, 30, 19); DlgText("Cue Circle Stroke Width (integer)",2,19);
+    DlgGroup("Cue Circles", 1, 16, 34, 5);
+    'DlgCheck(attdlgUseCueCircles%, "Use Cue Circles", 2, 17);
+    DlgList(attdlgUseCueCircles%, 30, cueCircleList$[], 4, 4, 17);
+    DlgCheck(attdlgSwapCueCircle%, "Swap Cue Circles (if used)", 2, 18);
+	DlgReal(attdlgCueCircleExtraRadius%, "Cue extra radius (deg)", 0, 5, 22, 19);
+    DlgInteger(attdlgCueCircleStrokeWidth%, 4, 0, 20, 30, 20); DlgText("Cue Circle Stroke Width (integer)",2,20);
     
     
-    DlgGroup("Reward", 36, 16, 34, 4);
-    DlgCheck(attdlgUseLowReward%, "Use Low Reward For No-Change Trls", 37, 17);
-    DlgInteger(attdlgLowReward%, 10, 1, 1000, 58, 18); DlgText("Low Reward (ms)",37,18);
-    DlgCheck(attdlgCatchIsNoGo%, "Treat Catch as No-Go", 37, 19);
+    DlgGroup("Reward", 36, 17, 34, 4);
+    DlgCheck(attdlgUseLowReward%, "Use Low Reward For No-Change Trls", 37, 18);
+    DlgInteger(attdlgLowReward%, 10, 1, 1000, 58, 19); DlgText("Low Reward (ms)",37,19);
+    DlgCheck(attdlgCatchIsNoGo%, "Treat Catch as No-Go", 37, 20);
     
-    DlgGroup("Optogenetics", 1, 20, 68, 2);
-    DlgCheck(attdlgDoOpto%,"Opto On",2,21);
-    DlgButton(5, "Optogenetics Parameters", AttOptoDialog%, 36, 21);
+    DlgGroup("Optogenetics", 1, 21, 68, 2);
+    DlgCheck(attdlgDoOpto%,"Opto On",2,22);
+    DlgButton(5, "Optogenetics Parameters", AttOptoDialog%, 36, 22);
     
     DlgButton(2, "Colors", ColorsDialog%, 2+36, 23);
     DlgButton(3, "Timing", TimingDialog%, 11+36, 23);  
@@ -777,8 +784,8 @@ func AttentionScriptDialog%()
     DlgAllow(0, 0, AttentionScriptDialogChanged%);
 	i%:=DlgShow(attNumberOfBlocks%, attTrialsPerBlock%, attEasyTrialsPerBlock%, attCatchTrialPercentage, attNoGoTrialPercentage, 
     attBlockAlternate%, attSelectRandomContrastEachTrial%, attContrastBase%, attMaxContChange, attMinContChange, attNContLevels%,
-    attAnswerPointWindowRadius, attTrainingContrastCheck%, attTrainingContrastPct%, attPhaseCheck%, attPhaseDeg%, fiveints%[], 
-    attUseCueCircles%,attCueCircleExtraRadius,tenmoreints%);
+    attAnswerPointWindowRadius, attTrainingContrastCheck%, attTrainingContrastPct%, attPhaseCheck%, attPhaseDeg%, sixints%[], 
+    attCueCircleExtraRadius,tenmoreints%,attNoInfoTrialPercentage);
     
     'attLollipopCheck%, attCueLinePct, attCircleDiameterDiff, 
     'attLollipopContrast%, attLollipopStickContrast%, attCueLineGap);
@@ -786,12 +793,13 @@ func AttentionScriptDialog%()
 	if i% = 1 then
         '	attBackgroundColor$ := bcl$[ibcl%];
         
-        'put fiveints values back into variables
-        attOnlyOneCatch% := fiveints%[0];
-        attOneCatchContrast% := fiveints%[1];
-        attDoUncatch% := fiveints%[2];
-        attNumPatches% := fiveints%[3];
-        attGetGPFromMainStim% := fiveints%[4];
+        'put sixints values back into variables
+        attOnlyOneCatch% := sixints%[0];
+        attOneCatchContrast% := sixints%[1];
+        attDoUncatch% := sixints%[2];
+        attNumPatches% := sixints%[3];
+        attGetGPFromMainStim% := sixints%[4];
+        attUseCueCircles% := sixints%[5];
         
         'put tenmoreints values back into variables
         distracterOffForEasy% := tenmoreints%[0];
@@ -805,36 +813,46 @@ func AttentionScriptDialog%()
         attCatchIsNoGo% := tenmoreints%[8];
         attDoOpto% := tenmoreints%[9];
         
-        docase 
-        case attNoChangeNoInfoCondition% = 0 then
+        
+        if  attBlockAlternate% > 0 then
+            docase 
+            case attNoChangeNoInfoCondition% = 0 then
+                attNoChangeCondition% := 0;
+                attNoInfoCondition% := 0;
+            case attNoChangeNoInfoCondition% = 1 then
+                attNoChangeCondition% := 1;
+                attNoInfoCondition% := 0;
+            case attNoChangeNoInfoCondition% = 2 then
+                attNoChangeCondition% := 0;
+                attNoInfoCondition% := 1;
+            case attNoChangeNoInfoCondition% = 3 then
+                attNoChangeCondition% := 1;
+                attNoInfoCondition% := 1;
+            endcase;
+        else  'if we are randomizing by trial, we will not use no-change condition
             attNoChangeCondition% := 0;
-            attNoInfoCondition% := 0;
-        case attNoChangeNoInfoCondition% = 1 then
-            attNoChangeCondition% := 1;
-            attNoInfoCondition% := 0;
-        case attNoChangeNoInfoCondition% = 2 then
-            attNoChangeCondition% := 0;
-            attNoInfoCondition% := 1;
-        case attNoChangeNoInfoCondition% = 3 then
-            attNoChangeCondition% := 1;
-            attNoInfoCondition% := 1;
-        endcase;
+            if attNoInfoTrialPercentage > 0 then
+                attNoInfoCondition% := 1;
+            else
+                attNoInfoCondition% := 0;
+            endif
+        endif
         
         
         
-        'Check values of attStartBlock% for legality
+        'Check values of attStartBlock% for legality, note that if attBlockAlternate is 0, this value is ignored
         docase
-        case attStartBlock% = 6 then
+        case attStartBlock% = 6 and attBlockAlternate% > 0 then
             if attNoChangeCondition% = 0 then
                 message("Error: No Change was selected as the start block, but 'No Change' is OFF!!!");
                 Quit%();
             endif
-        case attStartBlock% = 7 then
+        case attStartBlock% = 7 and attBlockAlternate% > 0  then
             if attNoInfoCondition% = 0 then
                 message("Error: No Info was selected as the start block, but 'No Info' is OFF!!!");
                 Quit%();
             endif    
-        case attStartBlock% > 1 and attNumPatches% < attStartBlock% then
+        case attStartBlock% > 1 and attNumPatches% < attStartBlock% and attBlockAlternate% > 0  then
             message("Error: The requested start block is for an undefined distracter!!!  Check 'number of patches'!");
             Quit%();
         endcase
@@ -992,6 +1010,7 @@ end
 
 func AttentionScriptDialogChanged%(item%)
     var status% := 1;
+    var temp%;
     
     docase
     case item% = attdlgTrainingContrastCheck% then
@@ -1022,8 +1041,27 @@ func AttentionScriptDialogChanged%(item%)
         DlgEnable(DlgValue(attdlgUseFlashers%),-4);
 '        DlgEnable(attLollipopCheck%, attdlgCircleDiameterDiff%);
 '        DlgEnable(attLollipopCheck%, attdlgCueLinePct%);
-'        DlgEnable(attLollipopCheck%, attdlgLollipopContrast%);
+        '        DlgEnable(attLollipopCheck%, attdlgLollipopContrast%);
+        if DlgValue(6) > 0 then  'this logic inverts, anything positive goes to 0, o goes to 1
+            temp% := 0
+        else
+            temp% := 1;
+        endif;
+        DlgEnable(temp%,attdlgNoInfoPct%);
+        DlgEnable(DlgValue(6), attdlgNoChangeCondition%);
+        DlgEnable(DlgValue(6), attdlgStartBlock%);
+    case item% = 6 then
+        if DlgValue(6) > 0 then  'this logic inverts, anything positive goes to 0, o goes to 1
+            temp% := 0
+        else
+            temp% := 1;
+        endif;
+        DlgEnable(temp%,attdlgNoInfoPct%);
+        DlgEnable(DlgValue(6), attdlgNoChangeCondition%);
+        DlgEnable(DlgValue(6), attdlgStartBlock%);
     endcase
+
+    
     return status%;
 end
 
@@ -3788,11 +3826,14 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
         next
         
         blockTypes%[attNumPatches%] := 6;  'no change value is hardcoded 
+        
+        
         'and shuffle the list
         Shuffle%(attNumPatches%+1,btIndices%[]); 'hja comment:  Shuffle% ia a function in MiscUtilities.
-
         'when you pass a variable into a function, any changes made inside the function may apply to the value in the
         'original domain (even with no output).
+        
+        
         'printlog("shuffled blocktype is %d\n",blockTypes%[]);
     endif
     
@@ -3825,6 +3866,7 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
         docase 
         'if randomizing by trial do nothing, this is dealt with later
         case attBlockAlternate% = 0 then
+            
         'if a start block is specified and it is the first block, use that start block
         case i% = 1 and attStartBlock% > 0 and attStartBlock% <> 7 then  'if attStartBlock% is 7 (no info) we will pick a random color below as if attStartBlock% was 0
             attColor% := attStartBlock%; 
@@ -3841,12 +3883,15 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                     endif
                 next
             endif
+            
         'if randomizing by block without a no-change, select random stim to attend (block > 1 or start block not specified)
         case attBlockAlternate% = 1 and attNoChangeCondition% = 0 then  'randomize by block, choose a random stimulus to attend for each block, all stims have equal probability
             attColor% := Floor(Rand(attNumPatches%,1));  'offset by 1 so the value comes out 1:N instead of 0:N-1              
+            
         'if randomizing by block with a no-change, select random stim to attend (block > 1 or start block not specified)    
         case attBlockAlternate% = 1 and attNoChangeCondition% = 1 then  'randomize by block, choose a random stimulus to attend for each block, all stims including no-change/no-info have equal probability 
             attColor% := blockTypes%[btIndices%[Floor(Rand(attNumPatches%+1,0))]];  'do not offset by one, we are shuffling indices
+            
         'if alternating without a no-change condition, every other block is on RF...note that randBlockOrderVar is appropriately changed above (in dialog code) if attStartOrder is set  
         case attBlockAlternate% = 2 and attNoChangeCondition% = 0 then  'alternate by block, every other block is on receptive field, blocks off RF are randomly selected
             if ((blockCount%+randBlockOrderVar%) mod 2) = 1 then
@@ -3854,6 +3899,7 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
             else
                 attColor% := Floor(Rand(attNumPatches%-1,2));  'choose a random stim to attend that is not the main
             endif
+            
         'if alternating with a no-change condition, Henry wants to cycle through blocks, starting with attend-toward unless otherwise specified
         case attBlockAlternate% = 2 and attNoChangeCondition% = 1 then 
             'select a starting block from the list of legal starting blocks using an index
@@ -3914,14 +3960,24 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                 attColor% := Floor(Rand(attNumPatches%,1));  'choose a random stim to attend, all have equal probability
                 
                 if attNoInfoCondition% = 1 then
-                    isNoInfoTrial% := round(rand()); 'each trial is random if there isn't a no-change
+                    'isNoInfoTrial% := round(rand()); 'each trial is random if there isn't a no-change
+                    if rand() <= attNoInfoTrialPercentage then
+                        isNoInfoTrial% := 1;
+                    else
+                        isNoInfoTrial% := 0;
+                    endif;
                 else 'just be explicit, this shouldn't be necessary but in case there's a booboo somewhere this will fix it
                     isNoInfoTrial% := 0;
                 endif;                
             case attBlockAlternate% = 0 and attNoChangeCondition% = 1 then
                 attColor% := blockTypes%[btIndices%[Floor(Rand(attNumPatches%+1,0))]];  'choose a straight-up random color/condition, unless Hank sez otherwise
                 if attNoInfoCondition% = 1 and attColor% <> 6 then
-                    isNoInfoTrial% := round(rand());  'each trial is random if there isn't a no-change
+                    'isNoInfoTrial% := round(rand());  'each trial is random if there isn't a no-change
+                    if rand() <= attNoInfoTrialPercentage then
+                        isNoInfoTrial% := 1;
+                    else
+                        isNoInfoTrial% := 0;
+                    endif;
                 else 
                     isNoInfoTrial% := 0;
                 endif;
