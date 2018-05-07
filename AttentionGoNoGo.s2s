@@ -727,7 +727,7 @@ func AttentionScriptDialog%()
     'DlgCheck(attdlgNoChangeCondition%, "Include no-change condition", 2, 10); 'position WAS 37,11 now swapped, ALSO WAS check box for no-change, now selector for no-change/no-info
     DlgList(attdlgNoChangeCondition%, 30, noChangeNoInfoList$, 4, 4, 10);
     DlgList(attdlgStartBlock%, 30, blockStartList$, 8, 4, 11);  'I put it in, don't want to take it out just because it does nothing, in principle it can be repurposed easier than it can be removed (the whole fourmoreints thing)
-    DlgReal(attdlgNoInfoPct%, "No-Info Trial pct (0-100)", 0, 100, 22, 12);
+    DlgReal(attdlgNoInfoPct%, "No-Info Trial pct 0-100", 0, 100, 22, 12);
     
     
     'Moving this group to the right, so we have to use DlgText because otherwise CED justifies the text all the way left
@@ -914,6 +914,7 @@ func AttentionScriptDialog%()
             attCatchTrialPercentage := 0;
             message("You have tried to have a non-zero percentage of catch trials, but there is only one patch.\nNo catch trial is possible, so percentage of catch trials is being set to zero!");
         endif;
+               
         
         'if we aren't alternating cues by block, then "easy" trials don't make any sense
         'I'm doing this after the parameter save so that the actual Easy Trials value sticks around as default in this event
@@ -3961,7 +3962,7 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                 
                 if attNoInfoCondition% = 1 then
                     'isNoInfoTrial% := round(rand()); 'each trial is random if there isn't a no-change
-                    if rand() <= attNoInfoTrialPercentage then
+                    if rand() <= attNoInfoTrialPercentage/100 then
                         isNoInfoTrial% := 1;
                     else
                         isNoInfoTrial% := 0;
@@ -3973,7 +3974,7 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                 attColor% := blockTypes%[btIndices%[Floor(Rand(attNumPatches%+1,0))]];  'choose a straight-up random color/condition, unless Hank sez otherwise
                 if attNoInfoCondition% = 1 and attColor% <> 6 then
                     'isNoInfoTrial% := round(rand());  'each trial is random if there isn't a no-change
-                    if rand() <= attNoInfoTrialPercentage then
+                    if rand() <= attNoInfoTrialPercentage/100 then
                         isNoInfoTrial% := 1;
                     else
                         isNoInfoTrial% := 0;
