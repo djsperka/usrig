@@ -64,6 +64,7 @@ var attTimeToAnswer;
 var attTimeToAnswerPerTrial;  'filled on a trial-to-trial basis because the value is different for no-change trials
 var attNoChangeDuration;
 var attAbortWaitTime;
+'var attContrastChangeDuration;
 var attMissPenalty;
 var attFalseAlarmWaitTime;
 var attFalseAlarmCheckWindow;
@@ -286,6 +287,7 @@ var attChangeList%[attMaxTrl%];  'A list of which stimulus patch (1 = main, 2 = 
 var attValidList%[attMaxTrl%];     '1 if valid, 0 if catch trial, filled by CreateContrastList
 var attAttendList%[attMaxTrl%];  'A list of which stimulus patch (1 = main, 2 = dist1, 3 = dist2, etc.) is being attended
 var attHazardList[attMaxTrl%];     'holds hazard times, now pre-calculated
+'var attHazardList2[attMaxTrl%];     'holds second hazard times, pre-calculated
 var attOffBitsList%[attMaxTrl%];  'A list of which stimulus patches are off for this trial, in a bit sum, 1 = main, 2 = dist1, 4 = dist2, etc.
 var attRotationList%[attMaxTrl%]; 'A list of which rotation is being used for this trial
 var attFixColor%[attMaxTrl%];     'A list of which color fixation point (as a number) is being used for this trial
@@ -485,6 +487,7 @@ proc GetTimingDialogParameters()
 	attTimeToAnswer := GetFloatRegistryValue(key$, "TimeToAnswer", 1.0);
     attNoChangeDuration := GetFloatRegistryValue(key$, "NoChangeDuration", 1.0);
 	attAbortWaitTime := GetFloatRegistryValue(key$, "AbortWaitTime", 1.0);
+    'attContrastChangeDuration := GetFloatRegistryValue(key$, "ContrastChangeDuration", 1.0);
     attMissPenalty := GetFloatRegistryValue(key$, "MissPenalty", 1.0);
     attFalseAlarmWaitTime := GetFloatRegistryValue(key$, "FalseAlarmWaitTime", 1.0);
     attFalseAlarmCheckWindow := GetFloatRegistryValue(key$, "FalseAlarmCheckWindow", 1.0);
@@ -511,6 +514,7 @@ proc SaveTimingDialogParameters()
     SetFloatRegistryValue(key$, "HazardCutoffTime", attHazardCutoffTime);
 	SetFloatRegistryValue(key$, "AcquisitionTime", attAcquisitionTime);
 	SetFloatRegistryValue(key$, "AbortWaitTime", attAbortWaitTime);
+    'SetFloatRegistryValue(key$, "ContrastChangeDuration", attContrastChangeDuration);
     SetFloatRegistryValue(key$, "MissPenalty", attMissPenalty);
     SetFloatRegistryValue(key$, "FalseAlarmWaitTime", attFalseAlarmWaitTime);
     SetFloatRegistryValue(key$, "FalseAlarmCheckWindow", attFalseAlarmCheckWindow);
@@ -962,6 +966,9 @@ func AttentionScriptDialog%()
 '        CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,
 '                                  attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,
 '                                  attNoInfoThisTrial%,attCueOnsetList,attCueOffsetList,attStimOnsetList);
+''        CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attHazardList2,attOffBitsList%,
+''                                  attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,
+''                                  attNoInfoThisTrial%,attCueOnsetList,attCueOffsetList,attStimOnsetList);
 '        var specFileName$:="E:\\AttentionSpecFile.txt";
 '        var specHandle%;
 '        specHandle% := FileOpen(specFileName$, 8, 1);
@@ -1086,6 +1093,9 @@ func TimingDialog%()
     DlgReal(11, "No-Change duration(s):", 0.2, 10.0);
 	DlgReal(12, "Intertrial time(s):", .01, 10);
     DlgReal(13, "Generic penalty time(s):", .01, 10);
+    
+    'DlgReal(14, "ContrastChangeDuration(s):",0.1,10);
+    
 	'DlgReal(13, "Abort wait time(s):", .01, 10);
     'DlgReal(14, "False Alarm penalty time(s):", .01, 100);  'I'll let that be really really long
     'DlgReal(15, "False Alarm check window(s): ", .01, 1);
@@ -1098,6 +1108,9 @@ func TimingDialog%()
     i%:=DlgShow(attAcquisitionTime, attFixationCueMinTime, attFixationCueMaxTime, attCueOnsetTime, attCueOffsetTime, attStimOnsetTime,
     attHazardMinTime, attHazardExpMeanTime, attHazardCutoffTime, attTimeToAnswer, attNoChangeDuration,
     attInterTrialTime, attAbortWaitTime);
+'    i%:=DlgShow(attAcquisitionTime, attFixationCueMinTime, attFixationCueMaxTime, attCueOnsetTime, attCueOffsetTime, attStimOnsetTime,
+'    attHazardMinTime, attHazardExpMeanTime, attHazardCutoffTime, attTimeToAnswer, attNoChangeDuration,
+'    attInterTrialTime, attAbortWaitTime, attContrastChangeDuration);
     if i% = 1 then
 '        if attAbortWaitTime < attFalseAlarmCheckWindow then
 '            message("False Alarm Check Window is longer than Abort Wait Time!");
@@ -1755,6 +1768,7 @@ var trialCatch%;
 var trialIsTarget%;
 var trialAttendLoc%;
 var trialHazardFunctionTime;
+'var trialHazardFunctionTime2;
 var tOpt;
 var queueReward% := 0;
 
@@ -2026,6 +2040,7 @@ func IdleProcessing%()
                 tStimOn := tTrigger;
                 tLastTrigger := tTrigger;
                 ChangeStateTo(stateHoldFixationToCC%, tTrigger);
+                'SampleText("Stimulus on, Fixation color " + fixColor$ + ", Base contrast " + Str$(attContrastBase%) + ", hazard dur " + Str$(trialHazardFunctionTime) + ", hazard dur2 " + Str$(trialHazardFunctionTime2)
                 SampleText("Stimulus on, Fixation color " + fixColor$ + ", Base contrast " + Str$(attContrastBase%) + ", hazard dur " + Str$(trialHazardFunctionTime)
                 + ", attend location " + Str$(trialAttendLoc%) + ", change location " + Str$(trialIsTarget%) + ", change contrast " + Str$(thisContrast%) + ", is No-Info trial: " + Str$(thisIsNoInfo%),tTrigger);
             else
@@ -2133,9 +2148,9 @@ func IdleProcessing%()
                 ChangeStateTo(stateAbortWait%, tStateStart);  'don't update time, "credits" for time served
             endif;
             DrawStim(0);	' this undraws the location of the fixpt.
-        case tNow > tLast + 10 then  'I don't quite know what to do here.  Hopefully this never triggers.  We've definitely sent the 'X', this can't be WORSE than pre-change, where we would just stick here
-            PrintLog("Waited 10 seconds for stim off, giving up and starting next trial!\n");
-            SampleText("Waited 10 seconds for stim on, giving up and starting next trial!",tNow);
+        case tNow > tLast + 5 then  'I don't quite know what to do here.  Hopefully this never triggers.  We've definitely sent the 'X', this can't be WORSE than pre-change, where we would just stick here
+            PrintLog("Waited 5 seconds for stim off, giving up and starting next trial!\n");
+            SampleText("Waited 5 seconds for stim off, giving up and starting next trial!",tNow);
             ChangeStateTo(stateStartTrial%, tNow);
         endcase
         updateTLast% := 0;  'waiting for a trigger, don't update tLast
@@ -2731,6 +2746,7 @@ proc PrepareTrial()
         attTimeToAnswerPerTrial := attNoChangeDuration - 0.1;  'the 0.1 is the hardcoded hazard time, the remainder is answer window
     else
         trialHazardFunctionTime := attHazardList[attCurrTrialIndex%];  'hazard time has been pre-calculated for regular trials
+        'trialHazardFunctionTime2 := attHazardList2[attCurrTrialIndex%];
         attTimeToAnswerPerTrial := attTimeToAnswer;  'Use the standard time to answer
     endif
     
@@ -2895,6 +2911,9 @@ proc InitializeWindows()
     '    CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,
     '                       attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,
     '                       attNoInfoThisTrial%,attCueOnsetList,attCueOffsetList,attStimOnsetList);
+''        CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attHazardList2,attOffBitsList%,
+''                                  attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,
+''                                  attNoInfoThisTrial%,attCueOnsetList,attCueOffsetList,attStimOnsetList);
 '    printlog("Contrast list is %s\n",Contrast$);
 '    printlog("Flasher list is %s\n",Flashers$);
 '    halt;  'No-1401 halt
@@ -3624,6 +3643,9 @@ func Start%()
 	CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attOffBitsList%,
     attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,
     attNoInfoThisTrial%,attCueOnsetList,attCueOffsetList,attStimOnsetList);     
+'    CreateContrastList(Contrast$,Flashers$,attContrastList%,attChangeList%,attValidList%,attAttendList%,attHazardList,attHazardList2,attOffBitsList%,
+'    attRotationList%,attFixColor%,attBlockList%,attEasyList%,flasherTimes,flasherX,flasherY,flasherCount%,
+'    attNoInfoThisTrial%,attCueOnsetList,attCueOffsetList,attStimOnsetList);    
 
     
 
@@ -3779,6 +3801,8 @@ end;
 'without too much counting going on.
 Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&hazList[],&offList%[],&rotList%[],&fixColor%[],&blockList%[],&easyList%[],
     &flashTimes[][],&flashX[][],&flashY[][],&flashN%[],&noInfoList%[],&cueOnList[],&cueOffList[],&stimOnList[])
+'Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&hazList[],&hazList2[],&offList%[],&rotList%[],&fixColor%[],&blockList%[],&easyList%[],
+    '&flashTimes[][],&flashX[][],&flashY[][],&flashN%[],&noInfoList%[],&cueOnList[],&cueOffList[],&stimOnList[])    
         'hja looking at current function
     var i%;
     var ii%;
@@ -3806,6 +3830,7 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
     
     'variables for allowing blocks to have the same list of hazard times
     var randHazValList[attTrialsPerBlock%];  'allows us to reassign hazard values, "rand" because we're going to shuffle it
+    'var randHazValList2[attTrialsPerBlock%];  'allows us to reassign hazard values, "rand" because we're going to shuffle it
     var randHazValInd%[attTrialsPerBlock%];  'with flashers as well, we need to scramble indices
     var randHazIndex%;  'index into randHazValList
     var firstBlockType%;  'lets us know if this is the first block type
@@ -3933,6 +3958,7 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
         randHazIndex% := 0;  'reset this at the beginning of each block
         if attColor% = firstBlockType% then 'the block has cycled back to the beginning
             ArrConst(randHazValList[],0);  'reset list of hazard times
+            'ArrConst(randHazValList2[],0);  'reset list of hazard times
             if attUseFlashers% = 1 then
                 ArrConst(tempFlashTimes[][],0);  'reset list of flash times (dim 1 per flasher, dim 2 per trial)
                 ArrConst(tempFlashX[][],0);  'reset list of flash X pos
@@ -4156,10 +4182,22 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                 if (attColor% = firstBlockType% and attBlockAlternate% = 2) or attBlockAlternate% < 2 then
                     'if we're NOT shuffling block type, or if it's a "first-type" block, get a new hazard time
                     trialHazardFunctionTime := RandExp(attHazardExpMeanTime, attHazardMinTime);
+                    'if it's not a no-go trial, how do we set trialHazardFunctionTime2????????
+                    'trialHazardFunctionTime2 := RandExp(attHazardExpMeanTime, attHazardMinTime);
                     if trialHazardFunctionTime > attHazardCutoffTime then
                         'trialHazardFunctionTime := attHazardCutoffTime;
                         trialHazardFunctionTime := attHazardMinTime;  'Per Henry 5/21/18
                     endif;
+'                    if trialHazardFunctionTime2 > attHazardCutoffTime then
+'                        trialHazardFunctionTime2 := attHazardMinTime;
+'                    endif;
+'                    if trialHazardFunctionTime2 < trialHazardFunctionTime then
+'                        var tempthft;
+'                        tempthft := trialHazardFunctionTime;
+'                        trialHazardFunctionTime := trialHazardFunctionTime2;
+'                        trialHazardFunctionTime2 := tempthft;
+'                    endif;
+
 
                     
                     'create a set of flasher times and locations (also number) for this trial only
@@ -4184,7 +4222,9 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                     endif;
                     
                     hazList[totalCount%] := trialHazardFunctionTime;  'set hazard function time
+                    'hazList2[totalCount%] := trialHazardFunctionTime2;  'set hazard function time
                     randHazValList[randHazIndex%] := trialHazardFunctionTime;  'put hazard function time into the random list
+                    'randHazValList2[randHazIndex%] := trialHazardFunctionTime2;  'put hazard function time into the random list
                     randHazIndex% += 1;  'increment the index
                 else
                     'get flasher count/time/location from previous calculation, randomizing order
@@ -4196,6 +4236,8 @@ Proc CreateContrastList(&c$,&f$,&cList%[],&chgList%[],&vList%[],&attList%[],&haz
                     next;
                     trialHazardFunctionTime := randHazValList[randHazValInd%[randHazIndex%]];
                     hazList[totalCount%] := trialHazardFunctionTime;  'set hazard function time, from shuffled list of prior values
+                    'trialHazardFunctionTime2 := randHazValList2[randHazValInd%[randHazIndex%]];
+                    'hazList2[totalCount%] := trialHazardFunctionTime2;  'set hazard function time, from shuffled list of prior values
                     randHazIndex% += 1;  'increment the index
                 endif;
                 
@@ -5554,6 +5596,7 @@ func TagTriggerWithSampletext%(triggerTime,tStimOn,trialCount%,&flasherCount%)
     var cc%;  'did contrast change happen?
     var fTime;  'expected time of next flasher
     var ccTime; 'expected time of contrast change
+    'var ccTime2; 'expected time of second contrast change
     var cueOnTime;
     var cueOffTime;
     var gratingOnTime;
@@ -5564,6 +5607,7 @@ func TagTriggerWithSampletext%(triggerTime,tStimOn,trialCount%,&flasherCount%)
 '    var diffGrOn;
 '    var diffEOW;
     var diffArray[6];
+    'var diffArray[7];
     var minLoc%;
     var minVal;
     
@@ -5585,6 +5629,7 @@ func TagTriggerWithSampletext%(triggerTime,tStimOn,trialCount%,&flasherCount%)
     cueOffTime := tStimOn + attCueOffsetList[trialCount%];
     gratingOnTime := tStimOn + attStimOnsetList[trialCount%];
     ccTime := gratingOnTime + attHazardList[trialCount%];
+    'ccTime2 := gratingOnTime + attHazardList2[trialCount%];
     
 '    diffF := abs(fTime - triggerTime);
 '    diffCueOn := abs(cueOnTime - triggerTime);
@@ -5599,6 +5644,7 @@ func TagTriggerWithSampletext%(triggerTime,tStimOn,trialCount%,&flasherCount%)
     diffArray[3] := abs(gratingOnTime - triggerTime);
     diffArray[4] := abs(fTime - triggerTime);
     diffArray[5]:= abs((ccTime + attTimeToAnswer) - triggerTime);
+    'diffArray[6]:= abs((cc2Time + attTimeToAnswer) - triggerTime);
     minLoc% := min(diffArray);  'find index of smallest difference
     minVal := diffArray[minLoc%];
     
