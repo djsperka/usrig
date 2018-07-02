@@ -721,7 +721,7 @@ func MainDialog%()
     var fixationOptionsList$[6];
     var tempAW;
     var twoInts%[2];
-    
+   
     
     
     trainingOptionsList$[0] := "Reward for lever";    '"Lever - Instant Reward - Release - Wait ITI";
@@ -774,7 +774,7 @@ func MainDialog%()
     DlgButton(2, "Use Above Input File", UseInputFile%,2,caMainDlgRequireFixation%+11);
     DlgButton(3, "Select An Input File", OpenInputFile%,2,caMainDlgRequireFixation%+12);
     DlgButton(4, "Fixation Point Dialog", FixationPointDialog%,15,caMainDlgRequireFixation%+9);
-    DlgButton(5, "Joystick Dialog", JoystickConfigDialog%,40,caMainDlgRequireFixation%+9);
+    DlgButton(5, "Joystick Dialog", CallJoystickConfigDialog%,40,caMainDlgRequireFixation%+9);
     caTextCallbackItemNumber2% := DlgText("Text!",2,caMainDlgRequireFixation%+13,80);
     DlgButton(6, "Use Above NIC Template File", UseTemplateFile%,2,caMainDlgRequireFixation%+14);
     DlgButton(7, "Select A NIC Template File", OpenTemplateFile%,2,caMainDlgRequireFixation%+15);
@@ -1371,7 +1371,7 @@ proc InitializeToolbar()
 	ToolbarSet(3,"Pause stimuli",PauseStimuli%);  'updated all ToolbarEnable commands
 	ToolbarSet(4,"Resume stimuli",ResumeStimuli%);  'updated all ToolbarEnable commands
     ToolbarSet(5,"Juice", Reward%);  'moved from 3 to 5 because Stacey was accidentally clicking Sample Stop sometimes, there are no ToolbarEnable commands for juice, it is always enabled
-    ToolbarSet(6,"Adjust Joystick",JoystickConfigDialog%);
+    ToolbarSet(6,"Adjust Joystick",CallJoystickConfigDialog%);
 	ToolbarSet(7,"Quit",Quit%);
     ToolbarSet(8,"Optimize Y",OptimizeY%);
 	ToolbarEnable(2,0);
@@ -3880,4 +3880,25 @@ func OptimizeY%()
     
     View(DataWindow%).Optimise(-1);
     return 1;
+end
+
+
+func CallJoystickConfigDialog%()
+    'This function was written simply to prevent "odd" autonaming of files when saving joystick calibration data
+    'Unfortunately, there doesn't seem to be a way to *not* save the data as SampleStop automatically saves it, so
+    'this is the next best thing.  Should work for either dialog-based or toolbar-based calls of Joystick config
+    
+    'Set autoname to use a joystick-based name
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    'if UsePlexon% = 0 then
+    SampleAutoName$(dataCellName$ + "_joystick_000");  'NOTE: maximum of 13 characters!!!    
+    
+    JoystickConfigDialog%();
+    
+    'Set autoname back to what it should be once we return
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    'if UsePlexon% = 0 then
+    SampleAutoName$(dataCellName$ + "_ca_000");  'NOTE: maximum of 13 characters!!!
 end
