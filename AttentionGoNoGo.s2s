@@ -1759,7 +1759,8 @@ const trialtypeNoChange% := 102;
 var trialType%;
 var nTrialsStarted%:=0;
 var nTrialsCompleted%:=0;
-var nTrialsAborted% :=0;		' 
+var nTrialsAborted% :=0;'
+var nTrialsRewarded%:=0;
 var nBlocksCompleted%:=0;
 var iAnswer%;
 var isStimDistractorOff% := 0;
@@ -2543,6 +2544,7 @@ func IdleProcessing%()
         'give out reward, if necessary, in THIS state
         if queueReward% = 1 then
             Reward%();
+            nTrialsRewarded% += 1;
             queueReward% := 0;  'reset reward
         endif;
         
@@ -3306,6 +3308,10 @@ func Stop%()
 		Yield();
 	wend
     
+    ' Increment daily totals and save then
+	TotalTrials% += nTrialsCompleted%;
+	TotalRewards% += nTrialsRewarded%;
+	SaveDailyTotals();
     
     '''As of now, Henry does not want there to be .mat file output on attenGNG (3/21/16 jj)   
     '''Note that I've updated the syntax here in other code to make sure the eye channels

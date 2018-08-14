@@ -144,6 +144,7 @@ var iState% := stateVSGWait%;	' present state
 var nTrialsStarted%:=0;
 var nTrialsCompleted%:=0;
 var nTrialsAborted% :=0;		' 
+var nTrialsRewarded% :=0;
 
 var tic;  'Set a tick value equal to the duration of one clock tick in seconds, used to prevent finding
           'the same "pulse" twice
@@ -749,6 +750,7 @@ func IdleProcessing%()
                 
                 ' Reward
                 DefaultReward();
+                nTrialsRewarded% += 1;
                 
                 ' Process Spikes
                 if tunDoTuningHist% = 1 then
@@ -789,6 +791,7 @@ func IdleProcessing%()
                         'if tunDSSFlashesUntilReward% = 0 or tunDSSCurrPeriod% = tunDSSNPeriods% then
                         if tunDSSFlashesUntilReward% = 0 then    
                             DefaultReward();
+                            nTrialsRewarded% += 1;
                             tunDSSFlashesUntilReward% := tunDSSNFlashesPerReward%-1;  'reset flashes count
                         else
                             tunDSSFlashesUntilReward% := tunDSSFlashesUntilReward% - 1;  'decrement flashes count
@@ -2606,8 +2609,8 @@ func Stop%()
 	WriteParameterFile();
 
 	' Increment daily totals and save then
-	TotalTrials% += nTrialsStarted%;
-	TotalRewards% += nTrialsCompleted%;
+	TotalTrials% += nTrialsCompleted%;
+	TotalRewards% += nTrialsRewarded%;
 	SaveDailyTotals();
     
     ' Figure out max F1 values
