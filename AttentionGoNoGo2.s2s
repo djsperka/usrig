@@ -2489,6 +2489,58 @@ func AttentionScriptDialog%()
         attUseCueCircles% := tenints%[8];
         attSwapCueCircle% := tenints%[9];
         
+        'Make sure the user doesn't break things by having illegal values in the blocks dialog
+        '(OK, technically, the blocks dialog doesn't allow illegal values, but those values can later turn out illegal
+        ' if the user decreases the number of stimuli after running the blocks dialog, or without running the blocks dialog)
+        docase
+        case attNumPatches% = 4 then
+            if attNumDistracter4Cues% > 0 then
+                attNumDistracter4Cues% := 0;
+                message("Distracter 4 cues were requested, but not enough stimuli are specified!!!\nSetting Distracter 4 cues to zero!!!");
+            endif;
+        case attNumPatches% = 3 then
+            if attNumDistracter4Cues% > 0 then
+                attNumDistracter4Cues% := 0;
+                message("Distracter 4 cues were requested, but not enough stimuli are specified!!!\nSetting Distracter 4 cues to zero!!!");
+            endif;
+            if attNumDistracter3Cues% > 0 then
+                attNumDistracter3Cues% := 0;
+                message("Distracter 3 cues were requested, but not enough stimuli are specified!!!\nSetting Distracter 3 cues to zero!!!");
+            endif;
+        case attNumPatches% = 2 then
+            if attNumDistracter4Cues% > 0 then
+                attNumDistracter4Cues% := 0;
+                message("Distracter 4 cues were requested, but not enough stimuli are specified!!!\nSetting Distracter 4 cues to zero!!!");
+            endif;
+            if attNumDistracter3Cues% > 0 then
+                attNumDistracter3Cues% := 0;
+                message("Distracter 3 cues were requested, but not enough stimuli are specified!!!\nSetting Distracter 3 cues to zero!!!");
+            endif;
+            if attNumDistracter2Cues% > 0 then
+                attNumDistracter2Cues% := 0;
+                message("Distracter 2 cues were requested, but not enough stimuli are specified!!!\nSetting Distracter 2 cues to zero!!!");
+            endif;
+        case attNumPatches% = 1 then
+            if attNumDistracter4Cues% > 0 then
+                attNumDistracter4Cues% := 0;
+                message("Distracter 4 cues were requested, but not enough stimuli are specified!!!\nSetting Distracter 4 cues to zero!!!");
+            endif;
+            if attNumDistracter3Cues% > 0 then
+                attNumDistracter3Cues% := 0;
+                message("Distracter 3 cues were requested, but not enough stimuli are specified!!!\nSetting Distracter 3 cues to zero!!!");
+            endif;
+            if attNumDistracter2Cues% > 0 then
+                attNumDistracter2Cues% := 0;
+                message("Distracter 2 cues were requested, but not enough stimuli are specified!!!\nSetting Distracter 2 cues to zero!!!");
+            endif;
+            if attNumDistracter1Cues% > 0 then
+                attNumDistracter1Cues% := 0;
+                message("Distracter 1 cues were requested, but not enough stimuli are specified!!!\nSetting Distracter 1 cues to zero!!!");
+            endif;
+        endcase
+        
+        
+        
         'calculate cues per set (maybe again) because we might not go into the dialog
         attBlocksPerSet% := attNumMainCues%+attNumDistracter1Cues%+attNumDistracter2Cues%+attNumDistracter3Cues%+attNumDistracter4Cues%+attNumCueAllCues%+attNumRandomNoCACues%+attNumRandomWithCACues%;
         
@@ -2558,20 +2610,120 @@ func AttentionScriptDialog%()
         
         '*** BEGIN USEFUL SECTION FOR TESTING CREATION OF TRIAL ORDER ON A MACHINE WITHOUT A 1401 ***
         '*** If this section is active, the program will not run! ***
+        
+'        'Contrast file test write is important for now, should be same as in Start function
+'        'Write contrast file, pulling this out of CreateContrastList so we only have to write once
 '        var c$;
 '        CreateContrastList(c$,Flashers$,attIsCueAll%[],attCuedLocList%[],attCuedLocChangesList%[],attContrastCuedList%[],attCuedLocCCTime[],
 '        attCuedLocReturnTime[],attUncuedLocList%[],attUncuedLocChangesList%[],attContrastUncuedList%[],attUncuedLocCCTime[],attUncuedLocReturnTime[],
 '        attTrialEndTime[],attFixColor%[],attCueCircleColor%[][],attOffBitsList%[],attBlockList%[],attSetList%[],attEasyList%[]);',
-'        'flasherTimes[][],flasherX[][],flasherY[][],flasherCount%[])
-'        
-'        'Contrast file test write is important for now, should be same as in Start function
-'        'Write contrast file, pulling this out of CreateContrastList so we only have to write once
+'        'flasherTimes[][],flasherX[][],flasherY[][],flasherCount%[];
 '        ContrastFile$:="E:\\testingshit\\AttentionTrialContrastFile.txt";  'this is for testing on Seager
 '        FileOpen(ContrastFile$, 8, 1);
 '        'print constructed contrast string to file
 '        Print("%s",c$);
 '        'close contrast file
-'	     FileClose(0);
+'        FileClose(0);
+'        
+'        'open a file to write the spec file for the VSG
+'        var specHandle%;
+'        var specFileName$:="E:\\testingshit\\AttentionSpecFile.txt";
+'        var Extras$;
+'        var stimSpec$;
+'        var dist1Spec$;
+'        var dist2Spec$;
+'        var dist3Spec$;
+'        var dist4Spec$;
+'        var CueCirc$;
+'        var ContrastFileWithFlag$;
+'        
+'        specHandle% := FileOpen(specFileName$, 8, 1);
+'        FixationArg$ := " -f " + str$(FixationX) + "," + str$(FixationY) + "," + str$(FixationDiameter) + ",red"; 
+'        Extras$ := " -b " + attBackgroundColor$ + " -d " + GetDistanceToScreenMM$();
+'        'get all these grating parameters
+'        stimSpec$ := GetGratingParameters$("Stimulus");
+'        ParseGratingParametersBrief%(stimSpec$, xT, yT, wT, hT);  'we may as well just do this every time - 90+% of the time we will anyway, and why put it in the if statements four times?
+'        if attNumPatches% > 1 then
+'            if attGetGPFromMainStim% = 1 then
+'                ParseGratingParametersBrief%(GetGratingParameters$("Distractor1"), xT, yT, wT, hT);
+'                dist1Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
+'                ParseGratingParametersBrief%(dist1Spec$, xD1, yD1, wD1, hD1);  'for helping placement of flashers, etc.
+'            else
+'                dist1Spec$ := GetGratingParameters$("Distractor1");
+'                ParseGratingParametersBrief%(dist1Spec$, xD1, yD1, wD1, hD1);
+'            endif;
+'        endif;
+'        if attNumPatches% > 2 then
+'            if attGetGPFromMainStim% = 1 then
+'                ParseGratingParametersBrief%(GetGratingParameters$("Distractor2"), xT, yT, wT, hT);
+'                dist2Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
+'                ParseGratingParametersBrief%(dist2Spec$, xD2, yD2, wD2, hD2);  
+'            else
+'                dist2Spec$ := GetGratingParameters$("Distractor2");
+'                ParseGratingParametersBrief%(dist2Spec$, xD2, yD2, wD2, hD2);
+'            endif;
+'        endif;
+'        if attNumPatches% > 3 then
+'            if attGetGPFromMainStim% = 1 then
+'                ParseGratingParametersBrief%(GetGratingParameters$("Distractor3"), xT, yT, wT, hT);
+'                dist3Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
+'                ParseGratingParametersBrief%(dist3Spec$, xD3, yD3, wD3, hD3); 
+'            else
+'                dist3Spec$ := GetGratingParameters$("Distractor3");
+'                ParseGratingParametersBrief%(dist3Spec$, xD3, yD3, wD3, hD3);
+'            endif;
+'        endif;
+'        if attNumPatches% > 4 then
+'            if attGetGPFromMainStim% = 1 then
+'                ParseGratingParametersBrief%(GetGratingParameters$("Distractor4"), xT, yT, wT, hT);
+'                dist4Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
+'                ParseGratingParametersBrief%(dist4Spec$, xD4, yD4, wD4, hD4); 
+'            else
+'                dist4Spec$ := GetGratingParameters$("Distractor4");
+'                ParseGratingParametersBrief%(dist4Spec$, xD4, yD4, wD4, hD4);
+'            endif;
+'        endif;
+'        Stim$ := " -s " + stimSpec$;  
+'        if attNumPatches% > 1 then
+'            Stim$ := Stim$ + " -s " + dist1Spec$;
+'        endif;
+'        if attNumPatches% > 2 then
+'            Stim$ := Stim$ + " -s " + dist2Spec$;
+'        endif;
+'        if attNumPatches% > 3 then
+'            Stim$ := Stim$ + " -s " + dist3Spec$;
+'        endif;
+'        if attNumPatches% > 4 then
+'            Stim$ := Stim$ + " -s " + dist4Spec$;
+'        endif;
+'        
+'        if attUseCueCircles% > 0 then
+'            CueCirc$ := CreateCueCircleColorSets$();
+'        endif;
+'        
+'        ContrastFileWithFlag$ := " -n " + ContrastFile$; 'add flag to string containing loc of ContrastFile
+'        
+'        'No flashers right now, let's leave this...
+'        'if attUseFlashers% = 1 then
+'        '    flasherSpec$ := GetGratingParameters$("Flasher");
+'        '    ParseGratingParametersBrief%(flasherSpec$, xF1, yF1, wF1, hF1);
+'        '    Stim$ := Stim$ + " -k " + flasherSpec$;  'This specifies flasher #0, the VSG side software allows more flasher gratings to be spec'ed but as of now we will only use one
+'        'endif;
+'        
+'        'print to spec file
+'        if attUseFlashers% = 1 then
+'            Print("%s %s %s %s %s %s",FixationArg$,Extras$,Stim$,CueCirc$,Flashers$,ContrastFileWithFlag$);  'file should be everything starting from FixationArg$ on, use flashers, Flashers$ must come before ContrastFile$!
+'        else
+'            Print("%s %s %s %s %s",FixationArg$,Extras$,Stim$,CueCirc$,ContrastFileWithFlag$);  'file should be everything starting from FixationArg$ on
+'        endif;    
+'        'close spec file
+'        
+'        'recap command line to logfile
+'        var CommandLine$;
+'        CommandLine$ := "cmd /k " + GetBinDir$(1) + "remote.exe " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim -F " + specFileName$;
+'        printlog("%s\n",CommandLine$);
+'        FileClose(0);
+'       
 '        halt;
         '*** END USEFUL SECTION FOR TESTING CREATION OF TRIAL ORDER ON A MACHINE WITHOUT A 1401 ***
         
