@@ -907,7 +907,7 @@ func AttentionScriptDialog%()
         
 		SaveAttentionScriptParameters();
         
-        'After saving parameters, set phase to -1 if we are not controlling it
+        'After saving parameters, set phase to -1 if we are not controlling it, this will allow the phase of the main grating to set initial phase
         if attPhaseCheck% = 0 then
             attPhaseDeg% := -1;
         endif;
@@ -4899,6 +4899,28 @@ func GetStimulusTF(stim%)
 end
 
 
+func GetStimulusPhase(stim%)
+    var gr$;
+    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var contrast%;
+    var cv$, pattern$, aperture$;
+    docase
+    case stim% = 1 then
+        gr$ := GetGratingParameters$("Stimulus");
+    case stim% = 2 then
+        gr$ := GetGratingParameters$("Distractor1");
+    case stim% = 3 then
+        gr$ := GetGratingParameters$("Distractor2");
+    case stim% = 4 then
+        gr$ := GetGratingParameters$("Distractor3");
+    case stim% = 5 then
+        gr$ := GetGratingParameters$("Distractor4");  
+    endcase;    
+    ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    LogStatus("GetStimulusPhase", "phase=" + str$(phase));
+    return phase;
+end
+
 proc UpdateTrialSpecString(&c$,color%,chgdir%,base%,chg%,haz,phase%,off%,colListVSG$[])
     var col$;
     var trainbase%;
@@ -4929,7 +4951,8 @@ proc UpdateTrialSpecString(&c$,color%,chgdir%,base%,chg%,haz,phase%,off%,colList
 
     'set phase
     if phase% < 0 then
-        initphase% := 0;
+        initphase% := GetStimulusPhase(1);
+        'initphase% := 0;  'This is no good, because it doesn't use the value found in the grating parameters
     else
         initphase% := GetInitialPhase%(phase%,tf,haz);
     endif;
@@ -4984,7 +5007,8 @@ proc UpdateTrialSpecStringNew(&c$,color%,chgdir%,base%,chg%,cueOn,cueOff,stimOn,
 
     'set phase
     if phase% < 0 then
-        initphase% := 0;
+        initphase% := GetStimulusPhase(1);
+        'initphase% := 0;  'This is no good, because it doesn't use the value found in the grating parameters
     else
         initphase% := GetInitialPhase%(phase%,tf,stimCC);
     endif;
