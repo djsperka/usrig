@@ -3914,6 +3914,11 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
 '                    next;
 '                endif;
                 
+                'to start out for phase, set every value in initPhase% to the value in the grating parameters from config
+                for L% := 1 to attNumPatches% do
+                    initPhase%[L%-1] := GetStimulusPhase(L%);
+                next;
+                'Then, overwrite values for stimuli that have a contrast change, if PhaseCheck% is set
                 if attPhaseCheck% = 1 then
                     if cuedLocChanges%[ind%] = 1 then
                         'Do not subtract 1 in call to GetStimulusTF, that expects 1-based indexing, just as cuedLoc/uncuedLoc are set in
@@ -3923,6 +3928,10 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                         initPhase%[uncuedLoc%[ind%]-1] := GetInitialPhase%(attPhaseDeg%,GetStimulusTF(uncuedLoc%[ind%]),attCueOffsetTime+attStimOnsetList[ind%]+uncuedLocCCTime[ind%]);
                     endif;
                 endif;
+                
+                
+                
+                
                 
                 
                 '''Add values to flasher string and trial spec string
@@ -4258,7 +4267,8 @@ proc WriteParameterFile()
     Print("Temporal frequency              : %s\n", Tstimtf$);
 	Print("Spatial frequency               : %s\n", Tstimsf$);
 	Print("Orientation (degrees)           : %s\n", Tstimorientation$);
-    Print("Initial Phase (degrees)         : %f\n", phase);
+    'Print("Initial Phase (degrees)         : %f\n", phase);  'WTF?
+    Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
 	Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
 	Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
 	Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
@@ -4287,7 +4297,8 @@ proc WriteParameterFile()
             Print("Temporal frequency              : %s\n", Tstimtf$);
             Print("Spatial frequency               : %s\n", Tstimsf$);
             Print("Orientation (degrees)           : %s\n", Tstimorientation$);
-            Print("Initial Phase (degrees)         : %f\n", phase);
+            'Print("Initial Phase (degrees)         : %f\n", phase);  'WTF?
+            Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
             Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
             Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
             Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
@@ -4316,7 +4327,8 @@ proc WriteParameterFile()
             Print("Temporal frequency              : %s\n", Tstimtf$);
             Print("Spatial frequency               : %s\n", Tstimsf$);
             Print("Orientation (degrees)           : %s\n", Tstimorientation$);
-            Print("Initial Phase (degrees)         : %f\n", phase);
+            'Print("Initial Phase (degrees)         : %f\n", phase);  'WTF?
+            Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
             Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
             Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
             Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
@@ -4345,7 +4357,8 @@ proc WriteParameterFile()
             Print("Temporal frequency              : %s\n", Tstimtf$);
             Print("Spatial frequency               : %s\n", Tstimsf$);
             Print("Orientation (degrees)           : %s\n", Tstimorientation$);
-            Print("Initial Phase (degrees)         : %f\n", phase);
+            'Print("Initial Phase (degrees)         : %f\n", phase);  'WTF?
+            Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
             Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
             Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
             Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
@@ -4374,7 +4387,8 @@ proc WriteParameterFile()
             Print("Temporal frequency              : %s\n", Tstimtf$);
             Print("Spatial frequency               : %s\n", Tstimsf$);
             Print("Orientation (degrees)           : %s\n", Tstimorientation$);
-            Print("Initial Phase (degrees)         : %f\n", phase);
+            'Print("Initial Phase (degrees)         : %f\n", phase);  'WTF?
+            Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
             Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
             Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
             Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
@@ -4554,6 +4568,28 @@ func GetStimulusTF(stim%)
     return tf;
 end
 
+
+func GetStimulusPhase(stim%)
+    var gr$;
+    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var contrast%;
+    var cv$, pattern$, aperture$;
+    docase
+    case stim% = 1 then
+        gr$ := GetGratingParameters$("Stimulus");
+    case stim% = 2 then
+        gr$ := GetGratingParameters$("Distractor1");
+    case stim% = 3 then
+        gr$ := GetGratingParameters$("Distractor2");
+    case stim% = 4 then
+        gr$ := GetGratingParameters$("Distractor3");
+    case stim% = 5 then
+        gr$ := GetGratingParameters$("Distractor4");  
+    endcase;    
+    ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    LogStatus("GetStimulusPhase", "phase=" + str$(phase));
+    return phase;
+end
 
 proc UpdateTrialSpecString(&c$,ind%,col$,phaseList%[],offList%,cueOnsetTime,cueOffsetTime,stimOnsetTime,easy%,
         cuedLoc%,cuedLocContrast%,cuedLocCCTime,cuedLocReturnTime,
