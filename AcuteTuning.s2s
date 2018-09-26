@@ -1307,9 +1307,13 @@ proc CreateSampleConfiguration()
     'sure that they do not use more than 6 electrodes.
     'It would be nice to have these as level channels on event inputs, but that does not fly with the VSG box.
     'if tunOptoUsePulse% = 1 then
-    if tunDoOpto% = 1 then
+    docase
+    case tunDoOpto% = 1 then
         SampleWaveform(7,6,5000);  'on adc7
         SampleTitle$(7, "OptoCopy");
+    case tunRecStimulator% > 0 then 'Set channel for stimulator efference copy, if needed, as a waveform
+        SampleWaveform(7,6,5000);  'also on adc6, cannot be used at same time as Opto Copy, opto gets precedence
+        SampleTitle$(7, "Stimulator Copy");
     endif;
     
     if tunUseTemperature% = 1 then
@@ -1317,11 +1321,8 @@ proc CreateSampleConfiguration()
         SampleTitle$(6, "Temperature");
     endif;
     
-    'Set channel for stimulator efference copy, if needed, as a waveform
-    if tunRecStimulator% > 0 then
-        SampleWaveform(7,6,5000);  'also on adc6, cannot be used at same time as Opto Copy
-        SampleTitle$(7, "Stimulator Copy");
-    endif;
+    
+    
     
     
     
