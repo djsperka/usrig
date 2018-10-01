@@ -947,7 +947,8 @@ func Start%()
     
     
     if attUseCueCircles% > 0 then
-        CueCirc$ := CreateCueCircleColorSets$();
+        'CueCirc$ := CreateCueCircleColorSets$();
+        CueCirc$ := CreateCueCircleColorSetsLite$();  'Lite version only creates one set of cue circles, no rotation
     endif;
     
     'get all these grating parameters
@@ -3031,7 +3032,7 @@ func ColorsDialog%()
     DlgText("FixPt 3",47,9);
     DlgText("FixPt 4",47,10);
     DlgText("FixPt 5",47,11);
-    DlgText("No Atten FixPt",41,12);  'no cue circles will match this color if not multiply defined
+    DlgText("Cue All FixPt",41,12);  'no cue circles will match this color if not multiply defined
     DlgText("Deprecated!!",41,13);  'no cue circles will match this color if not multiply defined
     DlgInteger(attcolorsdlgCueCircleColorAttendR%, 5, 0, 255, 55, 7);
     DlgInteger(attcolorsdlgCueCircleColorAttendG%, 5, 0, 255, 61, 7);
@@ -3157,9 +3158,9 @@ func ColorsDialogChanged%(item%)
     var constantContrast%;
     
     constantContrast% := DlgValue(attcolorsdlgCueContrastIgnore1%);  'get contrast of Ignore stim 1
-    DlgValue(attcolorsdlgCueContrastIgnore2%,constantContrast%);  'and set contrast of Ignore stims 2-4, currently not allowed to vary
-    DlgValue(attcolorsdlgCueContrastIgnore3%,constantContrast%);
-    DlgValue(attcolorsdlgCueContrastIgnore4%,constantContrast%);
+    'DlgValue(attcolorsdlgCueContrastIgnore2%,constantContrast%);  'and set contrast of Ignore stims 2-4, currently not allowed to vary
+    'DlgValue(attcolorsdlgCueContrastIgnore3%,constantContrast%);
+    'DlgValue(attcolorsdlgCueContrastIgnore4%,constantContrast%);
     
     'I'm keeping this around in case things change, but it was deprecated before usage
     DlgEnable(0,attcolorsdlgCueCircleColorNoInfoR%);
@@ -3183,9 +3184,9 @@ func ColorsDialogChanged%(item%)
             DlgEnable(0, attcolorsdlgBackgroundBlue%);
             DlgEnable(1, attcolorsdlgCueContrastAttend%);  'Allow changing cue circle contrast if background is gray
             DlgEnable(1, attcolorsdlgCueContrastIgnore1%);
-'            DlgEnable(1, attcolorsdlgCueContrastIgnore2%);  'Now unsure why this is specifically disallowed.  But until there is a complaint...
-'            DlgEnable(1, attcolorsdlgCueContrastIgnore3%);
-'            DlgEnable(1, attcolorsdlgCueContrastIgnore4%);
+            DlgEnable(1, attcolorsdlgCueContrastIgnore2%);  'Now unsure why this is specifically disallowed.  But until there is a complaint...
+            DlgEnable(1, attcolorsdlgCueContrastIgnore3%);
+            DlgEnable(1, attcolorsdlgCueContrastIgnore4%);
         else
             DlgEnable(0, attcolorsdlgBackgroundRed%);
             DlgEnable(0, attcolorsdlgBackgroundGreen%);
@@ -3221,15 +3222,15 @@ func ColorsDialogChanged%(item%)
     
     'If we decide to make the different invalid cue circles have different contrasts, get rid of this
     'if statement altogether and uncomment three commented lines above.  
-    if item% = 0 or item% = attcolorsdlgCueContrastIgnore1% then
+    'if item% = 0 or item% = attcolorsdlgCueContrastIgnore1% then
         'Currently, just don't allow these to change
-        DlgEnable(0, attcolorsdlgCueContrastIgnore2%);
-        DlgEnable(0, attcolorsdlgCueContrastIgnore3%);
-        DlgEnable(0, attcolorsdlgCueContrastIgnore4%);
-        DlgValue(attcolorsdlgCueContrastIgnore2%,DlgValue(attcolorsdlgCueContrastIgnore1%));  'update the other values to whatever the d1 value is
-        DlgValue(attcolorsdlgCueContrastIgnore3%,DlgValue(attcolorsdlgCueContrastIgnore1%));
-        DlgValue(attcolorsdlgCueContrastIgnore4%,DlgValue(attcolorsdlgCueContrastIgnore1%));
-    endif
+        'DlgEnable(0, attcolorsdlgCueContrastIgnore2%);
+        'DlgEnable(0, attcolorsdlgCueContrastIgnore3%);
+        'DlgEnable(0, attcolorsdlgCueContrastIgnore4%);
+        'DlgValue(attcolorsdlgCueContrastIgnore2%,DlgValue(attcolorsdlgCueContrastIgnore1%));  'update the other values to whatever the d1 value is
+        'DlgValue(attcolorsdlgCueContrastIgnore3%,DlgValue(attcolorsdlgCueContrastIgnore1%));
+        'DlgValue(attcolorsdlgCueContrastIgnore4%,DlgValue(attcolorsdlgCueContrastIgnore1%));
+    'endif
     
     return status%;
 end
@@ -3971,13 +3972,23 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 endif;
                 
                 
-                ''' Set color of fixation point, cue circles
+                ''' Set color of fixation point
                 'For now, we are not varying the fixation point or cue circle color 
                 'Assigning to one should set color to the specified "attend" color from the colors dialog
-                fixColor%[ind%] := 1;
-                for L% := 0 to 4 do
-                    cueCircleColor%[L%][ind%] := 0;  'These can now NOT be changed trial by trial.  Keeping in case it happens in the future.
-                next;
+                'fixColor%[ind%] := 1;
+                
+                'This will allow changing the fixpt with the cue color
+                if isCueAll%[ind%] then
+                    fixColor%[ind%] := 5;  'hardcode, 5 is the correct index for cue-all
+                else
+                    fixColor%[ind%] := cuedLoc%[ind%]-1;
+                endif;
+                
+                
+                ''' Set color of cue circles (placeholder, trial-by-trial cue circle color is not supported as of yet)
+                'for L% := 0 to 4 do
+                '    cueCircleColor%[L%][ind%] := 0;  'These can now NOT be changed trial by trial.  Keeping in case it happens in the future.
+                'next;
                 
                 
                 ''' Set offList, this assumes that offBits turns off the stimuli, which is not necessary, and seems to be a problem
@@ -4700,7 +4711,7 @@ proc UpdateTrialSpecString(&c$,ind%,col$,phaseList%[],offList%,cueOnsetTime,cueO
     'Insert trial opener, first line of trial spec
     c$ := c$ + "Trial " + Str$(ind%+1) + "\n";
     
-    'For second line of trials spec: Add color spec
+    'For second line of trials spec: Add color of fixpt
     c$ := c$ + col$ + ",";
     
     'Add off-bits
@@ -4998,6 +5009,95 @@ func CreateCueCircleColorSets$()
     endif;
     
     
+    
+    'put in closing space
+    CueCircLocal$ := CueCircLocal$ + " ";
+    
+    return CueCircLocal$;
+end
+
+
+
+'New version 10/1/18
+'
+'
+'======= CreateCueCircleColorSetsLite =======
+'This function skips the aspects of Cue Circle Swapping and simply makes a single set of
+'cuec circles in CueCircLocal$ for inclusion in the long spec file.
+func CreateCueCircleColorSetsLite$()
+    var CueCircLocal$;
+    var RadAndWid$;  'these are all the same for every cue circle
+    
+    var ContrastList%[5];  
+    var RGBList%[5][3];
+    var i%;
+    var j%;
+    var k%;
+    var x%;
+    var y%;
+    var cueFlag$;
+    var colIdx%;
+    var conIdx%;
+    var tempCol%[3];
+    
+    'assign contrasts
+    'message(attCueCircleContrastAttend%);
+    ContrastList%[0] := attCueCircleContrastAttend%;
+    ContrastList%[1] := attCueCircleContrastIgnore1%;
+    ContrastList%[2] := attCueCircleContrastIgnore2%;  'note that Ignore 2-4 are identical to Ignore 1
+    ContrastList%[3] := attCueCircleContrastIgnore3%;
+    ContrastList%[4] := attCueCircleContrastIgnore4%;
+    
+    'assign RGBs
+    RGBList%[0][0] := attendRGB%[0];
+    RGBList%[0][1] := attendRGB%[1];
+    RGBList%[0][2] := attendRGB%[2];
+    RGBList%[1][0] := ignore1RGB%[0];
+    RGBList%[1][1] := ignore1RGB%[1];
+    RGBList%[1][2] := ignore1RGB%[2];
+    RGBList%[2][0] := ignore2RGB%[0];
+    RGBList%[2][1] := ignore2RGB%[1];
+    RGBList%[2][2] := ignore2RGB%[2];
+    RGBList%[3][0] := ignore3RGB%[0];
+    RGBList%[3][1] := ignore3RGB%[1];
+    RGBList%[3][2] := ignore3RGB%[2];
+    RGBList%[4][0] := ignore4RGB%[0];
+    RGBList%[4][1] := ignore4RGB%[1];
+    RGBList%[4][2] := ignore4RGB%[2];
+    
+    'Set cue flag
+    docase
+    case attUseCueCircles% = 1 then
+        cueFlag$ := "-Q ";
+    case attUseCueCircles% = 2 then
+        cueFlag$ := "-q ";
+    case attUseCueCircles% = 3 then
+        cueFlag$ := "-r ";  'this ought to work as of 1/24/18
+    else
+        message("Error!  UseCueCircles% holds an illegal value!  Quitting!");
+        quit%();
+    endcase
+    
+    'Radius and Width includes following commas but NOT leading comma - leading comma is not always used
+    RadAndWid$ := Str$(attCueCircleExtraRadius) + "," + Str$(attCueCircleStrokeWidth%) + ",";
+    
+    'start building
+    CueCircLocal$ := cueFlag$
+    
+    for i% := 0 to attNumPatches%-1 do 'loop through each patch
+        if i%<>0 then
+            CueCircLocal$ := CueCircLocal$ + ",";  'do not insert comma on very first spec, otherwise insert comma
+        endif
+        CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
+        
+        tempCol%[0] := RGBList%[i%][0];
+        tempCol%[1] := RGBList%[i%][1];
+        tempCol%[2] := RGBList%[i%][2];
+        
+        'put in correct color/contrast, which starts on the very first list as index zero and then is very complicatedly updated to behave as desired
+        CueCircLocal$ := CueCircLocal$ + FadeColorToGray$(tempCol%[],ContrastList%[i%]);
+
+    next
     
     'put in closing space
     CueCircLocal$ := CueCircLocal$ + " ";
