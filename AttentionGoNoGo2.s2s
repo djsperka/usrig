@@ -3979,9 +3979,9 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 
                 'This will allow changing the fixpt with the cue color
                 if isCueAll%[ind%] then
-                    fixColor%[ind%] := 5;  'hardcode, 5 is the correct index for cue-all
+                    fixColor%[ind%] := 6;  'hardcode, 5 is the correct index for cue-all, but all subsequent calls will subtract 1
                 else
-                    fixColor%[ind%] := cuedLoc%[ind%]-1;
+                    fixColor%[ind%] := cuedLoc%[ind%];
                 endif;
                 
                 
@@ -4047,8 +4047,7 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 '''Add values to flasher string and trial spec string
                 'Note: With massive update to code, this needs to be checked to make sure it works...for now, not being implemented
                 'Flasher string
-                'UpdateFlasherSpecString(f$,flashN%[ind%],flashX[ind%][],flashY[ind%][],attFlasherWidth,attFlasherHeight,flashTimes[ind%][],attFlasherDur,firstRun);
-                
+                'UpdateFlasherSpecString(f$,flashN%[ind%],flashX[ind%][],flashY[ind%][],attFlasherWidth,attFlasherHeight,flashTimes[ind%][],attFlasherDur,firstRun)
                 UpdateTrialSpecString(c$,ind%,masterColorListVSG$[fixColor%[ind%]-1],initPhase%[],offList%[ind%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,easyList%[ind%],
                     cuedLoc%[ind%],cuedLocContrast%[ind%],cuedLocCCTime[ind%],cuedLocReturnTime[ind%],
                     uncuedLoc%[ind%],uncuedLocContrast%[ind%],uncuedLocCCTime[ind%],uncuedLocReturnTime[ind%],trialEnd[ind%]);
@@ -5031,13 +5030,7 @@ func CreateCueCircleColorSetsLite$()
     var ContrastList%[5];  
     var RGBList%[5][3];
     var i%;
-    var j%;
-    var k%;
-    var x%;
-    var y%;
     var cueFlag$;
-    var colIdx%;
-    var conIdx%;
     var tempCol%[3];
     
     'assign contrasts
@@ -5082,7 +5075,7 @@ func CreateCueCircleColorSetsLite$()
     RadAndWid$ := Str$(attCueCircleExtraRadius) + "," + Str$(attCueCircleStrokeWidth%) + ",";
     
     'start building
-    CueCircLocal$ := cueFlag$
+    CueCircLocal$ := cueFlag$;
     
     for i% := 0 to attNumPatches%-1 do 'loop through each patch
         if i%<>0 then
@@ -5420,7 +5413,8 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
             cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location CC, window open",triggerTime);
         else
-            'do NOT increment CC, this contrast change is not a target
+            'do NOT increment CC, this contrast change is not a target, NO!  We need to know the change happened, not a target is dealt with by caller
+            cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location CC, not a target",triggerTime);
         endif;
     case minLoc% = 7 then 'this is a contrast return in the cued location
@@ -5431,7 +5425,8 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
             cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location return to baseline, window closed",triggerTime);
         else
-            'do NOT increment CC, this contrast change is not a target
+            'do NOT increment CC, this contrast change is not a target, NO!  We need to know the change happened, not a target is dealt with by caller
+            cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location return to baseline, not a target",triggerTime);
         endif;    
     case minLoc% = 9 then 'this is a flasher (not currently in use)
