@@ -1682,7 +1682,7 @@ func IdleProcessing%()
                 SampleText("Incorrect",tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-            case tNow <= cuedResponseWindowCloseTime then 'if cued window has opened and not yet closed, it's a hit, set up reward
+            case tNow <= tStateStart+cuedResponseWindowCloseTime then 'if cued window has opened and not yet closed, it's a hit, set up reward
                 queueReward% := 1;                   
                 attCountAllTrialsCorrect% += 1;
                 attInterTrialTimeThisTrial := attInterTrialTime;
@@ -1705,7 +1705,7 @@ func IdleProcessing%()
                 SampleText("Incorrect",tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow); 
-            case tNow <= uncuedResponseWindowCloseTime then 'if uncued window has opened and not yet closed, it's a hit, set up reward
+            case tNow <= tStateStart+uncuedResponseWindowCloseTime then 'if uncued window has opened and not yet closed, it's a hit, set up reward
                 queueReward% := 1;                   
                 attCountAllTrialsCorrect% += 1;
                 attInterTrialTimeThisTrial := attInterTrialTime;
@@ -2053,7 +2053,8 @@ proc PrepareTrial()
     ' This value needs to be the time from the point the animation is up until the time the trial ends, now not moving to separate answer window for no-go trials
     ' This is: attCueOffsetTime+attStimOnsetList[trialCount%]+attTrialEndTime[trialCount%]-attContrastChangeDuration
     attTimeTrialEnds := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attTrialEndTime[attCurrTrialIndex%];  'Time to answer is different on every trial
-
+    cuedResponseWindowCloseTime := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attCuedLocCCTime[attCurrTrialIndex%]+attResponseWindow;
+    uncuedResponseWindowCloseTime := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attUncuedLocCCTime[attCurrTrialIndex%]+attResponseWindow;
     
     'Record if this trial is Cue-All
     trialIsCueAll% := attIsCueAll%[attCurrTrialIndex%];
