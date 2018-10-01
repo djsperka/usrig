@@ -65,6 +65,7 @@ var attInterTrialTime;  'This is the default intertrial time
 var attInterTrialTimeThisTrial;  'This is a trial-by-trial intertrial time, miss penalty may be added in
 var attTimeTrialEnds;  'filled on a trial-to-trial basis because the value is different for no-change trials
 var attContrastChangeDuration;
+var attResponseWindow;
 var attAbortPenaltyTime;  'These three penalty times are being tied together, at least for now
 var attMissPenaltyTime;    'Penalty time tied together
 var attFalseAlarmPenaltyTime;  'Penalty time tied together
@@ -158,6 +159,7 @@ var hF1;
 
 
 ' constants for timing dialog (these are being used only inconsistently)
+const atttimingdlgAcquisitionTime% := 1;
 const atttimingdlgFixationCueMinTime% := 2;
 const atttimingdlgFixationCueMaxTime% := 3;
 const atttimingdlgCueOnsetTime% := 4;
@@ -166,6 +168,10 @@ const atttimingdlgStimOnsetTime% := 6;
 const atttimingdlgHazardMinTime% := 7;
 const atttimingdlgHazardExpMeanTime% := 8;
 const atttimingdlgHazardCutoffTime% := 9;
+const atttimingdlgContrastChangeDuration% := 10;
+const atttimingdlgResponseWindow% := 11;
+const atttimingdlgIntertrialTime% := 12;
+const atttimingdlgPenaltyTime% := 13;
 
 ' constants for color dialog
 var attdlgColorIndexGray% := 0;
@@ -262,6 +268,8 @@ var flasherCountThisTrial%;  'keep track of number of flashers played on the cur
 var CCHappened%;  'keep track of what contrast change(s) happen
 var answerWindowCuedHighlighted%;
 var answerWindowUncuedHighlighted%;
+var cuedResponseWindowCloseTime;
+var uncuedResponseWindowCloseTime;
 
 
 'we need to explicitly know the position of the gratings to place the answer windows on the gratings
@@ -1595,7 +1603,7 @@ func IdleProcessing%()
             view(XYWindow%).XYColour(iFixationWindowChannel%,13);  'Change fixation window to blue
             docase  'expectedAnswer% gives cued location
             case expectedAnswer% = 1 then
-                view(XYWindow%).XYColour(iAnswerWindowChannelMain%,16);  'Change main window to red
+                view(XYWindow%).XYColour(iAnswerWindowChannelMain%,16);  'Change main window to red (20 is orange)
             case expectedAnswer% = 2 then
                 view(XYWindow%).XYColour(iAnswerWindowChannelDist1%,16);  'Change dist1 window to red
             case expectedAnswer% = 3 then
@@ -1664,12 +1672,62 @@ func IdleProcessing%()
         docase            
         case Looking%(xEye, yEye) = 0 and CCHappened% = 0 then  'if fixation is broken and no contrast change has happened, begin abort procedure
             PrintLog("stateCheckForAnswerThroughAnimation: fixation lost before contrast change.\n");
-            CCHappened% := 0;
             ChangeStateTo(stateAbort%, tNow);
             
-        case tNow > tStateStart + attTimeTrialEnds then  'if animation is over...here we assume that the animal's "last opportunity to respond" was on the prior iteration of the CASE statement
-                                                         'this means that in rare cases the response window may "close" slightly (say 20-40 ms) "early", but it's totally not worth cluttering
-                                                         'the code to make sure that maybe there wasn't a response/fixation break in the final few ms
+        case iAnswer% > 0 and iAnswer% = expectedAnswer% then 'there is an answer, answer is to cued window, and cued window is a legal answer (expected answer is 0 if cued location does not change)
+            docase
+            case CCHappened% = 0 or CCHappened% = 20 or CCHappened% = 40 then  'if cued window has not yet opened, this is a false alarm
+                queueReward% := -1;                   
+                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+                SampleText("Incorrect",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+            case tNow <= cuedResponseWindowCloseTime then 'if cued window has opened and not yet closed, it's a hit, set up reward
+                queueReward% := 1;                   
+                attCountAllTrialsCorrect% += 1;
+                attInterTrialTimeThisTrial := attInterTrialTime;
+                SampleText("Correct",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+            else  'cued window has closed, response too late, it's a miss
+                queueReward% := -1;                    
+                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+                SampleText("Incorrect",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over
+            endcase
+            
+        case iAnswer% > 0 and iAnswer% = expectedAnswerUncued% then 'there is an answer, answer is to uncued window, and uncued window is a legal answer (expectedAnswerUncued% is 0 unless uncued location changes and trial is cue-all)
+            docase
+            case CCHappened% < 20 then  'if uncued window has not yet opened, this is a false alarm
+                queueReward% := -1;                   
+                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+                SampleText("Incorrect",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow); 
+            case tNow <= uncuedResponseWindowCloseTime then 'if uncued window has opened and not yet closed, it's a hit, set up reward
+                queueReward% := 1;                   
+                attCountAllTrialsCorrect% += 1;
+                attInterTrialTimeThisTrial := attInterTrialTime;
+                SampleText("Correct",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);      
+            else  'uncued window has closed, response too late, it's a miss
+                queueReward% := -1;                    
+                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+                SampleText("Incorrect",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over
+            endcase  
+            
+        case iAnswer% > 0 then 'there is an answer that does not correspond to any legal location, false alarm
+            queueReward% := -1;                   
+            attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+            SampleText("Incorrect",tNow);
+            CCHappened% := 0;
+            ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+            
+        case tNow > tStateStart + attTimeTrialEnds then  'if animation is over and no reponse has occurred
             if trialIsTarget% = 1 then  'this is a miss, we would have caught the answer on the last check if not
                 queueReward% := -1;                    
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
@@ -1684,87 +1742,94 @@ func IdleProcessing%()
                 SampleText("Correct",tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over 
-            endif;
+            endif;   
             
-   
-        'if the first two cases do not trigger, either we are still looking, or something has happened, or both    
-        case CCHappened% = 2 or CCHappened% = 22 or CCHappened% = 42 then  'This means the cued target window is open
+        'else 'This means the trial is not over, the animal has not aborted, and the animal has not responded.  Keep checking for these events.    
             
-            'Check to see if there is a response - if there is no response, we keep checking
-            docase
-            case iAnswer% = expectedAnswer% then  'A hit!  Set up reward 
-                queueReward% := 1;                   
-                attCountAllTrialsCorrect% += 1;
-                attInterTrialTimeThisTrial := attInterTrialTime;
-                SampleText("Correct",tNow);
-                CCHappened% := 0;
-                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-            case iAnswer% = expectedAnswerUncued% and CCHappened% = 22 then  'A hit on the uncued while window open!  Set up reward 
-                queueReward% := 1;                   
-                attCountAllTrialsCorrect% += 1;
-                attInterTrialTimeThisTrial := attInterTrialTime;
-                SampleText("Correct",tNow);
-                CCHappened% := 0;
-                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-            case iAnswer% > 0 then  'A saccade to a wrong location (false alarm, I guess)
-                queueReward% := -1;                   
-                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-                SampleText("Incorrect",tNow);
-                CCHappened% := 0;
-                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-            endcase
             
-        case CCHappened% = 4 or CCHappened% = 24 or CCHappened% = 44 then  'This means the cued target window is closed
-  
-            'Check for response, if no response, keep checking
-            docase
-            case iAnswer% > 0  and (CCHappened% = 4 or CCHappened% = 44) then  'A saccade to any location if no response window open is a false alarm
-                queueReward% := -1;                   
-                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-                SampleText("Incorrect",tNow);
-                CCHappened% := 0;
-                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-            case iAnswer% = expectedAnswerUncued% and CCHappened% = 24 then  'This is a saccade to the uncued location while its window is open - a hit!
-                queueReward% := 1;                   
-                attCountAllTrialsCorrect% += 1;
-                attInterTrialTimeThisTrial := attInterTrialTime;
-                SampleText("Correct",tNow);
-                CCHappened% := 0;
-                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-            endcase
-            
-        case CCHappened% = 20 then  'This means the uncued target window is open  'cannot get to CCHappened% = 22 or CCHappened% = 24, those are covered above  
-
-            'Check to see if there is a response - if there is no response, we keep checking
-            docase
-            case iAnswer% = expectedAnswerUncued% then  'A hit!  Set up reward 
-                queueReward% := 1;                   
-                attCountAllTrialsCorrect% += 1;
-                attInterTrialTimeThisTrial := attInterTrialTime;
-                SampleText("Correct",tNow);
-                CCHappened% := 0;
-                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-            case iAnswer% > 0 then  'A saccade to a wrong location (false alarm, I guess)
-                queueReward% := -1;                   
-                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-                SampleText("Incorrect",tNow);
-                CCHappened% := 0;
-                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-            endcase
-            
-        case CCHappened% = 40 then 'This means the uncued target window is closed  'cannot get to CCHappened% = 42 or CCHappened% = 44, those are covered above  
-  
-            'Check for response, if no response, keep checking
-            if iAnswer% > 0 then  'A saccade to any location if no response window open is a false alarm
-                queueReward% := -1;                   
-                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-                SampleText("Incorrect",tNow);
-                CCHappened% := 0;
-                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-            endif
-            
-        'else 'This means the trial is not over, the animal has not aborted, and the animal has not responded.  Keep checking for these events.
-            
+            'Below commented code was a prior attempt, but it wouldn't work when we extended the response window
+            'beyond the duration of the contrast change, above code now seems simpler, should cover all the bases
+'        'if the first case does not trigger, either we are still looking, or something has happened, or both    
+'        'case CCHappened% = 2 or CCHappened% = 22 or CCHappened% = 42 then  'This means the cued target window is open
+'        case tNow <= cuedResponseWindowCloseTime then  'This means the cued target window is open  
+'            
+'            'Check to see if there is a response - if there is no response, we keep checking
+'            docase
+'            case iAnswer% = expectedAnswer% then  'A hit!  Set up reward 
+'                queueReward% := 1;                   
+'                attCountAllTrialsCorrect% += 1;
+'                attInterTrialTimeThisTrial := attInterTrialTime;
+'                SampleText("Correct",tNow);
+'                CCHappened% := 0;
+'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+'            case iAnswer% = expectedAnswerUncued% and CCHappened% = 22 then  'A hit on the uncued target while window open!  Set up reward 
+'                queueReward% := 1;                   
+'                attCountAllTrialsCorrect% += 1;
+'                attInterTrialTimeThisTrial := attInterTrialTime;
+'                SampleText("Correct",tNow);
+'                CCHappened% := 0;
+'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+'            case iAnswer% > 0 then  'A saccade to a wrong location (false alarm, I guess)
+'                queueReward% := -1;                   
+'                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+'                SampleText("Incorrect",tNow);
+'                CCHappened% := 0;
+'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+'            endcase
+'            
+'        'case CCHappened% = 4 or CCHappened% = 24 or CCHappened% = 44 then  'This means the cued target window is closed
+'        case (CCHappened% = 4 or CCHappened% = 24 or CCHappened% = 44) and tNow > cuedResponseWindowCloseTime and tNow > uncuedResponseWindowCloseTime then
+'            
+'            'Check for response, if no response, keep checking
+'            docase
+'            case iAnswer% > 0  and (CCHappened% = 4 or CCHappened% = 44) then  'A saccade to any location if no response window open is a false alarm
+'                queueReward% := -1;                   
+'                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+'                SampleText("Incorrect",tNow);
+'                CCHappened% := 0;
+'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+'            case iAnswer% = expectedAnswerUncued% and CCHappened% = 24 then  'This is a saccade to the uncued location while its window is open - a hit!
+'                queueReward% := 1;                   
+'                attCountAllTrialsCorrect% += 1;
+'                attInterTrialTimeThisTrial := attInterTrialTime;
+'                SampleText("Correct",tNow);
+'                CCHappened% := 0;
+'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+'            endcase
+'            
+'        case CCHappened% = 20 then  'This means the uncued target window is open  'cannot get to CCHappened% = 22 or CCHappened% = 24, those are covered above  
+'
+'            'Check to see if there is a response - if there is no response, we keep checking
+'            docase
+'            case iAnswer% = expectedAnswerUncued% then  'A hit!  Set up reward 
+'                queueReward% := 1;                   
+'                attCountAllTrialsCorrect% += 1;
+'                attInterTrialTimeThisTrial := attInterTrialTime;
+'                SampleText("Correct",tNow);
+'                CCHappened% := 0;
+'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+'            case iAnswer% > 0 then  'A saccade to a wrong location (false alarm, I guess)
+'                queueReward% := -1;                   
+'                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+'                SampleText("Incorrect",tNow);
+'                CCHappened% := 0;
+'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+'            endcase
+'            
+'        case CCHappened% = 40 then 'This means the uncued target window is closed  'cannot get to CCHappened% = 42 or CCHappened% = 44, those are covered above  
+'  
+'            'Check for response, if no response, keep checking
+'            if iAnswer% > 0 then  'A saccade to any location if no response window open is a false alarm
+'                queueReward% := -1;                   
+'                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+'                SampleText("Incorrect",tNow);
+'                CCHappened% := 0;
+'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+'            endif
+'            
+'            
+'        
+'            
             
         endcase 
 
@@ -2235,6 +2300,7 @@ proc GetTimingDialogParameters()
 	attInterTrialTime := GetFloatRegistryValue(key$, "InterTrialTime", 1.0);
 	attAbortPenaltyTime := GetFloatRegistryValue(key$, "AbortPenaltyTime", 1.0);
     attContrastChangeDuration := GetFloatRegistryValue(key$, "ContrastChangeDuration", 1.0);
+    attResponseWindow := GetFloatRegistryValue(key$, "ResponseWindow", 1.0);
     attMissPenaltyTime := GetFloatRegistryValue(key$, "MissPenalty", 1.0);
     attFalseAlarmPenaltyTime := GetFloatRegistryValue(key$, "FalseAlarmPenaltyTime", 1.0);
     
@@ -2257,6 +2323,7 @@ proc SaveTimingDialogParameters()
 	SetFloatRegistryValue(key$, "AcquisitionTime", attAcquisitionTime);
 	SetFloatRegistryValue(key$, "AbortPenaltyTime", attAbortPenaltyTime);
     SetFloatRegistryValue(key$, "ContrastChangeDuration", attContrastChangeDuration);
+    SetFloatRegistryValue(key$, "ResponseWindow", attResponseWindow);
     SetFloatRegistryValue(key$, "MissPenalty", attMissPenaltyTime);
     SetFloatRegistryValue(key$, "FalseAlarmPenaltyTime", attFalseAlarmPenaltyTime);
 	SetFloatRegistryValue(key$, "InterTrialTime", attInterTrialTime);
@@ -2818,7 +2885,7 @@ func TimingDialog%()
     GetTimingDialogParameters();
     
 	DlgCreate("Attention timing", 25, 10);
-	DlgReal(1, "Acquisition time(s):", .01, 10);
+	DlgReal(atttimingdlgAcquisitionTime%, "Acquisition time(s):", .01, 10);
 	DlgReal(atttimingdlgFixationCueMinTime%, "Fixation cue hold min time(s):", .01, 10);
 	DlgReal(atttimingdlgFixationCueMaxTime%, "Fixation cue hold max time(s):", .01, 10);  'We will presumably lose the ability to have a variable stimulus onset time when the animation is implemented
     DlgReal(atttimingdlgCueOnsetTime%, "Cue onset time (s):", 0.1, 10);
@@ -2827,14 +2894,15 @@ func TimingDialog%()
     DlgReal(atttimingdlgHazardMinTime%, "Hazard min time(s):", 0, 10);
 	DlgReal(atttimingdlgHazardExpMeanTime%, "Hazard exp mean time(s):", 0, 10);
 	DlgReal(atttimingdlgHazardCutoffTime%, "Hazard cutoff time(s):", 0, 10);
-	DlgReal(10, "ContrastChangeDuration(s):",0.1,10);
-	DlgReal(11, "Intertrial time(s):", .01, 10);
-    DlgReal(12, "Generic penalty time(s):", .01, 10);
+	DlgReal(atttimingdlgContrastChangeDuration%, "ContrastChangeDuration(s):",0.1,10);
+    DlgReal(atttimingdlgResponseWindow%, "Response Window(s):",0.1,10);
+	DlgReal(atttimingdlgIntertrialTime%, "Intertrial time(s):", .01, 10);
+    DlgReal(atttimingdlgPenaltyTime%, "Generic penalty time(s):", .01, 10);
     
          
     DlgAllow(0, 0, TimingDialogChanged%);
     i%:=DlgShow(attAcquisitionTime, attFixationCueMinTime, attFixationCueMaxTime, attCueOnsetTime, attCueOffsetTime, attStimOnsetTime,
-    attHazardMinTime, attHazardExpMeanTime, attHazardCutoffTime, attContrastChangeDuration,
+    attHazardMinTime, attHazardExpMeanTime, attHazardCutoffTime, attContrastChangeDuration, attResponseWindow,
     attInterTrialTime, attAbortPenaltyTime);
     if i% = 1 then
         attFalseAlarmPenaltyTime := attAbortPenaltyTime;
@@ -2867,6 +2935,12 @@ func TimingDialogChanged%(item%)
             status% := 0;
             Message("Cue onset time must be < Cue offset time");
         endif;    
+    case item% = atttimingdlgContrastChangeDuration% or item% = atttimingdlgResponseWindow% then
+        if DlgValue(atttimingdlgContrastChangeDuration%) > DlgValue(atttimingdlgResponseWindow%) then
+            status% := 0;
+            Message("Response window cannot be < contrast change duration");
+        endif
+        
         'The stim onset time is now defined to be in terms of time following cue offset, so this case statement is not relevant, an updated version is above
 '    case item% = atttimingdlgCueOnsetTime% or item% = atttimingdlgCueOffsetTime% or item% = atttimingdlgStimOnsetTime% then
 '        if DlgValue(atttimingdlgCueOnsetTime%) >= DlgValue(atttimingdlgCueOffsetTime%) or DlgValue(atttimingdlgCueOnsetTime%) >= DlgValue(atttimingdlgStimOnsetTime%) then 
@@ -2875,6 +2949,7 @@ func TimingDialogChanged%(item%)
 '        endif;
     
     endcase
+
     return status%;
 end
 
@@ -3833,6 +3908,25 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 endif;
                 
                 
+                
+                ''' Ensure no contrast changes overlap - this ensures we get a trigger for every contrast change event, necessary for smooth functioning of trigger-tagging
+                docase
+                'if both onsets are within 50 ms of each other, set the uncued onset to 50 ms AFTER cued onset, update return time as well
+                case cuedLocChanges%[ind%] = 1 and abs(cuedLocCCTime[ind%]-uncuedLocCCTime[ind%]) < 0.050 then
+                    uncuedLocCCTime[ind%] := cuedLocCCTime[ind%] + 0.050;
+                    uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
+                'if cued offset and uncued onset are within 50 ms of each other, set uncued onset to 50 ms AFTER cued offset, update return time as well 
+                case cuedLocChanges%[ind%] = 1 and abs(cuedLocReturnTime[ind%]-uncuedLocCCTime[ind%]) < 0.050 then
+                    uncuedLocCCTime[ind%] := cuedLocReturnTime[ind%] + 0.050;
+                    uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
+                'if cued onset and uncued offset are within 50 ms of each other, set the cued onset to 50 ms AFTER uncued offset
+                case cuedLocChanges%[ind%] = 1 and abs(cuedLocCCTime[ind%]-uncuedLocReturnTime[ind%]) < 0.050 then    
+                    cuedLocCCTime[ind%] := uncuedLocReturnTime[ind%] + 0.050;
+                    cuedLocReturnTime[ind%] := cuedLocCCTime[ind%] + attContrastChangeDuration;
+                endcase;
+                
+                
+                
                 ''' Determine end of trial (Fill trialEnd[])
                 docase
                 case cuedLocCCTime[ind%] = -1 and uncuedLocCCTime[ind%] = -1 then 'if no contrast change, set trial end time using new hazard function draw
@@ -3840,19 +3934,23 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                     if trialEnd[ind%] > attHazardCutoffTime then
                         trialEnd[ind%] := attHazardMinTime;  'Per Henry 5/21/18
                     endif;
-                    'This is the time the contrast would change, get time that contrast would RETURN, use this
-                    trialEnd[ind%] := trialEnd[ind%] + attContrastChangeDuration;
+                    'This is the time the contrast would change, get time that trial would end (was: contrast would RETURN), use this
+                    trialEnd[ind%] := trialEnd[ind%] + attResponseWindow;  ' was: attContrastChangeDuration;
                 case isCueAll%[ind%] = 1 then 'if this trial is cue-all, the trial ends when the SECOND contrast change closes
                     if cuedLocReturnTime[ind%] > uncuedLocReturnTime[ind%] then  'if cued is later (or uncued is -1!)
-                        trialEnd[ind%] := cuedLocReturnTime[ind%];
+                        trialEnd[ind%] := cuedLocCCTime[ind%] + attResponseWindow;  'was cuedLocReturnTime[ind%];
                     else  'if uncued is later (or cued is -1!)
-                        trialEnd[ind%] := uncuedLocReturnTime[ind%];
+                        trialEnd[ind%] := uncuedLocCCTime[ind%] + attResponseWindow;  'was uncuedLocReturnTime[ind%]
                     endif
-                case cuedLocChanges%[ind%] = 1 then 'if cued location changes, set end of trial to end of cued location contrast change, even if uncued loc is currently changed
-                    trialEnd[ind%] := cuedLocReturnTime[ind%];
+                case cuedLocChanges%[ind%] = 1 then 'if cued location changes, set end of trial to end of cued location response window (was: contrast change), even if uncued loc is currently changed
+                    trialEnd[ind%] := cuedLocCCTime[ind%] + attResponseWindow;  'was cuedLocReturnTime[ind%];
                 else
-                    trialEnd[ind%] := uncuedLocReturnTime[ind%];
+                    trialEnd[ind%] := uncuedLocCCTime[ind%] + attResponseWindow;  'was uncuedLocReturnTime[ind%]
                 endcase
+                
+                
+                
+                
                 
                 
                 ''' If any contrast changes come after the end of the trial, erase them
@@ -4414,7 +4512,8 @@ proc WriteParameterFile()
     Print("Min Hazard time (s)   : %f\n", attHazardMinTime);
     Print("Mean Hazard time (s)   : %f\n", attHazardExpMeanTime);
     Print("Hazard Cutoff time (s)   : %f\n", attHazardCutoffTime);
-    Print("Time to answer (s)   : %f\n", attContrastChangeDuration);
+    Print("Contrast Change dur (s)   : %f\n", attContrastChangeDuration);
+    Print("Time to answer (s)   : %f\n", attResponseWindow);
     Print("Intertrial time (s)   : %f\n", attInterTrialTime);
     Print("Abort/miss/FA penalty time (s)   : %f\n", attAbortPenaltyTime);
   
@@ -5181,15 +5280,16 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
     
     'Fill diffArray with differences between time of current trigger and known event times
     diffArray[0] := abs(tAnimationOn - triggerTime);  'for now we are short circuiting and not tagging tAnimationOn, but this will allow easy tagging if desired
-    diffArray[1] := abs(cueOnTime - triggerTime);
-    diffArray[2] := abs(cueOffTime - triggerTime);
-    diffArray[3] := abs(gratingOnTime - triggerTime);
-    diffArray[4] := abs(ccTime - triggerTime);  'contrast change time goes first, because this has priority, if there is a tie, min will take the first value
-    diffArray[5] := abs(ccTimeU - triggerTime);
-    diffArray[6]:= abs(ccReturnTime - triggerTime);
-    diffArray[7]:= abs(ccReturnTimeU - triggerTime);
-    diffArray[8] := abs(fTime - triggerTime);
-    diffArray[9]:= abs(allOffTime - triggerTime);
+    diffArray[1]:= abs(allOffTime - triggerTime);
+    diffArray[2] := abs(cueOnTime - triggerTime);
+    diffArray[3] := abs(cueOffTime - triggerTime);
+    diffArray[4] := abs(gratingOnTime - triggerTime);
+    diffArray[5] := abs(ccTime - triggerTime);  'contrast change time goes first, because this has priority, if there is a tie, min will take the first value
+    diffArray[6] := abs(ccTimeU - triggerTime);
+    diffArray[7]:= abs(ccReturnTime - triggerTime);
+    diffArray[8]:= abs(ccReturnTimeU - triggerTime);
+    diffArray[9] := abs(fTime - triggerTime);
+    
     minLoc% := min(diffArray);  'find index of smallest difference
     minVal := diffArray[minLoc%];
     
@@ -5198,21 +5298,23 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
     
     docase
     case minVal > 0.05 then 'trigger is not within 50 ms of any expected time
-        if diffArray[9] < 0.1 then 'use big tolerance for end of window 
-            SampleText("End of response window",triggerTime);
+        if diffArray[1] < 0.1 then 'use big tolerance for end of window 
+            SampleText("End of animation",triggerTime);
         else
             SampleText("Error - trigger time not recognized!",triggerTime);
         endif;
-    case minLoc% = 1 then 'this is cue on
+    case minLoc% = 1 then 'This is stimulus offset, moved to top, because it will coincide with grating offsets, want this to take priority
+        SampleText("End of animation",triggerTime);
+    case minLoc% = 2 then 'this is cue on
         SampleText("Cue On",triggerTime);
-    case minLoc% = 2 then 'this is cue off
+    case minLoc% = 3 then 'this is cue off
         SampleText("Cue Off",triggerTime);
-    case minLoc% = 3 then 'this is grating on
+    case minLoc% = 4 then 'this is grating on
         SampleText("Grating On",triggerTime); 
-    case minLoc% = 4 then 'this is a contrast change in the cued location
+    case minLoc% = 5 then 'this is a contrast change in the cued location
         cc% += 1;  'Increment cc% by 1
         SampleText("Cued Location CC, window open",triggerTime); 
-    case minLoc% = 5 then 'this is a contrast change in the uncued location
+    case minLoc% = 6 then 'this is a contrast change in the uncued location
         if isCueAll% = 1 then
             cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location CC, window open",triggerTime);
@@ -5220,10 +5322,10 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
             'do NOT increment CC, this contrast change is not a target
             SampleText("Uncued Location CC, not a target",triggerTime);
         endif;
-    case minLoc% = 6 then 'this is a contrast return in the cued location
+    case minLoc% = 7 then 'this is a contrast return in the cued location
         cc% += 1;  'Increment cc% by 1
         SampleText("Cued Location return to baseline, window closed",triggerTime); 
-    case minLoc% = 7 then 'this is a contrast return in the uncued location
+    case minLoc% = 8 then 'this is a contrast return in the uncued location
         if isCueAll% = 1 then
             cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location return to baseline, window closed",triggerTime);
@@ -5231,11 +5333,10 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
             'do NOT increment CC, this contrast change is not a target
             SampleText("Uncued Location return to baseline, not a target",triggerTime);
         endif;    
-    case minLoc% = 8 then 'this is a flasher
+    case minLoc% = 9 then 'this is a flasher (not currently in use)
         SampleText("Flasher X = " + Str$(flasherX[trialCount%][flasherCount%]) + " Y = " + Str$(flasherY[trialCount%][flasherCount%]) + " Note, trigger time more than 2ms off!",triggerTime);
         flasherCount% += 1;
-    case minLoc% = 9 then 'This is stimulus offset
-        SampleText("End of animation",triggerTime);
+    
     endcase
 
     
