@@ -1,0 +1,257 @@
+' $Id$
+const tunCVSID$ := "$Id$";
+
+'var TuningCurveScriptDialogAllowOK%;  'allows OK to button to work on main dialog 
+
+
+#include "../../Spike2Util/UsreyUtil.s2s"
+
+'These appear unnecessary
+'#include "../../Spike2Util/ChannelUtilities.s2s"
+'#include "../../Spike2Util/LogUtilities.s2s"
+'#include "../../Spike2Util/MiscUtilities.s2s"
+'#include "UsreyDAQ.s2s"
+
+
+var DataWindow%;
+var ticksPerCycle%;
+var freqIndex%;
+var dutyCycleInteger%;
+'var octaveStep;
+var SequencerPeriodMS;
+var optoVoltageOut;
+var voltageInteger%;
+var dlgReturn%;
+
+dlgReturn% := LaserTogDialog%();
+
+'If dialog cancelled, quit
+if dlgReturn% = 0 then
+    halt;
+endif
+
+
+CreateSampleConfiguration();
+InitializeWindows();
+
+
+View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+ToolbarVisible(1);
+ToolbarSet(1,"Start",Start%);
+
+halt; 'if the toolbar returns, quit
+
+
+
+
+
+
+
+
+'===== end main code, begin functions =====
+
+func LaserTogDialog%()
+	var i%;
+	var iReturn% := 0;
+    var freqList$[9];
+    freqList$[0] := "0.125 Hz";
+    freqList$[1] := "0.25 Hz";
+    freqList$[2] := "0.5 Hz";
+    freqList$[3] := "1 Hz";
+    freqList$[4] := "2 Hz";
+    freqList$[5] := "4 Hz";
+    freqList$[6] := "8 Hz";
+    freqList$[7] := "16 Hz";
+    freqList$[8] := "32 Hz";
+    
+    
+	GetLaserTogParameters();
+
+	DlgCreate("LaserTog Parameters", 50, 10);
+	DlgList(1, "Initial Frequency: ", freqList$);  'Allow initial frequency between 0.1 Hz and 32 Hz 
+    DlgInteger(2, "Duty Cycle (1-99, percent on):", 1, 99);  'Allow duty cycle of 1% to 99% of cycle
+    DlgReal(3, "Opto Voltage Out:", 0.01, 5);  'Get voltage out
+	'DlgReal(3, "Octave Step (0.1-4):", 0.1, 4);  'Allow octave steps of 0.1 to 4
+    
+    i%:=DlgShow(freqIndex%,dutyCycleInteger%,optoVoltageOut);
+    
+    if i% = 1 then
+        SaveLaserTogParameters();
+        'Get value of clock ticks per cycle
+        docase
+        case freqIndex% = 0 then
+            ticksPerCycle% := 800000;
+        case freqIndex% = 1 then
+            ticksPerCycle% := 400000;
+        case freqIndex% = 2 then
+            ticksPerCycle% := 200000;
+        case freqIndex% = 3 then
+            ticksPerCycle% := 100000;
+        case freqIndex% = 4 then
+            ticksPerCycle% := 50000;
+        case freqIndex% = 5 then
+            ticksPerCycle% := 25000;
+        case freqIndex% = 6 then
+            ticksPerCycle% := 12500;
+        case freqIndex% = 7 then
+            ticksPerCycle% := 6250;
+        case freqIndex% = 8 then
+            ticksPerCycle% := 3125;            
+        endcase
+        
+        iReturn% := 1;
+	endif;
+
+    
+	return iReturn%;
+end;
+
+
+proc GetLaserTogParameters()
+	var key$;
+    key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\LaserTog";
+    freqIndex% := GetIntRegistryValue%(key$, "freqIndex", freqIndex%);
+    dutyCycleInteger% := GetIntRegistryValue%(key$, "dutyCycle", dutyCycleInteger%);
+    optoVoltageOut := GetFloatRegistryValue(key$, "optoVoltageOut", optoVoltageOut);
+    'octaveStep := GetFloatRegistryValue(key$, "octaveStep", octaveStep);
+end;
+
+proc SaveLaserTogParameters()
+	var key$;
+    key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\LaserTog";
+    SetIntRegistryValue(key$, "freqIndex", freqIndex%);
+    SetIntRegistryValue(key$, "dutyCycle", dutyCycleInteger%);
+    SetFloatRegistryValue(key$, "optoVoltageOut", optoVoltageOut);
+    'SetFloatRegistryValue(key$, "octaveStep", octaveStep);
+end;
+
+
+proc InitializeWindows()
+    
+    ' Make spike2 use allof monitor 1  %yeah, maybe not
+    'View(App()).Window(0, 0, 100, 100, 1);
+    
+	'Open the data sampling window
+	DataWindow% := FileNew(0,4);
+	Window(0,48,50,95);
+    XRange(0, 30);
+	View(DataWindow%).WindowVisible(1);
+
+end;
+
+
+
+
+proc CreateSampleConfiguration()
+
+	SampleClear(); 'Set standard sampling state
+    SampleChannels(64);  '32 does not work, we need more!
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    
+    ' Set path for new data files, and for those saved automatically
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    
+    SampleAutoFile(1);
+    
+    'Text marks make extraction easier
+    SampleTextMark(200);  'Not sure we'll even use this!
+    
+    'Add a digital marker channel (channel 32 by default) for pulsing optogenetics (and wraparound, PLS updated)
+    'Will record a '1' for laser on and a '0' for laser off
+    SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+    
+    SampleWaveform(7,6,5000);  'on adc7
+    SampleTitle$(7, "OptoCopy");
+    
+	SampleSequencer(script$ + "LaserTog.pls");
+	SampleOptimise(2,2,Get1401Type%(),2,50);  'Set optimise mode (do this last)
+	SampleMode(1); 'Continuous sampling
+end;
+
+
+
+func Start%()
+
+	SampleStart(0); 'Start sampling
+    
+    'This is not used right now
+    'SequencerPeriodMS := SampleSeqClock(1);  'Get the clock period of the sequencer, in MS, must do this after starting sampling
+    
+    voltageInteger% := vdac32%(optoVoltageOut, 1, 0);
+    SampleSeqVar(4,voltageInteger%);
+    printlog("Voltage integer is %d\n",voltageInteger%);
+    
+    SampleSeqVar(1,0);  'initially, set pulsing to be OFF, require explicit button press to turn on
+    
+    SampleSeqVar(3,ticksPerCycle%);
+    printlog("Initial ticks per cycle is %d\n",ticksPerCycle%);
+    
+    SampleSeqVar(5,dutyCycleInteger%);
+    printlog("Duty Cycle percentage is %d\n",dutyCycleInteger%);
+    
+    SafeSampleKey("C");  'Do initial calculation, will then move to waiting for button press
+    
+    ToolbarSet(1,"Stop",Stop%);
+	View(DataWindow%);
+    
+    
+    return 1;
+end;
+
+
+
+func Stop%()
+
+    'turn off opto if it happens to be on
+    SampleKey("O");
+    
+    'stop sequencer entirely
+    SampleKey("Q");
+
+	SampleStop();
+
+    'We are getting strange freezes, sometimes, for no apparent reason. The PAR, SMR, and MAT files are written
+    'but the S2R file is not written in these cases.  There is no explicit halt, so I am putting one in to see
+    'if that helps.  Well, the S2R file isn't written until the SMR is closed, so it makes sense that we don't
+    'get it on crashes.  I've got no idea what's going on, but at least this is worth a try.
+    halt;
+    
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' The vdac32% function converts a value in user DAC units into an integer value
+'  (the result of the function) suitable for passing into a sequencer variable
+'  for use in the DAC, ADDAC, RAMP and OFFSET sequencer instructions. It mimics
+'  the vdac32() expression in the text sequence compiler.
+'
+' out     is the output value that you want to generate, in user DAC units.
+' scale   is the user DAC units corresponding to one volt on the actual DAC
+'         (or two volts for a ten-volt system). This is exactly the same as
+'         the DACscale field used with the SET or SDAC directives.
+' offset  is the user DAC units corresponding to zero volts output. This is
+'         exactly the same as the DACOffset field in SET or SDAC.
+'
+' If you want to use this function to calculate the slope for a ramp, use
+'  vdac32%(volts/sticks%(time)) for maximum accuracy.
+'
+func vdac32%(out, scale, offset)
+var v32;                                ' Real variable for the calculation
+out := out - offset;                    ' First compensate for offset
+v32 := ((out * (6553.6 / scale)) * 65536.0);   ' Floating point result
+var v32%;                               ' Integer value for the result
+if v32 > 2147483647.0 then              ' 2147483647 is the largest positive
+    v32% := 2147483647;                 '  integer value
+else
+    if v32 < -2147483647.0 then         ' -2147483648 is the lowest negative value
+        v32% := -2147483647;            '  but we have to stay one above that
+    else
+        v32% := round(v32);             ' We can be sure this will not overflow
+    endif;
+endif;
+return v32%;
+end
