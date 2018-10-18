@@ -74,6 +74,7 @@ var attTrainingContrastCheck%:=0; '**disabled**
 var attTrainingContrastPct%:=0; '**disabled**
 var attCuedLocationChangePct%;
 var attUncuedLocationChangePct%;
+var attLockUncuedToCued%;
 
 'Variables for colors dialog
 var attendRGB%[3];
@@ -172,6 +173,7 @@ const atttimingdlgContrastChangeDuration% := 10;
 const atttimingdlgResponseWindow% := 11;
 const atttimingdlgIntertrialTime% := 12;
 const atttimingdlgPenaltyTime% := 13;
+const atttimingdlgLockUncued% := 14;
 
 ' constants for color dialog
 var attdlgColorIndexGray% := 0;
@@ -2309,6 +2311,8 @@ proc GetTimingDialogParameters()
     attCueOnsetTime := GetFloatRegistryValue(key$, "CueOnsetTime", 1.0);
     attCueOffsetTime := GetFloatRegistryValue(key$, "CueOffsetTime", 2.0);
     attStimOnsetTime := GetFloatRegistryValue(key$, "StimOnsetTime", 2.0);
+    attLockUncuedToCued% := GetIntRegistryValue%(key$, "LockUncuedToCued", 0);
+    
     
 end;
 
@@ -2333,6 +2337,7 @@ proc SaveTimingDialogParameters()
     SetFloatRegistryValue(key$, "CueOnsetTime", attCueOnsetTime);
     SetFloatRegistryValue(key$, "CueOffsetTime", attCueOffsetTime);
     SetFloatRegistryValue(key$, "StimOnsetTime", attStimOnsetTime);
+    SetIntRegistryValue(key$, "LockUncuedToCued", attLockUncuedToCued%);
     
 end;
 
@@ -2641,16 +2646,26 @@ func AttentionScriptDialog%()
         ArrConst(attStimOnsetList[],attStimOnsetTime);
         
         'get contrast list
-        if attNContLevels% > 1 and attContrastBase% > 0 then  'if base contrast is zero, then the contrast list will be all zeros anyway, do nothing (rather than break GetLogProgression)
+        docase
+        'This is the typical case, multiple contrast levels and base contrast is non-zero
+        case attNContLevels% > 1 and attContrastBase% > 0 then  'if base contrast is zero, then the contrast list will be all zeros anyway, do nothing (rather than break GetLogProgression)
             GetLogProgression(attContrastBase%*(pow(2,attMinContChange)),attContrastBase%*(pow(2,attMaxContChange)),attNContLevels%-1,attContrastList[0:attNContLevels%]);  'levels above base
             'Arrconst(attContrastList[attNContLevels%:attNContLevels%],attContrastBase%);  'for no-go, assign the second half of stimuli as identical to the base contrast
             round(attContrastList[]);  'we can only use integer values in the VSG call
-        else
+        'This is a special case, where we have multiple contrast levels but the base level is zero    
+        case  attNContLevels% > 1 and attContrastBase% = 0 then 
+            'Here, by request of Hankzilla, we "pretend" the base contrast is 1 for doing the log progression
+            GetLogProgression(1*(pow(2,attMinContChange)),1*(pow(2,attMaxContChange)),attNContLevels%-1,attContrastList[0:attNContLevels%]);  'levels above base
+            round(attContrastList[]);  'we can only use integer values in the VSG call
+        'This is a special case where we have a single contrast level requested and base contrast is non-zero
+        case attNContLevels% = 1 and attContrastBase% > 0 then
             'if only one value is requested, this will crash GetLogProgression, so just do it manually
             attContrastList[0] := attContrastBase%*(pow(2,attMaxContChange));
-            attContrastList[1] := attContrastBase%;  'for go/no-go, use the base, not a down contrast
-            
-        endif;
+            'attContrastList[1] := attContrastBase%;  'for go/no-go, use the base, not a down contrast, this functionality has been deprecated
+        'This is a special case where we have a single contrast level requested and the base contrast is zero
+        else
+            attContrastList[0] := 1*(pow(2,attMaxContChange));
+        endcase;
         
         'get number of trials to run, which is hypothetical "max" number for both test trials and catch trials regardless of catch/test percentage
         tempTotal := attNumberOfSetsOfBlocks%*attBlocksPerSet%*attTrialsPerBlock%;  'total number of non-"easy" trials
@@ -2900,12 +2915,13 @@ func TimingDialog%()
     DlgReal(atttimingdlgResponseWindow%, "Response Window(s):",0.1,10);
 	DlgReal(atttimingdlgIntertrialTime%, "Intertrial time(s):", .01, 10);
     DlgReal(atttimingdlgPenaltyTime%, "Generic penalty time(s):", .01, 10);
+    DlgCheck(atttimingdlgLockUncued%, "Lock Uncued CC to Cued CC");
     
          
     DlgAllow(0, 0, TimingDialogChanged%);
     i%:=DlgShow(attAcquisitionTime, attFixationCueMinTime, attFixationCueMaxTime, attCueOnsetTime, attCueOffsetTime, attStimOnsetTime,
     attHazardMinTime, attHazardExpMeanTime, attHazardCutoffTime, attContrastChangeDuration, attResponseWindow,
-    attInterTrialTime, attAbortPenaltyTime);
+    attInterTrialTime, attAbortPenaltyTime, attLockUncuedToCued%);
     if i% = 1 then
         attFalseAlarmPenaltyTime := attAbortPenaltyTime;
         attMissPenaltyTime := attAbortPenaltyTime;
@@ -3892,17 +3908,23 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                     cuedLocReturnTime[ind%] := -1;
                 endif;
                 'Uncued (Fill uncuedLocContrast%[], uncuedLocCCTime[], uncuedLocReturnTime[])
-                if uncuedLocChanges%[ind%] = 1 then
-                    'get contrast value
+                if uncuedLocChanges%[ind%] = 1 then  
+                    'get contrast value whether we are locking or not
                     uncuedLocContrast%[ind%] := attContrastList[attTrial2Order%[regularInd%]];
-                    'get time of contrast change
-                    'do a draw from the hazard distribution on normal trials
-                    uncuedLocCCTime[ind%] := RandExp(attHazardExpMeanTime, attHazardMinTime);
-                    if uncuedLocCCTime[ind%] > attHazardCutoffTime then
-                        uncuedLocCCTime[ind%] := attHazardMinTime;  'Per Henry 5/21/18
+                    
+                    if attLockUncuedToCued% = 0 or cuedLocChanges%[ind%] = 0 then  'if we are NOT locking, or the cued location is not changing
+                        'get time of contrast change
+                        'do a draw from the hazard distribution on normal trials
+                        uncuedLocCCTime[ind%] := RandExp(attHazardExpMeanTime, attHazardMinTime);
+                        if uncuedLocCCTime[ind%] > attHazardCutoffTime then
+                            uncuedLocCCTime[ind%] := attHazardMinTime;  'Per Henry 5/21/18
+                        endif;
+                        'get time of contrast return
+                        uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
+                    else 'if we ARE locking, and the cued location IS changing, lock to the values for the cued 
+                        uncuedLocCCTime[ind%] := cuedLocCCTime[ind%];
+                        uncuedLocReturnTime[ind%] := cuedLocReturnTime[ind%]; 
                     endif;
-                    'get time of contrast return
-                    uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
                 else
                     uncuedLocContrast%[ind%] := -1;
                     uncuedLocCCTime[ind%] := -1;
@@ -3913,6 +3935,8 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 
                 ''' Ensure no contrast changes overlap - this ensures we get a trigger for every contrast change event, necessary for smooth functioning of trigger-tagging
                 docase
+                case attLockUncuedToCued% = 1 then
+                    'Do nothing, contrast changes WILL overlap, there will be exactly one trigger, this is fixed in TagTrigger...
                 'if both onsets are within 50 ms of each other, set the uncued onset to 50 ms AFTER cued onset, update return time as well
                 case cuedLocChanges%[ind%] = 1 and abs(cuedLocCCTime[ind%]-uncuedLocCCTime[ind%]) < 0.050 then
                     uncuedLocCCTime[ind%] := cuedLocCCTime[ind%] + 0.050;
@@ -4527,7 +4551,8 @@ proc WriteParameterFile()
     Print("Time to answer (s)   : %f\n", attResponseWindow);
     Print("Intertrial time (s)   : %f\n", attInterTrialTime);
     Print("Abort/miss/FA penalty time (s)   : %f\n", attAbortPenaltyTime);
-  
+    Print("Uncued CC locked to Cued?: %d\n", attLockUncuedToCued%);
+    
     
     if attUseFlashers% = 1 then
         Print("\nFlasher parameters\n");
@@ -5311,6 +5336,7 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
     var diffArray[10];
     var minLoc%;
     var minVal;
+    var bothCuesAreLocked%;
     const NoFlashersRightNow% := 1;
     
         
@@ -5362,7 +5388,14 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
     endif;
     allOffTime := tAnimationOn + attCueOffsetTime + attStimOnsetList[trialCount%] + attTrialEndTime[trialCount%];
     'All times are now locally calculated
+    'One last fix, if uncued is locked to cued and they both change, eliminate the uncued time, indicate both cues are locked
+    if attCuedLocCCTime[trialCount%] > -1 and attUncuedLocCCTime[trialCount%] > -1 and attLockUncuedToCued% = 1 then
+        ccTimeU := 9999999;
+        ccReturnTimeU := 9999999;
+        bothCuesAreLocked% := 1;
+    endif;
     
+        
     
     'Set a flasher time for the upcoming flasher, if it exists - this is currently shorted out via NoFlashersRightNow%
     if flasherTimes[trialCount%][flasherCount%] > 0 and NoFlashersRightNow% = 0 then  'this will not evaluate true right now
@@ -5405,9 +5438,12 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
         SampleText("Cue Off",triggerTime);
     case minLoc% = 4 then 'this is grating on
         SampleText("Grating On",triggerTime); 
-    case minLoc% = 5 then 'this is a contrast change in the cued location
+    case minLoc% = 5 and bothCuesAreLocked% = 0 then 'this is a contrast change in the cued location
         cc% += 1;  'Increment cc% by 1
         SampleText("Cued Location CC, window open",triggerTime); 
+    case minLoc% = 5 and bothCuesAreLocked% = 1 then 'this is a contrast change in BOTH locations simultaneously
+        cc% += 1;  'Increment cc% by 1
+        SampleText("BOTH Locations CC, window open",triggerTime); 
     case minLoc% = 6 then 'this is a contrast change in the uncued location
         if isCueAll% = 1 then
             cc% += 10;  'Increment cc% by 10
@@ -5417,9 +5453,12 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
             cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location CC, not a target",triggerTime);
         endif;
-    case minLoc% = 7 then 'this is a contrast return in the cued location
+    case minLoc% = 7 and bothCuesAreLocked% = 0 then 'this is a contrast return in the cued location
         cc% += 1;  'Increment cc% by 1
         SampleText("Cued Location return to baseline, window closed",triggerTime); 
+    case minLoc% = 7 and bothCuesAreLocked% = 1 then 'this is a contrast return in BOTH locations simultaneously
+        cc% += 1;  'Increment cc% by 1
+        SampleText("BOTH Locations return to baseline, window closed",triggerTime);
     case minLoc% = 8 then 'this is a contrast return in the uncued location
         if isCueAll% = 1 then
             cc% += 10;  'Increment cc% by 10
