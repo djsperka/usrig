@@ -36,7 +36,7 @@
 0018            MOV    V8,V3           ;Put ticks per cycle into V8
 0019            SUB    V8,V7           ;Calculate duration of interpulse in cycles
 0020            SUB    V7,V6           ;Subtract two ticks from pulse duration for clock operations
-0021            SUB    V8,V10          ;Subtract three ticks from interpulse duration for clock operations
+0021            SUB    V8,V10          ;Subtract three ticks from IP duration for clock operations
 0022            BEQ    V1,1,PULSEON    ;If we are currently pulsing go to PULSEON
 0023            HALT   
 
