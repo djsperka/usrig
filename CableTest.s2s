@@ -6,10 +6,6 @@ var ctCheckAscii% := 0;
 var ctUseIODigitalWriteOut% := 0;
 var StimHandle;	' vsg application handle
 
-' Local file system variables. 
-bin$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\bin64";	' Location of executables is ..\bin, relative to script dir
-script$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2);	' folder containing this script
-
 'Set a juicer sequencer variable so we can use this on any rig
 GetJuicerType%();
 SampleSeqVar(1,200);  'Also need to set the open duration for the juicer
@@ -60,7 +56,7 @@ end
 func Start%()
 var CommandLine$;
 
-CommandLine$ := "cmd /k " + bin$ + "\\CableTest.exe -n";
+CommandLine$ := "cmd /k " + GetBinDir$(1) + "CableTest.exe -n";
 if ctCheckAscii% = 1 then
     CommandLine$ += " -a";
 endif
@@ -91,7 +87,6 @@ end;
 func Stop%()
 SampleStop();
 ProgKill(StimHandle);
-'ProgRun(bin$ + "\\ClearTrigger",0); 
 end;
 
 
@@ -117,7 +112,7 @@ next
     SampleWaveform(10, 3, 1000);
     SampleTitle$(10, "Juice line");
     
-if SampleSequencer(script$ + "\\CableTest.pls")<>0 then
+if SampleSequencer(GetScriptDir$(1) + "CableTest.pls")<>0 then
 	Message("CableTest.pls not found!");
 endif
 SampleOptimise(2,2,2,2,50);  'Set optimise mode (do this last)
