@@ -3828,18 +3828,18 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                     cuedLoc%[ind%] := blockOrder%[j%];
                     isCueAll%[ind%] := 0;
                 case blockOrder%[j%] = 6 then 'This is cue-all
-                    cuedLoc%[ind%] := floor(rand(attNumPatches%,1));  'Pick a random location to change, 1-N
+                    cuedLoc%[ind%] := floor(rand(attNumPatches%,1));  'For cue-all, pick a random location to be "cued location", 1-N
                     isCueAll%[ind%] := 1;
                 case blockOrder%[j%] = 7 then  'random cue location, but no cue-all
                     cuedLoc%[ind%] := floor(rand(attNumPatches%,1));  'Pick a random location to cue and change, 1-N
                     isCueAll%[ind%] := 0;
                 case blockOrder%[j%] = 8 then  'random cue location, include cue-all 
-                    temp% := floor(rand(attNumPatches%+1,0)); 'Pick a value 0-N
+                    temp% := floor(rand(attNumPatches%+1,0)); 'Pick a value 0-N, if ) interpret as cue-all
                     if temp% > 0 then  'If not cue-all, use this value
                         cuedLoc%[ind%] := temp%;
                         isCueAll%[ind%] := 0;
                     else 'Pick a new random value and set cue-all
-                        cuedLoc%[ind%] := floor(rand(attNumPatches%,1));  'Pick a random location to change, 1-N
+                        cuedLoc%[ind%] := floor(rand(attNumPatches%,1));  'Pick a random location to be "cued location", 1-N
                         isCueAll%[ind%] := 1;
                     endif
                 endcase
