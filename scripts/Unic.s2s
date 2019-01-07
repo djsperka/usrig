@@ -1,0 +1,215 @@
+' $Id$
+
+
+' Utility functions to be used with "unic.exe" and the NIC Starstim device. 
+' Based on testing (and little more), these commands should be sent in a certain
+' order - see below. 
+' 
+' First, call unicInitialize%. [SHOULD THIS FUNC LOAD THE UNIC.EXE APPLICATION?]
+' 
+' After that, send commands in this order
+'
+' For EEG recording,
+' - StartEEG
+'   StopEEG
+' 
+' For EEG recording, with stimulation:
+' 
+' - StartEEG
+'   StopEEG
+'   LoadTemplate
+'   StartStimulation
+'   UnloadTemplate
+'   StopEEG (yes, I think this is needed; after template the NIC is
+'            monitoring EEG signals but not recording them. To record them
+'            you have to stop EEG first, then send the StartEEG command)
+'   StartEEG (yes, you just stopped it, I know)
+
+#include "../../Spike2util/UsreyUtil.s2s"
+#include "../../Spike2Util/LogUtilities.s2s"
+
+var unicCommandFile$ := "NONE";
+var unicServerIPPort$ := "NONE";
+var unicIsInitialized% := 0;
+var unicServerIsRunning% := 0;
+var unicHandle;                     ' file handle used for command file
+var serverHandle%;                  ' handle used to keep track of the running instance of unic.exe
+
+' unicInitialize
+' 
+' Specify command file to be used, and server/ip port. 
+' Will launch unic.exe.  If unic.exe is already running, the new instance will close itself 
+
+func unicInitialize%(commandFile$, serverIPPort$)
+    var handle;
+    var commandLine$;
+    var serverStatus%;
+    
+    unicServerIsRunning% := 0;
+    unicIsInitialized% := 0;
+    
+    unicCommandFile$ := commandFile$;
+    unicServerIPPort$ := serverIPPort$;
+    
+    'Start unic server, regardless
+    commandLine$ := "cmd /k " + GetBinDir$(1) + "unic.exe -f " + commandFile$ + " -s " + serverIPPort$;
+    serverHandle% := ProgRun(commandLine$,1);
+    'Note that the Unic server may immediately shut itself down
+    if serverHandle% < 0 then 
+        Message("Could not start UNIC server."); 
+    else
+        unicServerIsRunning% := 1;
+    endif
+
+    yield(0.5);  'If there is already an instance of the server running, the requested instance will quit itself.  
+                 'Wait half a second for this to potentially happen.  Since Evan/Stacey are using a long (~5 second)
+                 'Initial Dead Time anyway, this delay should not be an issue.
+    
+    ' see if we can open the command file; do not bother trying if server is not running
+    if unicServerIsRunning% = 1 then
+        if unicOpenCommandFile%() = 0 then
+            unicIsInitialized% := 1;
+            unicCloseCommandFile%();
+        endif
+    endif;
+    
+    return unicIsInitialized%;
+end
+
+
+' open unic command file. Used internally by functions in this file - do not call from your script! 
+' Use unicInitialize and the unicSend* functions instead. 
+
+func unicOpenCommandFile%()
+    var value% := 0;
+    unicHandle := FileOpen(unicCommandFile$, 8, 1);
+    if unicHandle < 0 then
+        LogError("unicInitialize", "Cannot open/access command file """ + unicCommandFile$ + """");
+        value% := unicHandle;
+    endif
+    return value%;
+end
+
+func unicCloseCommandFile%()
+    if unicHandle > 0 then
+        View(unicHandle);
+        FileClose();
+        unicHandle := 0;
+    endif
+    return 0;
+end
+
+
+func unicSendStartEEG%(eegfile$,eightbit1%,eightbit2%)
+    if unicIsInitialized% <> 1 then
+        LogError("unicStartEEG", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    'this function will send two eight-bit numbers to the NIC program as trial identifiers, the same values will be printed to the Spike2 file
+    Print("%d\n%s;%d;%d;true", 201, eegfile$,eightbit1%,eightbit2%);
+    
+    unicCloseCommandFile%();
+    return 0;
+end
+
+func unicSendStopEEG%()
+    if unicIsInitialized% <> 1 then
+        LogError("unicStopEEG", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    Print("%d\n", 202);
+    
+    unicCloseCommandFile%();
+    return 0;
+end
+    
+func unicSendLoadTemplate%(template$)
+    if unicIsInitialized% <> 1 then
+        LogError("unicSendLoadTemplate", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    Print("%d\n%s", 203, template$);
+    
+    unicCloseCommandFile%();
+    return 0;
+end
+
+func unicSendStartStimulation%()
+    if unicIsInitialized% <> 1 then
+        LogError("unicStartStimulation", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    Print("%d\n", 205);
+    
+    unicCloseCommandFile%();
+    return 0;
+end
+
+func unicSendAbortStimulation%()
+    if unicIsInitialized% <> 1 then
+        LogError("unicAbortStimulation", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    Print("%d\n", 204);
+    
+    unicCloseCommandFile%();
+    return 0;
+end
+
+func unicSendUnloadTemplate%()
+    if unicIsInitialized% <> 1 then
+        LogError("unicStartStimulation", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    Print("%d\n", 214);
+    
+    unicCloseCommandFile%();
+    return 0;
+end
+
+
+func unicRequestDummyPulse%()
+    if unicIsInitialized% <> 1 then
+        LogError("unicStartStimulation", "Unic not initialized. Must call unicInitialze()");
+        return -1;
+    endif
+    
+    if unicOpenCommandFile%() <> 0 then
+        return -2;
+    endif
+    
+    Print("%s\n", "dummy");  'Note that this will likely work; if not, use %d value of zero instead. 
+    
+    unicCloseCommandFile%();
+    return 0;
+end

@@ -1,0 +1,19 @@
+' $Id$
+
+const slvCVSID$ := "$Id$";
+
+#include "../../Spike2Util/UsreyUtil.s2s"
+#include "UsreyDAQ.s2s"
+#include "../../Spike2Util/LogUtilities.s2s"
+
+
+var cmd$; 
+var h%;
+
+if GetUseRemoteStimulus%() = 1 then
+    cmd$ := "cmd /c " + GetBinDir$(1) + "fixstim.exe -b gray -d " + GetDistanceToScreenMM$() + " -u " + GetRemoteStimulusIP$() + ":" + GetRemoteStimulusPort$();
+    LogStatus("StartSlaveFixstim", cmd$);
+    h% := ProgRun(cmd$, 1);
+else
+    LogStatus("StartSlaveFixstim", "This rig is not configured to use remote stimulus.");
+endif

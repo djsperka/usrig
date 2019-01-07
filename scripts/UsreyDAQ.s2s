@@ -1,0 +1,499 @@
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+'	DAQ Parameters START
+'
+'
+' WARNING! This file should be used with AlertRig scripts only!!! 
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+#include "../../Spike2Util/UsreyUtil.s2s"
+#include "../../Spike2Util/DlgUtilities.s2s"
+
+
+var DistanceToScreenMM$;		' Distance to screen in MM 
+var DegreesPerVoltX;			' Conversion factor from ADC to visual degrees
+var DegreesPerVoltY;			' Conversion factor from ADC to visual degrees
+var CalibrationOffsetDegrees;   ' Calibration dots are this many degrees offset in x,y from (0,0)
+var CalibrationComPort%;        ' COM port to use for calibration (connection to ASL 'Serial Out')
+var CalibrationConfigFile$;     ' path to xml file for calibration config. Can be same as regular config file for eye tracker.
+var EyeCoilSamplingFrequency%;		' Frequency to sample eye coil at
+var NumberOfElectrodes%;		' Number of electrodes (i.e. wavemark inputs) in use
+var JuicePerReward%;			' Number of juice squirts per reward
+var JuiceRewardMS% := 200;      ' for Ben's new juicer this is the length of time juicer is held open.
+var JuicerIndex% := 0;          ' default juicer index will not allow sampling, 1 is open high, 2 is open low
+var DisplayHardwareIndex% := 0; ' 0 for VSG/ViSaGe, 1 for Render, many scripts will not check this flag and assume VSG
+var EyeXPort%;                  ' Port horizontal eye signal connected to
+var EyeYPort%;                  ' Port vertical eye signal connected to
+var JoystickPort%;              ' Port joystick is connected to
+var JuicerType%;                ' Type of juicer
+var pReward := 1;               ' Probability of reward
+var this1401Type%;              ' Holds type of 1401
+var UseRemoteStimulus% := 0;     ' if checked, send stim commands to ip.port below
+var RemoteStimulusIP$ := "192.168.1.2";
+var RemoteStimulusPort$ := "7000";
+var SlaveStimulusIP$ := "192.168.1.2";
+var SlaveStimulusPort$ := "7000";
+var RecordEyeTrackerOutputFile%;  'if checked, use 1401 to start/stop eyetracke output file, send "heartbeat"
+'var WavemarkPorts%[16];
+'var NumWavemarkPorts%;
+'var ContinuousPorts%[16];
+'var NumContinuousPorts%;
+GetDAQParameters();
+this1401Type% := Determine1401Type%();
+
+' Make sure Juicer information has been set, and set sequencer variable for juicer
+' Quit if no juicer information has been set!
+JuicerType% := GetJuicerType%();
+if JuicerType% = 0 then
+    JuicerCheckDialog%();
+endif
+SetJuicerSequencerVariable%();  'this will make the same call in various Start%() functions redundant
+
+
+func JuicerCheckDialog%()
+    
+    GetDAQParameters();
+    
+    var iReturn%;
+    
+    var juicerList$[3];
+    juicerList$[0] := "Select a juicer style";
+    juicerList$[1] := "Open Hi (Ben, var dur)";
+    juicerList$[2] := "Open Low (fixed dur)";
+    
+    'This dialog will not go away until you select one of the two juicer styles or cancel
+    'but should only show up the first time that UsreyDAQ is run on a machine - after that 
+    'there should be a legal value in the registry
+    while JuicerIndex% < 1 or JuicerIndex% > 2 do
+    
+        DlgCreate("Juicer not specifed!");
+        DlgList(1, "Juicer Open State:",juicerList$,3);
+        
+        iReturn% := DlgShow(JuicerIndex%);
+        
+        if iReturn% < 1 then
+            halt;
+        endif;
+        
+    wend;
+        
+    if iReturn% = 1 then
+		SaveDAQParameters();
+    endif;
+        
+    JuicerType% := JuicerIndex%;
+        
+	return iReturn%;
+end
+
+
+
+func GetJoystickPort%()
+    if JoystickPort% = -1 then
+        message("Joystick port has been set to -1 (off) in Config->DAQ but the current script requires joystick!  Quitting!");
+        halt
+    endif
+    return JoystickPort%;
+end
+
+func GetEyeXPort%()
+    if EyeXPort% = -1 then
+        message("EyeX port has been set to -1 (off) in Config->DAQ but the current script requires eyetracking!  Quitting!");
+        halt
+    endif
+    return EyeXPort%;
+end
+
+func GetEyeYPort%()
+    if EyeYPort% = -1 then
+        message("EyeY port has been set to -1 (off) in Config->DAQ but the current script requires eyetracking!  Quitting!");
+        halt
+    endif
+    return EyeYPort%;
+end
+
+'func GetDistanceToScreenMM$()
+'    return DistanceToScreenMM$;
+'end
+
+func GetDegreesPerVoltX()
+    return DegreesPerVoltX;
+end
+
+func GetDegreesPerVoltY()
+    return DegreesPerVoltY;
+end
+
+func GetCalibrationOffsetDegrees()
+    return CalibrationOffsetDegrees;
+end
+
+func GetCalibrationCOMPort%()
+    return CalibrationComPort%; 
+end
+
+func GetCalibrationConfigFile$()
+    return CalibrationConfigFile$;
+end
+
+func GetNumberOfElectrodes%()
+    return NumberOfElectrodes%;
+end
+
+func GetJuicePerReward%()
+    return JuicePerReward%;
+end
+
+func GetJuiceRewardMS%()
+    return JuiceRewardMS%;
+end
+
+'When placed into the toolbar, the function must return an integer value
+func DefaultReward%()
+    DefaultReward();
+    return 1;
+end
+
+'This is the overarching reward function that should be called to get a default reward
+func DefaultReward()
+    if pReward >= Rand() then
+        if JuicerType% = 1 then  'open-high juicer, dispense based on ms
+            DeliverRewardMS(JuiceRewardMS%);
+        else
+            if JuicerType% = 2 then  'open-low juicer, dispense based on number of hits
+                DeliverRewardNum%(JuicePerReward%);
+            endif;
+        endif;
+    else
+        LogStatus("Trial complete", "Random reward not granted!");
+    endif;
+end
+
+
+'This is the overarching reward function that should be called to get a specified reward
+'when the input is known to be correct for the juicer type
+func SpecifyReward(in%)
+    if JuicerType% = 1 then  'open-high juicer, dispense based on ms
+        DeliverRewardMS(in%);
+    else
+        if JuicerType% = 2 then  'open-low juicer, dispense based on number of hits
+            DeliverRewardNum%(in%);
+        endif;
+    endif;
+end
+
+
+'This is retained to allow old functions that are not "fixed" to avoid crashes, redirect to default reward
+proc DeliverReward()
+    DefaultReward();
+    return;
+end
+
+
+'This is retained to allow old functions that are not "fixed" to avoid crashes, redirect to default reward
+proc DeliverRewardNumber()
+    DefaultReward();
+    return;
+end
+
+
+' Deliver a reward specified in milliseconds
+proc DeliverRewardMS(iMS%)
+    PrintLog("Reward %d\n", iMS%);
+    SampleSeqVar(1, iMS%);
+    SafeSampleKey("R");
+    Yield(); YieldSystem(iMS%/1000.0);
+    return;
+end
+
+
+func DeliverRewardNum%(iNum%)
+	var i;
+	for i:=1 to iNum% do Yield(.05); SafeSampleKey("J"); next
+	return iNum%;
+end
+
+
+Proc SafeSampleKey(s$)
+    var count% := 0;
+    yield(.001);  'It takes the sequencer up to a full step to change the value of variable V2
+    'Step is here assumed to be 1 ms, could possibly be read from sequencer?
+    while SampleSeqVar(2) <> 0 and count% < 5000 do
+        count% += 1;
+        Yield(.001);
+    wend
+    SampleKey(s$);    
+    return;
+end
+
+
+
+func DAQParametersDialog%()
+
+	var iReturn%;
+    var JuicerIndexDecremented%;
+    
+    'This little bit allows us to disallow any values other than legal juicer values
+    'without changing the rest of the code
+    JuicerIndexDecremented% := JuicerIndex%-1;
+
+	GetDAQParameters();
+    
+    var juicerList2$[2];
+    juicerList2$[0] := "Open Hi (Ben, var dur)";
+    juicerList2$[1] := "Open Low (fixed dur)";
+    
+    var displayHardwareList$[2];
+    displayHardwareList$[0] := "VSG";
+    displayHardwareList$[1] := "Render";
+    
+    
+	DlgCreate("DAQ parameters");
+	DlgInteger(1, "Number of Electrodes:", 1, 32, 0, 0, 1);
+	DlgReal(2, "Degrees/Volt (X):", 0, 100);
+	DlgReal(3, "Degrees/Volt (Y):", 0, 100);
+    DlgReal(4, "Calibration offset(deg)", 0.1, 100);
+    DlgInteger(5, "Calibration COM port", 1, 16);
+	DlgInteger(6, "Eye Coil Sampling Freq (Hz):", 1, 20000);
+    DlgReal(7, "Reward Prob (0-1):", 0, 1);
+	DlgInteger(8, "Juice per reward:", 0, 10, 0, 0, 1);
+    DlgInteger(9, "Juice Reward ms:", 0, 1000);
+    DlgList(10, "Juicer Open State:",juicerList2$,2);
+    DlgInteger(11, "Eye X Port", -1, 31);
+    DlgInteger(12, "Eye Y Port", -1, 31);
+    DlgInteger(13, "Joystick Port", -1, 31);
+    DlgCheck(14, "Use Remote Stimulus");
+    DlgString(15, "Remote ip", 21);
+    DlgString(16, "Remote port", 5);
+    DlgString(17, "Slave ip", 21);
+    DlgString(18, "Slave port", 5);
+    DlgList(19, "Display Hardware:",displayHardwareList$,2);
+    DlgCheck(20, "Create Eyetracker Output File");
+    DlgAllow(0xffff, 0, DAQParametersDialogChanged%);
+	iReturn% := DlgShow(NumberOfElectrodes%, DegreesPerVoltX, DegreesPerVoltY, 
+                        CalibrationOffsetDegrees, CalibrationComPort%,
+                        EyeCoilSamplingFrequency%, pReward, JuicePerReward%, JuiceRewardMS%,
+                        JuicerIndexDecremented%, EyeXPort%, EyeYPort%, JoystickPort%, 
+                        UseRemoteStimulus%, RemoteStimulusIP$, RemoteStimulusPort$, SlaveStimulusIP$, 
+                        SlaveStimulusPort$,DisplayHardwareIndex%,RecordEyeTrackerOutputFile%);
+
+	if iReturn% = 1 then
+        JuicerIndex% := JuicerIndexDecremented% + 1; 'Correct JuicerIndex%
+        SetJuicerSequencerVariable%();  'This allows reset of juicer sequencer variable without restarting the script.  Probably redundant.
+		SaveDAQParameters();
+	endif
+	return iReturn%;
+end;
+
+func DAQParametersDialogChanged%(item%)    
+    docase 
+    case item% = 0 then
+        DlgEnable(UseRemoteStimulus%, 15, 16, 17, 18);
+    case item% = 14 then
+        DlgEnable(DlgValue(14), 15, 16, 17, 18);
+    endcase
+    return 1;
+end
+
+
+	
+proc GetDAQParameters()
+	var key$;
+	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
+    DegreesPerVoltX := GetFloatRegistryValue(key$, "DegreesPerVoltX", 0.0);
+    DegreesPerVoltY := GetFloatRegistryValue(key$, "DegreesPerVoltY", 0.0);
+    CalibrationOffsetDegrees := GetFloatRegistryValue(key$, "CalibrationOffsetDegrees", 8);
+    CalibrationComPort% := GetIntRegistryValue%(key$, "CalibrationComPort", 2);
+    CalibrationConfigFile$ := GetStringRegistryValue$(key$, "CalibrationConfigFile", "NONE_SELECTED");
+    EyeCoilSamplingFrequency% := GetIntRegistryValue%(key$, "EyeCoilSamplingFrequency", 1000);
+    NumberOfElectrodes% := GetIntRegistryValue%(key$, "NumberOfElectrodes", 1);
+    pReward := GetFloatRegistryValue(key$, "pReward", 1);
+    JuicePerReward% := GetIntRegistryValue%(key$, "JuicePerReward", 1);
+    JuiceRewardMS% := GetIntRegistryValue%(key$, "JuiceRewardMS", JuiceRewardMS%);
+    JuicerIndex% := GetIntRegistryValue%(key$, "JuicerIndex", JuicerIndex%);
+    EyeXPort% := GetIntRegistryValue%(key$, "EyeXPort", 14);
+    EyeYPort% := GetIntRegistryValue%(key$, "EyeYPort", 15);
+    JoystickPort% := GetIntRegistryValue%(key$, "JoystickPort", 13);
+    UseRemoteStimulus% := GetIntRegistryValue%(key$, "UseRemoteStimulus", 0);
+    RemoteStimulusIP$ := GetStringRegistryValue$(key$, "RemoteStimulusIP", "192.168.1.2");
+    RemoteStimulusPort$ := GetStringRegistryValue$(key$, "RemoteStimulusPort", "7000");
+    SlaveStimulusIP$ := GetStringRegistryValue$(key$, "SlaveStimulusIP", "192.168.1.2");
+    SlaveStimulusPort$ := GetStringRegistryValue$(key$, "SlaveStimulusPort", "7000");
+    DisplayHardwareIndex% := GetIntRegistryValue%(key$, "DisplayHardwareIndex", DisplayHardwareIndex%);
+    RecordEyeTrackerOutputFile% := GetIntRegistryValue%(key$, "RecordEyeTrackerOutputFile", 0);
+    GetElectrodeParameters();
+end;
+
+
+proc SaveDAQParameters()
+    var key$;
+    var s$;
+    var i%;
+	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
+    SetFloatRegistryValue(key$, "DegreesPerVoltX", DegreesPerVoltX);
+	SetFloatRegistryValue(key$, "DegreesPerVoltY", DegreesPerVoltY);
+    SetFloatRegistryValue(key$, "CalibrationOffsetDegrees", CalibrationOffsetDegrees);
+    SetIntRegistryValue(key$, "CalibrationComPort", CalibrationComPort%);
+    SetStringRegistryValue(key$, "CalibrationConfigFile", CalibrationConfigFile$);
+    SetFloatRegistryValue(key$, "pReward", pReward);
+	SetIntRegistryValue(key$, "EyeCoilSamplingFrequency", EyeCoilSamplingFrequency%);
+	SetIntRegistryValue(key$, "NumberOfElectrodes", NumberOfElectrodes%);
+	SetIntRegistryValue(key$, "JuicePerReward", JuicePerReward%);
+    SetIntRegistryValue(key$, "JuiceRewardMS", JuiceRewardMS%);
+    SetIntRegistryValue(key$, "JuicerIndex", JuicerIndex%);
+    SetIntRegistryValue(key$, "EyeXPort", EyeXPort%);
+    SetIntRegistryValue(key$, "EyeYPort", EyeYPort%);
+    SetIntRegistryValue(key$, "JoystickPort", JoystickPort%);
+    SetIntRegistryValue(key$, "UseRemoteStimulus", UseRemoteStimulus%);
+    SetStringRegistryValue(key$, "RemoteStimulusIP", RemoteStimulusIP$);
+    SetStringRegistryValue(key$, "RemoteStimulusPort", RemoteStimulusPort$);
+    SetStringRegistryValue(key$, "SlaveStimulusIP", SlaveStimulusIP$);
+    SetStringRegistryValue(key$, "SlaveStimulusPort", SlaveStimulusPort$);
+    SetIntRegistryValue(key$, "DisplayHardwareIndex", DisplayHardwareIndex%);
+    SetIntRegistryValue(key$, "RecordEyeTrackerOutputFile", RecordEyeTrackerOutputFile%);
+    SaveElectrodeParameters();
+end;
+
+func GetUseRemoteStimulus%()
+    return UseRemoteStimulus%;
+end
+
+func GetRemoteStimulusIP$()
+    return RemoteStimulusIP$;
+end
+
+func GetRemoteStimulusPort$()
+    return RemoteStimulusPort$;
+end
+
+func GetSlaveStimulusIP$()
+    return SlaveStimulusIP$;
+end
+
+func GetSlaveStimulusPort$()
+    return SlaveStimulusPort$;
+end
+
+
+func GetJuicerType%()
+    
+    'Get the proper value for the Juicer Index
+    var key$;
+    key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
+    JuicerIndex% := GetIntRegistryValue%(key$, "JuicerIndex", JuicerIndex%);
+    
+    return JuicerIndex%;
+    
+end
+
+
+
+func SetJuicerSequencerVariable%()
+   
+    'Set sample sequencer variable 3 to 0 if juicer is open-high, and to 1 if juicer is open-low
+    'This is equivalent to setting sample sequencer variable 3 to the value of the bit when closed
+    if JuicerIndex% = 1 then 'open high
+        SampleSeqVar(3,0);
+    else
+        if JuicerIndex% = 2 then 'open low
+            SampleSeqVar(3,1);
+        endif
+    endif
+    
+end
+
+
+
+func Determine1401Type%()
+    'This function determines the type of 1401 connected and returns the appropriate value
+    'to be given to SampleOptimise().  If there is no 1401 connected, it will default to 
+    'Power1401-3.  If type is original Power1401, will default to 400-MHz type.
+    var h%;
+    var resp$;
+    
+    h% := SampleStatus();
+    if h% >= 0 then  'if sampling is set up or started, do not open connection to 1401.  Calling the function at this point is an error, but should not be fatal
+        message("Get1401Type%%() was called while sampling was already setup or occurring!\nBy design this should not happen.  Contact Jeff.\nHowever, this error should not be fatal and sampling can continue.");
+        return 78;  'This will indicate an error - if we somehow subsequently call SampleOptimise (we shouldn't), kill things, this is a serious problem
+    endif  
+    
+    h% := U1401Open();  'opens a connection to the 1401, key here is that the return indicates the type of 1401
+    if h% < 0 then 'this is an error code, there is no 1401 detected
+        return 77;  'this value will indicate no 1401 at sample optimise step
+        'No connection close necessary
+    else
+        if h% = 3 then  'if unit is power1401, get type of ADC as well
+            U1401Write("INFO,S,20;");
+            U1401Read(resp$);  'resp will be "4" for 400 kHz and "6" for 625 kHz (value is conincidental, does not represent 100s of kHz)
+            if val(resp$) = 6 then
+                h% := 3625;  'this value will indicate the 625 kHz Power1401
+            endif;
+        endif
+        U1401Close();  'Close connection to 1401 to allow sampling
+        return h%;
+    endif
+
+end
+
+
+func Get1401Type%()
+    'This function should be called inside a SampleOptimise call to convert the 1401 type
+    'as returned by U1401Open to the correct type for the SampleOptimise call.  Too bad these
+    'types don't line up, or this function would be unnecessary.
+    var h%;
+    docase
+    case this1401Type% = 0 then
+        return 0;  'minimal 1401 (pre-Power1401, we do not have these)
+    case this1401Type% = 1 then
+        return 3;  '1401plus (we do not have these)
+    case this1401Type% = 2 then
+        return 6;  'micro1401 mkI 
+    case this1401Type% = 3 then
+        return 2;  'power1401, 400 MHz  
+    case this1401Type% = 3625 then
+        return 5;  'power1401, 625 MHz     
+    case this1401Type% = 4 then
+        return 4;  'micro1401 mkII   
+    case this1401Type% = 5 then
+        return 7;  'power1401 mkII 
+    case this1401Type% = 6 then
+        return 8;  'micro1401-3
+    case this1401Type% = 7 then
+        return 9;  'power1401-3
+    case this1401Type% = 77 then
+        message("No 1401 detected! Sample optimization set for Power1401-3!");
+        return 9;  'power1401-3  
+    case this1401Type% = 78 then  'this really shouldn't happen
+        message("Bad order of sampling setup/sample optimization calls.  Quitting!");
+        halt
+    endcase
+    
+end
+
+
+'proc GetElectrodeParameters()
+'	var key$;
+'    var s$;
+'	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
+'    s$ := GetStringRegistryValue$(key$, "WavemarkPorts", "");
+'    NumWavemarkPorts% := ReadStr(s$, WavemarkPorts%[]);
+'    s$ := GetStringRegistryValue$(key$, "ContinuousPorts", "");
+'    NumContinuousPorts% := ReadStr(s$, ContinuousPorts%[]);
+'end;
+'
+'proc SaveElectrodeParameters()
+'    var key$;
+'    var s$;
+'    var i%;
+'	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
+'    SetStringRegistryValue(key$, "WavemarkPorts", GetWavemarkPorts$());
+'    SetStringRegistryValue(key$, "ContinuousPorts", GetContinuousPorts$());    
+'end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+'	DAQ Parameters END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''

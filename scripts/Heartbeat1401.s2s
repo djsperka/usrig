@@ -1,0 +1,457 @@
+
+
+'CuedAtten - a re-work of the AttenGoNoGo script to allow cue images and a few other changes
+#include "../../Spike2Util/UsreyUtil.s2s"
+#include "UsreyFixationPoint.s2s"
+#include "UsreyDAQ.s2s"
+#include "Joystick.s2s"
+#include "Unic.s2s"
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' 	Heartbeat script dialog START
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+
+' Overall script control vars
+var Pause% := 0;
+var advanceOnAbort% := 1;  'Evan now wants to advance on aborts.  Making this a variable (not in dialog) for easy switching back if necessary.
+var trialNotStarted%;  'This could get sticky.  Right now, this defaults to 0 (assume trial started) and is set to one for specific aborts prior to StateStartTrial.  Perhaps could default to 1, then set to 0 in StateStartTrial.
+var rewardWithheld% := 0;
+var tTrialStart;
+'var caAudibleElectrode% := 0;  'looks like this will not work
+
+' Channel numbers and handles
+var StimHandle%;			' handle for stimulus application
+var DataWindow%;		' 
+var XChannel%;
+var YChannel%;
+var JoyChannel%;
+
+var FrameTriggerChannel%;
+var SynchChannel%;
+var FixationPointChannel%;
+var StimChannel%;
+var StimChangeChannel%;
+var ReadyChannel%;
+var HeartbeatChannel%;
+
+' tuning curves
+var TuningWindow%[8];	' one for each channel. There'd better not be more than 8 channels! 
+' XY window stuff
+var XYWindow%;			' 
+var iStimChannel%;	' channel number for stimulus in xy window
+var iFixationWindowChannel%;' channel number for fixation window in xy window
+var iMonitorChannel%;	' channel number for monitor position display in xy window
+
+var tNow;
+var tStateStart;
+var xEye;
+var yEye;
+var tLastUpdate;
+var iState%;
+var stateInit% := 1;
+var stateHeartBeat% := 2;
+
+const heartbeatKey$ := "1"; ' This sequencer key triggers the diglow line used to record a heartbeat.
+                            ' Do not change it without also changing 1) the wiring in the breakout box
+                            ' 2) The SampleLevel calls that record this channel (unless box wiring preserves
+                            ' the same 1401 DIGIN port used
+
+' Assign channel numbers for eye X,Y and trigger. 
+XChannel% := 23;
+YChannel% := 24;
+FrameTriggerChannel% := 25;
+FixationPointChannel% := 26;
+StimChannel% := 27;
+StimChangeChannel% := 28;  '??
+ReadyChannel% := 29;
+JoyChannel% := 22;
+HeartbeatChannel% := 21;    ' 30 = keyboard?
+LogInit(1);
+
+' Check for valid data file path
+if Len(dataDataSet$) = 0 then
+	Message("No data set is selected! Edit Data parameters...");
+	' Might be nice to open the dialog here....
+	halt;
+endif;
+
+'Create Sample Configuration
+CreateSampleConfiguration();
+
+' Get display windows ready
+InitializeWindows();
+
+' Prepare the toolbar buttons
+InitializeToolbar();
+
+
+
+' Used to hard-quit from toolbar. This will close data files without saving!!! 
+' It is important that this function be disabled once sampling is started!!!
+
+func Quit%()
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+    endif
+    
+	FileClose(-1,-1);
+	return 0;
+end;
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc CreateSampleConfiguration()
+    'In this function I am retaining the commented-out versions of the Plexon code from Henry's rig just in case
+	var index;
+    var key$;
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    SampleClear(); 'Set standard sampling state
+    
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    'if UsePlexon% = 0 then
+    SampleAutoName$(dataCellName$ + "_eeg_000");  'NOTE: maximum of 13 characters!!!
+    SampleAutoFile(1);  'Enable automatic file naming
+    
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    
+    SampleEvent(FrameTriggerChannel%,0,2,3600); 'Trigger channel, level
+    SampleComment$(FrameTriggerChannel%,"Frame");
+    SampleTitle$(FrameTriggerChannel%,"Frame");
+    
+    SampleEvent(FixationPointChannel%,2,2,3600); 'Trigger channel, level
+    SampleComment$(FixationPointChannel%,"Fixation");
+    SampleTitle$(FixationPointChannel%,"Fixation");
+    
+    SampleEvent(StimChangeChannel%,4,2,3600); 'Trigger channel, level
+    SampleComment$(StimChangeChannel%,"Stim Chg.");
+    SampleTitle$(StimChangeChannel%,"Stim Chg.");
+    
+    SampleEvent(ReadyChannel%,1,2,3600); 'Trigger channel, level
+    SampleComment$(ReadyChannel%,"VSG Ready");
+    SampleTitle$(ReadyChannel%,"VSG Ready");
+    
+    'Note that I'm just ALWAYS making a stim channel because otherwise I'd have to make some big changes to Stop% and I'd rather get this working
+    SampleEvent(StimChannel%,3,2,3600); 'Trigger channel, level
+    SampleComment$(StimChannel%,"Stim");
+    SampleTitle$(StimChannel%,"Stim");
+    
+    ' Event channel for recording the DIGLOW line used for heartbeats
+    SampleEvent(HeartbeatChannel%, 7, 2, 3600);
+    SampleComment$(HeartbeatChannel%,"Heartbeat");
+    SampleTitle$(HeartbeatChannel%,"Heartbeat");
+    
+    '''Note that the default joystick port is port 13
+    'printlog("Joystick port is %d\n",GetJoystickPort%());
+    'halt
+    
+    ' Set up channels for sampling electrodes.
+    'docase
+    'case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
+    '    CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
+    'case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
+    '    CreateElectrodeSamplingConfiguration7WM15CN();
+    'else  'just set up the channels as expected
+    GetElectrodeParameters();
+    'printlog("num wavemark ports = %d and num continuous ports = %d\n",numWavemarkPorts%,numContinuousPorts%); 
+    'CreateElectrodeSamplingConfiguration(1, 11);
+    CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'updated to have continuous channels start where wavemark channels leave off.
+    'endcase;
+	
+    ' Set up eye channels 
+    SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+    SampleTitle$(XChannel%,"Eye X");
+    SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+    SampleTitle$(YChannel%,"Eye Y");
+    
+	SampleTextMark(200);  'increase number of allowed characters, 1 is so stingy!
+    
+    'Set up digital marker channel, regardless of whether we are recording the eyetracker data file or not
+    SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+    SampleTitle$(32,"Heartbeat");  '32 is the default digital marker channel
+    
+    
+	'SampleSequencer(script$ + "Attention.pls");
+    SampleSequencer(script$ + "Tuning.pls");
+    'if UsePlexon% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
+    '    SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
+    'else
+    SampleOptimise(2,2,2,2,50);  'otherwise: full optimize timing, channels may have different rates, Power1401 (lowest common denominator, so eh), low usPerTime of 2, high usPerTime of 50
+    'endif;
+	SampleMode(1); 'Continuous sampling
+end;
+
+
+
+proc InitializeWindows()
+    
+    var index%;
+    var twopi;
+    twopi := 2.0*4.0*ATan(1.0);
+    
+	'Open the data sampling window
+	DataWindow% := FileNew(0,4);  'show spike shape setup dialog
+    printlog("datawindow is %d\n",dataWindow%);
+	Window(0,48,100,95);
+	View(DataWindow%).WindowVisible(1);
+    
+    'Open an XY view to display eye position
+    XYWindow% := FileNew(12);
+    XRange(-30,30);
+    YRange(-2,-30,30);
+    XYDrawMode(0,5,0);
+    WindowVisible(1);
+    Window(0, 0, 100, 47);
+    XYColour(1,16);
+    XYSize(1,-1);
+        
+    
+    'Create a new channel in the XY view to display the fixation point
+    iStimChannel% := XYSetChan(0);
+    
+    'Create a new channel in the XY view to show the monitor's location
+    iMonitorChannel% := XYSetChan(0);
+    XYColour(iMonitorChannel%,13);
+    XYDrawMode(iMonitorChannel%,3,1);
+    XYJoin(iMonitorChannel%,2);
+    XYAddData(iMonitorChannel%,-9,-7);
+    XYAddData(iMonitorChannel%,9,-7);
+    XYAddData(iMonitorChannel%,9,7);
+    XYAddData(iMonitorChannel%,-9,7);        
+    
+    
+end;
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitializeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+    
+    
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+    '    if UsePlexon% = 1 then
+    '        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    '    else
+    ToolbarSet(1,"Sample start",Start%);
+    '    endif;
+	ToolbarSet(2,"Sample stop", Stop%);
+    ToolbarSet(3,"Juice", Reward%);  'moved from 3 to 5 because Stacey was accidentally clicking Sample Stop sometimes, there are no ToolbarEnable commands for juice, it is always enabled
+	ToolbarSet(4,"Quit",Quit%);
+	ToolbarEnable(2,0);
+	ToolbarEnable(3,0);  
+	ToolbarEnable(4,0);  
+	Toolbar("Go",0x3ff);
+    
+end;
+
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+	var CommandLine$;
+	var Extras$;
+    var FixationArg$;
+	var Stim$:="";
+    var stimSpec$;
+    var dist1Spec$;
+    var Opener$;
+    
+    iState% := stateInit%;
+    
+    SampleStart(0); 'Start sampling now
+    'endif;
+    
+    View(DataWindow%).XRange(-1,8);  'I think this will set the x-axis to scroll, with an 8-second width
+    
+	' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");  'this is DIGOUT
+    SafeSampleKey("Z");  'this is DIGLOW
+    
+'    CommandLine$ := "cmd /c " + GetBinDir$(1) + "remote.exe 127.0.0.1 7000 beat -p 2 -i 3 -g 100 -P 10000"; 
+'    PrintLog(CommandLine$+"\n");
+'    StimHandle% := ProgRun(CommandLine$,1);
+'    if StimHandle% <0 then 
+'        Message("Could not start stimulus."); 
+'        halt; 
+'    endif
+	
+    'If we are asking the eyetracker to record an output file, open the file and start recording
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("I");  'Open the file (this is done by setting a DIGLOW bit), file name will be saved in a sampletext
+        yield(0.5);
+        SafeSampleKey("W");  'Begin recording the file
+        yield(0.5);
+    endif
+    
+    
+    ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);  'enable sample stop
+	ToolbarEnable(1,0);  'disable sample start
+	ToolbarEnable(3,1);  'this button is not used
+	ToolbarEnable(4,1);  'enable Quit
+	View(DataWindow%);
+	Yield(0.1);
+'    SafeSampleKey("S");
+    return 1;
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+    var chanToExport%[50];
+    var totalChanToExport%;
+    var i%;
+    var j%;
+    var fn$;
+    
+	' Disable idle process func
+	ToolbarSet(0,"");  
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+    endif
+    
+    'Allow quit, but do not do this before the eyetracker file is closed, just in case
+    'ToolbarEnable(7,1);
+    'Yeah, umm, the quit%90 function is on 4, not 7, and it's on all the time here.
+    
+	' Tell stim app to shut down
+'	SafeSampleKey("Q");
+'	Yield(.1);
+	SampleStop();
+    
+    
+    View(DataWindow%);
+    ExportChanList(); 
+    chanToExport%[1] := 30;  'channels to export go in elements 1:...'30 is the textmark channel
+    chanToExport%[2] := 31;  '31 is the keyboard channel
+    chanToExport%[3] := 32;  '32 is the digital marker channel
+    totalChanToExport% := 3;  'so far, four hardcoded channels to export
+    
+    for i% := 0 to NumWavemarkPorts%-1 do  'will not run if NumWavemarkPorts% is 0
+        totalChanToExport% += 1;  'increment number of channels to export
+        'chanToExport%[i%+4] := i%+1;  'wavemark channels are in order
+        chanToExport%[totalChanToExport%] := i%+1;  'wavemark channels are in order
+    next;
+    
+    for j% := 0 to NumContinuousPorts%-1 do  'will not run if NumWavemarkPorts% is 0
+        totalChanToExport% += 1;  'increment number of channels to export
+        'chanToExport%[i%+j%+4] := j%+NumWavemarkPorts%+1;  'wavemark channels are in order
+        chanToExport%[totalChanToExport%] := j%+NumWavemarkPorts%+1;  'wavemark channels are in order
+    next;
+    
+    totalChanToExport% += 1;
+    chanToExport%[totalChanToExport%] := XChannel%;
+    totalChanToExport% += 1;
+    chanToExport%[totalChanToExport%] := YChannel%;
+    
+    'The first element in the chanToExport% variable must be the number of channels to be exported
+    'chanToExport%[0] := 3+i%+j%;  'total number of channels goes in element 0    
+    chanToExport%[0] := totalChanToExport%;
+    
+    'Update list of channels to export in one fell swoop
+    ExportChanList(0,view(datawindow%).maxtime(),chanToExport%[]);
+    
+    'New version, should work on all Spike2 versions
+    fn$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
+    fn$ := fn$ + ".mat";
+    printlog("Matlab output file name is %s\n",fn$);
+    
+    
+    FileSaveAs(fn$,100,0,"",0,"UseSName=0"); 'Do not overwrite the .mat file - should have a different name and if it doesn't that is a red flag    
+
+    
+'	ProgKill(StimHandle%);
+'	while ProgStatus(StimHandle%) > 0 do
+'		Yield();
+'	wend
+    
+    
+end;
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Reward%()
+    DefaultReward();
+    'No sample text, just use 'R' from keyboard channel
+	return 1;
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+func IdleProcessing%()
+	var iStatus% := 1;	
+    
+    tNow := View(DataWindow%).MaxTime();
+    
+    'get eye position, but don't check if tNow is small enough that we would give a negative value to ChanMeasure
+    if tNow > .006 then
+        xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+        yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+    endif;
+        
+    ' Don't update display every time....
+    if tNow-tLastUpdate > .005 then
+        View(XYWindow%).XYAddData(1,xEye,yEye);
+        tLastUpdate := tNow;
+    endif
+    
+    docase 
+    case iState% = stateInit% then
+        'Give pattern of four pulses
+        SafeSampleKey(heartbeatKey$);
+        yield(0.2);
+        SafeSampleKey(heartbeatKey$);
+        yield(0.2);
+        SafeSampleKey(heartbeatKey$);
+        yield(0.2);
+        SafeSampleKey(heartbeatKey$);
+        tNow := View(DataWindow%).MaxTime();
+        ChangeStateTo(stateHeartBeat%,tNow);
+        
+    case iState% = stateHeartBeat% then
+
+        if tNow > tStateStart + 1 then
+            SafeSampleKey(heartbeatKey$);
+            tStateStart := tNow;  'just cycle this back, we will give pulses every second until we quit
+        endif;
+        
+        
+    endcase
+    
+    return iStatus%;
+    
+end
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+	if tStart > 0 then tStateStart := tStart; endif;
+end;
