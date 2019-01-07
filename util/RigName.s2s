@@ -1,0 +1,81 @@
+' $Id$
+
+'****h* Spike2Util/RigName
+' FUNCTION
+' This file should be included in scripts to fetch the rig name.
+' The rig name is used in the registry key path for saving/retrieving
+' parameters. 
+'
+' The rig name defaults to "AlertRig", but can be changed by setting
+' an environment variable "RIG" to the value you want. A reassuring little
+' message will be written to the Log Window. Note also that 
+' this script just runs from where its #included in your script, so you'd
+' best #include it near the top, before any other code or scripts that 
+' need it are run. 
+'****
+
+
+var thisRigName$ := "AlertRig";     ' Will hold the rig name
+var iRigNameInitialized% := 0;
+InitRigName%();
+
+'****fi Spike2Util/RigName/InitRigName%
+' NAME
+' InitRigName%()
+' SYNOPSIS
+' Initializes the rig name to be used. 
+' NOTES
+' Modified djs 5-17-11
+' This func should never be called directly by a script. It is called automatically
+' at the point where it is included in another script file.
+' First checks for an env variable "RIG", and it it is found its value is used
+' as the rig name. 
+' If not found check for a reg key "RigName" at the root of the tree controlled by
+' Spike2 (\\HKCU\Software\CED\Spike2). If that is found, use it. 
+' This is so that the env variable may override the reg setting (provide backwards 
+' compatibility), but will make it easier to export to another machine. 
+' If neither is found, the default value 'AlertRig' is used. 
+' is used. 
+'****
+
+func InitRigName%()
+    if iRigNameInitialized% <> 0 then
+        return 0;
+    else
+        var rignametmp$;
+        var rigproftmp$;
+        rignametmp$ := System$("RIG");
+       	Profile("", "RigName", "", rigproftmp$);
+        docase
+        case Len(rignametmp$) > 0 then
+            thisRigName$ := rignametmp$;
+            PrintLog("Env var RIG found, using rig name %s.\n", thisRigName$);
+        case len(rigproftmp$) > 0 then
+            thisRigName$ := rigproftmp$;
+            PrintLog("Registry value RigName found, using rig name %s.\n", thisRigName$);
+        else
+            PrintLog("Env var RIG not found, using rig name %s.\n", thisRigName$);    
+        endcase
+        iRigNameInitialized% := 1;
+    endif
+    return 0;
+end
+
+
+' 
+'
+' Returns the current rig name. Will call the init function, so there is no need to call 
+' InitRigName%() directly, it will be taken care of the first time this is called. 
+'****f* Spike2Util/RigName/GetRigName$
+' NAME
+' GetRigName$()
+' SYNOPSIS
+' Gets the value for the rig name. 
+' RETURN VALUE
+' Returns the string value for the rig name.
+'****
+
+func GetRigName$()
+    InitRigName%();
+    return thisRigName$;
+end

@@ -1,0 +1,125 @@
+' $Id$
+
+'****h* Spike2Util/Directories
+' FUNCTION
+' Local file system variables. This file should be included prior to 
+' using #include if you want to use util$ in other #include. 
+'****
+
+var bin$;       ' Location of executable vsg programs
+var script$;    ' Location of scripts
+var util$;      ' Location of Spike2 utilities scripts. 
+var stim$;      ' Location of stimulus files (sparse noise, e.g.)
+var tmp$;
+
+'Profile("", "RemoteBin", "", tmp$);
+'if Len(tmp$) > 0 then
+'    PrintLog("Found RemoteBin key in registry. Using \"" + tmp$ + "\" to run executables.\n");
+'    bin$ := tmp$;
+'else
+'    bin$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\bin";	' Location of executables is ..\bin, relative to script dir
+'endif
+
+if System$("PROCESSOR_ARCHITECTURE") = "AMD64" then
+    bin$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\bin64";
+    PrintLog("64-bit platform detected, using bin$=\n" + bin$);
+else
+    bin$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\bin";
+    PrintLog("32-bit platform detected, using bin$=\n" + bin$);
+endif
+
+
+script$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2);	' folder containing this script
+util$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\..\\Spike2Util";
+stim$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\stim";
+
+
+'****f* Spike2Util/Directories/GetScriptDir$
+' NAME
+' GetScriptDir$(islashes%)
+' SYNOPSIS
+' Gets the path name to the folder containing the main script (not this file). 
+' INPUTS
+' islashes% : If 0 returns the path without trailing slash, otherwise the trailing
+'             slash is appended. 
+' RETURN VALUE
+' String pathname. 
+' SEE ALSO
+' GetBinDir, GetUtilitiesDir, GetStimDir
+'****
+
+func GetScriptDir$(iSlashes%)
+    if iSlashes% = 0 then
+        return script$;
+    else
+        return script$ + "\\";
+    endif
+end
+
+'****f* Spike2Util/Directories/GetBinDir$
+' NAME
+' GetBinDir$(islashes%)
+' SYNOPSIS
+' Gets the path name to the folder containing executables. 
+' INPUTS
+' islashes% : If 0 returns the path without trailing slash, otherwise the trailing
+'             slash is appended. 
+' RETURN VALUE
+' String pathname. 
+' SEE ALSO
+' GetScriptDir, GetUtilitiesDir, GetStimDir
+'****
+
+func GetBinDir$(iSlashes%)
+    if iSlashes% = 0 then
+        return bin$;
+    else
+        return bin$ + "\\";
+    endif
+end
+
+'****f* Spike2Util/Directories/GetUtilitiesDir$
+' NAME
+' GetUtilitiesDir$(islashes%)
+' SYNOPSIS
+' Gets the path name to the util folder (obsolete).
+' INPUTS
+' islashes% : If 0 returns the path without trailing slash, otherwise the trailing
+'             slash is appended. 
+' RETURN VALUE
+' String pathname. 
+' SEE ALSO
+' GetBinDir, GetScriptDir, GetStimDir
+'****
+
+func GetUtilitiesDir$(iSlashes%)
+    if iSlashes% = 0 then
+        return util$;
+    else
+        return util$ + "\\";
+    endif
+end
+
+
+'****f* Spike2Util/Directories/GetStimDir$
+' NAME
+' GetStimDir$(islashes%)
+' SYNOPSIS
+' Gets the path name to the folder containing stimuli files. 
+' INPUTS
+' islashes% : If 0 returns the path without trailing slash, otherwise the trailing
+'             slash is appended. 
+' RETURN VALUE
+' String pathname. 
+' SEE ALSO
+' GetBinDir, GetUtilitiesDir, GetStimDir
+'****
+
+func GetStimDir$(iSlashes%)
+    if iSlashes% = 0 then
+        return stim$;
+    else
+        return stim$ + "\\";
+    endif
+end
+

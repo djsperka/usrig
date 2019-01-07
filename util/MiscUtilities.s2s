@@ -1,0 +1,1194 @@
+' $Id$
+
+'****h* Spike2Util/MiscUtilities
+' FUNCTION
+' Miscellaneous utilities useful in experimental scripts. 
+'****
+
+
+'****f* Spike2Util/MiscUtilities/IsInsideCircle%
+' NAME
+' IsInsideCircle%(x, y, xCenter, yCenter, r)
+' SYNOPSIS
+' Test whether a point is inside a circle.
+' INPUTS
+' x,y		- point to be tested
+' xCenter,yCenter	- center of circle
+' r				- radius of the circle
+' RETURN VALUE
+' Returns 1 if (x, y) is inside (or on the circumference of) the circle, 
+' 0 if its outside the circle. 
+'****
+
+func IsInsideCircle%(x, y, xCenter, yCenter, r)
+    if ((x-xCenter)*(x-xCenter) + (y-yCenter)*(y-yCenter)) > (r*r) then
+        return 0;
+    else
+        return 1;
+    endif
+end
+
+
+
+'****f* Spike2Util/MiscUtilities/IsOutsideCircle%
+' NAME
+' IsOutsideCircle%
+' SYNOPSIS
+' Test whether a point is outside a circle.
+' INPUTS
+' x,y		- point to be tested
+' xCenter,yCenter	- center of circle
+' r				- radius of the circle
+' RETURN VALUE
+' Returns 1 if (x, y) is outside the circle, 0 otherwise.
+'****
+
+func IsOutsideCircle%(x, y, xCenter, yCenter, r)
+'    return 1 - IsInsideCircle(x, y, xCenter, yCenter, r);
+    if ((x-xCenter)*(x-xCenter) + (y-yCenter)*(y-yCenter)) > (r*r) then
+        return 1;
+    else
+        return 0;
+    endif
+end
+
+
+
+'****f* Spike2Util/MiscUtilities/GetParameterProgression%
+' NAME
+' GetParameterProgression%
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a starting
+' value to an ending value. The progression can be linear or logarithmic, and 
+' the order of the parameters can be randomized.
+' INPUTS
+' n% : Number of values to generate
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' firstval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' irandom% : randomize order of indices%[] when this <> 0
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both firstval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' SEE ALSO
+' GetRepeatedParameterProgression
+'****
+
+func GetParameterProgression%(n%, result[], indices%[], firstval, lastval, ilog%, irandom%)
+    var status% := 0;
+    docase
+    case Len(result[]) < n% or Len(indices%[]) < n% then
+        status% := 1;
+    case n% < 2 then
+        status% := 1;
+    case ilog% <> 0 and (firstval <= 0 or lastval<= 0) then
+        status% := 1;
+    else
+        var stepsize;
+        var i%;
+        for i% := 0 to n%-1 do
+            indices%[i%] := i%;
+        next
+        if ilog% <> 0 then
+            var firstlog, lastlog;
+            ' Generate log progression
+            firstlog := log(firstval);
+            lastlog := log(lastval);
+            stepsize := (lastlog - firstlog)/(n%-1);
+            for i% := 0 to n%-1 do
+                result[i%] := pow(10, firstlog + i% * stepsize);
+            next;
+        else
+            ' Generate linear progression
+            stepsize := (lastval - firstval)/(n%-1);
+            for i% := 0 to n%-1 do
+                result[i%] := firstval + i% * stepsize;
+            next;
+        endif
+        
+        if irandom% <> 0 then
+            Shuffle%(n%, indices%[]);
+        endif
+        
+    endcase
+    return status%;
+end
+
+'****f* Spike2Util/MiscUtilities/GetRepeatedParameterProgression%
+' NAME
+' GetRepeatedParameterProgression%(n%, nr%, result[], indices%[], firstval, lastval, ilog%, irandom%)
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a starting
+' value to an ending value. The progression can be linear or logarithmic, and 
+' the order of the parameters can be randomized. In addition, the set may be repeated
+' any number of times. 
+' n% : Number of values to generate
+' nr% : Number of repeats to generate
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' firstval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' irandom% : randomize order of indices%[] when this <> 0
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both firstval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' 
+' The indices always complete a set of n% values (0...n%-1) before starting another set. 
+' SEE ALSO
+' GetParameterProgression
+'****
+
+
+func GetRepeatedParameterProgression%(n%, nr%, result[], indices%[], firstval, lastval, ilog%, irandom%)
+    var status% := 0;
+    docase
+    case Len(result[]) < n%*nr% or Len(indices%[]) < n%*nr% then
+        status% := 1;
+    case n% < 2 or nr% < 1 then
+        status% := 1;
+    else
+        var ir%;
+        var is%;
+        for ir% := 0 to nr%-1 do
+            is% := GetParameterProgression%(n%, result[ir%*n%:n%], indices%[ir%*n%:n%], firstval, lastval, ilog%, irandom%);
+            if is% <> 0 then
+                PrintLog("GetRepeatedParameterProgression%()", "Error (" + str$(is%) + ")during repeat# " + str$(ir%));
+                status% := is%;
+            endif
+        next
+    endcase
+    return status%;
+end
+
+
+
+
+
+'****f* Spike2Util/MiscUtilities/GetRepeatedSymmetricParameterProgression%
+' NAME
+' GetRepeatedSymmetricParameterProgression%(n%, nr%, result[], indices%[], centerval, lastval, ilog%, irandom%)
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a center
+' value to an ending value on each side. E.g. - if n% is 3, centerval is 1 and lastval is 1.5, linear progression
+' would return [1 1.25 1.5] AND [0.5 0.75 1], which would then concatenate to [0.5 0.75 1 1.25 1.5]
+' The progression can be linear or logarithmic (logarithmic not yet implemented), and 
+' the order of the parameters can be randomized. In addition, the set may be repeated
+' any number of times. 
+' n% : Number of values to generate
+' nr% : Number of repeats to generate
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' centerval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' irandom% : randomize order of indices%[] when this <> 0
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both centerval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' 
+' The indices always complete a set of n% values (0...n%-1) before starting another set. 
+' SEE ALSO
+' GetParameterProgression
+'****
+
+
+func GetRepeatedSymmetricParameterProgression%(n%, nr%, result[], indices%[], centerval, lastval, ilog%, irandom%)
+    var status% := 0;
+    docase
+    case Len(result[]) < ((2*n%)-1)*nr% or Len(indices%[]) < ((2*n%)-1)*nr% then
+        status% := 1;
+    case n% < 2 or nr% < 1 then
+        status% := 1;
+    else
+        var ir%;
+        var is%;
+        for ir% := 0 to nr%-1 do
+            is% := GetSymmetricParameterProgression%(n%, result[ir%*((2*n%)-1):((2*n%)-1)], indices%[ir%*((2*n%)-1):((2*n%)-1)], centerval, lastval, ilog%, irandom%);
+            if is% <> 0 then
+                PrintLog("GetRepeatedSymmetricParameterProgression%()", "Error (" + str$(is%) + ")during repeat# " + str$(ir%));
+                status% := is%;
+            endif
+        next
+    endcase
+    return status%;
+end
+
+
+'****f* Spike2Util/MiscUtilities/GetSymmetricParameterProgression%
+' NAME
+' GetSymmetricParameterProgression%
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a center
+' value to an ending value, and from that center value to an ending value on the opposite "side". 
+' E.g. - if n% is 3, centerval is 1 and lastval is 1.5, linear progression
+' would return [1 1.25 1.5] AND [0.5 0.75 1], which would then concatenate to [0.5 0.75 1 1.25 1.5]
+' The progression can be linear or logarithmic (not yet implemented), and 
+' the order of the parameters can be randomized.
+' INPUTS
+' n% : Number of values to generate
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' centerval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' irandom% : randomize order of indices%[] when this <> 0
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both centerval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' SEE ALSO
+' GetRepeatedParameterProgression
+'****
+
+func GetSymmetricParameterProgression%(n%, result[], indices%[], centerval, lastval, ilog%, irandom%)
+    var status% := 0;
+    docase
+    case Len(result[]) < ((2*n%)-1) or Len(indices%[]) < ((2*n%)-1) then
+        status% := 1;
+    case n% < 2 then
+        status% := 1;
+    case ilog% <> 0 and (centerval <= 0 or lastval<= 0) then
+        status% := 1;
+    else
+        var stepsize;
+        var i%;
+        for i% := 0 to ((2*n%)-2) do
+            indices%[i%] := i%;
+        next
+        if ilog% <> 0 then   'not yet implemented
+'            var firstlog, lastlog;
+'            ' Generate log progression
+'            firstlog := log(firstval);
+'            lastlog := log(lastval);
+'            stepsize := (lastlog - firstlog)/(n%-1);
+'            for i% := 0 to n%-1 do
+'                result[i%] := pow(10, firstlog + i% * stepsize);
+'            next;
+        else
+            ' Generate linear progression
+            stepsize := (lastval - centerval)/(n%-1);  'if centerval 1, lastval 3, n=3, then stepsize = 1
+            for i% := 1-n% to n%-1 do   'if n% = 3, i% = -2:2
+                result[i%+n%-1] := centerval + i% * stepsize;  'result[] will fill 0:4,  vals will be [-1:3] - perfect.
+            next;
+        endif
+        
+        if irandom% <> 0 then
+            Shuffle%(((2*n%)-1), indices%[]);
+        endif
+        
+    endcase
+    return status%;
+end
+
+
+
+
+
+
+'****f* Spike2Util/MiscUtilities/GetParameterProgressionWithConstant%
+' NAME
+' GetParameterProgressionWithConst%
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a starting
+' value to an ending value. Also includes a specified number of insertions of a
+' constant value.  The progression can be linear or logarithmic, and 
+' the order of the parameters (with constants) can be randomized.  If the order is
+' not randomized, all constants will occur at the end.
+' INPUTS
+' n% : Number of parameter values to generate
+' nc% : Number of constant values to include
+' c: Value of the constant
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' firstval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' irandom% : randomize order of indices%[] when this <> 0
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both firstval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' SEE ALSO
+' GetRepeatedParameterProgression
+'****
+
+func GetParameterProgressionWithConstant%(n%, nc%, c, result[], indices%[], firstval, lastval, ilog%, irandom%)
+    var status% := 0;
+    var nn%;
+    
+    nn% := n% + nc%;  'total number of stimuli
+    docase
+    case Len(result[]) < nn% or Len(indices%[]) < nn% then
+        status% := 1;
+    case nn% < 2 then
+        status% := 1;
+    case ilog% <> 0 and (firstval <= 0 or lastval<= 0) then
+        status% := 1;
+    else
+        var stepsize;
+        var i%;
+        for i% := 0 to nn%-1 do
+            indices%[i%] := i%;
+        next
+        if ilog% <> 0 then
+            var firstlog, lastlog;
+            ' Generate log progression
+            firstlog := log(firstval);
+            lastlog := log(lastval);
+            stepsize := (lastlog - firstlog)/(n%-1);
+            for i% := 0 to n%-1 do
+                result[i%] := pow(10, firstlog + i% * stepsize);
+            next;
+        else
+            ' Generate linear progression
+            stepsize := (lastval - firstval)/(n%-1);
+            for i% := 0 to n%-1 do
+                result[i%] := firstval + i% * stepsize;
+            next;
+        endif
+        
+        'add in constants
+        for i% := n% to nn%-1 do
+            result[i%] := c;
+        next
+        
+        if irandom% <> 0 then
+            Shuffle%(nn%, indices%[]);
+        endif
+        
+    endcase
+    return status%;
+end
+
+'****f* Spike2Util/MiscUtilities/GetRepeatedParameterProgressionWithConstant%
+' NAME
+' GetRepeatedParameterProgressionWithConstant%(n%, nc%, c, nr%, result[], indices%[], firstval, lastval, ilog%, irandom%)
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a starting
+' value to an ending value. The progression can be linear or logarithmic, and 
+' the order of the parameters can be randomized. In addition, the set may be repeated
+' any number of times. 
+' n% : Number of values to generate
+' nc% : Number of constant values to include
+' c: Value of the constant
+' nr% : Number of repeats to generate
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' firstval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' irandom% : randomize order of indices%[] when this <> 0
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both firstval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' 
+' The indices always complete a set of n% values (0...n%-1) before starting another set. 
+' SEE ALSO
+' GetParameterProgression
+'****
+
+
+func GetRepeatedParameterProgressionWithConstant%(n%, nc%, c, nr%, result[], indices%[], firstval, lastval, ilog%, irandom%)
+    var status% := 0;
+    var nn%;
+    
+    nn% := n% + nc%;
+    docase
+    case Len(result[]) < nn%*nr% or Len(indices%[]) < nn%*nr% then
+        status% := 1;
+    case nn% < 2 or nr% < 1 then
+        status% := 1;
+    else
+        var ir%;
+        var is%;
+        for ir% := 0 to nr%-1 do
+            is% := GetParameterProgressionWithConstant%(n%, nc%, c, result[ir%*nn%:nn%], indices%[ir%*nn%:nn%], firstval, lastval, ilog%, irandom%);
+            if is% <> 0 then
+                PrintLog("GetRepeatedParameterProgression%()", "Error (" + str$(is%) + ")during repeat# " + str$(ir%));
+                status% := is%;
+            endif
+        next
+    endcase
+    return status%;
+end
+
+
+
+
+
+
+
+
+
+
+
+
+'****f* Spike2Util/MiscUtilities/Shuffle%
+' NAME
+' Shuffle%(n%, list%[])
+' SYNOPSIS
+' Shuffles a list of INDICES.  Overwrites any values in list%[], up to and including index n%-1.
+' INPUTS
+' n% : the number of elements in list%[] to turn to shuffled indices
+' list%[] : array of values, overwritten with shuffled indices from 0:n%-1 in locations 0:n%-1
+' RETURN VALUE
+' Returns 0 on success, 1 otherwise (n% < 1 or length of list%[] less than n%). 
+'****
+
+func Shuffle%(n%, list%[])
+    var status% := 0;
+    var i%, si%, tmp%;
+    if n% < 1 or Len(list%[]) < n% then
+        status% := 1;
+    else
+        ' populate the list%[] array with indices. 
+        for i% := 0 to n%-1 do
+            list%[i%] := i%; 
+        next;
+        
+        ' Step thru the indices from 0 to n%-2. At each index, we consider the array starting at the 
+        ' current index and ending at the end of the array. If there are M elements in that array, 
+        ' draw a random number between 0 and M-1. Swap the index at that position with the index at 
+        ' position 0. Step to the next index and repeat. 
+        for i% := 0 to n%-2 do
+            si% := Rand(n%-i%, i%);
+            tmp% := list%[i%];
+            list%[i%] := list%[si%];
+            list%[si%] := tmp%;
+        next;
+    endif
+    return status%;
+end
+
+
+'****f* Spike2Util/MiscUtilities/ShuffleList%
+' NAME
+' Shuffle%(list%[])
+' SYNOPSIS
+' Shuffles a list of integer VALUES. 
+' INPUTS
+' list%[] : array of values, entire array is shuffled
+' RETURN VALUE
+' Returns 0 (no obvious error cases identified)
+'****
+
+
+func ShuffleList%(list%[])
+    var status% := 0;
+    var i%, si%, tmp%;
+
+    ' Step thru the indices from 0 to n%-2. At each index, we consider the array starting at the 
+    ' current index and ending at the end of the array. If there are M elements in that array, 
+    ' draw a random number between 0 and M-1. Swap the index at that position with the index at 
+    ' position 0. Step to the next index and repeat. 
+    for i% := 0 to Len(list%[])-2 do
+        si% := Rand(Len(list%[])-i%, i%);
+        tmp% := list%[i%];
+        list%[i%] := list%[si%];
+        list%[si%] := tmp%;
+    next;
+    return status%;  'this does nothing right now, because it can't really break.
+end
+
+
+'****f* Spike2Util/MiscUtilities/ShuffleList
+' NAME
+' Shuffle(list[])
+' SYNOPSIS
+' Shuffles a list of float VALUES. 
+' INPUTS
+' list[] : array of values, entire array is shuffled
+' RETURN VALUE
+' Returns 0 (no obvious error cases identified)
+'****
+
+func ShuffleList(list[])
+    var status% := 0;
+    var i%, si%, tmp;
+
+    ' Step thru the indices from 0 to n%-2. At each index, we consider the array starting at the 
+    ' current index and ending at the end of the array. If there are M elements in that array, 
+    ' draw a random number between 0 and M-1. Swap the index at that position with the index at 
+    ' position 0. Step to the next index and repeat. 
+    for i% := 0 to Len(list[])-2 do
+        si% := Rand(Len(list[])-i%, i%);
+        tmp := list[i%];
+        list[i%] := list[si%];
+        list[si%] := tmp;
+    next;
+    return status%;  'this does nothing right now, because it can't really break.
+end
+
+
+
+'****f* Spike2Util/MiscUtilities/NonConsecutiveShuffle
+' NAME
+' NonConsecutiveShuffle%(result%[],consec%[],nonconsec%[],n%)
+' SYNOPSIS
+' Shuffles together two lists of integer VALUES.  Values in nonconsec%[]
+' INPUTS
+' result%[] : shuffled values are returned in this array
+' consec%[] : shuffled values which are allowed to be consecutive
+' nonconsec%[] : shuffled values which are constrained to be non-consecutive
+' n% : The minimum number of intervening values
+' RETURN VALUE
+' Returns 0 (no obvious error cases identified)
+'****
+'
+'This function was going to be WAY TOO HARD and is not implemented as I've really got a lot more work to do (jj)
+
+
+
+'****f* Spike2Util/MiscUtilities/GetRealArrayNAsString%
+' NAME
+' GetRealArrayNAsString$(a[], n%)
+' SYNOPSIS
+' Converts the elements of a[] to a comma-separated list. 
+' INPUTS
+' a[] : array of values
+' n% : number of elements in a[]
+' RETURN VALUE
+' Returns a string containing comma-separated list of values from the array.
+' NOTES
+'****
+
+func GetRealArrayNAsString$(a[], n%)
+    var s$;
+    var i%;
+    s$ := str$(a[0]);
+    for i% := 1 to n%-1 do
+        s$ += ",";
+        s$ += str$(a[i%]);
+    next
+    return s$;
+end
+
+'****f* Spike2Util/MiscUtilities/GetRealArrayAsString
+' NAME
+' GetRealArrayAsString$(r[], indices%[])
+' SYNOPSIS
+' Converts the elements of r[] (indexed by indices%[], as from GetParameterProgression)
+' to a comma-separated list. 
+' INPUTS
+' r[] : array of values
+' indices%[] : indices for accessing r[]
+' RETURN VALUE
+' Returns a string containing comma-separated list of values from the array.
+' NOTES
+' The arrays r[] and indices%[] are like those returned from GetParameterProgression. 
+'****
+
+        
+func GetRealArrayAsString$(r[], indices%[])
+    return GetRealArrayAsStringSep$(r[], indices%[], ",");
+end
+
+'****f* Spike2Util/MiscUtilities/GetRealArrayAsStringSep
+' NAME
+' GetRealArrayAsStringSep$(r[], indices%[], sep$)
+' SYNOPSIS
+' Converts the elements of r[] (indexed by indices%[], as from GetParameterProgression)
+' to a string list, separated by the supplied separator.
+' INPUTS
+' r[] : array of values
+' indices%[] : indices for accessing r[]
+' sep$ : separator
+' RETURN VALUE
+' Returns a string containing the list of values from the array, separated by the supplied separator.
+' NOTES
+' The arrays r[] and indices%[] are like those returned from GetParameterProgression. 
+'****
+
+        
+func GetRealArrayAsStringSep$(r[], indices%[], sep$)
+    var s$;
+    var i%;
+    docase
+    case Len(r[]) = 0 then
+        return;
+    case Len(r[]) = 1 then
+        s$ := str$(r[indices%[0]]);
+    else
+        s$ := str$(r[indices%[0]]);
+        for i% := 1 to Len(r[])-1 do
+            s$ += sep$ + str$(r[indices%[i%]]);
+        next        
+    endcase
+    return s$;
+end
+
+'****f* Spike2Util/MiscUtilities/GetIntegerArrayNAsString%
+' NAME
+' GetIntegerArrayNAsString$(a%[], n%)
+' SYNOPSIS
+' Converts the elements of a%[] to a comma-separated list. 
+' INPUTS
+' a%[] : array of values
+' n% : number of elements in a%[]
+' RETURN VALUE
+' Returns a string containing comma-separated list of values from the array.
+' NOTES
+'****
+
+func GetIntegerArrayNAsString$(a%[], n%)
+    var s$;
+    var i%;
+    s$ := str$(a%[0]);
+    for i% := 1 to n%-1 do
+        s$ += ",";
+        s$ += str$(a%[i%]);
+    next
+    return s$;
+end
+
+
+'****f* Spike2Util/MiscUtilities/GetIntegerArrayAsString%
+' NAME
+' GetIntegerArrayAsString$(a%[], indices%[])
+' SYNOPSIS
+' Converts the elements of a%[] (indexed by indices%[], as from GetParameterProgression)
+' to a comma-separated list. 
+' INPUTS
+' a%[] : array of values
+' indices%[] : indices for accessing r[]
+' RETURN VALUE
+' Returns a string containing comma-separated list of values from the array.
+' NOTES
+' The arrays a%[] and indices%[] are like those returned from GetParameterProgression. 
+'****
+
+func GetIntegerArrayAsString$(a%[], indices%[])
+    return GetIntegerArrayAsStringSep$(a%[], indices%[], ",");
+end
+
+
+'****f* Spike2Util/MiscUtilities/GetIntegerArrayAsStringSep%
+' NAME
+' GetIntegerArrayAsStringSep$(a%[], indices%[], sep$)
+' SYNOPSIS
+' Converts the elements of a%[] (indexed by indices%[], as from GetParameterProgression)
+' to a string list with the supplied separator.
+' INPUTS
+' a%[] : array of values
+' indices%[] : indices for accessing r[]
+' sep$ : separator for list
+' RETURN VALUE
+' Returns a string containing list of values from the array, separated by the separator provided.
+' NOTES
+' The arrays a%[] and indices%[] are like those returned from GetParameterProgression. 
+'****
+
+func GetIntegerArrayAsStringSep$(a%[], indices%[], sep$)
+    var s$;
+    var i%;
+    docase
+    case Len(a%[]) = 0 then
+        return;
+    case Len(a%[]) = 1 then
+        s$ := str$(a%[indices%[0]]);
+    else
+        s$ := str$(a%[indices%[0]]);
+        for i% := 1 to Len(a%[])-1 do
+            s$ += sep$ + str$(a%[indices%[i%]]);
+        next        
+    endcase
+    return s$;
+end
+
+
+'****f* Spike2Util/MiscUtilities/GridStimuli%
+' NAME
+' GridStimuli(Values1[],Values2[],Indices1%[],Indices2%[],IsRandom%,NRepeats%)
+' SYNOPSIS
+' Fills Indices1%[] and Indices2%[] with index values that allow for a 2-parameter
+' tuning curve (values for curves 1 and 2 in Values1[], Values2[])
+' INPUTS
+' Values1[] : Values for first tuning curve
+' Values2[] : Values for second tuning curve
+' Indices1%[] : Will be filled with indices to Values1 to create 2-parameter tuning curve 
+' Indices2%[] : Will be filled with indices to Values2 to create 2-parameter tuning curve 
+' IsRandom% : If 1, randomize order (within each repeat)
+' NRepeats% : Number of repeats
+' RETURN VALUE
+' Returns a success value, 0 = success, 1 = failure.
+'****
+
+func GridStimuli(Values1[],Values2[],j%,k%,&Indices1%[],&Indices2%[],IsRandom%,NRepeats%)
+    var status% := 0;
+    var i%;
+    'var j%;
+    'var k%;
+    var n%;
+    var totlen%;
+    var temp%[1000];  'this is plenty big
+    var list%[10000]; 'must be greater than total stimuli, if you go past 10000 total stimuli you're insane
+    var tempI1%[10000];
+    var tempI2%[10000];
+    var I1%[10000];
+    var I2%[10000];
+    var blocklen%;
+    var offset%;
+    
+    'j% := Len(Values1[]);  'e.g., j% = 5
+    'k% := Len(Values2[]);  'e.g., k% = 3
+    totlen% := j%*k%*NRepeats%;
+    blocklen% := j%*k%;
+    'Check to make sure that the Indices variables are long enough
+    if totlen% > len(Indices1%[]) or totlen% > len(Indices2%[]) then
+        status% := 1;
+    else
+        'if they are long enough, fill them
+        'first, create a list of consecutive indices to put into Indices2%[] 
+        for i% := 0 to k%-1 do
+            temp%[i%] := i%;  'e.g., temp%[] = [0 1 2]
+        next;
+        
+        'Do this for each repeat
+        for n% := 0 to NRepeats%-1 do 
+            
+            'next, fill Indices1%[] with duplicate values for each repeat of k% 
+            'and Indices2%[] with the list made above
+            for i% := 0 to j%-1 do
+                ArrConst(I1%[(k%*i%):k%],i%);           'e.g., [0 0 0 1 1 1 2 2 2 3 3 3 4 4 4]
+                ArrConst(I2%[(k%*i%):k%],temp%[0:k%]);  'e.g., [0 1 2 0 1 2 0 1 2 0 1 2 0 1 2]
+            next;
+            
+            'next, randomize if requested
+            if IsRandom% <> 0 then
+                Shuffle%(blocklen%,list%[]);  'get a shuffled list of indices in list%[]
+                printlog("\n");
+                ArrConst(tempI1%[0:blocklen%],I1%[0:blocklen%]);  'save current values
+                ArrConst(tempI2%[0:blocklen%],I2%[0:blocklen%]);
+                for i% := 0 to blocklen%-1 do
+                    I1%[i%] := tempI1%[list%[i%]];
+                    I2%[i%] := tempI2%[list%[i%]];
+                next;
+            endif;
+            
+            'put the whole shebang into the real variable
+            ArrConst(Indices1%[offset%:blocklen%],I1%[0:blocklen%]);
+            ArrConst(Indices2%[offset%:blocklen%],I2%[0:blocklen%]);
+            
+            offset% := offset% + j%*k%;  'increment offset
+           
+        next;
+    endif;
+    return status%;
+end;
+
+
+'InterleaveStrings$ will interleave two comma separated strings
+'e.g. InterleaveStrings$("5,6,7","1,1,1") will return "5,1,6,1,7,1"
+
+func InterleaveStrings$(x$,y$)
+    var xy$;
+    var xind%;
+    var yind%;
+    xind% := InStr(x$,",");
+    while xind% > 0 do
+        xy$ += Left$(x$,xind%);
+        yind% := InStr(y$,",");
+        xy$ += Left$(y$,yind%);
+        x$ := DelStr$(x$,1,xind%);
+        y$ := DelStr$(y$,1,yind%);
+        'get next xind
+        xind% := InStr(x$,",");
+    wend;
+    'Then there will be one value left in each string with no comma
+    xy$ += x$;
+    xy$ += ",";
+    xy$ += y$;
+    return xy$;
+    
+    
+end;
+
+
+
+
+'****f* Spike2Util/MiscUtilities/ArrFind%
+' NAME
+' ArrFind%(myArray%[],item%)
+' SYNOPSIS
+' returns the index of the first element matching item% in myArray%[]
+' or -1 if myArray%[] doesn't contain item%
+' INPUTS
+' myArray%[] - an integer array
+' item% - the value to find in the array
+'****
+
+
+func ArrFind%(myArray%[],item%)
+    'returns the index of item% in myArray%[]
+    'or -1 if myArray%[] doesn't contain item%
+    var result%;
+    var tempArray%[Len(myArray%[])];
+    ArrConst(tempArray%[],myArray%[]);
+    ArrSub(tempArray%[],item%);
+    abs(tempArray%[]);
+    result% := min(tempArray%[]);
+    if tempArray%[result%]>0 then
+        result% := -1;
+    endif
+    return result%;
+end
+
+
+'****f* Spike2Util/MiscUtilities/ArrFindFloat%
+' NAME
+' ArrFindFloat%(myArray[],item)
+' SYNOPSIS
+' returns the index of the first element (nearly) matching item in myArray[]
+' or -1 if myArray[] doesn't contain item
+' INPUTS
+' myArray[] - a float array
+' item - the value to find in the array
+'
+' Note that for the float version, there are always going to be precision issues.
+' Rather than search for values that are exactly equal, we will get values that are
+' merely "close".  How close is arbitrary.  But really, you're not going to do this
+' on data or values that could be anything; you're going to do this on values that 
+' are more or less, but their position in the array needs to be determined.  So "close"
+' really only needs to be at the precision value of the stored numbers.
+' Here, I've made the precision value very arbitrarily small; testing suggests that for 
+' both integers (in float arrays) and various precision of decimals, this works.
+'****
+
+
+func ArrFindFloat%(myArray[],item)
+    'returns the index of item in myArray[]
+    'or -1 if myArray[] doesn't contain item
+    var result%;
+    var tempArray[Len(myArray[])];
+    var precision := 0.000000000000001;
+    ArrConst(tempArray[],myArray[]);
+    ArrSub(tempArray[],item);
+    abs(tempArray[]);
+    result% := min(tempArray[]);
+    if tempArray[result%]>precision then
+        result% := -1;
+    endif
+    return result%;
+end
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DealStimuliToBlocks - This function is designed to deal stimuli (or alternatively stimulus
+' codes or other tokens) into a number of blocks.  Useful for counterbalancing.
+'
+' Inputs: result[] - a vector which will be filled with the resulting blocked stimuli
+'         nTotal% - the total number of stimuli in the entire sequence, cannot be more than
+'                   the length of result[]
+'         nExistingBlocks% - the number of blocks created in previous calls to DealStimuliToBlocks
+'                            should be 1 if this is the first call
+'         nSteps% - the number of steps in the stimuli/codes/tokens to be placed into result[]
+'                   it is an error for this value to be less than 2, because that would be stupid
+'         firstVal - the first value in the stimuli/codes/tokens to be placed into result[]
+'         lastVal - the last value in the stimuli/codes/tokens to be placed into result[]
+'         iLog% - if 1, do progression in log, if 0, do linear
+'
+' Returns: nFinalBlocks%, the number of blocks in the current result[], or a negative error code
+'
+' Note that nTotal%/(nExistingBlocks%*nSteps%) MUST be an integer or the logic doesn't work - will
+' return an error.
+'
+' For instance, imagine that you wish to counterbalance 3 spatial frequencies (0.5, 0.6, 0.7), 
+' 3 orientations (0, 90, 180) and two conditions (left, right).  This is 3x3x2 = 18 stimuli, 
+' which means that nTotal% would be 18.  We can represent L/R as -1 and 1 by making nSteps% = 2,
+' firstVal = -1 and lastVal = 1.  nExistingBlocks% would start at 1.  resultLR[] would be:
+' [-1 -1 -1 -1 -1 -1 -1 -1 -1  1  1  1  1  1  1  1  1  1]  (this is left/right)
+' and nFinalBlocks% will return 2.
+'
+' Next, we'll do spatial frequency.  We call the same function but fill resultSF[].  nTotal% is
+' unchanged (18) but nExistingBlocks% is now 2, nSteps% is 3, firstVal is 0.5 and lastVal is 0.7.
+' We get:
+' [0.5 0.5 0.5 0.6 0.6 0.6 0.7 0.7 0.7 0.5 0.5 0.5 0.6 0.6 0.6 0.7 0.7 0.7]  (this is SF)
+' and nFinalBlocks% will return 6.
+'
+' Finally, we'll do orientation.  We call the same function but fill resultOR[].  nTotal% is
+' unchanged (18) but nExistingBlocks% is now 6, nSteps% is 3, firstVal is 0 and lastVal is 180.
+' We get:
+' [0 90 180 0 90 180 0 90 180 0 90 180 0 90 180 0 90 180]  (This is orientation)
+' and nFinalBlocks% will return 18
+'
+' Putting these all together:
+' [-1  -1  -1  -1  -1  -1  -1  -1  -1  1   1   1   1   1   1   1   1   1  ]  (resultLR[])
+' [0.5 0.5 0.5 0.6 0.6 0.6 0.7 0.7 0.7 0.5 0.5 0.5 0.6 0.6 0.6 0.7 0.7 0.7]  (resultSF[])
+' [0   90  180 0   90  180 0   90  180 0   90  180 0   90  180 0   90  180]  (resultOR[])
+'
+' You can see that the three vectors are counterbalanced.
+'
+' To call these in a randomized block, just call Shuffle%() once to get indices for each block.
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+func DealStimuliToBlocks%(&result[],nTotal%,nExistingBlocks%,nSteps%,firstVal,lastVal,iLog%)
+    var nFinalBlocks%;
+    var firstlog, lastlog, stepsize;
+    var i%; 'loop through each current block
+    var j%; 'loop through tuning curve steps
+    var k%; 'loop through repeats at the lowest level
+    var l%; 'index to result
+    var nRepeats%; 'the number of repeats at the lowest level
+    
+    if nTotal% mod (nExistingBlocks%*nSteps%) > 0 then
+        message("The total number of steps and blocks does not evenly divide the total size of the vector to create!");
+        return -1;
+    endif;
+    
+    nRepeats% := nTotal%/(nExistingBlocks%*nSteps%);
+    
+    docase
+    case nSteps% = 1 then  'if there is only one step, we've got several things to do - first, avoid divide by zero in other case blocks!
+        iLog% := 0;  'set iLog% to zero because there you can't meaningfully log-space a single value
+        if firstval <> lastval then  'make sure firstval = lastval, otherwise which do you pick?
+            message("First value and last value must be the same if nSteps% is 1!");
+            return -1;
+        endif;
+    case iLog% <> 0 then
+        if firstval <= 0 or lastval <= 0 then
+            message("Attempt to perform log spacing on 0 or negative value!");
+            return -1;
+        endif;
+        ' Generate log progression
+        firstlog := log(firstval);
+        lastlog := log(lastval);
+        stepsize := (lastlog - firstlog)/(nSteps%-1);
+    else
+        ' Generate linear progression
+        stepsize := (lastval - firstval)/(nSteps%-1);
+    endcase;
+    
+    for i% := 1 to nExistingBlocks% do
+    
+        if iLog% <> 0 then
+            for j% := 0 to nSteps%-1 do
+                for k% := 1 to nRepeats% do
+                    result[l%] := pow(10, firstlog + j% * stepsize);
+                    l% += 1;
+                next;
+            next;
+        else
+            for j% := 0 to nSteps%-1 do
+                for k% := 1 to nRepeats% do
+                    result[l%] := firstval + j% * stepsize;
+                    l% += 1;
+                next;    
+            next;
+        endif
+    
+    next
+    
+    
+    nFinalBlocks% := nExistingBlocks%*nSteps%;
+    return nFinalBlocks%;
+end
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' EqualizeSMRFilenumbers(dataPath$,mTemplate$,pTemplate$)
+' 
+' A function that searches the data path for files with auto-naming conventions (i.e. 001-999)
+' created during Plexon recordings (one Micro file, one Power file) and, if the two 
+' highest-numbered files do not have the same number (e.g. if there was a record/save error),
+' will create a dummy file to equalize the numbers.  This will ensure that subsequent auto-naming
+' goes as planned.
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func EqualizeSMRFilenumbers(dataPath$,mTemplate$,pTemplate$)
+
+var oldDir$;
+var micro$;
+var power$;
+var ret%;
+var ret2%;
+var numMicro$;
+var numPower$;
+var numMicro%;
+var numPower%;
+var writeNum%;
+var mymaxNum%;
+var thisNum$;
+var check%;
+var i%;
+
+oldDir$ := FilePath$();  'Get currrent directory
+FilePathSet(dataPath$);  'move to data directory
+printlog("Old dir is %s, current dir is %s, supposed to go to %s\n",oldDir$,FilePath$(),dataPath$);
+    
+'get highest-numbered micro/power file names
+ret% := FileList(micro$,0,mTemplate$+"*");
+ret2% := FileList(power$,0,pTemplate$+"*");
+
+    
+if ret% > 0 then
+    'numMicro$ := HighestValue$(ret%,mTemplate$);
+    HighestValue(ret%,mTemplate$,numMicro$);
+    numMicro% := Val(numMicro$);  'This looks inefficient, but having numMicro$ as a string saves several lines later
+endif
+
+if ret2% > 0 then
+    'numPower$ := HighestValue$(ret2%,pTemplate$);
+    HighestValue(ret2%,pTemplate$,numPower$);
+    numPower% := Val(numPower$);
+endif
+
+'printlog("micro = %d power = %d\n",numMicro%,numPower%);
+        
+    
+if numMicro% > numPower% then
+    mymaxNum% := numMicro%;
+else
+    mymaxNum% := numPower%;
+endif;
+       
+if ret% = 0 and ret2% = 0 then
+    mymaxNum% := -1;
+endif    
+'printlog("MaxNum is %d\n",mymaxNum%);  
+    
+'mymaxNum% := 3; 'testing
+    
+for i% := 0 to mymaxNum% do
+    docase
+    case i% < 10 then
+        thisNum$ := "00" + str$(i%);
+    case i% < 100 then
+        thisNum$ := "0" + str$(i%);
+    else
+        thisNum$ := str$(i%);
+    endcase
+        
+    check% := FileOpen(pTemplate$+thisNum$+".smr",8,0);  'check for existence of power file
+    if check% < 0 then 'file does not exist, create dummy file
+        FileOpen(pTemplate$+thisNum$+".smr",8,1);
+        Print("Fake file");
+        FileClose(0);  'Closes file that has been written
+        printlog("Wrote fake file %s\n",pTemplate$+thisNum$+".smr");
+    else
+        FileClose(0);  'if the file exists, just close the file
+    endif
+    check% := FileOpen(mTemplate$+thisNum$+".smr",8,0);  'check for existence of micro file
+    if check% < 0 then 'file does not exist, create dummy file
+        FileOpen(mTemplate$+thisNum$+".smr",8,1);
+        Print("Fake file");
+        FileClose(0);  'Closes file that has been written
+        printlog("Wrote fake file %s\n",mTemplate$+thisNum$+".smr");
+    else
+        FileClose(0);  'if the file exists, just close the file
+    endif
+        
+next;
+    
+    
+    
+FilePathSet(oldDir$);  'go back to where we started
+    
+end
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' out$ = HighestValue$(nVals%,template$)
+' 
+' This is a subfunction for EqualizeSMRFilenumbers(), needed only because we don't know how many
+' files will be in the data directory, by calling a new function we can make the array to hold
+' the filenames the correct size (can't initialize an array to a variable, but CAN to an input
+' argument.  Go figure.
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc HighestValue(nVals%,template$,&myout$)
+    var myArray$[nVals%];
+    'var myout$;
+    var highest%;
+    var temp$;
+    var temp%;
+    var i%;
+    var h%;
+    'Get the complete file list
+    h% := FileList(myArray$[],0,template$+"*");
+    'printlog("How many is %d\n",h%);
+    for i% := 0 to nVals%-1 do
+        temp$ := Mid$(myArray$[i%],Len(template$)+1,3);
+        temp% := Val(temp$);
+        if temp% > highest% then
+            highest% := temp%;
+            myout$ := temp$;
+        endif;
+    next
+    'return myout$;      
+end
+
+'A simple function to expand and shuffle
+func ShuffleAndExpand(nVals%,nRepeats%,&indices%[],random%)
+    if len(indices%[]) < nVals%*nRepeats% then
+        return 0;  'not enough space to perform requested operation in indices%[]
+    endif;
+    
+    var tempInds%[nVals%];  'make temp list of indices 0:n-1
+    var i%;
+    'fill tempinds with indices 0:n-1
+    for i% := 0 to nVals%-1 do
+        tempInds%[i%] := i%; 
+    next;
+    
+    for i% := 0 to nRepeats%-1 do
+        if random% = 1 then
+            Shuffle%(nVals%,tempInds%[]);
+        endif;
+        ArrConst(indices%[i%*nVals%:nVals%],tempInds%[0:nVals%])
+    next
+    return 1;
+end

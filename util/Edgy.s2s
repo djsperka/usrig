@@ -1,0 +1,70 @@
+#include "ChannelUtilities.s2s"
+#include "BatchUtilities.s2s"
+var nProcessed%;
+
+nProcessed% := ProcessListFile%("", Edgy%);
+LogStatus("Edgy", "Processed " + str$(nProcessed%) + " files.");
+
+
+func Edgy%(h%, args$)
+    var ch%[10];
+    var binsz;
+    var ich%;
+    var lvl%;
+    var explvl%;
+    var expcnt%;
+    var evcount%;
+    var tlast, ttrigger;
+    var nnarrow%, nother%, norder%;
+    ' get level channels
+    ChanList(ch%[], 0x4);
+    
+    ' Loop over channels
+    for ich% := 1 to ch%[0] do
+        binsz := BinSize(ch%[ich%]);
+        tlast := -1;
+        lvl% := FindEdge%(ch%[ich%], tlast, ttrigger);
+        explvl% := -1;
+        expcnt% := 0;
+        evcount% := 0;
+        nnarrow% := 0;
+        nother% := 0;
+        norder% := 0;
+        while lvl% <> -1 do
+            
+            if explvl% <> -1 then
+                ' What type of edge are we expecting? Make sure what we now have is the same type. 
+                if explvl% <> lvl% then
+                    ' most if not all are 1/2/0 = two consecutive rising edges
+                    if explvl% = 1 and lvl% = 0 and expcnt% = 2 then
+                        norder% += 1;
+                    else
+                        nother% += 1;
+                        PrintLog("%d   ORDER  %d/%d/%d  %f\n", evcount%, explvl%, expcnt%, lvl%, ttrigger);
+                    endif
+                endif
+                
+                ' check size of this pulse
+                if ((ttrigger - tlast) < .001) then
+                    nnarrow% += 1;
+                    'PrintLog("%d   NARRW  %d/%d/%d  %f\n", evcount%, explvl%, expcnt%, lvl%, ttrigger-tlast);
+                endif
+            endif
+            
+            ' Get a count
+            expcnt% := ChanMeasure(ch%[ich%], 4, ttrigger, ttrigger+binsz);
+            
+            
+            ' Set up explvl for the next time around
+            explvl% := 1 - lvl%;
+            
+            ' advance to next event
+            tlast := ttrigger;
+            lvl% := FindEdge%(ch%[ich%], tlast, ttrigger);
+            evcount% += 1;
+        wend
+        PrintLog("Channel %d  %d/%d/%d\n", ch%[ich%], norder%, nother%, nnarrow%);
+    next
+    
+    return 0;
+end

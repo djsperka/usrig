@@ -1,0 +1,242 @@
+'$Id$
+
+'****h* Spike2Util/TrialGenWeighted
+' FUNCTION
+' Trial block generator for trial types that are proportionally weighted. 
+'
+' Utility to generate blocks of trials that are weighted by user-specified proportions. 
+' For example, an experiment has 2 trial types, each of which is to have a small percentage
+' of catch trials. The user can specify that each block should have 45 trials of each type, 
+' and 5 trials of each catch trial. 
+'
+' To use this utility, a script must first call tgenweightedInit() with the following parameters:
+'
+' nTypes%       number of trial types. The trial block generator will only provide an index
+'               in [0, nTypes%-1]. The user must interpret the index appropriately -- the 
+'               indices represent different trial types, but the trial list generator doesn't 
+'               know anything about them. 
+'
+' nTrialsPerBlock%[]      Array of size nTypes%. Each element is the number of trials in a 
+'                         for that type in a complete block. This many trials of each type 
+'                         must be completed before a new block is started.
+'
+' nBlocksRequired%      number of blocks that should be completed
+'
+'
+' Usage:
+'
+' There are two ways to use this module. 
+'
+' Option 1: The trial generator interface can be used with this module once the generator has been initialized.
+'
+' 1. include in another script: #include "TrialGenInterface.s2s"
+' 2. initialize first - before calling any other routines call tgenweightedInit()
+' 3. call trialgenGetTrialIndex%(index%) to get a trial. This function returns 1 if an index was 
+'    generated (the parameter index% is set to the index value) or 0 if all blocks are
+'    complete. 
+' 4. As trials are completed, call trialgenTrialCompleted(trialIndex%), where trialIndex% is the 
+'    index of the completed trial (duh). This function increments counters, checks for 
+'    completed blocks and initializes new blocks as needed. You are not required to call 
+'    trialgenTrialCompleted(trialIndex%) for each trial. For example, if you want complete blocks
+'    of trials where the subject gives a correct response you can call trialgenTrialCompleted%()
+'    for just those trials. 
+'
+' Remember - trialgenGetTrialIndex%() will return 0 when all blocks are complete. You MUST call 
+' trialgenTrialCompleted for SOME trials, however, otherwise trialgenGetTrialIndex will return 
+' trial indices FOREVER. 
+'****
+
+#include "TrialGenInterface.s2s"
+#include "LogUtilities.s2s"
+
+' These are global vars for the generator. The max sizes are controlled by the const tgwMaxTypes%
+' and tgwMaxBlockSize%. The actual number of types and block size are determined by the user in the
+' call to tgenweightedInit().
+
+const tgwMaxTypes% := 100;
+const tgwMaxBlockSize% := 1000;
+var tgwWeights%[tgwMaxTypes%];      ' weights passed in init() call stored here
+var tgwCounter%[tgwMaxTypes%];      ' running count of completed trials within a block
+var tgwTotals%[tgwMaxTypes%];       ' sum of completed trials from blocks already completed
+var tgwNBlocksCompleted%;           ' number of completed blocks.
+var tgwIsInitialized% := 0;
+var tgwNTrialTypes%:= 0;            ' number of trial types (supplied by caller in init)
+var tgwNBlocksRequired% := 0;       ' number of blocks required (supplied by caller in init)
+
+
+
+'****f* Spike2Util/TrialGenWeighted/tgwInit
+' NAME
+' tgwInit(nTypes%, weights%[], nBlocksRequired%)
+' SYNOPSIS
+' Initializes the weighted trial generator. Must be called once before using any other tgw* functions. 
+' INPUTS
+' nTypes% :     number of trial types. The generator will only provide an index
+'               in [0, nTypes%-1]. The user must interpret the index appropriately -- the 
+'               indices represent different trial types, but the generator doesn't 
+'               know anything about them. 
+' weights%[] :  relative weights for each trial type. The values are interpred as the number of trials
+'               of each type that make up a complete block.
+' nBlocksRequired% :    number of blocks that should be completed
+'****
+
+proc tgwInit(nTypes%, weights%[], nBlocksRequired%)
+    tgwIsInitialized% := 0;
+    tgwNTrialTypes% := nTypes%;
+    tgwNBlocksRequired% := nBlocksRequired%;
+    tgwNBlocksCompleted% := 0;
+    if Len(weights%[]) <> nTypes% then
+        LogError("tgwInit", "Size of weights array must be equal to number of trial types!");
+    else
+        trialgenSetType%(trialgenWeightedType%);
+        ArrConst(tgwWeights%[0:nTypes%], weights%[0:nTypes%]);
+        ArrConst(tgwCounter%[0:nTypes%], 0);
+        ArrConst(tgwTotals%[0:nTypes%], 0);
+        tgwIsInitialized% := 1;
+    endif
+    return;
+end
+
+'****f* Spike2Util/TrialGenWeighted/tgwGetTrialIndex%
+' NAME
+' tgwGetTrialIndex%(&index%)
+' SYNOPSIS
+' Gets the next trial index. 
+' INPUTS
+' index% : will be set to the value of the next index (unless the return value is 0). 
+' RETURN VALUE
+' Returns 0 if there are no more trials left, or 1 if there is a trial (and index% is set). 
+'****
+
+func tgwGetTrialIndex%(&index%)
+    var status% := 0;
+    var i% := 0;    ' just an index
+    var r% := -1;   ' random number chosen
+    var s% := 0;    ' sum used in determining random choice
+    var f% := -1;   ' found index
+    var npossibilities% := 0;   ' number of possible choices for trial index
+    var diff%[tgwNTrialTypes%]; ' array of differences between block weights and actual trial counters
+    
+    if tgwNBlocksCompleted% < tgwNBlocksRequired% then
+        
+        ' How many possibilities are left this block?
+        ArrConst(diff%[], tgwWeights%[0:tgwNTrialTypes%]);
+        ArrSub(diff%[], tgwCounter%[0:tgwNTrialTypes%]);
+        for i% := 0 to tgwNTrialTypes%-1 do
+            if diff%[i%] > 0 then
+                npossibilities% += diff%[i%];
+            endif
+        next
+        
+        ' get a random number from within the range of possibilities
+        r% := Rand(npossibilities%, 0);
+        
+        ' now find where in the range of possibilities r% falls'
+        i% := 0;
+        s% := 0;
+        while i% < tgwNTrialTypes% and f% < 0 do
+            if diff%[i%] > 0 then
+                s% += diff%[i%];
+                if r% < s% then
+                    f% := i%;   ' this is the choice!
+                endif
+            endif
+            i% += 1;
+        wend
+        
+        if f% < 0 then
+            ' this should NOT happen
+            LogError("tgwGetTrialIndex", "Cannot choose! npossibilities = " + str$(npossibilities%));
+        else
+            index% := f%;
+            status% := 1;
+        endif
+    
+    endif
+            
+    return status%;
+end
+
+'****f* Spike2Util/TrialGenWeighted/tgwGetTrialIndexAndBlock%
+' NAME
+' tgwGetTrialIndexAndBlock%(&index%, &block%)
+' SYNOPSIS
+' Gets the next trial index and block number. 
+' INPUTS
+' index% : will be set to the value of the next index (unless the return value is 0). 
+' block% : will be set to the value of the current block (starting at 0). 
+' RETURN VALUE
+' Returns 0 if there are no more trials left, or 1 if there is a trial (and index% is set). 
+'****
+
+func tgwGetTrialIndexAndBlock%(&index%, &block%)
+    var status% := 0;
+    status% := tgwGetTrialIndex%(index%);
+    if status% = 1 then
+        block% := tgwNBlocksCompleted%;
+    endif
+    return status%;
+end
+
+
+
+'****f* Spike2Util/TrialGenWeighted/tgwTrialIndexHowManyCompleted%(trialIndex%)
+' NAME
+' tgwTrialIndexHowManyCompleted%(trialIndex%)
+' SYNOPSIS
+' Gets the number of completed trials for a particular index type. 
+' INPUTS
+' trialIndex% : trial type index
+' RETURN VALUE
+' Number of completed trials (calls to tgwTrialIndexCompleted) for the index. 
+'****
+
+func tgwTrialIndexHowManyCompleted%(trialIndex%)
+    var s% := -1;
+    if tgwIsInitialized% = 1 then
+        s% := ArrSum(tgwWeights%[0:tgwNTrialTypes%]) * tgwNBlocksCompleted% + ArrSum(tgwCounter%[0:tgwNTrialTypes%]);
+    else
+        LogError("tgwTrialIndexHowManyCompleted", "Weighted trial generator is not initialized. Call tgwInit.");
+    endif
+    return s%;
+end
+
+
+'****f* Spike2Util/TrialGenWeighted/tgwTrialIndexCompleted
+' NAME
+' tgwTrialIndexCompleted(trialIndex%)
+' SYNOPSIS
+' Called when a trial of type trialIndex% has been completed. 
+' INPUTS
+' trialIndex% : trial type index
+'****
+
+proc tgwTrialIndexCompleted(trialIndex%)
+    var i%;
+    var incomplete% := 0;
+    if trialIndex% >= 0 and trialIndex% < tgwNTrialTypes% then
+        tgwCounter%[trialIndex%] += 1;
+        ' See if block is complete
+        i% := 0;
+        while incomplete% = 0 and i% < tgwNTrialTypes% do
+            if tgwCounter%[i%] < tgwWeights%[i%] then
+                incomplete% := 1;
+            endif
+            i% += 1;
+        wend
+        
+        ' If current block is complete, then increment block counter and re-init block
+        
+        if incomplete% = 0 then
+            tgwNBlocksCompleted% += 1;
+            for i% := 0 to tgwNTrialTypes%-1 do
+                tgwTotals%[i%] += tgwCounter%[i%];
+                tgwCounter%[i%] := 0;
+            next
+        endif
+    else
+        LogError("tgwTrialIndexCompleted", "Trial index (" + str$(trialIndex%) + ") out of range (0-" + str$(tgwNTrialTypes%-1) + ")");        
+    endif
+        
+    return;
+end

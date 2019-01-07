@@ -1,0 +1,345 @@
+' $Id$
+
+#include "LogUtilities.s2s"
+
+var chuTMinPulseTime := 0.000001;
+
+'****h* Spike2Util/ChannelUtilities
+' FUNCTION
+' Utility functions for getting information from data acquisition channels.
+'****
+
+
+'****f* Spike2Util/ChannelUtilities/SetMinPulseWidth
+' NAME
+' SetMinPulseWidth(t)
+' SYNOPSIS
+' Sets the minimum width of a pulse for either edge to be recognized by FindEdge%. If 
+' consecutive edges are found that are within this time of one another, then both are 
+' ignored by FindEdge, FindRisingEdge and 
+' INPUTS
+' t - pulse width min time (s)
+' RETURN VALUE
+' none
+'****
+
+proc SetMinPulseWidth(t)
+    chuTMinPulseTime := t;
+    return;
+end
+
+
+'****f* Spike2Util/ChannelUtilities/FindEdge%
+' NAME
+' FindEdge%(channel%, tLast, &tTrigger)
+' SYNOPSIS
+' Finds the next edge after a given time for an event level channel. Edge found is tested 
+' to make sure that it does not have multiple events at the same time, or that the next
+' edge is at least chuTMinPulseTime away.
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tTrigger - if an edge is found, this is set to the time at which it is found
+' RETURN VALUE
+' Returns -1 if no edge is found. Returns 0 (1) if an edge is found and it is a 
+' rising (falling) edge. 
+' SEE ALSO
+' FindFallingEdge, FindRisingEdge, SetMinPulseWidth
+'****
+
+func FindEdge%(channel%, tLast, &tTrigger)
+    var tLook;
+    var edgeType%;
+    var edgeTypePending%;
+    var tT;
+    var isDone% := 0;
+    var iStatus% := -1;
+    tLook := tLast;
+    repeat
+        edgeType% := FindEdgePrivate%(channel%, tLook, tT);
+        docase
+        case edgeType% = -1 then
+            iStatus% := -1;
+            isDone% := 1;
+        case edgeType% = 0 or edgeType% = 1 then
+            tLook := tT;
+            edgeTypePending% := edgeType%;
+            edgeType% := FindEdgePrivate%(channel%, tLook, tT);
+            docase
+            case edgeType% = -1 then
+                ' the original edge found was the last one for this channel. Its OK. 
+                isDone% := 1;
+                iStatus% := edgeTypePending%;
+                tTrigger := tLook;
+            case edgeType% = 0 or edgeType% = 1 then
+                ' up followed by down, or vice-versa?
+                if edgeType% = (1 - edgeTypePending%) then
+                    ' Check if its too close or not....
+                    if (tT - tLook) > chuTMinPulseTime then
+                        iStatus% := edgeTypePending%;
+                        tTrigger := tLook;
+                        isDone% := 1;
+                    else
+                        ' Found the correct edge, but its too close.
+                        LogWarn("FindEdge", "Skipping narrow pulse on channel " + str$(channel%) + " at " + str$(tLook) + "-" + str$(tT));
+                        tLook := tT;
+                    endif
+                else
+                    ' Wrong edge type. Assume this is a zero width pulse (we got two edges of same type in a row!)
+                    ' Set tLook to be 
+                    LogWarn("FindEdge", "Skipping zero width pulse on channel " + str$(channel%) + " at t=" + str$(tLook));
+                    tLook := tLook + chuTMinPulseTime;
+                endif
+            else
+                LogError("FindEdge", "Unknown return value (" + str$(edgeType%) + ")from FindEdgePrivate at t=" + str$(tLook));
+                iStatus% := -1;
+                isDone% := 1;
+            endcase
+        else
+            LogError("FindEdge", "Unknown return value (" + str$(edgeType%) + ")from FindEdgePrivate at t=" + str$(tLook));
+            iStatus% := -1;
+            isDone% := 1;
+        endcase
+    until isDone% = 1;
+    return iStatus%;
+end
+
+    
+    
+
+            
+                
+                    
+                    
+                   
+                        
+
+
+
+'****f* Spike2Util/ChannelUtilities/FindEdgePrivate%
+' NAME
+' FindEdgePrivate%(channel%, tLast, &tTrigger)
+' SYNOPSIS
+' Finds the next edge after a given time for an event level channel. Used internally; DO NOT CALL THIS
+' DIRECTLY!
+'
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tTrigger - if an edge is found, this is set to the time at which it is found
+' RETURN VALUE
+' Returns -1 if no edge is found. Returns 0 (1) if an edge is found and it is a 
+' rising (falling) edge. 
+' SEE ALSO
+' FindFallingEdge, FindRisingEdge
+'****
+
+func FindEdgePrivate%(channel%, tLast, &tTrigger)
+    var vTrigger;
+    var s% := -1;
+	tTrigger := NextTime(channel%, tLast, vTrigger);
+    if tTrigger > tLast then
+        docase
+        case vTrigger = 0 then
+            s% := 0;
+        case vTrigger = 1 then
+            s% := 1;
+        endcase
+    endif
+    return s%;
+end
+
+        
+' FindRisingEdge%
+' 
+' Tests whether an event channel has a RISING edge. Returns 0 if one is found after the time tLast. 
+' If a falling edge is found first, then another search is done to find a rising edge. Should only
+' be used with an event channel. 
+'
+' The return values on success for this function and FindFallingEdge% match the value set by NextTime
+' when an edge event is found. That value corresponds to the logical value of the channel BEFORE the
+' transition. Thus, when a rising edge is found, the value of the channel before the transition was
+' 0, so the return value from this function is 0. 
+
+'****f* Spike2Util/ChannelUtilities/FindRisingEdge%
+' NAME
+' FindRisingEdge%(channel%, tLast, &tTrigger)
+' SYNOPSIS
+' Finds the next rising edge after a given time for an event level channel.
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tTrigger - if an edge is found, this is set to the time at which it is found
+' RETURN VALUE
+' Returns -1 if no edge is found. Returns 0 if a rising edge is found.
+' NOTES
+' See Spike2's "NextTime" function. The return value here is the same as the 
+' value for the 'val' parameter in NextTime when a rising edge is found. 
+' SEE ALSO
+' FindEdge, FindFallingEdge
+'****
+
+func FindRisingEdge%(channel%, tLast, &tTrigger)
+    var vTrigger;
+    var tTemp;
+    var s% := -1;
+    
+    tTemp := tLast;
+    repeat
+        s% := FindEdge%(channel%, tTemp, tTrigger);
+        tTemp := tTrigger;
+    until s% = -1 or s% = 0;
+    return s%
+end
+
+    
+' FindFallingEdge%
+' 
+' Tests whether an event channel has a FALLING edge. Returns 1 if one is found after the time tLast. 
+' If a rising edge is found first, then another search is done to find a falling edge. Should only
+' be used with an event channel. 
+'
+' The return values on success for this function and FindRisingEdge% match the value set by NextTime
+' when an edge event is found. That value corresponds to the logical value of the channel BEFORE the
+' transition. Thus, when a falling edge is found, the value of the channel before the transition was
+' 1, so the return value from this function is 1. 
+
+'****f* Spike2Util/ChannelUtilities/FindFallingEdge%
+' NAME
+' FindFallingEdge%(channel%, tLast, &tTrigger)
+' SYNOPSIS
+' Finds the next falling edge after a given time for an event level channel.
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tTrigger - if an edge is found, this is set to the time at which it is found
+' RETURN VALUE
+' Returns -1 if no edge is found. Returns 1 if a falling edge is found.
+' NOTES
+' See Spike2's "NextTime" function. The return value here is the same as the 
+' value for the 'val' parameter in NextTime when a falling edge is found. 
+' SEE ALSO
+' FindEdge, FindRisingEdge
+'****
+
+func FindFallingEdge%(channel%, tLast, &tTrigger)
+    var vTrigger;
+    var tTemp;
+    var s% := -1;
+    
+    tTemp := tLast;
+    repeat
+        s% := FindEdge%(channel%, tTemp, tTrigger);
+        tTemp := tTrigger;
+    until s% = -1 or s% = 1;
+    return s%
+end
+
+
+'****f* Spike2Util/ChannelUtilities/FindEvent%
+' NAME
+' FindEvent%(channel%, tLast, &tTrigger)
+' SYNOPSIS
+' Finds the next event after a given time for an event channel.
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tTrigger - if an edge is found, this is set to the time at which it is found
+' RETURN VALUE
+' Returns -1 if no event is found. Returns 1 if an event is found.
+' SEE ALSO
+' FindFallingEdge, FindRisingEdge, FindEdge
+'****
+
+func FindEvent%(channel%, tLast, &tTrigger)
+    var s% := -1;
+	tTrigger := NextTime(channel%, tLast);
+    if tTrigger > tLast then
+        s% := 1;
+    endif
+    return s%;
+end
+
+
+'****f* Spike2Util/ChannelUtilities/FindPulseUp%
+' NAME
+' FindPulseUp%(channel%, tLast, &tTrigger)
+' SYNOPSIS
+' Finds a pulse (up then down) after a given time for an event channel. The channel is assumed to have
+' only pulse type data. This function will only look for a rising then falling edge. In particular we
+' assume that there will NOT be more than one rising edge before a subsequent falling edge is found.
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tUp - if a pulse is found, this is set to the rise time
+' tDown - if a pulse is found, this is set to the fall time
+' RETURN VALUE
+' Returns -1 if no pulse is found. Returns 1 if a pulse is found.
+' SEE ALSO
+' FindFallingEdge, FindRisingEdge, FindEdge, FindEvent
+'****
+
+func FindPulseUp%(channel%, tLast, &tRise, &tFall)
+    var tTemp;
+    var t0, t1;
+    var s% := -1;  ' Return will be -1 if no pulse found
+    var status% := -1;
+    
+    tRise := -1;
+    tFall := -1;
+    tTemp := tLast;
+    
+    status% := FindRisingEdge%(channel%, tTemp, tRise);
+    if status% = 0 then
+        ' Found a rising edge at tRise... Look for falling edge
+        status% := FindFallingEdge%(channel%, tRise, tFall);
+        if status% = 1 then
+            s% := 1;  ' Return 1 if pulse is found and real
+        endif
+    endif
+    
+    return s%
+end
+
+
+
+'****f* Spike2Util/ChannelUtilities/FindPulseDown%
+' NAME
+' FindPulseDown%(channel%, tLast, &tDown, &tUp)
+' SYNOPSIS
+' Finds a pulse (up then down) after a given time for an event channel. The channel is assumed to have
+' only pulse type data. This function will only look for a rising then falling edge. In particular we
+' assume that there will NOT be more than one rising edge before a subsequent falling edge is found.
+' INPUTS
+' channel% - channel number
+' tLast - time to start search after. Events at this time are IGNORED. 
+' tDown - if a pulse is found, this is set to the fall time
+' tUp - if a pulse is found, this is set to the rise time
+' RETURN VALUE
+' Returns -1 if no pulse is found. Returns 1 if a pulse is found.
+' SEE ALSO
+' FindFallingEdge, FindRisingEdge, FindEdge, FindEvent
+'****
+
+func FindPulseDown%(channel%, tLast, &tDown, &tUp)
+    var tTemp;
+    var t0, t1;
+    var s% := -1;  ' Return will be -1 if no pulse found
+    var status% := -1;
+    
+    tDown := -1;
+    tUp := -1;
+    tTemp := tLast;
+    
+    status% := FindFallingEdge%(channel%, tTemp, tDown);
+    if status% = 1 then
+        ' Found a falling edge at tFall... Look for rising edge
+        status% := FindRisingEdge%(channel%, tDown, tUp);
+        if status% = 0 then
+            s% := 1;  ' Return 1 if pulse is found and real
+        endif
+    endif
+    
+    return s%
+end
+

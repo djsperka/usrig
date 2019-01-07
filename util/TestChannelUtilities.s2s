@@ -1,0 +1,84 @@
+#include "ChannelUtilities.s2s"
+
+var i%;
+var ichan%;
+var iUseCursors% := 0;
+var iCheckRising% := 0;
+var iCheckFalling% := 0;
+var iCheckBoth% := 0;
+var t1:=-1, t2:=-1;
+var s%;
+var tTrigger;
+var tlow;
+
+PrintLog("%d\n", ViewKind());
+if ViewKind() <> 0 then
+    Message("Current view must be a time view!");
+    halt;
+endif
+
+
+
+' Get channel to conduct search on 
+DlgCreate("Test channel utilities");
+DlgChan(1, "Channel", 0x4);
+DlgCheck(2, "Check for rising edges");
+DlgCheck(3, "Check for falling edges");
+DlgCheck(4, "Check for all edges");
+
+i% := DlgShow(ichan%, iCheckRising%, iCheckFalling%, iCheckBoth%);
+if i% = 1 then
+    if CursorExists(1) = 1 and CursorExists(2) = 1 then
+        t1 := Cursor(1);
+        t2 := Cursor(2);
+    else
+        Message("Cursor 1 and 2 not found!");
+        halt;
+    endif
+    
+    if t2 <= t1 then
+        Message("Cursor 2 must be to the right of Cursor 1!");
+        halt;
+    endif
+        
+    if iCheckRising% = 1 then
+        PrintLog("Checking for rising edges between %f and %f\n\n", t1, t2);
+        tlow := t1;
+        s% := FindRisingEdge%(ichan%, tlow, tTrigger);
+        while s% = 0 and tTrigger <= t2 do
+            PrintLog("RISING  %f\n", tTrigger);
+            tlow := tTrigger;
+            s% := FindRisingEdge%(ichan%, tlow, tTrigger);
+        wend
+        PrintLog("\nDone.\n");
+    endif
+    
+    if iCheckFalling% = 1 then
+        PrintLog("Checking for falling edges between %f and %f\n\n", t1, t2);
+        tlow := t1;
+        s% := FindFallingEdge%(ichan%, tlow, tTrigger);
+        while s% = 1 and tTrigger <= t2 do
+            PrintLog("FALLING %f\n", tTrigger);
+            tlow := tTrigger;
+            s% := FindFallingEdge%(ichan%, tlow, tTrigger);
+        wend
+        PrintLog("\nDone.\n");
+    endif
+        
+    if iCheckBoth% = 1 then
+        PrintLog("Checking for all edges between %f and %f\n\n", t1, t2);
+        tlow := t1;
+        s% := FindEdge%(ichan%, tlow, tTrigger);
+        while (s% = 1 or s% = 0) and tTrigger <= t2 do
+            if s% = 1 then
+                PrintLog("FALLING %f\n", tTrigger);
+            else
+                PrintLog("RISING  %f\n", tTrigger);
+            endif
+            tlow := tTrigger;
+            s% := FindEdge%(ichan%, tlow, tTrigger);
+        wend
+        PrintLog("\nDone.\n");
+    endif
+endif
+

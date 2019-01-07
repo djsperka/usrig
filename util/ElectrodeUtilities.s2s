@@ -1,0 +1,605 @@
+' $Id$
+
+var UsePlexon%;
+var UsePlexon15WF15WF2k%;
+var UsePlexon7WM15CN%;
+var UsePlexon24WF%;
+var JoePlexon1%;
+var JoePlexon2%;
+var UseCustomLabels%;
+var CustomLabels$[32];
+var ExcludedChans%[2];  'This allows us (if we use CreateElectrodeSamplingConfiguration32) to exclude the channels reserved for other info
+ExcludedChans%[0] := 30;  'Lowest default excluded channel; the standard TextMark channel is #30
+ExcludedChans%[1] := 31;  'Highest default excluded channel; the standard Keyboard channel is #31, exclude additional channels if necessary in individual functions
+var WavemarkSamplingRate%;  'this had been hardcoded
+var WaveformSamplingRate%;
+var WavemarkSamplingRate32%[32];  'for trying to set all 32 sampling rates
+var WaveformSamplingRate32%[32];
+var WavemarkSamplingRateByPort32%[32];
+var WaveformSamplingRateByPort32%[32];
+var UseChanByChanSampRates%;
+
+
+#include "DlgUtilities.s2s"
+#include "UsreyUtil.s2s"
+
+var WavemarkPorts%[32];
+var NumWavemarkPorts%;
+var ContinuousPorts%[32];
+var NumContinuousPorts%;
+
+
+GetElectrodeParameters();
+
+func GetWavemarkPorts%(ports%[])
+    docase
+    case Len(ports%[]) < NumWavemarkPorts% then 
+        return -1;    ' array not large enough
+    case NumWavemarkPorts% = 0 then
+        return 0;
+    else
+        ArrConst(ports%[0:NumWavemarkPorts%], WavemarkPorts%[0:NumWavemarkPorts%]);
+        return NumWavemarkPorts%;
+    endcase
+end
+
+func GetContinuousPorts%(ports%[])
+    docase
+    case Len(ports%[]) < NumContinuousPorts% then 
+        return -1;    ' array not large enough
+    case NumContinuousPorts% = 0 then
+        return 0;
+    else
+        ArrConst(ports%[0:NumContinuousPorts%], ContinuousPorts%[0:NumContinuousPorts%]);
+        return NumContinuousPorts%;
+    endcase
+end
+
+func GetWavemarkPorts$()
+    var s$ := "";
+    var i%;
+    var count% := 0;
+    for i% := 0 to NumWavemarkPorts%-1 do
+        s$ += str$(WavemarkPorts%[i%]);
+        if i% < NumWavemarkPorts%-1 then
+            s$ += ",";
+        endif
+    next
+    return s$;
+end
+
+func GetContinuousPorts$()
+    var s$ := "";
+    var i%;
+    for i% := 0 to NumContinuousPorts%-1 do
+        s$ += str$(ContinuousPorts%[i%]);
+        if i% < NumContinuousPorts%-1 then
+            s$ += ",";
+        endif
+    next
+    return s$;
+end
+
+func ElectrodesDialog%()
+    var wm%[32];
+    var cn%[32];
+    var i%;
+    GetElectrodeParameters();
+
+    ArrConst(wm%[], 0);
+    ArrConst(cn%[], 0);
+    for i% := 0 to NumContinuousPorts%-1 do
+        cn%[ContinuousPorts%[i%]] := 1;
+    next
+    for i% := 0 to NumWavemarkPorts%-1 do
+        wm%[WavemarkPorts%[i%]] := 1;
+    next
+    if WMCNPortDialog32%("Electrode Configuration", wm%[], cn%[], CustomLabels$[], UseCustomLabels%) = 1 then
+        NumWavemarkPorts% := 0;
+        NumContinuousPorts% := 0;
+        for i% := 0 to Len(wm%[])-1 do
+            if wm%[i%] = 1 then
+                WavemarkPorts%[NumWavemarkPorts%] := i%;
+                NumWavemarkPorts% += 1;
+            endif
+            if cn%[i%] = 1 then
+                ContinuousPorts%[NumContinuousPorts%] := i%;
+                NumContinuousPorts% += 1;
+            endif
+        next
+        SaveElectrodeParameters();
+    endif
+
+    
+    return 1;
+end;
+
+
+func ElectrodesDialogSetSampFreq%()
+    var i%;
+    var wm%[32];
+    GetElectrodeParameters();
+    
+    ArrConst(wm%[], 0); 
+    for i% := 0 to NumWavemarkPorts%-1 do
+        wm%[WavemarkPorts%[i%]] := 1;
+    next    
+    
+    if WMCNPortDialog32SetSampFreq%("Electrode Configuration", wm%[], WaveformSamplingRate32%[], CustomLabels$[], UseCustomLabels%) = 1 then
+        NumWavemarkPorts% := 0;
+        NumContinuousPorts% := 0;
+        for i% := 0 to Len(WavemarkSamplingRate32%[])-1 do
+            if wm%[i%] = 1 then
+                WavemarkPorts%[NumWavemarkPorts%] := i%;
+                NumWavemarkPorts% += 1;
+            endif
+'            if WavemarkSamplingRate32%[i%] > 0 then
+'                WavemarkPorts%[NumWavemarkPorts%] := i%;
+'                WavemarkSamplingRateByPort32%[NumWavemarkPorts%] := WavemarkSamplingRate32%[i%];
+'                NumWavemarkPorts% += 1;
+'            endif
+            if WaveformSamplingRate32%[i%] > 0 then
+                ContinuousPorts%[NumContinuousPorts%] := i%;
+                WaveformSamplingRateByPort32%[NumContinuousPorts%] := WaveformSamplingRate32%[i%];
+                NumContinuousPorts% += 1;
+            endif
+        next
+        SaveElectrodeParameters();
+    endif
+
+    
+    return 1;
+end;
+
+
+proc GetElectrodeParameters()
+	var key$;
+    var s$;
+    var temp%;
+    var i%;
+    
+	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
+    s$ := GetStringRegistryValue$(key$, "WavemarkPorts", "");
+    NumWavemarkPorts% := ReadStr(s$, WavemarkPorts%[]);
+    s$ := GetStringRegistryValue$(key$, "ContinuousPorts", "");
+    NumContinuousPorts% := ReadStr(s$, ContinuousPorts%[]);
+    Profile(key$, "UsePlexon", 0, UsePlexon%);
+    Profile(key$, "UsePlexon15WF15WF2k", 0, UsePlexon15WF15WF2k%);
+    Profile(key$, "UsePlexon7WM15CN", 0, UsePlexon7WM15CN%);
+    Profile(key$, "UsePlexon24WF", 0, UsePlexon24WF%);
+    Profile(key$, "JoePlexon1", 0, JoePlexon1%);
+    Profile(key$, "JoePlexon2", 0, JoePlexon2%);
+    Profile(key$, "UseCustomLabels", 0, UseCustomLabels%);
+    Profile(key$, "WavemarkSamplingRate", 28000, WavemarkSamplingRate%);  'actually setting a default value!
+    Profile(key$, "WaveformSamplingRate", 20000, WaveformSamplingRate%);  'actually setting a default value!
+    Profile(key$, "UseChanByChanSampRates", 0, UseChanByChanSampRates%);
+    for i% := 0 to 31 do
+        s$ := GetStringRegistryValue$(key$, "CustomLabel" + Str$(i%), "");
+        CustomLabels$[i%] := s$;
+        temp% := GetIntRegistryValue%(key$, "WavemarkSamplingRate32" +  Str$(i%), 0);
+        WavemarkSamplingRate32%[i%] := temp%;
+        temp% := GetIntRegistryValue%(key$, "WaveformSamplingRate32" +  Str$(i%), 0);
+        WaveformSamplingRate32%[i%] := temp%;
+        temp% := GetIntRegistryValue%(key$, "WavemarkSamplingRateByPort32" +  Str$(i%), 0);
+        WavemarkSamplingRateByPort32%[i%] := temp%;
+        temp% := GetIntRegistryValue%(key$, "WaveformSamplingRateByPort32" +  Str$(i%), 0);
+        WaveformSamplingRateByPort32%[i%] := temp%;
+    next;
+    
+end;
+
+proc SaveElectrodeParameters()
+    var key$;
+    var s$;
+    var i%;
+	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
+    SetStringRegistryValue(key$, "WavemarkPorts", GetWavemarkPorts$());
+    SetStringRegistryValue(key$, "ContinuousPorts", GetContinuousPorts$());
+    Profile(key$, "UsePlexon", UsePlexon%); 
+    Profile(key$, "UsePlexon15WF15WF2k", UsePlexon15WF15WF2k%);
+    Profile(key$, "UsePlexon7WM15CN", UsePlexon7WM15CN%);    
+    Profile(key$, "UsePlexon24WF", UsePlexon24WF%); 
+    Profile(key$, "JoePlexon1", JoePlexon1%);
+    Profile(key$, "JoePlexon2", JoePlexon2%);
+    Profile(key$, "UseCustomLabels", UseCustomLabels%);
+    Profile(key$, "WavemarkSamplingRate", WavemarkSamplingRate%);
+    Profile(key$, "WaveformSamplingRate", WaveformSamplingRate%);
+    Profile(key$, "UseChanByChanSampRates", UseChanByChanSampRates%);
+    for i% := 0 to 31 do
+        SetStringRegistryValue(key$, "CustomLabel" + Str$(i%), CustomLabels$[i%]);
+        SetIntRegistryValue(key$, "WavemarkSamplingRate32" +  Str$(i%), WavemarkSamplingRate32%[i%]);
+        SetIntRegistryValue(key$, "WaveformSamplingRate32" +  Str$(i%), WaveformSamplingRate32%[i%]);
+        SetIntRegistryValue(key$, "WavemarkSamplingRateByPort32" +  Str$(i%), WavemarkSamplingRateByPort32%[i%]);
+        SetIntRegistryValue(key$, "WaveformSamplingRateByPort32" +  Str$(i%), WaveformSamplingRateByPort32%[i%]);
+    next;
+end;
+
+
+func CreateElectrodeSamplingConfiguration(iStartWM%, iStartCont%)
+    var iStatus% := -1;
+    var i%;
+    var ichan%;
+    
+    ' Starting channel number is iStartWM% unless iStartWM<=0, in which case we start at channel 1.
+    ichan% := iStartWM%;
+    if ichan% < 1 then 
+        ichan% := 1;
+    endif
+    
+    for i% := 0 to NumWavemarkPorts%-1 do
+		SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+        if useCustomLabels% = 1 and CustomLabels$[WavemarkPorts%[i%]] <> "" then
+            SampleTitle$(ichan%, CustomLabels$[WavemarkPorts%[i%]] + "WM"); 
+        else
+            SampleTitle$(ichan%, "WMrk " + str$(WavemarkPorts%[i%])); 
+        endif;
+        ichan% += 1;
+	next
+    
+    ' Starting channel for continuous channels is iStartCont%, unless iStartCont% is <= 0, in which case we start
+    ' at NumWavemarkPorts + 1.
+    ichan% := iStartCont%;
+    if ichan% < 1 or ichan% <= NumWavemarkPorts% then
+        ichan% := NumWavemarkPorts% + 1;
+    endif
+    
+    
+    for i% := 0 to NumContinuousPorts%-1 do
+        SampleWaveform(ichan%, ContinuousPorts%[i%], 20000);
+        if useCustomLabels% = 1 and CustomLabels$[ContinuousPorts%[i%]] <> "" then
+            SampleTitle$(ichan%, CustomLabels$[ContinuousPorts%[i%]] + "WF"); 
+        else
+            SampleTitle$(ichan%, "Cont " + str$(ContinuousPorts%[i%])); 
+        endif;
+        ichan% += 1;
+    next
+    
+    return iStatus%;
+end
+
+
+'this is exactly the same as CreateElectrodeSamplingConfiguration, but it uses a 2 kHz continuous rather than 20 kHz continuous
+'it is just a quick and dirty function that allows us to try out some Plexon sampling
+func CreateElectrodeSamplingConfiguration2(iStartWM%, iStartCont%)
+    var iStatus% := -1;
+    var i%;
+    var ichan%;
+    
+    ' Starting channel number is iStartWM% unless iStartWM<=0, in which case we start at channel 1.
+    ichan% := iStartWM%;
+    if ichan% < 1 then 
+        ichan% := 1;
+    endif
+    
+    for i% := 0 to NumWavemarkPorts%-1 do
+		SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(ichan%, "WMrk " + str$(WavemarkPorts%[i%])); 
+        ichan% += 1;
+	next
+    
+    ' Starting channel for continuous channels is iStartCont%, unless iStartCont% is <= 0, in which case we start
+    ' at NumWavemarkPorts + 1.
+    ichan% := iStartCont%;
+    if ichan% < 1 or ichan% <= NumWavemarkPorts% then
+        ichan% := NumWavemarkPorts% + 1;
+    endif
+    
+    
+    for i% := 0 to NumContinuousPorts%-1 do
+        SampleWaveform(ichan%, ContinuousPorts%[i%], 2000);
+        SampleTitle$(ichan% + 1, "Cont " + str$(ContinuousPorts%[i%]));
+        ichan% += 1;
+    next
+    
+    return iStatus%;
+end
+
+
+'this is exactly the same as CreateElectrodeSamplingConfiguration, but it allows Henry to change his values without affecting
+'anybody else
+func CreateElectrodeSamplingConfigurationHenry(iStartWM%, iStartCont%)
+    var iStatus% := -1;
+    var i%;
+    var ichan%;
+    
+    ' Starting channel number is iStartWM% unless iStartWM<=0, in which case we start at channel 1.
+    ichan% := iStartWM%;
+    if ichan% < 1 then 
+        ichan% := 1;
+    endif
+    
+    for i% := 0 to NumWavemarkPorts%-1 do
+		SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, sample rate
+		SampleTitle$(ichan%, "WMrk " + str$(WavemarkPorts%[i%])); 
+        ichan% += 1;
+	next
+    
+    ' Starting channel for continuous channels is iStartCont%, unless iStartCont% is <= 0, in which case we start
+    ' at NumWavemarkPorts + 1.
+    ichan% := iStartCont%;
+    if ichan% < 1 or ichan% <= NumWavemarkPorts% then
+        ichan% := NumWavemarkPorts% + 1;
+    endif
+    
+    
+    for i% := 0 to NumContinuousPorts%-1 do
+        SampleWaveform(ichan%, ContinuousPorts%[i%], 20000);  'chan, port, sample rate
+        SampleTitle$(ichan% + 1, "Cont " + str$(ContinuousPorts%[i%]));
+        ichan% += 1;
+    next
+    
+    return iStatus%;
+end
+
+
+
+'This function is just like all of the other CreateElectrodeSamplingConfiguration functions,
+'but this one goes to 11...erm, 32.  Also, it requires an input of excludedChans%[], which 
+'is a two-element vector, the first element holding the first reserved channel number and the
+'second element holding the last reserved channel number.  Requested ports will be dealt to 
+'allowable channel numbers.
+func CreateElectrodeSamplingConfiguration32(iStartWM%, iStartCont%, ExcludedChans%[])
+    var iStatus% := -1;
+    var i%;
+    var ichan%;
+    var WMIndex%;
+    var WFIndex%;
+    
+    ' Starting channel number is iStartWM% unless iStartWM<=0, in which case we start at channel 1.
+    ichan% := iStartWM%;
+    if ichan% < 1 then 
+        ichan% := 1;
+    endif
+    
+    for i% := 0 to NumWavemarkPorts%-1 do
+        if ichan% = ExcludedChans%[0] then
+            ichan% := ExcludedChans%[1]+1;
+        endif;
+        'SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+        SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, WavemarkSamplingRate%); ' chan, port, event rate, points, pre-trigger, rate
+'        if UseChanByChanSampRates% > 0 then
+'            SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, WavemarkSamplingRateByPort32%[i%]); ' chan, port, event rate, points, pre-trigger, rate
+'            WMIndex% += 1;
+'        else
+'            SampleWaveMark(ichan%, WavemarkPorts%[i%], 2000, 34, 15, WavemarkSamplingRate%); ' chan, port, event rate, points, pre-trigger, rate
+'        endif;
+        if useCustomLabels% = 1 and CustomLabels$[WavemarkPorts%[i%]] <> "" then
+            SampleTitle$(ichan%, CustomLabels$[WavemarkPorts%[i%]] + "WM"); 
+        else
+            SampleTitle$(ichan%, "WMrk " + str$(WavemarkPorts%[i%])); 
+        endif;
+        ichan% += 1;
+	next
+    
+    ' Starting channel for continuous channels is iStartCont%, unless iStartCont% is <= 0, in which case we start
+    ' at NumWavemarkPorts + 1.
+    ichan% := iStartCont%;
+    if ichan% < 1 or ichan% <= NumWavemarkPorts% then
+        ichan% := NumWavemarkPorts% + 1;
+    endif
+    
+    var mycount%;
+    mycount% := 0;
+    for i% := 0 to NumContinuousPorts%-1 do
+        'printlog("Excluded Chans is %d\n",ExcludedChans%[]);
+        if ichan% = ExcludedChans%[0] then
+            ichan% := ExcludedChans%[1]+1;
+        endif;
+        'SampleWaveform(ichan%, ContinuousPorts%[i%], 20000);
+        printlog("iChan is %d\n",ichan%);
+        if UseChanByChanSampRates% > 0 then
+            SampleWaveform(ichan%, ContinuousPorts%[i%], WaveformSamplingRateByPort32%[i%]);
+            WFIndex% += 1;
+        else
+            mycount%+=1;
+            SampleWaveform(ichan%, ContinuousPorts%[i%], WaveformSamplingRate%);
+        endif;
+        if useCustomLabels% = 1 and CustomLabels$[ContinuousPorts%[i%]] <> "" then
+            SampleTitle$(ichan%, CustomLabels$[ContinuousPorts%[i%]] + "WF"); 
+        else
+            SampleTitle$(ichan%, "Cont " + str$(ContinuousPorts%[i%])); 
+        endif;
+        ichan% += 1;
+        
+    next
+    printlog("Requested %d continuous channels\n",mycount%);
+    return iStatus%;
+end
+
+
+
+
+
+
+
+'This function sets up the sampling on the Micro 1401 mark II for the 18 WaveMark/24 LFP max configuration
+'It creates 13 WaveMarks.  Two eye position channels are expected to be set up by the calling script
+func CreatePlexonSamplingConfiguration1824Micro()
+    var iStatus% := -1;
+    var i%;
+    
+    for i% := 0 to 12 do
+		SampleWaveMark(i%+1, i%, 2000, 34, 15, 28571); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(i%+1, "WMrk " + str$(i%+1)); 
+	next
+    
+    SampleUsPerTime(2.5);  'set same sample period for both units
+    SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end
+
+
+'This function sets up the sampling on the Power1401  for the 18 WaveMark/24 LFP max configuration
+'It creates 5 WaveMarks and 24 Waveform channels - note that eye channels are on the Micro
+func CreatePlexonSamplingConfiguration1824Power()
+    var iStatus% := -1;
+    var i%;
+    
+    for i% := 0 to 4 do
+		SampleWaveMark(i%+1, i%, 2000, 34, 15, 28571); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(i%+1, "WMrk " + str$(i%+14)); 
+	next
+    
+    for i% := 0 to 23 do
+		SampleWaveform(i%+6,i%+5,2484.5);  'chan, port, sampling rate
+		SampleTitle$(i%+6, "LFP " + str$(i%+1)); 
+	next
+    
+    SampleUsPerTime(2.5);  'set same sample period for both units
+    SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end
+
+
+
+'This function sets up the sampling on the Master 1401 for the Joe1 configuration
+'It creates 24 WaveMarks.  Two eye position channels are expected to be set up by the calling script
+func CreateJoePlexon1SamplingConfigurationMaster()
+    var iStatus% := -1;
+    var i%;
+    
+    for i% := 0 to 23 do
+		SampleWaveMark(i%+1, i%, 2000, 34, 15, 20000); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(i%+1, "WMrk " + str$(i%+1)); 
+	next
+    
+    SampleUsPerTime(2);  'set same sample period for both units
+    SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end
+
+
+'This function sets up the sampling on the Slave Power1401 for the Joe1 Configuration
+'It creates 24 Waveform channels - note that eye channels are on the Master
+func CreateJoePlexon1SamplingConfigurationSlave()
+    var iStatus% := -1;
+    var i%;
+    
+    for i% := 0 to 23 do
+		SampleWaveform(i%+1,i%,5000);  'chan, port, sampling rate
+		SampleTitle$(i%+1, "LFP " + str$(i%+1)); 
+	next
+    
+    SampleUsPerTime(2);  'set same sample period for both units
+    SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end
+
+
+
+
+
+'This function sets up the sampling on a Power1401 for the 7 WaveMark/15 LFP configuration
+'Two eye position channels are expected to be set up by the calling script on ports 14 and 15
+func CreateElectrodeSamplingConfiguration7WM15CN()
+    var iStatus% := -1;
+    var i%;
+    
+    for i% := 0 to 6 do
+		SampleWaveMark(i%+1, i%, 2000, 34, 15, 28571); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(i%+1, "WMrk " + str$(i%+1)); 
+	next
+    
+    for i% := 0 to 6 do  'these are the pre-eyecoil channels, do not use ports 14/15
+		SampleWaveform(i%+8,i%+7,2484.5);  'chan, port, sampling rate
+		SampleTitle$(i%+8, "LFP " + str$(i%+1)); 
+	next
+    
+    for i% := 7 to 14 do
+		SampleWaveform(i%+8,i%+9,2484.5);  'chan, port, sampling rate
+		SampleTitle$(i%+8, "LFP " + str$(i%+1)); 
+	next
+    
+    SampleUsPerTime(2.5);  'set same sample period for both units
+    SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end
+
+
+'This function sets up the sampling on a Power1401 for the 7 WaveMark/15 LFP configuration
+'Two eye position channels are expected to be set up by the calling script on ports 14 and 15
+func CreateElectrodeSamplingConfiguration15WF15WF2k()
+    var iStatus% := -1;
+    var i%;
+    
+    SampleChannels(40);  'we need some extra channels
+    
+    'do not use ports 14/15
+    'do not use channels 23-32
+    
+    'This does 14 of 15 30kHz waveforms
+    for i% := 0 to 13 do  'these are the pre-eyecoil channels, do not use ports 14/15
+		SampleWaveform(i%+1,i%,30000);  'chan, port, sampling rate
+		SampleTitle$(i%+1, "Raw " + str$(i%+1)); 
+	next
+    
+    'This does the 15th 30kHz waveform
+    SampleWaveform(15,16,30000);  'chan, port, sampling rate
+    SampleTitle$(15, "Raw " + str$(15)); 
+    
+    'This does 7 of 15 2kHz waveforms
+    for i% := 0 to 6 do
+		SampleWaveform(i%+16,i%+17,2000);  'chan, port, sampling rate
+		SampleTitle$(i%+16, "LFP " + str$(i%+1)); 
+	next
+    
+    'This does final 8 of 15 2kHz waveforms
+    for i% := 0 to 7 do
+		SampleWaveform(i%+33,i%+24,2000);  'chan, port, sampling rate
+		SampleTitle$(i%+33, "LFP " + str$(i%+8)); 
+	next
+    
+    'SampleUsPerTime(2.5);  'set same sample period for both units
+    'SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end
+
+
+'This function sets up the sampling on a Power1401 for the 24 WaveForm configuration
+'Two eye position channels are expected to be set up by the calling script on ports 14 and 15
+func CreateElectrodeSamplingConfiguration24WF()
+    var iStatus% := -1;
+    var i%;
+    
+    SampleChannels(34);  'we need some extra channels    
+    
+    'do not use ports 14/15
+    'do not use channels 23-32
+    
+    'This does 14 of 24 30kHz waveforms
+    for i% := 0 to 13 do  'these are the pre-eyecoil channels, do not use ports 14/15
+		SampleWaveform(i%+1,i%,30000);  'chan, port, sampling rate
+		SampleTitle$(i%+1, "Raw " + str$(i%+1)); 
+	next
+    
+    
+    'This does 8 of 24 30kHz waveforms
+    for i% := 0 to 7 do
+		SampleWaveform(i%+15,i%+16,30000);  'chan, port, sampling rate
+		SampleTitle$(i%+15, "Raw " + str$(i%+15)); 
+	next
+    
+    'This does final 2 of 15 30kHz waveforms
+    for i% := 0 to 1 do
+		SampleWaveform(i%+33,i%+24,30000);  'chan, port, sampling rate
+		SampleTitle$(i%+33, "Raw " + str$(i%+23)); 
+	next
+    
+    'SampleUsPerTime(2.5);  'set same sample period for both units
+    'SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    
+    return iStatus%;  'this is useless!
+end

@@ -1,0 +1,38 @@
+#include "ChannelUtilities.s2s"
+
+var ch% := 1;
+var t0 := -1;
+var status%;
+var tLast;
+var tTrigger;
+var nE%;
+var e%;
+
+if ViewKind() <> 0 then
+    Message("Current view must be a time view.");
+    halt;
+endif
+
+
+DlgCreate("EdgeTest");
+DlgChan(1, "Channel", 0x4);
+DlgReal(2, "Start time", -1, 1000000);
+status% := DlgShow(ch%, t0);
+if status% = 0 then
+    halt;
+endif
+
+PrintLog("Channel " + str$(ch%) + " t0 " + str$(t0) + " binsize " + str$(BinSize(ch%)) + "\n");
+
+tLast := t0;
+e% := FindEdge%(ch%, tLast, tTrigger);
+while  e% <> -1 do
+    nE% := ChanMeasure(ch%, 4, tTrigger, tTrigger+BinSize(ch%));
+    
+    PrintLog("%3d %3d %f\n", e%, nE%, tTrigger);
+    
+    tLast := tTrigger;
+    e% := FindEdge%(ch%, tLast, tTrigger);
+    
+wend
+

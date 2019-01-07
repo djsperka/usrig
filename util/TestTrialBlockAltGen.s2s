@@ -1,0 +1,48 @@
+#include "TrialBlockAltGen.s2s"
+
+var nTypes% := 4;
+var nTrialsPerBlock% := 2;
+var nBlocksRequired% := 2;
+var ntrials%;
+var i%;
+var r%;
+var status% := 0;
+var index%;
+var noFail% := 0;
+
+status% := tbaltgTestDialog%();
+while status% <> 0 do
+    
+    tbaltgInit(nTypes%, nTrialsPerBlock%, nBlocksRequired%);
+
+    ntrials% := tbaltgGetTrialIndex%(index%);
+    while ntrials% <> 0 do
+            
+        if ntrials% = 1 then
+            r% := Rand(3, 0); 'PrintLog(" r=" + str$(r%) + " ");
+            if r% <> 1 or noFail% = 1 then
+                PrintLog("%d (%d)", index%, tbaltgTrialIndexCompleted%(index%));
+            else 
+                ' This is a trial that failed. Test that we still get full blocks.
+                PrintLog("%dX ", index%);
+            endif
+            PrintLog("\n");
+            Yield();
+            ntrials% := tbaltgGetTrialIndex%(index%);
+        endif
+    wend
+        
+    status% := tbaltgTestDialog%();
+    
+wend
+
+func tbaltgTestDialog%()
+    var s% := 0;
+    DlgCreate("TBaltG Test");
+    DlgInteger(1, "NTypes", 0, 100);
+    DlgInteger(2, "Trials per block", 0, 100);
+    DlgInteger(3, "Blocks required", 0, 100);
+    DlgCheck(4, "No Failures?");
+    s% := DlgShow(nTypes%, nTrialsPerBlock%, nBlocksRequired%, noFail%);
+    return s%;
+end

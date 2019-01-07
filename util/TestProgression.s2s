@@ -1,0 +1,44 @@
+#include "MiscUtilities.s2s"
+
+var a%[100];
+var x[100];
+var i%, j%;
+var n% := 5;
+var status%;
+var xmin := 1;
+var xmax := 100;
+var ilog% := 0;
+var irand% := 0;
+var nrepeats% := 1;
+
+repeat
+    DlgCreate("Test Progression");
+    DlgInteger(1, "Nsteps (<=30)", 1, 30);
+    DlgReal(2, "min", 0.01, 1000);
+    DlgReal(3, "max", 0.01, 1000);
+    DlgCheck(4, "Log?");
+    DlgCheck(5, "Randomize?");
+    DlgInteger(6, "Repeats", 1, 10);
+    status% := DlgShow(n%, xmin, xmax, ilog%, irand%, nrepeats%);
+    if status% = 1 then
+        PrintLog("\n\n=========================\n\n");
+'        if nrepeats% = 1 then
+'            i% := GetParameterProgression%(n%+1, x[0:n%+1], a%[0: n%+1], xmin, xmax, ilog%, irand%);
+'            PrintLog("return val %d\n", i%);
+'            for i% := 0 to n% do
+'                PrintLog("%d: %f\n", i%, x[a%[i%]]);
+'            next
+'        else
+            i% := GetRepeatedParameterProgression%(n%+1, nrepeats%, x[], a%[], xmin, xmax, ilog%, irand%);
+            PrintLog("return val %d\n", i%);
+            for j% := 0 to nrepeats%-1 do
+                PrintLog("\nRepeat %d\n", j%);
+                for i% := 0 to n% do
+                    PrintLog("%d: x[%d] = %f\n", i%, a%[j% * (n%+1) + i%], x[a%[j% * (n%+1) + i%]]);
+                next
+            next
+'        endif
+            
+    endif
+until status% = 0
+

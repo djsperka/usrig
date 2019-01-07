@@ -1,0 +1,62 @@
+#include "DlgUtilities.s2s"
+
+var wm%[8];
+var cn%[8];
+var i%;
+var testwm% := 0;
+var testcn% := 0;
+
+for i% := 0 to Len(wm%[])-1 do
+    wm%[i%] := 0;
+next
+
+for i% := 0 to Len(cn%[])-1 do
+    cn%[i%] := 0;
+next
+
+wm%[0] := 1;
+wm%[6] := 1;
+wm%[7] := 1;
+cn%[7] := 1;
+
+DlgCreate("test");
+DlgCheck(1, "WM");
+DlgCheck(2, "CN");
+DlgShow(testwm%, testcn%);
+
+if testwm% = 1 then
+    doWM();
+endif
+
+if testcn% = 1 then
+    doCN();
+endif
+
+
+
+
+
+proc doCN()
+    i% := WMCNPortDialog%("Specify Electrodes", wm%[], cn%[]);
+    PrintLog("WMCNPortDialog returned %d\n", i%);
+
+    for i% := 0 to len(wm%[])-1 do
+        PrintLog("wm %d: %d cont?: %d\n", i%, wm%[i%], cn%[i%]);
+    next
+
+end
+
+
+proc doWM()
+
+i% := WMPortDialog%("Specify Electrodes", wm%[]);
+PrintLog("WMPortDialog returned %d\n", i%);
+
+for i% := 0 to len(wm%[])-1 do
+    PrintLog("wm %d: %d\n", i%, wm%[i%]);
+next
+    
+end
+
+
+

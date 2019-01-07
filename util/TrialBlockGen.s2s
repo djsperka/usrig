@@ -1,0 +1,149 @@
+'$Id$
+
+'****h* Spike2Util/TrialBlockGen
+' FUNCTION
+' Trial block generator
+'
+' Utility to generate blocks of trials that satisfy the following requirement: trials of 
+' each type must be balanced at the end of each block. For example, an experiment has 
+' 8 different trial types. The experimenter wants to run 10 trials of each type, but would 
+' like to do them in blocks so that every trial type will have 2 (4, 6) occurences before
+' any of them has 3 (5, 7). This way, if the experiment is stopped before all trials have 
+' run there is some guarantee that there is a good distribution of trial types. 
+'
+' To use this utility, a script must first call tbgInit() with the following parameters:
+'
+' nTypes%       number of trial types. The trial block generator will only provide an index
+'               in [0, nTypes%-1]. The user must interpret the index appropriately -- the 
+'               indices represent different trial types, but the trial list generator doesn't 
+'               know anything about them. 
+'
+' nTrialsPerBlock%      number of trials in a complete block. This many trials of each type 
+'                       must be completed before a new block is started.
+'
+' nBlocksRequired%      number of blocks that should be completed
+'
+' WARNING: The trial BLOCK generator uses the trial LIST generator, hence you may not use both
+' in a single script. 
+'
+' Usage:
+'
+' 1. include in another script: #include "TrialBlockGen.s2s"
+' 2. initialize first - before calling any other routines here: tbgInit()
+' 3. call tbgGetTrialIndex%(index%) to get a trial. This function returns 1 if an index was 
+'    generated (the parameter index% is set to the index value) or 0 if all blocks are
+'    complete. 
+' 4. As trials are completed, call tbgTrialCompleted(trialIndex%), where trialIndex% is the 
+'    index of the completed trial (duh). This function increments counters, checks for 
+'    completed blocks and initializes new blocks as needed. You are not required to call 
+'    tbgTrialCompleted(trialIndex%) for each trial. For example, if you want complete blocks
+'    of trials where the subject gives a correct response you can call tbgTrialCompleted%()
+'    for just those trials. 
+'
+' Remember - tbgGetTrialIndex%() will return 0 when all blocks are complete. You MUST call 
+' tbgTrialCompleted for SOME trials, however, otherwise tbgGetTrialIndex will return 
+' trial indices FOREVER. 
+'****
+
+#include "TrialListGen.s2s"
+#include "TrialGenInterface.s2s"
+
+var tbgNTrialTypes%:= 0;                ' must be supplied in tbgInit()
+var tbgNTrialsPerBlock% := 0;
+var tbgNBlocksRequired% := 0;
+var tbgInitialized% := 0;
+var tbgTrialList%[1];
+
+
+'****f* Spike2Util/TrialBlockGen/tbgInit
+' NAME
+' tbgInit(nTypes%, nTrialsPerBlock%, nBlocksRequired%)
+' SYNOPSIS
+' Initializes the block generator. Must be called once before using any other tbg* functions. 
+' INPUTS
+' nTypes% :     number of trial types. The trial block generator will only provide an index
+'               in [0, nTypes%-1]. The user must interpret the index appropriately -- the 
+'               indices represent different trial types, but the trial list generator doesn't 
+'               know anything about them. 
+' nTrialsPerBlock% :    number of trials in a complete block. This many trials of each type 
+'                       must be completed before a new block is started.
+' nBlocksRequired% :    number of blocks that should be completed
+'****
+
+proc tbgInit(nTypes%, nTrialsPerBlock%, nBlocksRequired%)
+    tlgInit(nTypes%, nTrialsPerBlock%, nBlocksRequired%, 1, 1);
+    trialgenSetType%(trialgenBlockType%);
+    return;
+end
+
+'****f* Spike2Util/TrialBlockGen/tbgGetTrialIndex%
+' NAME
+' tbgGetTrialIndex%(&index%)
+' SYNOPSIS
+' Gets the next trial index. 
+' INPUTS
+' index% : will be set to the value of the next index (unless the return value is 0). 
+' RETURN VALUE
+' Returns 0 if there are no more trials left, or 1 if there is a trial (and index% is set). 
+'****
+
+func tbgGetTrialIndex%(&index%)
+    var s%;
+    s% := tlgGetTrialList%(tbgTrialList%[]);
+    if s% = 1 then
+        index% := tbgTrialList%[0];
+    endif
+    return s%;
+end
+
+'****f* Spike2Util/TrialBlockGen/tbgGetTrialIndexAndBlock%
+' NAME
+' tbgGetTrialIndexAndBlock%(&index%, &block%)
+' SYNOPSIS
+' Gets the next trial index and block number. 
+' INPUTS
+' index% : will be set to the value of the next index (unless the return value is 0). 
+' block% : will be set to the value of the current block number (starts at 0)
+' RETURN VALUE
+' Returns 0 if there are no more trials left, or 1 if there is a trial (and index% and block% are set). 
+'****
+
+func tbgGetTrialIndexAndBlock%(&index%, &block%)
+    var s%;
+    s% := tbgGetTrialIndex%(index%);
+    if s% = 1 then
+        block% := tlgGetCurrentBlock%(block%);
+    endif
+    return s%;
+end
+
+
+'****f* Spike2Util/TrialBlockGen/tbgTrialIndexHowManyCompleted%(trialIndex%)
+' NAME
+' tbgTrialIndexHowManyCompleted%(trialIndex%)
+' SYNOPSIS
+' Gets the number of completed trials for a particular index type. 
+' INPUTS
+' trialIndex% : trial type index
+' RETURN VALUE
+' Number of completed trials (calls to tbgTrialIndexCompleted) for the index. 
+'****
+
+func tbgTrialIndexHowManyCompleted%(trialIndex%)
+    return tlgTrialIndexHowManyCompleted%(trialIndex%);
+end
+
+
+'****f* Spike2Util/TrialBlockGen/tbgTrialIndexCompleted
+' NAME
+' tbgTrialIndexCompleted(trialIndex%)
+' SYNOPSIS
+' Called when a trial of type trialIndex% has been completed. 
+' INPUTS
+' trialIndex% : trial type index
+'****
+
+proc tbgTrialIndexCompleted(trialIndex%)
+    tlgTrialIndexCompleted(trialIndex%);
+    return;
+end

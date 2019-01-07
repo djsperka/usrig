@@ -1,0 +1,119 @@
+' $Id: '
+
+'****h* Spike2Util/FileUtilities
+' FUNCTION
+' This module holds functions useful for manipulating filenames in Spike2. 
+'****
+
+
+'****fi Spike2Util/FileUtilities/ReplaceFileExtension$
+' NAME
+' ReplaceFileExtension$(view%, ext$)
+' SYNOPSIS
+' Takes the filename of the view specified by v% (or the current view if v% < 0) and 
+' forms a filename with the same path and basename, but with the extension ext$. The 
+' resulting filename is returned (the file is neither created nor opened!). 
+'
+' It doesn't matter if the extension ext$ has the preceding dot "." or not. If it is 
+' present it is used as-is. If the dot is not present AND the extension is of nonzero 
+' length then the dot is added. If the dot is not present AND the extension has zero 
+' length, then the filename returned has no dot OR extension. 
+' RETURN VALUE
+' Filename value. 
+'****
+
+' 
+'
+
+func ReplaceFileExtension$(v%, ext$)
+    var vTmp%;
+    var s$;
+    var dot$ := ".";
+    
+    ' Change view temporarily if requested
+    if v% >= 0 then
+        vTmp% := View(v%);
+    endif
+    
+    ' Filename base without dot or extension. 
+    s$ := FileName$(1)+FileName$(2)+FileName$(3)+FileName$(4);
+    
+    ' reset view if necessary
+    if v% >= 0 then
+        View(vTmp%);
+    endif
+    
+    ' add extension and/or dot unless ext$ = ""
+    if Len(ext$) > 0 then
+        if InStr(ext$, dot$) = 1 then
+            s$ += ext$;
+        else
+            s$ += dot$ + ext$;
+        endif
+    endif
+    
+    ' all done
+    return s$;
+end
+
+
+
+'****fi Spike2Util/FileUtilities/ModifyFilename$
+' NAME
+' ModifyFilename$(view%, prefix$, suffix$, ext$)
+' SYNOPSIS
+' Takes the filename of the view specified by v% (or the current view if v% < 0) and 
+' forms a new filename with the same path. If prefix$(suffix$) has nonzero length, then
+' it is prepended (appended) to the basename. If ext$ has nonzero length, it is used 
+' as the extension. If ext$ has zero length then the resulting filename will have no 
+' extension. The resulting filename is returned (the file is neither created nor opened!).
+'
+' It doesn't matter if the extension ext$ has the preceding dot "." or not. If it is 
+' present it is used as-is. If the dot is not present AND the extension is of nonzero 
+' length then the dot is added. If the dot is not present AND the extension has zero 
+' length, then the filename returned has no dot OR extension. 
+' RETURN VALUE
+' Filename value. 
+'****
+
+' 
+'
+
+func ModifyFilename$(v%, prefix$, suffix$, ext$)
+    var vTmp%;
+    var s$, b$, p$, e$;
+    var dot$ := ".";
+    
+    ' Change view temporarily if requested
+    if v% >= 0 then
+        vTmp% := View(v%);
+    endif
+    
+    ' Filename base without dot or extension. 
+    b$ := prefix$ + FileName$(3) + FileName$(4) + suffix$;
+    
+    ' Path
+    p$ := FileName$(1)+FileName$(2);
+    
+    'Extension
+    e$ := FileName$(5);
+    
+    ' reset view if necessary
+    if v% >= 0 then
+        View(vTmp%);
+    endif
+    
+    ' Modify extension unless ext$ = ""
+    if Len(ext$) > 0 then
+        if InStr(ext$, dot$) = 1 then
+            e$ := ext$;
+        else
+            e$ := dot$ + ext$;
+        endif
+    else
+        e$ := "";
+    endif
+    
+    ' all done
+    return p$+b$+e$;
+end

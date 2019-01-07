@@ -1,0 +1,66 @@
+#include "ChannelUtilities.s2s"
+
+
+' Run this when data file is current view. 
+' Frame channel is channel where frame pulses are.
+' Stim channel is the channel which indicates stim on/off
+'
+' Finds each stim period (from stim channel "up" to "down")
+' In each period, finds pulses in Frame channel. For each 
+' pulse AFTER the first, prints the time difference between
+' that pulse and the first pulse. 
+' 
+' For stimuli which have multiple page animations, the first pulse 
+' should be at the onset of the first page of the animation. 
+' For animations that are configured relative to that onset time, 
+' the results should help determine if frame changes are happening 
+' at the correct time.
+
+
+var ch% := 1;
+var s% := 1;
+var t0 := -1;
+var status%;
+var tLast;
+var tTrigger;
+var nE%;
+var e%;
+var tUp, tDn;
+var a0, aUp, aDn, aLast;
+
+if ViewKind() <> 0 then
+    Message("Current view must be a time view.");
+    halt;
+endif
+
+DlgCreate("AnimTest");
+DlgChan(1, "Frame Channel", 0x4);
+DlgChan(2, "S Channel", 0x4);
+DlgReal(3, "Start time", -1, 1000000);
+status% := DlgShow(ch%, s%, t0);
+if status% = 0 then
+    halt;
+endif
+
+PrintLog("Channel " + str$(ch%) + " t0 " + str$(t0) + " binsize " + str$(BinSize(ch%)) + "\n");
+
+tLast := t0;
+
+while FindPulseUp%(s%, tLast, tUp, tDn) = 1 do
+    PrintLog("Got Stim from %f - %f\n", tUp, tDn);
+    tLast := tDn;   ' save this for next search
+    
+    ' Get first pulse inside the stim
+    aLast := tUp;
+    if FindPulseUp%(ch%, aLast, aUp, aDn) = 1 then
+        a0 := aUp;  ' this is the onset of first frame of animation
+        aLast := aDn;
+        while FindPulseUp%(ch%, aLast, aUp, aDn) = 1 and aUp < tDn do
+            PrintLog("%f\t%f\t%f\n", aUp, aDn, aUp-a0);
+            aLast := aDn;
+        wend
+    else
+        PrintLog("No Frame Pulses in this stim period.\n");
+    endif
+wend
+
