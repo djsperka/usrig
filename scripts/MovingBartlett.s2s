@@ -1,0 +1,2725 @@
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' MovingBartlett - a program for the presentation of Bartlett Mel's moving bar (and
+'                  associated) stimuli.
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+#include "../../Spike2Util/UsreyUtil.s2s"
+#include "AttentionExtractFunctions.s2s"
+#include "UsreyFixationPoint.s2s"
+#include "UsreyDAQ.s2s"
+#include "UsreyGratings.s2s"
+
+
+'''''''''' Variables ''''''''''
+const screenXmm := 400;
+const screenYmm := 300;
+const screenXpixels := 1024;  'since the monitor is 4:3, we don't need to actually calculate both X and Y, not integer to do floating point math
+const grixelsPerRF := 5;  'had set this at 7, but I think it's actually 5, the outer 2 are extra-rf, make float for math
+const grixelsPerCenter := 7;  'we will draw 7, but the RF span is 5, make float for math
+var screenXdeg;  'these are the borders of the screen in visual degrees
+var screenYdeg;
+var screenMMPerDegree;
+var pixelsPerDegree;  'since the monitor is 4:3, we don't need to actually calculate both X and Y
+var pi := 3.141592653589793;  'There is a pre-defined constant "_pi", but only on 8.03 and beyond, explicitly defining pi for back-compatibility
+'var origRewardMS%;  'is this necessary?  It was being filled but not used.
+var backgroundColor$ := "gray";  'This is appropriate to allow both ON/OFF-center cells
+var trialsFile$:="D:\\work\\BartlettFile.txt";
+'trialsFile$:="E:\\testingshit\\BartlettFile.txt";  'For testing on Seager
+var trialsFileHandle%;
+var commonDir$ := "D:\\work\\melimages";   'These need to be lower case to satisfy VSG
+var backgroundDir$ := "melbackgrounds\\";  'These need to be lower case to satisfy VSG
+var foregroundDir$ := "melforegrounds\\";  'These need to be lower case to satisfy VSG
+
+
+'Stimulus variables
+var X;  'location of RF, in degrees
+var Y;  'location of RF, in degrees
+var W;  'width of RF, in degrees
+var H;  'height of RF, in degrees
+var gr$;  'will hold the grating parameters string
+var degPerGrixel; 
+var refreshesPerFrame%;
+var secsPerFrameIdeal;  'if frame rate were infinite
+var secsPerFrameActual;  'takes into account actual frame rate of monitor
+var screenXgrx%;  'The x distance from the origin (0,0) to the edge of the screen, so half the width of the entire grid
+var screenYgrx%;  'The y distance from the origin (0,0) to the edge of the screen, so half the height of the entire grid
+var pixelsPerGrixel%;  'We will now be choosing grids based on the pixel size of the grid squares
+var RFCenterXPixels%;  'Calculate RF X position in pixels, from center of screen
+var RFCenterYPixels%;  'Calculate RF Y position in pixels, from center of screen
+'If we assume: 500 mm screen distance, 400/300 mm screen width/height, and 0.5 degree minimum RF size (per Henry),
+'then we will have a grid of 46x35 degrees, and with 14 grixels/degree, then 644x490 grixels - so let's buffer that
+'and say 670x500 grixels max.  OK, needs to be odd, so 671x501
+'OK, ignore that.  It's not reasonable.  We are going to restrict this to a maximum of 77x77 (which is 5x the RF on each side)
+const maxXgrx% := 77;
+const maxYgrx% := 77;
+var backgroundGrid[maxXgrx%][maxYgrx%];
+
+
+
+' Channel numbers and handles
+var StimHandle%;	' handle for stimulus application
+var DataWindow%;		 
+var XChannel%;
+var YChannel%;
+var iFixationWindowChannel%;
+var iStimChannel%;
+var iFixChannel%;
+var iMonitorChannel%;
+
+var FrameTriggerChannel%;
+var StimChannel%;
+var StimChangeChannel%;
+var SynchChannel%;  'Currently unused
+var FixationPointChannel%;
+var ReadyChannel%;
+var XYWindow%;	
+
+' Display stuff
+var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
+
+
+' Timing variables
+var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
+var tLast:=-1;		' last time we checked for a trigger. 
+var xEye, yEye;		' eye positions
+var tLastUpdate:=-1;	' last time view was updated
+var vTrigger;		' set by NextTime to indicate trigger transition
+var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
+var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
+var tTrigger:=-1;	' temp var for newly discovered trigger times
+var mbRewardCount%;  'how many rewards given out?
+var mbTrialDur;  'calculated based on the number of frames presented.  In seconds.
+var mbTrialDurAnnulus;  'Annulus trials are not as long
+var mbThisTrialDur;  'to use on a trial-by-trial basis
+var mbRewardDelay:=0;  'How long after stim do we wait to give reward?  Set to zero for now, decide if we want to put it into a dialog box
+
+
+' Condition variables
+'backgrounds
+var useNoBackground%;
+var useStaticBackground%;
+var useFlickerBackground%;
+var useValidBackground%;  'does not make sense for annulus, I don't think 
+var useInvalidBackground%;  'does not make sense for annulus
+
+'stimuli and controls
+var useMovingBar%;
+var useContinuousMovingBar%;
+var useTRandBar%;  'temporally random
+var useSRandBar%;  'spatially random
+var useSTRandBar%;  'temporally and spatially random
+var useInwardAnnulus%;
+var useOutwardAnnulus%;
+var useContinuousInwardAnnulus%;
+var useContinuousOutwardAnnulus%;
+var useRandAnnulus%;
+
+'experimental parameters
+var ITI;
+var nRepeats%;  'number of repeats per condition
+var nPrePostFrames%;  'number of frames before/after the stimulus enters/exits the grid center
+var barSpeed;  'requested speed of the moving bar/background, in degrees/second
+var barSpeedActual;  'actual speed of the moving bar/background given monitor refresh restrictions, in degrees/second
+var interleave%;  'if 1, interleave all stimuli in a blocked design, if 0, present in order (what order?!?!)
+var backgroundDensity := 1/grixelsPerCenter;  'hard code for now...matches density of center
+var mbAcquisitionTime := 5;  'hard coded acquisition time to 5 seconds, change/put in dialog??
+var mbFixationTime := 0.5;  'hard coded fixation time before stimulus starts to 0.5 seconds, change/put in dialog??
+var mbAbortPenaltyTime := 2;  'hard coded, put in dialog??
+var CurrentAbortTime;
+const nMaxTrials% := 5000;  '5000 is probably too large, but for now...
+var nTrials%;  'How many trials do we actually have?
+var nFramesPerTrial%;  
+var nFramesPerTrialAnnulus%;  'We will have fewer frames for annulus trials
+var nFramesThisTrial%;  'to use on a trial-by-trial basis
+var trialOrder%[nMaxTrials%];  'a list of indices, which tells us which background/stimulus/direction to use on each trial
+var frameOrder%[30];  'this is just overly large, in case any drastic-ish changes are made; code is robust for any frame count up to and including size of frameOrder%[]
+var cellType%;  '0 = ON, 1 = OFF
+var useDirection%;  '0 = cardinal, 1 = diagonal, 2 = both
+var useCardinal%;
+var useDiagonal%;
+var isSpatiallyStructured%;
+var trialCount%;  'Will index the current trial
+var trialDescription$;  'For a sampletext before each trial
+
+
+' Type variables
+'backgrounds
+var bgTypeThisTrial%[nMaxTrials%];  'will fill with background type
+const typeNoBackground% := 1;
+const typeStaticBackground% := 2;
+const typeFlickerBackground% := 3;
+const typeValidBackground% := 4;  'does not make sense for annulus, I don't think 
+const typeInvalidBackground% := 5;  'does not make sense for annulus
+
+'stimuli and controls
+var stimTypeThisTrial%[nMaxTrials%];  'will fill with trial type
+
+'movingBartletts
+const typeMovingBar% := 1;
+const typeContinuousMovingBar% := 2;
+const typeTRandBar% := 3;  'temporally random
+const typeSRandBar% := 4;  'spatially random
+const typeSTRandBar% := 5;  'temporally and spatially random
+'bartlettMelons
+const typeInwardAnnulus% := 6;
+const typeOutwardAnnulus% := 7;
+const typeContinuousInwardAnnulus% := 8;
+const typeContinuousOutwardAnnulus% := 9;
+const typeRandAnnulus% := 10;
+
+'directions
+'1-8 are for movingBartletts
+'1 = right      (0 degrees)
+'2 = right+up   (45 degrees)
+'3 = up         (90 degrees)
+'4 = left+up    (135 degrees)
+'5 = left       (180 degrees)
+'6 = left+down  (225 degrees)
+'7 = down       (270 degrees)
+'8 = right+down (315 degrees)
+'9-10 are for bartlettMelons
+'9 = inward     
+'10 = outward   
+var directionThisTrial%[nMaxTrials%];  'will fill with trial direction
+
+
+
+
+' Constants for states
+const stateVSGWait% := 1;		        ' wait for vsg to send ready signal #1
+const stateVSGWaitConfirm% := 2;		' wait for vsg to send ready signal #2
+const stateWaitForEyesOnScreen% := 3;   ' Wait for eyes to go onto screen
+const stateStartTrial% := 4;            ' Put up fixation point with eyes on screen
+const stateWaitForFixPtOn% := 5;        ' Verify fixation point actually gets on screen
+const stateWaitThroughStimulus% := 6;   ' Wait through stimulus
+const stateAbort% := 7;                 ' If fixation broken, end animation, remove fixation point
+const stateWaitForBlank% := 8;          ' Verify removal of fixation point
+const stateWaitForAcquisition% := 9;
+const stateHoldFixationToStimOn% := 10;
+const stateWaitForStimOn% := 11;
+var iState% := stateVSGWait%;	' present state
+
+var i%;
+var j%;
+
+
+
+'''''''''' Preliminaries ''''''''''
+
+
+' Check for valid data file path
+if Len(dataDataSet$) = 0 then
+	Message("No data set is selected! Edit Data parameters...");
+	' Might be nice to open the dialog here....
+	halt;
+endif;
+
+
+'get original reward value from config
+'origRewardMS% := GetJuiceRewardMS%();
+
+
+' Assign channel numbers for eye X,Y and trigger. 
+XChannel% := 23;
+YChannel% := 24;
+FrameTriggerChannel% := 25;
+FixationPointChannel% := 26;
+StimChannel% := 27;
+StimChangeChannel% := 28;
+ReadyChannel% := 29;
+
+
+
+
+'Run dialog box to get parameters for this experiment
+if MovingBartlettDialog%() = 0 then
+    halt;
+endif;
+
+'This function loops through the selected conditions, and fills 
+'bgTypeThisTrial%[], stimTypeThisTrial%[], directionThisTrial%[], nTrials%
+GenerateTrials%();
+
+'Fill trialOrder%[] with indices to background/stimulus/direction
+if interleave% = 1 then
+    Shuffle%(nTrials%,trialOrder%[]);
+else  'I'm not sure there's a built in way to fill an array with its literal index without looping, but it's not like this is hard
+    for i% := 0 to nTrials%-1 do
+        trialOrder%[i%] := i%;
+    next
+endif;
+
+'Write the TrialsFile$
+'As of now, it's becoming clearer what the syntax of the file is
+'So right now we have nTrials%, and we have directionThisTrial%[], stimTypeThisTrial%[], and bgTypeThisTrial%[] filled
+'and we have a trialOrder%[] variable to index them
+
+
+'Let me write a skeleton here...
+
+var currTrial%;  'Index for this trial
+var thisBG%;  'If -1, no background, if 0, write function will choose random background, otherwise use this background
+var mostRecentBG%;  'We don't want to repeat flickering backgrounds, because it could look like motion
+var xBG%;  'This will be a coordinate for positioning the background, in X
+var yBG%;  'This will be a coordinate for positioning the background, in Y
+var origxBG%;  'We need to remember the start position for diagonal, because if we are moving them, the number of pixels moved is not constant
+var origyBG%;
+var xFG%;  'This will be a coordinate for positioning the foreground, in X
+var yFG%;  'This will be a coordinate for positioning the foreground, in Y
+var currFrame%;
+
+'Open TrialsFile$ for writing
+trialsFileHandle% := FileOpen(TrialsFile$, 8, 1);  'the handle is actually not used, but that's OK
+
+'Write preliminaries for file, it's just the common folder
+Print("Folder %s\n\n",commonDir$);  'commonDir$ is "F:\\work\\", note that example file does not have trailing slash, will have to see how this goes
+
+'Determine foreground center, really only need to do this once per file, though we won't use xFG%/yFG% until a bit later
+GetForegroundCenter(xFG%,yFG%,pixelsPerGrixel%,RFCenterXPixels%,RFCenterYPixels%);
+
+'Loop through each trial, using the value in trialOrder%[i%] as the trial index
+for i% := 0 to nTrials%-1 do
+    'Get current index for this trial
+    currTrial% := trialOrder%[i%];
+    
+    'Write preliminaries for each trial, turns out this is just the trial count
+    Print("Trial %d\n",i%+1);
+    'Printlog("Trial %d, index %d\n",i%+1,currTrial%);  'this was just for testing
+    
+    'Make random draw for background if background is static or drifts (if it flickers, we should draw random background at each frame)
+    docase
+    case bgTypeThisTrial%[currTrial%] = 1 then  'if no background
+        thisBG% := -1;  'there will be no background
+    case bgTypeThisTrial%[currTrial%] = 3 then  'if flicker background
+        thisBG% := 0;  'we will select a random background every frame
+    else
+        thisBG% := ceil(rand(16,0));  'we will select a random background (of 16) for this trial, and stick with it through the trial
+    endcase
+    
+    'Make initial random draw for background center if static or drifting (if flickering, random draw for center at each frame)
+    if thisBG% > -1 then  'just random draw even if flickering, we will just overwrite in that case
+        SelectLegalBackgroundCenter(xBG%,yBG%,pixelsPerGrixel%,bgTypeThisTrial%[currTrial%],directionThisTrial%[currTrial%],RFCenterXPixels%,RFCenterYPixels%,nFramesPerTrial%);
+        origxBG% := xBG%;  'We need to keep this for diagonals; it gets updated for moving backgrounds, but we need to know the original location because number of pixels moved is non-integer
+        origyBG% := yBG%;
+    endif;
+    
+    'Determine if this trial is spatially structured, get ordered list of foreground indices
+    docase
+    case stimTypeThisTrial%[currTrial%] = 1 or stimTypeThisTrial%[currTrial%] = 3 then
+        isSpatiallyStructured% := 1;
+    case stimTypeThisTrial%[currTrial%] = 4 or stimTypeThisTrial%[currTrial%] = 5 then
+        isSpatiallyStructured% := 0;
+    case stimTypeThisTrial%[currTrial%] = 6 or stimTypeThisTrial%[currTrial%] = 7 or stimTypeThisTrial%[currTrial%] = 10 then
+        isSpatiallyStructured% := 2;
+    'Currently types 2, 8-9 are not implemented
+    endcase
+    
+    'Determine if this trial is temporally structured, assign list of foreground indices based on this
+    docase
+    case stimTypeThisTrial%[currTrial%] = 1 or stimTypeThisTrial%[currTrial%] = 4 then
+        for j% := 0 to 6 do
+            frameOrder%[j%] := j%;  'This will make the values 0-6, will need to add one (could easily do 1-7 but below line does 0-6, make this congruent)
+        next
+        nFramesThisTrial% := nFramesPerTrial%;
+    case stimTypeThisTrial%[currTrial%] = 3 or stimTypeThisTrial%[currTrial%] = 5 then
+        Shuffle%(7,frameOrder%[]);  'This will make the values 0-6, will need to add one
+        nFramesThisTrial% := nFramesPerTrial%;
+    case stimTypeThisTrial%[currTrial%] = 6 then
+        for j% := 0 to 3 do
+            frameOrder%[j%] := j%;  'This will make the values 0-3, will need to add one (could easily do 1-4 but below line does 0-3, make this congruent)
+        next
+        nFramesThisTrial% := nFramesPerTrialAnnulus%;
+    case stimTypeThisTrial%[currTrial%] = 7 then
+        for j% := 0 to 3 do
+            frameOrder%[j%] := 3-j%;  'This will make the values 3-0, will need to add one (could easily do 1-4 but below line does 0-3, make this congruent)
+        next
+        nFramesThisTrial% := nFramesPerTrialAnnulus%;
+    case stimTypeThisTrial%[currTrial%] = 10 then
+        Shuffle%(4,frameOrder%[]);  'This will make the values 0-3, will need to add one
+        nFramesThisTrial% := nFramesPerTrialAnnulus%;
+    'Currently types 2, 8-9 are not implemented
+    endcase
+    
+    'Loop through each frame
+    currFrame% := 0;
+    for j% := 1 to nFramesThisTrial% do
+        'Write preliminaries for each frame
+        Print("Frames %d\n",1+(refreshesPerFrame%*(j%-1)));  'Write the time (in refreshes) of the current frame
+        
+        'Update center of background if drifting, make random draw of background/center if flickering, no need to do this if there is no background
+        'This function will not move the background on the first frame, because that would not make sense
+        if thisBG% > -1 then 
+            UpdateBackgroundCenter(xBG%,yBG%,pixelsPerGrixel%,bgTypeThisTrial%[currTrial%],directionThisTrial%[currTrial%],RFCenterXPixels%,RFCenterYPixels%,nFramesThisTrial%,j%,origxBG%,origyBG%);
+        endif;
+        
+        'Write background values to file
+        WriteBackground(thisBG%,xBG%,yBG%,directionThisTrial%[currTrial%],pixelsPerGrixel%,cellType%,backgroundDir$,j%,mostRecentBG%);
+        
+        'Write central blank to file on every trial, use -1 to indicate the blank or -2 to indicate the circular blank for annuli
+        if stimTypeThisTrial%[currTrial%] <= 5 then  'rectangular blank
+            WriteForeground(-1,xFG%,yFG%,directionThisTrial%[currTrial%],pixelsPerGrixel%,0,foregroundDir$,0);  'On/Off and FrameCount do not matter for the blank, zeroing them
+        else 'circular blank
+            WriteForeground(-2,xFG%,yFG%,directionThisTrial%[currTrial%],pixelsPerGrixel%,0,foregroundDir$,0);  'On/Off and FrameCount do not matter for the blank, zeroing them
+        endif;
+        
+        'Only write foreground during the central nFramesThisTrial% frames
+        if j% > nPrePostFrames% and j% <= (nFramesThisTrial%-nPrePostFrames%) then
+            currFrame% += 1;
+            'Write foreground to file, this will select/draw correct foreground based on direction, etc.
+            WriteForeground(isSpatiallyStructured%,xFG%,yFG%,directionThisTrial%[currTrial%],pixelsPerGrixel%,cellType%,foregroundDir$,frameOrder%[currFrame%-1]+1);
+        endif;
+    next
+    'Write closer for each trial
+    Print("Frames %d end\n\n",1+(refreshesPerFrame%*(nFramesThisTrial%)));  'Write the time (in refreshes) when stimulus should turn off
+next
+
+'Close file, trial file is now written
+FileClose(0);
+
+
+printlog("Number of trials is %d\n",nTrials%);
+
+'For now, we are just quitting
+'printlog("Quitting, because the script isn't ready yet!\n");
+'halt;
+
+'If we are not using the Plexon (and thus linking the two 1401s together, just use the standard order of operations:
+'1) create sampling configuration, 2) Initialize windows, 3) Initialize/run toolbar.
+'However, if we are linking the 1401s we have to do this in a different order, because we have to open up the second
+'instance of Spike 2 BEFORE setting up the sampling configuration/windows on the first instance.  Doing this in the
+'wrong order results in a non-fatal error in the second Spike2 instance indicating that the file which is preparing
+'to be recorded in the first instance cannot be accessed, despite no explicit attempt to access any such thing.
+'Hence, for the Plexon setups, we first initialize the toolbar, which has a specialty button "Start Plexon".  StartPlexon%()
+'launches the second instance and the associated script, and both scripts move forward independently to create their own
+'sampling configuration, initialize their own windows and are ready to have sampling started.  Note well that sampling
+'must be started on the POWER 1401 (the second, non-dominant instance of Spike2) FIRST and on the MICRO 1401 (the first, 
+'dominant instance of Spike 2) SECOND.  Starting sampling on the Micro will run the VSG program (Fixstim) which gives
+'the sampling trigger and sets the experiment in motion.
+if UsePlexon% = 0 then
+    CreateSampleConfiguration();
+    
+    ' Get display windows ready
+    InitializeWindows();
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+else
+    InitializeToolbar();
+endif;
+
+
+
+
+
+
+'''''''''' Functions ''''''''''
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Reward%()
+    DefaultReward();
+    'No sample text, just use 'R' from keyboard channel
+	return 1;
+end;
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Looking%(EyePosX,EyePosY)
+	'Determine if the eye position is within the fixation window
+	if (Pow(EyePosX-FixationX,2) + Pow(EyePosY-FixationY,2)) <= Pow(WindowRadius,2) then return 1; else return 0; endif
+end;
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Returns max limits (in degrees in variables xmax, ymax) for the screen, this is in units away from the center
+'so the entire width of the screen is 2*xmax
+proc ScreenBounds(scrXmm,scrYmm,&xmax,&ymax)
+    var d2s$;
+    var d2s; 
+    
+    d2s$ := GetDistanceToScreenMM$();
+    d2s := val(d2s$);
+    'printlog("Distance to screen is %f\n",d2s);
+    
+    xmax := ATan((scrXmm/2)/d2s)*180/(4.0*ATan(1.0));  'maximum x in degrees
+    ymax := ATan((scrYmm/2)/d2s)*180/(4.0*ATan(1.0));  'maximum y in degrees
+    'printlog("Max x is %f degrees and max y is %f degrees\n",xmax,ymax);
+    
+end
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc CreateSampleConfiguration()
+	var index;
+    var key$;
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    SampleClear(); 'Set standard sampling state
+    
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    if UsePlexon% = 0 then
+        SampleAutoName$(dataCellName$ + "_mel_000");  'NOTE: maximum of 13 characters!!!
+    else
+        EqualizeSMRFilenumbers(dataPathRoot$ + "\\" + dataDataSet$,dataCellName$+"_melMICRO_",dataCellName$+"_melPOWER_");
+        SampleAutoName$(dataCellName$ + "_melMICRO_000");  'NOTE: maximum of 13 characters!!!
+        SetStringRegistryValue(key$, "pref", "mel");
+    endif;
+    SampleAutoFile(1);  'Enable automatic file naming
+    
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    
+	'Channel recording definitions
+	SampleEvent(FrameTriggerChannel%,0,2,3600); 'Trigger channel, level
+	SampleComment$(FrameTriggerChannel%,"Frame");
+	SampleTitle$(FrameTriggerChannel%,"Frame");
+    
+ 	SampleEvent(FixationPointChannel%,2,2,3600); 'Trigger channel, level
+	SampleComment$(FixationPointChannel%,"Fixation");
+	SampleTitle$(FixationPointChannel%,"Fixation");
+    
+    'Assume we will use stim channels on MovingBartlett	
+	SampleEvent(StimChannel%,3,2,3600); 'Trigger channel, level
+	SampleComment$(StimChannel%,"Stim");
+	SampleTitle$(StimChannel%,"Stim");
+	
+	SampleEvent(StimChangeChannel%,4,2,3600); 'Trigger channel, level
+	SampleComment$(StimChangeChannel%,"Stim Chg.");
+	SampleTitle$(StimChangeChannel%,"Stim Chg.");
+	
+	SampleEvent(ReadyChannel%,6,2,3600); 'Trigger channel, level
+	SampleComment$(ReadyChannel%,"VSG Ready");
+	SampleTitle$(ReadyChannel%,"VSG Ready");
+    
+    ' Set up channels for sampling electrodes.
+    docase
+    case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
+        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
+    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
+        CreateElectrodeSamplingConfiguration7WM15CN();
+    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
+        CreateElectrodeSamplingConfiguration15WF15WF2k();
+    case UsePlexon24WF% = 1 then
+        CreateElectrodeSamplingConfiguration24WF();
+    else  'just set up the channels as expected
+        CreateElectrodeSamplingConfiguration(1, 11);
+    endcase;
+	
+    ' Set up eye channels whether using Plexon or not
+	SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+	SampleTitle$(XChannel%,"Eye X");
+	SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+	SampleTitle$(YChannel%,"Eye Y");
+    
+    'I don't know what this is, but it's a problem for Plexon configs
+    '    if UsePlexon% = 0 and UsePlexon7WM15CN% = 0 then  'Kill it if we're using the Plexon
+    '        SampleWaveform(NumberOfElectrodes%+10, 6, 1000);
+    '        SampleTitle$(NumberOfElectrodes%+10, "PD");
+    '    endif;
+    
+    
+	SampleTextMark(200);  'increase number of allowed characters, 1 is so stingy!
+    
+    SampleSequencer(script$ + "Tuning.pls");  'tuning will work, for now just need fixon and fixoff
+    docase
+    case UsePlexon% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
+        SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
+    case UsePlexon15WF15WF2k% = 1 or UsePlexon24WF% = 1 then 
+        SampleOptimise(2,2,9,1,50,0,1);  'for big-data, need to set for burst mode, Power1401-3 setting is not clear because help does not list it.  9?  8 for micro1401-3?
+    else
+        SampleOptimise(2,2,2,2,50);  'otherwise: full optimize timing, channels may have different rates, Power1401 (lowest common denominator, so eh), low usPerTime of 2, high usPerTime of 50
+    endcase;
+    
+	SampleMode(1); 'Continuous sampling
+end;
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc InitializeWindows()
+    
+    'Note that this function has been pared down more severely than others because it's not clear how the
+    'best way to build it up (for future presentations of movable gratings, etc.) is.  For training this
+    'will be fine, but there will likely be a decent amount of work to be done here for a final product.
+    
+    
+	'Open the data sampling window
+	DataWindow% := FileNew(0,4);  'show spike shape setup dialog, only opens if there are WaveMark channels in the sampling config
+    printlog("datawindow is %d\n",dataWindow%);
+	Window(0,48,100,95);
+	View(DataWindow%).WindowVisible(1);
+    
+    if UsePlexon% = 1 then
+        'Get the name of the most recent .s2r resource file, if any
+        var key$;
+        var fn$;
+        key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
+        Profile(key$, "microS2Rfile", "x", fn$);
+        printlog("S2R file name %s was retrieved from registry\n",fn$);
+        
+        'Apply the ,s2r resource file to the current data window, which will apply the spike shape templates
+        'if useSpikeTemplate% = 1 and fn$ <> "x" then
+        if fn$ <> "x" then  'OK, Henry says no checkbox necessary, just load up every time 
+            FileApplyResource(fn$);
+            printlog("S2R file name %s was loaded using FileApplyResource\n",fn$);
+        endif
+    endif;
+    
+    
+	'Open an XY view to display eye position, etc.
+	XYWindow% := FileNew(12);
+	XRange(-30,30);
+	YRange(-2,-30,30);
+	XYDrawMode(0,5,0);
+	WindowVisible(1);
+	Window(0, 0, 100, 47);
+	XYColour(1,16);
+	XYSize(1,-1);
+    
+    
+    
+    'Calcuate the fixation window
+	var index%;
+	var twopi;
+	twopi := 2.0*4.0*ATan(1.0);
+	
+	for index% := 0 to 35 do
+		FixWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
+		FixWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
+	next;
+    
+	'Create a new channel in the XY view to display the fixation window, draw it directly
+	iFixationWindowChannel% := XYSetChan(0);
+	XYColour(iFixationWindowChannel%,13);
+	XYDrawMode(iFixationWindowChannel%,2,1);
+	XYJoin(iFixationWindowChannel%,1);
+	'Draw the fixation window
+	XYAddData(iFixationWindowChannel%, FixWindowX[], FixWindowY[]);
+    
+    
+    'Create a new channel in the XY view to show the monitor's location, draw it directly
+	iMonitorChannel% := XYSetChan(0);
+	XYColour(iMonitorChannel%,13);
+	XYDrawMode(iMonitorChannel%,3,1);
+	XYJoin(iMonitorChannel%,2);
+	XYAddData(iMonitorChannel%,-screenXdeg,-screenYdeg);
+	XYAddData(iMonitorChannel%,screenXdeg,-screenYdeg);
+	XYAddData(iMonitorChannel%,screenXdeg,screenYdeg);
+	XYAddData(iMonitorChannel%,-screenXdeg,screenYdeg);
+    
+    
+	'Create a new channel in the XY view to display the stimulus, use DrawStim() to draw at appropriate time
+	iStimChannel% := XYSetChan(0);
+    
+    'Create a new channel in the XY view to display the fixation point, use DrawFix() to draw at appropriate time
+	iFixChannel% := XYSetChan(0);
+    
+    'Display of the location of the animal's fixation is done through IdleProcessing%()
+    
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitializeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+    
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+	UpdateToolbarText();  
+    if UsePlexon% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
+        ToolbarSet(1,"Sample start",Start%);
+    endif;
+	ToolbarSet(2,"Sample stop", Stop%);
+	ToolbarSet(3,"Juice", Reward%);
+	ToolbarSet(4,"Quit",Quit%);
+	ToolbarEnable(2,0);
+	Toolbar("Go",0x3ff);
+    
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func StartPlexon%()
+    
+    
+    'Start the Power1401!  This is a bit cumbersome, and I'm not sure it's transferable, but it's a start, perhaps.
+    var fp$;  'to hold current file path
+    var fp2$;  'to hold destination file path
+    fp$ := FilePath$();  'get current file path
+    printlog("%s\n",fp$);  'and tell the world what it was
+    FilePathSet("F:/work/AlertRig/Spike2Scripts");  'change the file path
+    fp2$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp2$);  'by telling the world about it (hint: it works)
+    
+    'These two functions are not done before initializing the toolbar in dual-1401 mode
+    'Must run this BEFORE the PROGRUN command, because both this sequence AND SetPlexon...
+    'access the same directory, and this was causing conflicts because they were running
+    'simultaneously.  Here, CreateSampleConfiguration is done accessing the directory before
+    'SetPlexon... is started, and everything is kosher.
+    CreateSampleConfiguration();
+    
+    progrun("sonview.exe /M /u2 SetPlexonRecording1824OnPower1401.s2s");  'run the program, .s2s file is now on default path by design
+    
+    FilePathSet(fp$);  'change the file path back to what it was
+    fp$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp$); 'and tell the world to verify
+    
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+    ' Get display windows ready
+    InitializeWindows();    
+    
+    return 1; 'stay in toolbar
+    
+end
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+	var CommandLine$;
+	var Extras$;
+    var i%;
+    var actualSpecFileName$;
+    
+    'hard code pReward to 1 (DefaultReward still uses this)
+    pReward := 1;
+    
+    'start sampling
+    if UsePlexon% = 1 then
+        SampleStart(1);  'set sampling to start on a trigger     
+    else
+    	SampleStart(0); 'Start sampling now
+    endif;
+    
+	' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");
+
+    
+    
+    'Actual command line for Mel experiment is of the form:
+	'-f 0,0,2,blue  -b gray -d 200 -o C:\\Users\\Lab\\source\\repos\\vsg-progs\\AlertRig\\src\\fixstim\\px16-trials-s.txt
+    'Build command line
+    'Extras$ := " -b " + backgroundColor$ + " -d " + GetDistanceToScreenMM$() + " -o " + trialsFile$; 
+    Extras$ := " -b " + backgroundColor$ + " -d " + GetDistanceToScreenMM$() + " -o " + trialsFile$; 
+    
+    'Hardcode the fixation point, this is at the center of the screen
+    fixationColor$ := "blue";  
+    FixationX := 0;
+    FixationY := 0;
+    FixationX := 3;
+    FixationY := 3;
+    FixationArg$ := " -f " + str$(FixationX) + "," + str$(FixationY) + "," + str$(FixationDiameter) + "," + fixationColor$;
+    
+    
+    ' djs Update this to use remote stim when configured
+    'if GetUseRemoteStimulus%() = 1 then
+    '    CommandLine$ := "cmd /k " + GetBinDir$(1) + "remote.exe " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim -F "  + Extras$ + FixationArg$;
+    'else
+    '    CommandLine$ := "cmd /k " + GetBinDir$(1) + "fixstim.exe -F " + Extras$ + FixationArg$;
+    'endif
+    if GetUseRemoteStimulus%() = 1 then
+        CommandLine$ := "cmd /k " + GetBinDir$(1) + "remote.exe " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim " + FixationArg$  + Extras$;
+    else
+        CommandLine$ := "cmd /k " + GetBinDir$(1) + "fixstim.exe " + FixationArg$ + Extras$;
+    endif
+    
+
+    'Print the command line
+    for i% := 1 to Len(CommandLine$) step 100 do
+        SampleText(Mid$(CommandLine$, i%, 100));
+    next
+    
+    
+	'Begin the stimulus program. It will take a few seconds for the VSG to initialize.
+	PrintLog(CommandLine$+"\n");
+	StimHandle% := ProgRun(CommandLine$,1);
+	if StimHandle% <0 then Message("Could not start stimulus."); halt; endif
+	'Yield(5);	'Wait a few seconds to make sure the VSG has time to initialize.
+	
+	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);
+	ToolbarEnable(1,0);
+	View(DataWindow%);
+	Yield(.1);
+    return 1;
+end;
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+    var i%, mylen%;
+    var fn$;
+    var chanToExport%[30];
+    
+	' Disable idle process func
+	ToolbarSet(0,"");  
+    
+	' Tell stim app to shut down
+	SafeSampleKey("Q");
+	Yield(.1);
+	SampleStop();
+    
+	ProgKill(StimHandle%);
+	while ProgStatus(StimHandle%) > 0 do
+		Yield();
+	wend
+    
+    
+    ' Write parameter file
+	WriteParameterFile();
+      
+    
+    if UsePlexon% = 1 then
+        ' Save most recent .s2r file name to registry
+        fn$ := Left$(fn$,mylen%-4);
+        fn$ := fn$ + ".s2r";
+        var key$;
+        key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
+        Profile(key$, "microS2Rfile", fn$);
+        printlog("S2R file name %s was saved to registry\n",fn$);
+    endif;
+    Quit%();
+    
+end;
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Used to hard-quit from toolbar. This will close data files without saving!!! 
+' It is important that this function be disabled once sampling is started!!!
+
+func Quit%()
+	FileClose(-1,-1);
+    halt;
+	return 0;
+end;
+
+
+
+
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func IdleProcessing%()
+    
+	var iStatus% := 1;	
+    
+    'The trick here is that sometimes sampling isn't caught up on all channels.  MaxTime() may return a lower
+    'value than MaxTime(ChanN%). When we find a trigger and try to place a TextMark, SampleText will do an internal
+    'call to MaxTime() - no channel # - to determine whether to place it at the requested time or at MaxTime().
+    'In some instances, this has resulted in the TextMark being placed earlier than the event which caused it.
+    'We are now explicitly checking for this - if we find it, we have to avoid updating tLast and continue checking
+    'in order to not miss the trigger AND to put the TextMark at the right time.
+    'Note that we will ONLY do the additional check in instances where a timed TextMark is being placed at the 
+    'time of the trigger.
+    var updateTLast% := 1;  'due to trigger issues, we may not always update tLast (but we usually will)
+    
+    
+    tNow := View(DataWindow%).MaxTime();
+    
+    'get eye position, but don't check if tNow is small enough that we would give a negative value to ChanMeasure
+    if tNow > .006 then
+        xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+        yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+    endif;
+    
+    ' Don't update display every time....
+    if tNow-tLastUpdate > .005 then
+        View(XYWindow%).XYAddData(1,xEye,yEye);
+        tLastUpdate := tNow;
+    endif
+    
+    
+    
+    'Enter IdleProcessing case statment
+    docase 
+    case iState% = stateVSGWait% then
+        
+        ' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6 (=ReadyChannel%).
+        tTrigger := View(DataWindow%).NextTime(ReadyChannel%, tLast, vTrigger);
+        if tTrigger > tLastTrigger and vTrigger = 0 then
+            PrintLog("state stateVSGWait: Got leading edge of trigger\n");
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateVSGWaitConfirm%, tTrigger);
+        endif;
+        
+    case iState% = stateVSGWaitConfirm% then
+        
+        ' Waiting for VSG to confirm it is ready. The downward side of the pulse is expected...
+        tTrigger := View(DataWindow%).NextTime(ReadyChannel%, tLastTrigger, vTrigger);
+        if tTrigger > tLastTrigger and vTrigger = 1 then
+            PrintLog("state stateVSGWaitConfirm: Got trailing edge of trigger\n");
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateStartTrial%, tTrigger);
+        endif;
+        
+        
+    case iState% = stateStartTrial% then
+        
+        if tNow > tStateStart + ITI + CurrentAbortTime then  'there will be an ITI delay on the very first trial
+            
+            PrepareTrial();  'This only gets a description of the trial (for sampletexting) into trialDescription$ (and now also assigns the mbThisTrialDur variable)
+            
+            'Start trial. Put up fixation point.
+            PrintLog("Request Fixation Point\n");
+            SafeSampleKey("F");
+            ChangeStateTo(stateWaitForFixPtOn%, tNow);
+        endif;
+        
+        
+        
+        
+    case iState% = stateWaitForFixPtOn% then  
+        tTrigger := View(DataWindow%).NextTime(FixationPointChannel%, tLast, vTrigger);
+        if tTrigger > tLast then
+            if tTrigger < tNow then    'View(DataWindow%).MaxTime() then  'try using tNow to avoid rare double-catch
+                ' Fixation point is up
+                PrintLog("stateWaitForFixPtOn: signal received. " + str$(tTrigger) + "\n");
+                tLastTrigger := tTrigger;
+                ChangeStateTo(stateWaitForAcquisition%, tTrigger);
+                SampleText("Fixation point on",tTrigger);
+                DrawStim(1);	' this draws the location of the fixpt.
+            else
+                updateTLast% := 0;  'waiting for sampling to catch up
+            endif;
+        endif
+        
+    case iState% = stateWaitForAcquisition% then
+        ' Waiting for eye to fall inside of fixation window
+        docase
+        case Looking%(xEye, yEye) = 1 or 1 then  'TODO get rid of OR 1
+            PrintLog("stateWaitForAcquisition: eye in fixation window.\n");
+            ChangeStateTo(stateHoldFixationToStimOn%, tNow);
+            SampleText("Fixation Acquired",tNow);
+        else 
+            if tNow - tStateStart > mbAcquisitionTime then  'simple abort on failure to acquire
+                PrintLog("stateWaitForAcquisition: failed.\n");
+                ChangeStateTo(stateAbort%, tNow);
+            endif
+        endcase
+        
+        
+    case iState% = stateHoldFixationToStimOn% then
+        
+        ' Eye must remain inside of fixation window
+        docase
+        case Looking%(xEye, yEye) = 1 or 1 then  'TODO get rid of OR 1
+            if tNow - tStateStart > mbFixationTime then
+                PrintLog("stateHoldFixationToStimOn: Success. Stimulus up...\n");
+                SafeSampleKey("S");
+                ChangeStateTo(stateWaitForStimOn%, tNow);
+            endif
+        else 'if fixation fails before stim on, consider this an abort
+            PrintLog("stateHoldFixationToStimOn: failed.\n");
+            ChangeStateTo(stateAbort%, tNow);
+        endcase
+        
+        
+    case iState% = stateWaitForStimOn% then
+        tTrigger := View(DataWindow%).NextTime(StimChannel%, tLast, vTrigger);
+        docase
+        case tTrigger > tLast and vTrigger = 0 then
+            if tTrigger < tNow then         'View(DataWindow%).MaxTime() then   'try using tNow to avoid rare double-catch
+                PrintLog("stateWaitForStimOn: stim is up.\n");
+                tLastTrigger := tTrigger;
+                SampleText(trialDescription$,tTrigger);  'Put up sample text describing stimulus
+                ChangeStateTo(stateWaitThroughStimulus%, tTrigger);
+            else
+                updateTLast% := 0;  'waiting for sampling to catch up
+            endif;
+        case tNow > tLast + 5 then
+            'This is only failure that does not go through abort, but is not an animal-related failure
+            PrintLog("Waited 5 seconds for stim on, giving up and starting trial over!\n");
+            SampleText("Waited 5 seconds for stim on, giving up and starting trial over!",tNow);
+            SafeSampleKey("X");
+            yield(1.0);
+            ChangeStateTo(stateStartTrial%, tNow);
+        endcase
+        updateTLast% := 0;  'waiting for a trigger, don't update tLast
+        
+        
+    'This is a simple, non-trigger-counting method of waiting through the stimulus - we could count triggers, but it may not be necessary
+    case iState% = stateWaitThroughStimulus% then
+        if Looking%(xEye, yEye) = 1 or 1 then  'TODO get rid of OR 1
+            if tNow - tStateStart > mbThisTrialDur+mbRewardDelay then  'Also waiting through a reward delay, which is 0 for now
+                PrintLog("Trial Complete: send X key.\n");
+                SampleText("Trial " + Str$(trialCount%+1) + " Complete",tNow);  'Put up sample text indicating trial completion
+                SafeSampleKey("X");
+                Reward%();
+                mbRewardCount% += 1;  'increment reward count
+                UpdateToolbarText();  'This simply updates the reward count 
+                DrawStim(0);	' this undraws the location of the fixpt.
+                SafeSampleKey("a");  'advance the stimulus
+                trialCount% += 1;  'Increment trial count
+                CurrentAbortTime := 0;  'Do not add any abort penalty time in stateStartTrial if trial is correct
+                ChangeStateTo(stateWaitForBlank%, tNow);
+            endif;
+        else
+            PrintLog("stateWaitForReward: fixation broken before stimulus over.\n");
+            ChangeStateTo(stateAbort%, tNow);
+            SampleText("Eyes Off Screen",tNow);
+        endif;
+        
+        
+    case iState% = stateAbort% then
+        
+        ' Signal "X" turns off fixpt and stimulus. 
+        PrintLog("stateAbort: send X key.\n");
+        SafeSampleKey("X");
+        
+        'Set abort penalty time, will force additional wait in stateStartTrial%
+        CurrentAbortTime := mbAbortPenaltyTime;
+        
+        ' move on
+        ChangeStateTo(stateWaitForBlank%, tStateStart);  'don't update time, carry forward
+        
+        
+    case iState% = stateWaitForBlank% then
+        
+        ' we just wait for fix point off signal in this case. 
+        tTrigger := View(DataWindow%).NextTime(FixationPointChannel%, tLast, vTrigger);
+        if tTrigger > tLast then
+            ' Fixation point is off
+            PrintLog("stateWaitForBlank: Fix pt is off.\n");
+            tLastTrigger := tTrigger;               
+            if trialCount% = nTrials% then
+                PrintLog("All trials complete!\n");
+               Stop%();
+            endif;
+            ChangeStateTo(stateStartTrial%, tNow);  'don't update time, "credits" for time served
+        endif
+        
+        
+    else
+        
+        ' Unknown state!
+        Message("Unknown state=" + str$(iState%));
+        halt;
+        
+    endcase;
+    
+    
+    if updateTLast% = 1 then 
+        tLast := tNow;
+    endif;
+    
+    'wend;
+    
+	return iStatus%;
+end;
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+	if tStart > 0 then tStateStart := tStart; endif;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawStim
+' 
+' Draws stimulus in xy window (iDraw%==1) or blanks it (0). 
+' retrieve appropriate stimulus location, not fixation location
+proc DrawStim(iDraw%)
+    
+	if iDraw% > 0 then
+		var xstim, ystim;
+		xstim := FixationX;
+		ystim := FixationY;
+        
+		' Draw stimulus in xy window
+		View(XYWindow%).XYAddData(iStimChannel%, xstim, ystim);
+	else 
+		' erase the stim and the window from xy view
+		View(XYWindow%).XYDelete(iStimChannel%);
+	endif
+    
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawFix
+' 
+' Draws fixation point in xy window (iDraw%==1) or blanks it (0). 
+proc DrawFix(iDraw%)
+    
+	if iDraw% > 0 then
+		' Draw fixation point in xy window
+		View(XYWindow%).XYAddData(iFixChannel%, FixationX, FixationY);
+	else 
+		' erase the fixation point from xy view
+		View(XYWindow%).XYDelete(iFixChannel%);
+	endif
+    
+end;
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' UpdateToolbarText - Print tallies of trials in toolbar, super easy for now
+'
+
+proc UpdateToolbarText()
+    
+	var s$;
+    
+    s$ := "Reward Count = " + Str$(mbRewardCount%);
+    
+	ToolbarText(s$);
+    
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' PrepareTrial - Using trialCount%, build string describing trial for SampleTexting
+'
+
+proc PrepareTrial()
+    
+    trialDescription$ := "Trial " + Str$(trialCount%+1) +", ";  'start with trial count
+    
+    'Add on trial type, will include possibilities of trial types that are not yet implemented, in case they are eventually implemented
+    docase
+    case stimTypeThisTrial%[trialCount%] = 1 then
+        trialDescription$ += "MovingBar, "; 'This method of tacking on a string is legit, I verified
+        mbThisTrialDur := mbTrialDur;
+    'case stimTypeThisTrial%[trialCount%] = 2 then
+        'trialDescription$ += "ContinuousMovingBar, ";
+        'mbThisTrialDur := mbTrialDur;  'This is not currently implemented, not sure if this value would be correct
+    case stimTypeThisTrial%[trialCount%] = 3 then
+        trialDescription$ += "TRandBar, ";
+        mbThisTrialDur := mbTrialDur;
+    case stimTypeThisTrial%[trialCount%] = 4 then
+        trialDescription$ += "SRandBar, ";
+        mbThisTrialDur := mbTrialDur;
+    case stimTypeThisTrial%[trialCount%] = 5 then
+        trialDescription$ += "STRandBar, ";
+        mbThisTrialDur := mbTrialDur;
+    case stimTypeThisTrial%[trialCount%] = 6 then
+        trialDescription$ += "InwardAnnulus, ";
+        mbThisTrialDur := mbTrialDurAnnulus;
+    case stimTypeThisTrial%[trialCount%] = 7 then
+        trialDescription$ += "OutwardAnnulus, ";
+        mbThisTrialDur := mbTrialDurAnnulus;
+    'case stimTypeThisTrial%[trialCount%] = 8 then
+        'trialDescription$ += "ContinuousInwardAnnulus, ";
+        'mbThisTrialDur := mbTrialDurAnnulus;  'This is not currently implemented, not sure if this value would be correct
+    'case stimTypeThisTrial%[trialCount%] = 9 then
+        'trialDescription$ += "ContinuousOutwardAnnulus, ";
+        'mbThisTrialDur := mbTrialDurAnnulus;  'This is not currently implemented, not sure if this value would be correct
+    case stimTypeThisTrial%[trialCount%] = 10 then
+        trialDescription$ += "RandAnnulus, "; 
+        mbThisTrialDur := mbTrialDurAnnulus;
+    endcase
+    
+    'Add on background type
+    docase
+    case bgTypeThisTrial%[trialCount%] = 1 then
+        trialDescription$ += "NoBG, ";
+    case bgTypeThisTrial%[trialCount%] = 2 then
+        trialDescription$ += "StaticBG, ";
+    case bgTypeThisTrial%[trialCount%] = 3 then
+        trialDescription$ += "FlickerBG, ";
+    case bgTypeThisTrial%[trialCount%] = 4 then
+        trialDescription$ += "ValidBG, ";
+    case bgTypeThisTrial%[trialCount%] = 5 then
+        trialDescription$ += "InvalidBG, ";
+    endcase
+    
+    'Add on direction
+    docase
+    case directionThisTrial%[trialCount%] < 9 then
+        trialDescription$ += "Deg" + Str$(45*(directionThisTrial%[trialCount%]-1));
+    case directionThisTrial%[trialCount%] = 9 then   'these really, really seem redundant, but they may end up being useful for easily parsing the sampletext
+        trialDescription$ += "Inward";
+    case directionThisTrial%[trialCount%] = 10 then
+        trialDescription$ += "Outward";
+    case directionThisTrial%[trialCount%] = 11 then
+        trialDescription$ += "RandAnnulus";
+    endcase    
+end;
+
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' MovingBartlettDialog - Dialog for script
+'
+
+
+func MovingBartlettDialog%()
+	var i%;
+    var tenInts%[10];
+    var type$[2];
+    var direction$[3];
+    var refreshesPerFrameFloat;  'for local float computation
+    
+    type$[0] := "On Cell";
+    type$[1] := "Off Cell";
+    
+    direction$[0] := "4 Cardinal directions";
+    direction$[1] := "4 Diagonal directions";
+    direction$[2] := "All 8 directions";
+    
+	GetMovingBartlettParameters();
+    
+    tenInts%[0] := useMovingBar%;
+    tenInts%[1] := useContinuousMovingBar%;
+    tenInts%[2] := useTRandBar%;
+    tenInts%[3] := useSRandBar%;
+    tenInts%[4] := useSTRandBar%;
+    tenInts%[5] := useInwardAnnulus%;
+    tenInts%[6] := useOutwardAnnulus%;
+    tenInts%[7] := useContinuousInwardAnnulus%;
+    tenInts%[8] := useContinuousOutwardAnnulus%;
+    tenInts%[9] := useRandAnnulus%;
+    
+    
+	DlgCreate("MovingBartlett Training Parameters");
+    
+    DlgGroup("Experimental Parameters",1,1,40,8);
+    DlgReal(1,"ITI (s)",0.1,100,27,2);
+    DlgReal(2,"Bar Speed (deg/s)",0.01,100,27,3);
+    DlgInteger(3,"Num Repeats",1,100,27,4);
+    DlgInteger(4,"Num Pre/Post Frames",0,4,27,5);
+    DlgCheck(5,"Interleave Trials?",2,6);
+    DlgList(6,15,type$,2,25,7);
+    DlgList(7,25,direction$,3,15,8);
+    
+    
+    DlgGroup("Backgrounds",1,9,40,6);
+    DlgCheck(8,"Use no background?",2,10);
+    DlgCheck(9,"Use static background?",2,11);
+    DlgCheck(10,"Use flicker background?",2,12);
+    DlgCheck(11,"Use valid background?",2,13);
+    DlgCheck(12,"Use invalid background?",2,14);
+    
+    DlgGroup("Stimuli",42,1,40,11);
+    DlgCheck(13,"Use moving bar?",43,2);
+    DlgCheck(14,"Use continuous moving bar?",43,3);
+    DlgCheck(15,"Use temporal random bar?",43,4);
+    DlgCheck(16,"Use spatial random bar?",43,5);
+    DlgCheck(17,"Use temporal/spatial random bar?",43,6);
+    DlgCheck(18,"Use inward annulus?",43,7);
+    DlgCheck(19,"Use outward annulus?",43,8);
+    DlgCheck(20,"Use continuous inward annulus?",43,9);
+    DlgCheck(21,"Use continuous outward annulus?",43,10);
+    DlgCheck(22,"Use random annulus?",43,11);
+    
+    DlgAllow(0, 0, MovingBartlettDialogChanged%);  'not used/written for now
+    
+	i%:=DlgShow(ITI,barSpeed,nRepeats%,nPrePostFrames%,interleave%,cellType%,useDirection%,
+    useNoBackground%,useStaticBackground%,useFlickerBackground%,useValidBackground%,useInvalidBackground%,
+    tenInts%[]);
+    
+    
+    useMovingBar% := tenInts%[0];
+    useContinuousMovingBar% := tenInts%[1];
+    useTRandBar% := tenInts%[2];
+    useSRandBar% := tenInts%[3];
+    useSTRandBar% := tenInts%[4];
+    useInwardAnnulus% := tenInts%[5];
+    useOutwardAnnulus% := tenInts%[6];
+    useContinuousInwardAnnulus% := tenInts%[7];
+    useContinuousOutwardAnnulus% := tenInts%[8];
+    useRandAnnulus% := tenInts%[9];
+    
+    
+	if i% = 1 then
+		SaveMovingBartlettParameters();
+        
+        printlog("cell type is %d and usedirection is %d\n",cellType%,useDirection%);
+        
+        if useDirection% = 0 or useDirection% = 2 then
+            useCardinal% := 1;
+        else
+            useCardinal% := 0;
+        endif;
+        if useDirection% = 1 or useDirection% = 2 then
+            useDiagonal% := 1;
+        else
+            useDiagonal% := 0;
+        endif;
+        
+    
+        'Now that we know the stimulus parameters, begin design of stimuli
+        
+        'Get position of receptive field - receptive field will be "mapped" via an area summation curve and the
+        'location/size will be user-entered into the config for the main stimulus, so that this function can grab it.
+        gr$ := GetGratingParameters$("Stimulus");
+        ParseGratingParametersBrief%(gr$,X,Y,W,H);
+        printlog("RF width (deg) is %f, height (deg) is %f\n",W,H);
+        
+        'Make grixel size, in degrees, such that 5 (well, grix/RF) grixels cover the receptive field
+        if W > H then
+            degPerGrixel := W/grixelsPerRF;
+        else
+            degPerGrixel := H/grixelsPerRF;
+        endif;
+        printlog("degrees per grixel is %f\n",degPerGrixel);
+        
+        
+        'Calculate screen values in degrees here
+        'ScreenBounds does this calculation correctly, fills screenXdeg,screenYdeg
+        ScreenBounds(screenXmm,screenYmm,screenXdeg,screenYdeg);
+        screenMMPerDegree := screenXmm/(2*screenXdeg);  'This is unnecessary now.
+        'The below calculation really needs an ATAN around it, but since we have the function already above...
+        'screenMMPerDegree := Val(GetDistanceToScreenMM$())*pi/180;  
+        'screenXdeg := (screenXmm/2)/screenMMPerDegree;  'we are defining screenX(Y)deg as HALF the screen so it is the distance from center fixation to the edge
+        'screenYdeg := (screenYmm/2)/screenMMPerDegree;  
+        
+        
+        
+        'Calculate size of pixels, pix/deg = pix/screen / deg/screen
+        'pixelsPerDegree := screenXpixels/(screenXmm/screenMMPerDegree);
+        pixelsPerDegree := screenXpixels/(2*screenXdeg);  'easier calculation, doesn't require screenMMPerDegree
+        pixelsPerGrixel% := round(pixelsPerDegree*degPerGrixel);  'pix/grx = pix/deg * deg/grx, this is our grid size!
+        
+        pixelsPerGrixel% := 2;  'TODO get rid of manual override
+        
+        printlog("pixels per degree is %f, pixels per grixel is %d\n",pixelsPerDegree,pixelsPerGrixel%);
+        
+        'Calculate pixel location of RF
+        RFCenterXPixels% := round(X*pixelsPerDegree);  'using ROUND because pumping float into int variable might...ceil?  Floor? Just in case.
+        RFCenterYPixels% := round(Y*pixelsPerDegree);
+        
+        
+        'Get size of screen in grixels, this is in grixels from 0,0, so whole screen width is -screenXgrx%:screenXgrx%
+        'This will allow us to determine which (if any) grixels are offscreen and pointless to draw
+        'actually, this is no longer relevant I think, nor is the calculation right as it is for ideal grixel size not actual grixel size
+'        screenXgrx% := Ceil(screenXdeg/degPerGrixel);
+'        screenYgrx% := Ceil(screenYdeg/degPerGrixel);
+'        printlog("screen size in grixels is x: %d, y: %d\n",2*screenXgrx%,2*screenYgrx%);
+        
+        
+       
+        
+        
+        'Calculate refreshes (time?) between sucessive "Frames" 
+        'dataScreenHz (refreshes/s), barSpeed (deg/s), degPerGrixel (deg/grx)
+        'Here I am using the terminology Refresh = "Monitor Refresh", Frame = "Contents of one static screen"
+        'Because Frames move exactly 1 grixel per Frame by definition, degPerGrixel (deg/grx) == (deg/Frame)
+        secsPerFrameIdeal := degPerGrixel/barSpeed;  'is deg/Frame * s/deg = s/Frame; 
+        refreshesPerFrame% := round(dataScreenHz*secsPerFrameIdeal);  'is refreshes/s * s/Frame = refreshes/Frame;
+        refreshesPerFrameFloat := refreshesPerFrame%;  'necessary intermediate step for floating point computation
+        secsPerFrameActual := refreshesPerFrameFloat/dataScreenHz;  'is refreshes/Frame * s/refresh = s/Frame; 
+        barSpeedActual := degPerGrixel/secsPerFrameActual;  'is deg/Frame * Frame/s = deg/s;
+        'Note that refreshesPerFrame% will evidently be the operating value here
+        printlog("bar speed requested is %f deg/sec, ideal seconds per frame is %f\n",barSpeed,secsPerFrameIdeal);
+        printlog("refreshes per frame is %d, actual seconds per frame is %f and actual bar speed is %f deg/sec\n",refreshesPerFrame%,secsPerFrameActual,barSpeedActual);
+        
+        'Each trial requires the writing of 7+2n frames, where n is nPrePostFrames%
+        nFramesPerTrial% := 7 + (nPrePostFrames%*2);
+        nFramesPerTrialAnnulus% := 4 + (nPrePostFrames%*2);
+        var nFramesPerTrialFloat;
+        nFramesPerTrialFloat := nFramesPerTrial%;
+        mbTrialDur := secsPerFrameActual * nFramesPerTrialFloat;
+        nFramesPerTrialFloat := nFramesPerTrialAnnulus%;  'repeat calculation for annulus duration
+        mbTrialDurAnnulus := secsPerFrameActual * nFramesPerTrialFloat;
+        
+    endif;        
+        
+	return i%;
+end;
+
+func MovingBartlettDialogChanged%(item%)
+    'For now, this function just turns OFF the annulus since we can't do it yet
+    'DlgEnable(0,18);  'Turns off inward annulus (maybe we can do that now)
+    'DlgEnable(0,19);  'Turns off outward annulus (maybe we can do that now)
+    DlgEnable(0,20);   'Turns off continuous inward annulus, we may never do this
+    DlgEnable(0,21);   'Turns off continuuous outward annulus, we may never do this
+    'DlgEnable(0,22);  'Turns off random annulus (maybe we can do that now)
+    
+    DlgEnable(0,14);   'Also, turn off continuous moving bar, I don't think we can actually do this yet...we might be able to by going refresh-by-refresh, yikes
+    
+    return 1;
+end;
+
+
+
+proc GetMovingBartlettParameters()
+	var stmp$;
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\MovingBartlett";
+    
+    ITI := GetFloatRegistryValue(key$, "ITI", ITI);
+    barSpeed := GetFloatRegistryValue(key$, "barSpeed", barSpeed);
+    nRepeats% := GetIntRegistryValue%(key$, "nRepeats", nRepeats%);
+    nPrePostFrames% := GetIntRegistryValue%(key$, "nPrePostFrames", nPrePostFrames%);
+    interleave% := GetIntRegistryValue%(key$, "interleave", interleave%);
+    useNoBackground% := GetIntRegistryValue%(key$, "useNoBackground", useNoBackground%);
+    useStaticBackground% := GetIntRegistryValue%(key$, "useStaticBackground", useStaticBackground%);
+    useFlickerBackground% := GetIntRegistryValue%(key$, "useFlickerBackground", useFlickerBackground%);
+    useValidBackground% := GetIntRegistryValue%(key$, "useValidBackground", useValidBackground%);
+    useInvalidBackground% := GetIntRegistryValue%(key$, "useInvalidBackground", useInvalidBackground%);
+    useMovingBar% := GetIntRegistryValue%(key$, "useMovingBar", useMovingBar%);
+    useContinuousMovingBar% := GetIntRegistryValue%(key$, "useContinuousMovingBar", useContinuousMovingBar%);
+    useTRandBar% := GetIntRegistryValue%(key$, "useTRandBar", useTRandBar%);
+    useSRandBar% := GetIntRegistryValue%(key$, "useSRandBar", useSRandBar%);
+    useSTRandBar% := GetIntRegistryValue%(key$, "useSTRandBar", useSTRandBar%);
+    useInwardAnnulus% := GetIntRegistryValue%(key$, "useInwardAnnulus", useInwardAnnulus%);
+    useOutwardAnnulus% := GetIntRegistryValue%(key$, "useOutwardAnnulus", useOutwardAnnulus%);
+    useContinuousInwardAnnulus% := GetIntRegistryValue%(key$, "useContinuousInwardAnnulus", useContinuousInwardAnnulus%);    
+    useContinuousOutwardAnnulus% := GetIntRegistryValue%(key$, "useContinuousOutwardAnnulus", useContinuousOutwardAnnulus%);
+    useRandAnnulus% := GetIntRegistryValue%(key$, "useRandAnnulus", useRandAnnulus%);
+    cellType% := GetIntRegistryValue%(key$, "cellType", cellType%);
+    useDirection% := GetIntRegistryValue%(key$, "useDirection", useDirection%);
+    
+end;
+
+
+proc SaveMovingBartlettParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\MovingBartlett";
+    
+    SetFloatRegistryValue(key$, "ITI", ITI);
+    SetFloatRegistryValue(key$, "barSpeed", barSpeed);
+    SetIntRegistryValue(key$, "nRepeats", nRepeats%);
+    SetIntRegistryValue(key$, "nPrePostFrames", nPrePostFrames%);
+    SetIntRegistryValue(key$, "interleave", interleave%);
+    SetIntRegistryValue(key$, "useNoBackground", useNoBackground%);
+    SetIntRegistryValue(key$, "useStaticBackground", useStaticBackground%);
+    SetIntRegistryValue(key$, "useFlickerBackground", useFlickerBackground%);
+    SetIntRegistryValue(key$, "useValidBackground", useValidBackground%);
+    SetIntRegistryValue(key$, "useInvalidBackground", useInvalidBackground%);
+    SetIntRegistryValue(key$, "useMovingBar", useMovingBar%);
+    SetIntRegistryValue(key$, "useContinuousMovingBar", useContinuousMovingBar%);
+    SetIntRegistryValue(key$, "useTRandBar", useTRandBar%);
+    SetIntRegistryValue(key$, "useSRandBar", useSRandBar%);
+    SetIntRegistryValue(key$, "useSTRandBar", useSTRandBar%);
+    SetIntRegistryValue(key$, "useInwardAnnulus", useInwardAnnulus%);
+    SetIntRegistryValue(key$, "useOutwardAnnulus", useOutwardAnnulus%);
+    SetIntRegistryValue(key$, "useContinuousInwardAnnulus", useContinuousInwardAnnulus%);    
+    SetIntRegistryValue(key$, "useContinuousOutwardAnnulus", useContinuousOutwardAnnulus%);
+    SetIntRegistryValue(key$, "useRandAnnulus", useRandAnnulus%);
+    SetIntRegistryValue(key$, "cellType", cellType%);
+    SetIntRegistryValue(key$, "useDirection", useDirection%);
+    
+end;
+
+
+
+
+
+'This function will generate a list of trials based on the stimuli/backgrounds/number of repeats requested
+func GenerateTrials%()
+    'Calculate number of trials, and get a list of trial types
+    'Here I think the easiest thing to do is to create a trial list as if they are NOT interleaved, and then to simply scramble those if necessary
+    'Part of the reason for this is that not all background/foreground combos are the same - in some cases there is no such thing as invalid
+    
+    var ci% := 0;  'Current Index for bgTypeThisTrial%[],stimTypeThisTrial%[]
+    var i%;
+    var j%;
+    
+    'Create trials without interleaving, apply interleaving later (almost certainly we would use interleaving when actually recording)
+    'Cycle through trial types, starting with moving bar
+    if useMovingBar% = 1 then
+        if useNoBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 1;  '1 is moving bar
+                        bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 1;  '1 is moving bar
+                        bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useStaticBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 1;  '1 is moving bar
+                        bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 1;  '1 is moving bar
+                        bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useFlickerBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 1;  '1 is moving bar
+                        bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 1;  '1 is moving bar
+                        bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useValidBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 1;  '1 is moving bar
+                        bgTypeThisTrial%[ci%] := 4;  '4 is valid background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 1;  '1 is moving bar
+                        bgTypeThisTrial%[ci%] := 4;  '4 is valid background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif
+        if useInvalidBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 1;  '1 is moving bar
+                        bgTypeThisTrial%[ci%] := 5;  '5 is invalid background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 1;  '1 is moving bar
+                        bgTypeThisTrial%[ci%] := 5;  '5 is invalid background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif
+    endif;
+    
+    if useContinuousMovingBar% = 1 then
+        if useNoBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 2;  '2 is continuous moving bar
+                        bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 2;  '2 is continuous moving bar
+                        bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useStaticBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 2;  '2 is continuous moving bar
+                        bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 2;  '2 is continuous moving bar
+                        bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useFlickerBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 2;  '2 is continuous moving bar
+                        bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 2;  '2 is continuous moving bar
+                        bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useValidBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 2;  '2 is continuous moving bar
+                        bgTypeThisTrial%[ci%] := 4;  '4 is valid background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 2;  '2 is continuous moving bar
+                        bgTypeThisTrial%[ci%] := 4;  '4 is valid background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif
+        if useInvalidBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 2;  '2 is continuous moving bar
+                        bgTypeThisTrial%[ci%] := 5;  '5 is invalid background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 2;  '2 is continuous moving bar
+                        bgTypeThisTrial%[ci%] := 5;  '5 is invalid background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif
+    endif;
+    
+    if useTRandBar% = 1 then
+        if useNoBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 2 do '(2*i%)-1 is [1 3], for temporally random, no BG movement, "left" is same as "right" 
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 3;  '3 is temporally-random bar
+                        bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 2 do '(2*i%) is [2 4], for temporally random, no BG movement, "up+left" is same as "down+right" 
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 3;  '3 is temporally-random bar
+                        bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useStaticBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 2 do '(2*i%)-1 is [1 3], for temporally random, no BG movement, "left" is same as "right"
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 3;  '3 is temporally-random bar
+                        bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 2 do '(2*i%) is [2 4], for temporally random, no BG movement, "up+left" is same as "down+right"
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 3;  '3 is temporally-random bar
+                        bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useFlickerBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 2 do '(2*i%)-1 is [1 3], for temporally random, no BG movement, "left" is same as "right"
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 3;  '3 is temporally-random bar
+                        bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 2 do '(2*i%) is [2 4], for temporally random, no BG movement, "up+left" is same as "down+right"
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 3;  '3 is temporally-random bar
+                        bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useValidBackground% = 1 or useInvalidBackground% = 1 then  'if either valid or invalid, that means "moving background", don't double up
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 3;  '3 is temporally-random bar
+                        bgTypeThisTrial%[ci%] := 4;  '4 is valid background, though "valid" has no meaning here
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 3;  '3 is temporally-random bar
+                        bgTypeThisTrial%[ci%] := 4;  '4 is valid background, though "valid" has no meaning here
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif
+    endif;
+    
+    if useSRandBar% = 1 then
+        if useNoBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 4;  '4 is spatially-random bar
+                        bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 4;  '4 is spatially-random bar
+                        bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useStaticBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 4;  '4 is spatially-random bar
+                        bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 4;  '4 is spatially-random bar
+                        bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useFlickerBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 4;  '4 is spatially-random bar
+                        bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 4;  '4 is spatially-random bar
+                        bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useValidBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 4;  '4 is spatially-random bar
+                        bgTypeThisTrial%[ci%] := 4;  '4 is valid background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 4;  '4 is spatially-random bar
+                        bgTypeThisTrial%[ci%] := 4;  '4 is valid background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif
+        if useInvalidBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 4;  '4 is spatially-random bar
+                        bgTypeThisTrial%[ci%] := 5;  '5 is invalid background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 4;  '4 is spatially-random bar
+                        bgTypeThisTrial%[ci%] := 5;  '5 is invalid background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif
+    endif;
+ 
+    if useSTRandBar% = 1 then
+        if useNoBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 2 do '(2*i%)-1 is [1 3], for temporally random, no BG movement, "left" is same as "right" 
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 5;  '5 is spatially- and temporally-random bar
+                        bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 2 do '(2*i%) is [2 4], for temporally random, no BG movement, "up+left" is same as "down+right" 
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 5;  '5 is spatially- and temporally-random bar
+                        bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useStaticBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 2 do '(2*i%)-1 is [1 3], for temporally random, no BG movement, "left" is same as "right"
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 5;  '5 is spatially- and temporally-random bar
+                        bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 2 do '(2*i%) is [2 4], for temporally random, no BG movement, "up+left" is same as "down+right"
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 5;  '5 is spatially- and temporally-random bar
+                        bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useFlickerBackground% = 1 then
+            if useCardinal% = 1 then
+                for i% := 1 to 2 do '(2*i%)-1 is [1 3], for temporally random, no BG movement, "left" is same as "right"
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 5;  '5 is spatially- and temporally-random bar
+                        bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 2 do '(2*i%) is [2 4], for temporally random, no BG movement, "up+left" is same as "down+right"
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 5;  '5 is spatially- and temporally-random bar
+                        bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif;
+        if useValidBackground% = 1 or useInvalidBackground% = 1 then  'if either valid or invalid, that means "moving background", don't double up
+            if useCardinal% = 1 then
+                for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%)-1;
+                        stimTypeThisTrial%[ci%] := 5;  '5 is spatially- and temporally-random bar
+                        bgTypeThisTrial%[ci%] := 4;  '4 is valid background, though "valid" has no meaning here
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for i% := 1 to 4 do '(2*i%) is [2 4 6 8]
+                    for j% := 0 to nRepeats%-1 do
+                        directionThisTrial%[ci%] := (2*i%);
+                        stimTypeThisTrial%[ci%] := 5;  '5 is spatially- and temporally-random bar
+                        bgTypeThisTrial%[ci%] := 4;  '4 is valid background, though "valid" has no meaning here
+                        ci% += 1;  'Increment index
+                    next;
+                next;
+            endif;
+        endif
+    endif;
+    
+    if useInwardAnnulus% = 1 then
+        if useNoBackground% = 1 then
+            for j% := 0 to nRepeats%-1 do
+                directionThisTrial%[ci%] := 9;  'this seems redundant with stimtype, but DOES get used
+                stimTypeThisTrial%[ci%] := 6;  '6 is inward annulus
+                bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                ci% += 1;  'Increment index
+            next;
+        endif;
+        if useStaticBackground% = 1 then
+            for j% := 0 to nRepeats%-1 do
+                directionThisTrial%[ci%] := 9;  'this seems redundant with stimtype, but DOES get used
+                stimTypeThisTrial%[ci%] := 6;  '6 is inward annulus
+                bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                ci% += 1;  'Increment index
+            next;
+        endif;
+        if useFlickerBackground% = 1 then
+            for j% := 0 to nRepeats%-1 do
+                directionThisTrial%[ci%] := 9;  'this seems redundant with stimtype, but DOES get used
+                stimTypeThisTrial%[ci%] := 6;  '6 is inward annulus
+                bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                ci% += 1;  'Increment index
+            next;
+        endif;
+    endif;
+    
+    if useOutwardAnnulus% = 1 then
+        if useNoBackground% = 1 then
+            for j% := 0 to nRepeats%-1 do
+                directionThisTrial%[ci%] := 10;  'this seems redundant with stimtype, but DOES get used
+                stimTypeThisTrial%[ci%] := 7;  '7 is outward annulus
+                bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                ci% += 1;  'Increment index
+            next;
+        endif;
+        if useStaticBackground% = 1 then
+            for j% := 0 to nRepeats%-1 do
+                directionThisTrial%[ci%] := 10;  'this seems redundant with stimtype, but DOES get used
+                stimTypeThisTrial%[ci%] := 7;  '7 is outward annulus
+                bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                ci% += 1;  'Increment index
+            next;
+        endif;
+        if useFlickerBackground% = 1 then
+            for j% := 0 to nRepeats%-1 do
+                directionThisTrial%[ci%] := 10;  'this seems redundant with stimtype, but DOES get used
+                stimTypeThisTrial%[ci%] := 7;  '7 is outward annulus
+                bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                ci% += 1;  'Increment index
+            next;
+        endif;
+    endif;
+    
+    if useRandAnnulus% = 1 then
+        if useNoBackground% = 1 then
+            for j% := 0 to nRepeats%-1 do
+                directionThisTrial%[ci%] := 11;  'this seems redundant with stimtype, but DOES get used
+                stimTypeThisTrial%[ci%] := 10;  '10 is rand annulus
+                bgTypeThisTrial%[ci%] := 1;  '1 is no background
+                ci% += 1;  'Increment index
+            next;
+        endif;
+        if useStaticBackground% = 1 then
+            for j% := 0 to nRepeats%-1 do
+                directionThisTrial%[ci%] := 11;  'this seems redundant with stimtype, but DOES get used
+                stimTypeThisTrial%[ci%] := 10;  '10 is rand annulus
+                bgTypeThisTrial%[ci%] := 2;  '2 is static background
+                ci% += 1;  'Increment index
+            next;
+        endif;
+        if useFlickerBackground% = 1 then
+            for j% := 0 to nRepeats%-1 do
+                directionThisTrial%[ci%] := 11;  'this seems redundant with stimtype, but DOES get used
+                stimTypeThisTrial%[ci%] := 10;  '10 is rand annulus
+                bgTypeThisTrial%[ci%] := 3;  '3 is flicker background
+                ci% += 1;  'Increment index
+            next;
+        endif;
+    endif;
+    
+    'Note that the annulus is not currently implemented on the VSG side and is disabled here.  I'm going to hold off
+    'on actually going any further on the annulus until we green light the thing.
+    
+    
+    'useNoBackground% typeNoBackground% := 1;
+    'useStaticBackground% typeStaticBackground% := 2;
+    'useFlickerBackground% typeFlickerBackground% := 3;
+    'useValidBackground% typeValidBackground% := 4;  'does not make sense for annulus, I don't think 
+    'useInvalidBackground% typeInvalidBackground% := 5;  'does not make sense for annulus
+    
+    'useInwardAnnulus% typeInwardAnnulus% := 6;
+    'useOutwardAnnulus% typeOutwardAnnulus% := 7;
+    'useContinuousInwardAnnulus% typeContinuousInwardAnnulus% := 8;
+    'useContinuousOutwardAnnulus% typeContinuousOutwardAnnulus% := 9;
+    'useRandAnnulus% typeRandAnnulus% := 10;    
+    
+    
+    'And update the number of trials
+    nTrials% := ci%;
+    
+    if nTrials% = 0 then
+        message("No trials written!  You may have specified an incompatible\nforeground/background combination!  Quitting!");
+        halt
+    endif;
+    
+    return 1;
+end
+
+
+
+
+'This process will select a legal background center value
+'Will update x%, y% input values
+'Legal center values will depend on the grixel size, the direction of motion (if any), and the RF center
+proc SelectLegalBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,RFCXPix%,RFCYPix%,nFrames%)
+    'For flicker/static background, legal positions are only reliant on the size of the screen
+    'For moving background, legal positions are also constrained by the number of frames through which the BG has to move
+    
+    
+    
+    'The first major problem to solve here is to find the offsets which allow the backgrounds to be in register with the foregrounds
+    'This may require a different calculation for odd-sized and even-sized grixels
+    'And I'm betting this is going to require some serious trial and error
+    'For the foregrounds:  The "center" of the foreground image will be moved to [RFCXPix%,RFCYPix%]
+    'For odd-grixel cardinal images, this will be the literal center of a grixel
+    'For even-grixel cardinal images, this should be the pixel that is above, and to the RIGHT of the non-pixel center point
+    
+    'Here is some info on image sizes, because I bet this is important
+    'GrixelSize     CardFGSize      DiagFGSize      CardBlankSize       DiagBlankSize       CardCoordBGCenter   DiagCoordBGCenter
+    '2              10              15              14                  20                  [1,1]               [0,0]
+    '3              15              22              21                  30                  [0,1]               [-1,3]
+    '4              20              29              28                  40                  [2,2]               [-2,-1]
+    '5              25              36              35                  50                  [3,0]               [1,-4]
+    '6              30              43              42                  60                  [-1,3]              [-3,0]
+    '7              35              50              49                  70                  [1,1]               [3,0]
+    '8              40              57              56                  80                  [4,4]               [0,0]
+    '9              45              64              63                  90                  [-3,-2]             [-1 0]
+    '10             50              71              70                  *99*                [1,3]               [7,-1]
+    '11             55              78              77                  109                 [4,3]               [2,-2]
+    '12             60              85              84                  119                 [2,6]               [9,-1]
+    '13             65              92              91                  129                 [-4,-6]             [2,-2]
+    '14             70              99              98                  139                 [5,5]               [7,-1]
+    '15             75              *107*           105                 149                 [3,-5]              [0,-11]
+    '16             80              114             112                 159                 [8,8]               [-6,-1]
+    '17             85              121             119                 169                 [4,-6]              [6,-2]
+    
+    'OK, so with a few exceptions, there are obvious patterns.  The Cardinal dimensions are easy - for even grixel sizes, the
+    'foreground and blank are both even widths, and the same for odd.  This means that these should line up very easily.
+    'The diagonals are harder, for one reason because there is an odd/even swap in the midst (at different points) for each.
+    
+    'So when I say CardCoordBGCenter = [1,3], that means that if I set xBG% to 1 and yBG% to 3, then the "center" (which is
+    'the pixel to the upper right for even sizes) of a grixel is drawn at the "center" (technically, x=513, y=384) of the screen
+    
+    'The first order of business is to assign the offsets that will result in placing the center of
+    'a grixel (really, ANY grixel) at the center of the screen.  From there we can further offset to  
+    'select a random location (on the grid) and shift it to the RF center, but this is the first order.
+    var grixelCenterOffsetX%;
+    var grixelCenterOffsetY%;
+    var ppgfloat;  'For cardinal backgrounds, the size of the shift is equal to the number of pixels in a grixel, but for diagonal backgrounds this is not true
+    var shiftpergrixel;  'again, for diagonals
+    docase
+    case direction% = 1 or direction% = 3 or direction% = 5 or direction% = 7 then  'cardinal direction offsets, manually calculated
+        docase
+        case ppg% = 2 then 'done
+            grixelCenterOffsetX% := -1;
+            grixelCenterOffsetY% := -1;
+        case ppg% = 3 then 'done
+            grixelCenterOffsetX% := 0;
+            grixelCenterOffsetY% := -2;
+        case ppg% = 4 then 'done
+            grixelCenterOffsetX% := -2;
+            grixelCenterOffsetY% := -2;
+        case ppg% = 5 then 'done
+            grixelCenterOffsetX% := -3;
+            grixelCenterOffsetY% := -1;
+        case ppg% = 6 then 'done
+            grixelCenterOffsetX% := 1;
+            grixelCenterOffsetY% := -3;
+        case ppg% = 7 then 'done
+            grixelCenterOffsetX% := -1;
+            grixelCenterOffsetY% := -2;
+        case ppg% = 8 then 'done
+            grixelCenterOffsetX% := -4;
+            grixelCenterOffsetY% := -4;
+        case ppg% = 9 then 'done
+            grixelCenterOffsetX% := 3;
+            grixelCenterOffsetY% := 1;
+        case ppg% = 10 then  'done
+            grixelCenterOffsetX% := -1;
+            grixelCenterOffsetY% := -3;
+        case ppg% = 11 then 'done
+            grixelCenterOffsetX% := -4;
+            grixelCenterOffsetY% := -4;
+        case ppg% = 12 then 'done
+            grixelCenterOffsetX% := -2;
+            grixelCenterOffsetY% := -6;
+        case ppg% = 13 then 'done
+            grixelCenterOffsetX% := 4;
+            grixelCenterOffsetY% := 5;
+        case ppg% = 14 then 'done
+            grixelCenterOffsetX% := -5;
+            grixelCenterOffsetY% := -5;
+        case ppg% = 15 then 'This bg is good
+            grixelCenterOffsetX% := -3;
+            grixelCenterOffsetY% := 4;
+        case ppg% = 16 then  'done
+            grixelCenterOffsetX% := -8;
+            grixelCenterOffsetY% := -8;
+        case ppg% = 17 then 'done
+            grixelCenterOffsetX% := -4;
+            grixelCenterOffsetY% := 5;
+        endcase
+    else  'diagonal direction offsets
+        ppgfloat := ppg%;
+        'shiftpergrixel := ppgfloat * sqrt(2);
+        shiftpergrixel := ppgfloat / sqrt(2);
+        docase
+        case ppg% = 2 then  'at this size there's no real point, nothing looks good
+            grixelCenterOffsetX% := 1;
+            grixelCenterOffsetY% := 1;
+        case ppg% = 3 then  'meh but I don't think it gets better
+            grixelCenterOffsetX% := 3;
+            grixelCenterOffsetY% := -4;
+        case ppg% = 4 then  'probably as good as it gets
+            grixelCenterOffsetX% := 3;
+            grixelCenterOffsetY% := 1;
+        case ppg% = 5 then 'ok but not perfect
+            grixelCenterOffsetX% := 1;
+            grixelCenterOffsetY% := 5;
+        case ppg% = 6 then  'ok but not perfect
+            grixelCenterOffsetX% := 5;
+            grixelCenterOffsetY% := 2;
+        case ppg% = 7 then  'probably as good as it will be
+            grixelCenterOffsetX% := -4;
+            grixelCenterOffsetY% := 1;
+        case ppg% = 8 then  'as good as they get
+            grixelCenterOffsetX% := 0;
+            grixelCenterOffsetY% := 1;
+        case ppg% = 9 then 'probably as good as it will be
+            grixelCenterOffsetX% := 2;
+            grixelCenterOffsetY% := 1;
+        case ppg% = 10 then 'probably as good as it will get
+            grixelCenterOffsetX% := -7;
+            grixelCenterOffsetY% := 1;
+        case ppg% = 11 then  'this is maybe OK
+            grixelCenterOffsetX% := -3;
+            grixelCenterOffsetY% := 1;
+        case ppg% = 12 then  'this is OK, but others are worse
+            grixelCenterOffsetX% := -9;
+            grixelCenterOffsetY% := 0;
+        case ppg% = 13 then  'this is probably as good as it gets
+            grixelCenterOffsetX% := -1;
+            grixelCenterOffsetY% := 1;
+        case ppg% = 14 then  'this is probably as good as it gets
+            grixelCenterOffsetX% := -8;
+            grixelCenterOffsetY% := 0;
+        case ppg% = 15 then  'this is close
+            grixelCenterOffsetX% := 1;
+            grixelCenterOffsetY% := 12;
+        case ppg% = 16 then  'this is close
+            grixelCenterOffsetX% := 6;
+            grixelCenterOffsetY% := 0;
+        case ppg% = 17 then  'this is right
+            grixelCenterOffsetX% := -7;
+            grixelCenterOffsetY% := 1;
+        endcase
+    endcase
+    
+    'OK, so at this point grixelCenterOffsetX% and grixelCenterOffsetY% are calculated.
+    
+    'We need to figure out the grid shift, which is the number of pixels required to shift a grixel-center-at-screen-center grid
+    'to a grixel-center-at-RF-center grid
+    var onGridX%;
+    var onGridY%;
+    
+    if direction% = 1 or direction% = 3 or direction% = 5 or direction% = 7 then  'cardinal direction
+        onGridX% := 1 + grixelCenterOffsetX% + (RFCXPix% mod ppg%);  'I had to shift the foreground by one pixel each to nail the foreground, so also shift the BG by one
+        onGridY% := 1 + grixelCenterOffsetY% + (RFCYPix% mod ppg%);
+        'So now, any x(y) positions where x(y) = onGridX(Y)% + (N*ppg%), for N=integer, will x(y)-center a grixel on the RF
+    else
+        onGridX% := 1 + grixelCenterOffsetX% + (RFCXPix% mod shiftpergrixel);  'I had to shift the foreground by one pixel each to nail the foreground, so also shift the BG by one
+        onGridY% := 1 + grixelCenterOffsetY% + (RFCYPix% mod shiftpergrixel);
+        'This should center the grid as well as possible, and
+        'any x(y) positions where x(y) = onGridX(Y)% + round(N*shiftpergrixel), should as best as possible center a grixel on the RF
+    endif
+    
+
+    
+    
+    'Next, we need to determine what our legal options are for outX% and outY% (current values may not be legal, that's OK)
+    'var BGX% := 2048;  'size of background images
+    'var BGY% := 1536;
+    'var centerX% := 513; 'actual location of center
+    'var centerY% := 384;
+    var minX%;
+    var maxX%;
+    var minY%;
+    var maxY%;
+    var N%;
+    N% := nFrames% - 1;
+    'Shockingly, since we designed the images to be 2x the size of the screen, the center of the image must be placed on the screen
+    minX% := -512;
+    maxX% := 511;
+    minY% := -383;
+    maxY% := 384;
+    'Now update min/max accounting for motion of the background, if any
+    'Only valid/invalid backgrounds actually move
+    if bgType% = 4 or bgType% = 5 then
+        docase
+        'For rightward motion of the background, either valid or invalid
+        case (direction% = 1 and bgType% = 4) or (direction% = 5 and bgType% = 5) then 
+            maxX% := maxX% - (N%*ppg%);  'the background moves right, must restrict right side to allow six subsequent frames
+        'For leftward motion of bg
+        case (direction% = 5 and bgType% = 4) or (direction% = 1 and bgType% = 5) then 
+            minX% := minX% + (N%*ppg%);  'these follow the same logic as above
+        'For upward motion of bg
+        case (direction% = 3 and bgType% = 4) or (direction% = 7 and bgType% = 5) then 
+            minY% := minY% + (N%*ppg%); 
+        'For downward motion of bg
+        case (direction% = 7 and bgType% = 4) or (direction% = 3 and bgType% = 5) then 
+            maxY% := maxY% - (N%*ppg%);
+        'For rightward-up diagonal motion of bg
+        case (direction% = 2 and bgType% = 4) or (direction% = 6 and bgType% = 5) then
+            'maxX% := maxX% - (N%*ppg%);
+            'minY% := minY% + (N%*ppg%);
+            maxX% := maxX% - round(N%*shiftpergrixel);
+            minY% := minY% + round(N%*shiftpergrixel);
+        'For leftward-up diagonal motion of bg
+        case (direction% = 4 and bgType% = 4) or (direction% = 8 and bgType% = 5) then
+            'minX% := minX% + (N%*ppg%);
+            'minY% := minY% + (N%*ppg%);
+            minX% := minX% + round(N%*shiftpergrixel);
+            minY% := minY% + round(N%*shiftpergrixel);
+        'For leftward-down diagonal motion of bg
+        case (direction% = 6 and bgType% = 4) or (direction% = 2 and bgType% = 5) then 
+            'minX% := minX% + (N%*ppg%);
+            'maxY% := maxY% - (N%*ppg%);
+            minX% := minX% + round(N%*shiftpergrixel);
+            maxY% := maxY% - round(N%*shiftpergrixel);
+        'For rightward-down diagonal motion of bg
+        case (direction% = 8 and bgType% = 4) or (direction% = 4 and bgType% = 5) then
+            'maxX% := maxX% - (N%*ppg%);
+            'maxY% := maxY% - (N%*ppg%);
+            maxX% := maxX% - round(N%*shiftpergrixel);
+            maxY% := maxY% - round(N%*shiftpergrixel);
+        endcase
+    endif;
+    'minX%/minY%/maxX%/maxY% now represent the bounds for a legal random draw.
+    
+    
+    'Now select a random location on the grid - just keep picking until you get a legal output
+    x% := 100000;  'this point is not legal on purpose
+    y% := 100000;
+    var myCount%;  'just in case, don't let this while loop hang
+    if direction% = 1 or direction% = 3 or direction% = 5 or direction% = 7 then  'cardinal direction
+        while (x% > maxX% or x% < minX% or y% > maxY% or y% < minY%) and myCount% < 1000 do
+            x% := onGridX% + (ppg%*floor(rand((maxX%/ppg%)-(minX%/ppg%)+1,(minX%/ppg%))));
+            y% := onGridY% + (ppg%*floor(rand((maxY%/ppg%)-(minY%/ppg%)+1,(minY%/ppg%))));
+            myCount% += 1;
+        wend
+        'This has been tested and to the best of my ability to tell the outputs do in fact
+        'span the defined legal range.
+        'If this triggers, we have found a set of criteria that don't work for some reason
+        if myCount% = 1000 then
+            printlog("Random draw exceeded 1000 attempts to find a valid location for centering background!\n");
+            printlog("ppg is %d, min/max X is %d/%d, min/max Y is %d/%d, onGridX/Y is %d/%d\n",ppg%,minX%,maxX%,minY%,maxY%,onGridX%,onGridY%);
+            message("Random draw exceeded 1000 attempts to find a valid location for centering background!  Quitting!");
+            halt
+        endif;
+        'If it doesn't trigger, then we are good to go, x% and y% are updated with a legal draw!    
+    else
+        while (x% > maxX% or x% < minX% or y% > maxY% or y% < minY%) and myCount% < 1000 do
+            'shiftpergrixel
+            x% := onGridX% + round(shiftpergrixel*floor(rand(round(maxX%/shiftpergrixel)-round(minX%/shiftpergrixel)+1,round(minX%/shiftpergrixel))));
+            y% := onGridY% + round(shiftpergrixel*floor(rand(round(maxY%/shiftpergrixel)-round(minY%/shiftpergrixel)+1,round(minY%/shiftpergrixel))));
+            myCount% += 1;
+        wend
+        x% := onGridX%;  'manual override, calculation above is not right
+        y% := onGridY%;
+        'This might work?
+        'If this triggers, we have found a set of criteria that don't work for some reason
+        if myCount% = 1000 then
+            printlog("Random draw exceeded 1000 attempts to find a valid location for centering background!\n");
+            printlog("ppg is %d, min/max X is %d/%d, min/max Y is %d/%d, onGridX/Y is %d/%d\n",ppg%,minX%,maxX%,minY%,maxY%,onGridX%,onGridY%);
+            message("Random draw exceeded 1000 attempts to find a valid location for centering background!  Quitting!");
+            halt
+        endif;
+        'If it doesn't trigger, then we are good to go, x% and y% are updated with a legal draw! 
+    endif;
+    
+    return
+end
+
+
+'This process will update the background center values, if necessary
+'Will update x%, y% input values
+'For flicker background will select new legal location, for moving backgrounds will systematically update the center by one grixel
+proc UpdateBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,RFCXPix%,RFCYPix%,nFrames%,frameCount%,origX%,origY%)
+    var n;
+    n := frameCount% -1;
+    var ppgfloat;  'For cardinal backgrounds, the size of the shift is equal to the number of pixels in a grixel, but for diagonal backgrounds this is not true
+    var shiftpergrixel;  'again, for diagonals
+    var thisDiagShift%;
+    ppgfloat := ppg%;
+    'shiftpergrixel := ppgfloat * sqrt(2);
+    shiftpergrixel := ppgfloat / sqrt(2);
+    thisDiagShift% := round(shiftpergrixel*n);
+    
+    docase
+    case bgType% <= 2 then  'for no background, or static background, do not change value
+        return;  
+    case bgType% = 3 then  'for flicker background, select random legal location
+        SelectLegalBackgroundCenter(x%,y%,ppg%,bgType%,direction%,RFCXPix%,RFCYPix%,nFrames%);
+    case frameCount% > 1 then  'for moving backgrounds, move in correct direction, but don't move on the first frame
+        docase
+        case direction% = 1 and bgType% = 4 then  'valid background, right, background moves ppg% to the right
+            x% := x% + ppg%;
+        case direction% = 1 and bgType% = 5 then  'invalid background, right, background moves ppg% to the left
+            x% := x% - ppg%;
+        case direction% = 3 and bgType% = 4 then  'valid background, up, background moves ppg% up
+            y% := y% + ppg%;
+        case direction% = 3 and bgType% = 5 then  'invalid background, up, background moves ppg% down
+            y% := y% - ppg%;    
+        case direction% = 5 and bgType% = 4 then  'valid background, left, background moves ppg% to the left
+            x% := x% - ppg%;
+        case direction% = 5 and bgType% = 5 then  'invalid background, left, background moves ppg% to the right
+            x% := x% + ppg%;
+        case direction% = 7 and bgType% = 4 then  'valid background, down, background moves ppg% down
+            y% := y% - ppg%;
+        case direction% = 7 and bgType% = 5 then  'invalid background, down, background moves ppg% up
+            y% := y% + ppg%;
+        case direction% = 2 and bgType% = 4 then  'valid background, right+up, background moves ppg% to the right/up
+            'x% := x% + ppg%;
+            'y% := y% + ppg%;
+            x% := origX% + thisDiagShift%;
+            y% := origY% + thisDiagShift%;
+        case direction% = 2 and bgType% = 5 then  'invalid background, right+up, background moves ppg% to the left/down
+            'x% := x% - ppg%; 
+            'y% := y% - ppg%;
+            x% := origX% - thisDiagShift%; 
+            y% := origY% - thisDiagShift%;
+        case direction% = 4 and bgType% = 4 then  'valid background, left+up, background moves ppg% to the left/up
+            'x% := x% - ppg%;
+            'y% := y% + ppg%;
+            x% := origX% - thisDiagShift%;
+            y% := origY% + thisDiagShift%;
+        case direction% = 4 and bgType% = 5 then  'invalid background, left+up, background moves ppg% to the right/down
+            'x% := x% + ppg%; 
+            'y% := y% - ppg%;
+            x% := origX% + thisDiagShift%; 
+            y% := origY% - thisDiagShift%;
+        case direction% = 6 and bgType% = 4 then  'valid background, left+down, background moves ppg% to the left/down
+            'x% := x% - ppg%;
+            'y% := y% - ppg%;
+            x% := origX% - thisDiagShift%;
+            y% := origY% - thisDiagShift%;
+        case direction% = 6 and bgType% = 5 then  'invalid background, left+down, background moves ppg% to the right/up
+            'x% := x% + ppg%; 
+            'y% := y% + ppg%;
+            x% := origX% + thisDiagShift%; 
+            y% := origY% + thisDiagShift%;
+        case direction% = 8 and bgType% = 4 then  'valid background, right+down, background moves ppg% to the right/down
+            'x% := x% + ppg%;
+            'y% := y% - ppg%;
+            x% := origX% + thisDiagShift%;
+            y% := origY% - thisDiagShift%;
+        case direction% = 8 and bgType% = 5 then  'invalid background, right+down, background moves ppg% to the left/up
+            'x% := x% - ppg%; 
+            'y% := y% + ppg%;
+            x% := origX% - thisDiagShift%; 
+            y% := origY% + thisDiagShift%;
+        endcase       
+        
+    endcase
+    
+    
+end
+
+
+proc GetForegroundCenter(&x%,&y%,ppg%,RFCXPix%,RFCYPix%)
+    'OK, so this function is stupidly easy...but that may be because I haven't fully grokked the pitfalls.
+    'So rather than blithely go forward, I'll set the function up and be ready to make this more complicated
+    
+    'If x%/y% are 0,0, then the center of the image will be placed at the center of the screen
+    'We want the center of the image at the center of the RF, which we know from RFCXpix%, so this is a simple addition problem
+    'It appears that we have to offset both directions by one pixel to make this actually line up correctly with the fixation point, so do that here
+    x% := RFCXPix%+1;
+    y% := RFCYPix%+1;
+    
+end
+
+
+'This process writes the background command
+proc WriteBackground(thisBG%,xBG%,yBG%,direc%,px%,onoff%,bgDir$,frameCount%,&mrBG%)
+    var fn$; 
+    var onoff$;
+    var direc$;
+    var tempBG%;
+    var thisbg$;
+    var ender$;
+    var blank% := 0;
+    
+    if onoff% = 0 then
+        onoff$ := "_on_";
+    else
+        onoff$ := "_off_";
+    endif;
+    
+    docase 
+    case direc% = 1 or direc% = 3 or direc% = 5 or direc% = 7 or direc% = 9 or direc% = 10 or direc% = 11 then  'use cardinalBG for annuli
+        direc$ := "cardinal";
+    case direc% = 2 or direc% = 4 or direc% = 6 or direc% = 8 then
+        direc$ := "diagonal";
+    endcase
+    
+    docase
+    case thisBG% = -1 then
+        blank% := 1;  'we are doing a blank background
+    case thisBG% > 0 then
+        thisbg$ := Str$(thisBG%);
+    else 'thisBG% is 0, pick a random background
+        tempBG% := mrBG%;  'set initially to most recent background
+        while tempBG% = mrBG% do
+            tempBG% := ceil(rand(16,0));  'keep trying until you pick a different one
+        wend
+        mrBG% := tempBG%; 'keep track of which one we picked
+        thisbg$ := Str$(tempBG%);
+    endcase;
+    
+    if frameCount% = 1 then
+        ender$ := ",P,129";
+    else
+        ender$ := "";
+    endif;
+    
+    if blank% = 0 then
+        fn$ := bgDir$ + "px" + Str$(px%) + onoff$ + direc$ + "_" + thisbg$ + ".bmp";
+    else
+        if onoff% = 0 then
+            fn$ := "blankbg_on.bmp";  'lower case for VSG
+        else
+            fn$ := "blankbg_off.bmp";
+        endif;
+        xBG% := 0;  'place center of blank at center of image
+        yBG% := 0;
+    endif;
+    
+    Print("Bmp %s,%d,%d%s\n",fn$,xBG%,yBG%,ender$);
+end
+
+
+'This process writes the foreground command
+proc WriteForeground(isStruct%,xFG%,yFG%,direc%,px%,onoff%,fgDir$,frameCount%)
+    var fn$; 
+    var onoff$;
+    var direc$;
+    var ender$;
+    var leader$;
+    var usAdd$;
+    var fcount$;
+    var ang%;
+    
+    if onoff% = 0 then
+        onoff$ := "_on_";
+    else
+        onoff$ := "_off_";
+    endif;
+    
+    
+    
+    docase
+    case isStruct% = 0 then  'if not structured
+        leader$ := "us_px";  'stimulus leader
+        
+        docase  'Assign direction, include closing underscore
+        case direc% = 1 or direc% = 3 or direc% = 5 or direc% = 7 then
+            direc$ := "cardinal_";
+        case direc% = 2 or direc% = 4 or direc% = 6 or direc% = 8 then
+            direc$ := "diagonal_";
+        endcase
+        
+        usAdd$ := "r" + Str$(ceil(rand(20,0))) + "_";  'select random instance of unstructured, give closing underscore
+        
+        fcount$ := Str$(frameCount%);
+    
+    case isStruct% = 1 then
+        leader$ := "s_px";  'stimulus leader
+        
+        ang% := (direc%-1)*45;  'calculate angle
+        direc$ := "ang" + Str$(ang%) + "_";  'include closing underscore
+        
+        usAdd$ := "";  'There is no additional entry for structured stimuli
+        
+        fcount$ := Str$(frameCount%);
+        
+    case isStruct% = 2 then
+        leader$ := "annulus_px";  'stimulus leader
+        
+        direc$ := "";  
+        usAdd$ := ""; 
+        
+        fcount$ := Str$(frameCount%);    
+        
+    case isStruct% = -1 then
+        leader$ := "blank_px";  'stimulus leader
+        onoff$ := "";  'delete on/off, not present for blank
+        docase  'Assign direction, drop underscore because these got made without underscores between pixel/(card/diag) - whoops!
+        case direc% = 1 or direc% = 3 or direc% = 5 or direc% = 7 then
+            direc$ := "cardinal";
+        case direc% = 2 or direc% = 4 or direc% = 6 or direc% = 8 then
+            direc$ := "diagonal";
+        endcase
+        usAdd$ := "";
+        fcount$ := "";
+        
+    case isStruct% = -2 then
+        leader$ := "blank_annulus_px";  'stimulus leader
+        onoff$ := ""; 'delete on/off, not present for blank
+        direc$ := "";
+        usAdd$ := "";
+        fcount$ := "";
+    else
+        message("Unknown value of isStruct: %d, file will be corrupt!\n",isStruct%);
+        
+    endcase
+    
+    
+    'The ender for all foregrounds should indicate that 255 is transparent
+    ender$ := ",S,0";
+
+    
+    fn$ := fgDir$ + "px" + Str$(px%) + "\\" + leader$ + Str$(px%) + onoff$ + direc$ + usAdd$ + fcount$ + ".bmp";
+    Print("Bmp %s,%d,%d%s\n",fn$,xFG%,yFG%,ender$);
+end
+
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc WriteParameterFile()
+	var parFileName$;
+	var parFileBase$;
+	var parHandle%;
+    var tempPrimary$;
+    var tempSecondary$;
+    var countVar%;
+    var readResult% := 1;
+    var readHandle%;
+    var textCopy$;
+   
+        
+    
+	' get filename for parfile (data file + "par" extension) and open it
+	View(DataWindow%);
+	parFileBase$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
+	parFileName$ := parFileBase$ + ".par";
+	PrintLog("par filename is " + parFileName$ + "\n");
+	parHandle% := FileOpen(parFileName$, 8, 1);
+    
+	' write general info - eye coil gains, dist to screen
+	Print("Parameters for %s\n\n", parFileBase$);  'title line
+    
+	Print("General information\n");
+	Print("-------------------\n\n");
+	Print("Distance to screen (MM)    : %s\n", GetDistanceToScreenMM$());
+	Print("Eye coil software gain (X) : %f\n", DegreesPerVoltX);
+	Print("Eye coil software gain (Y) : %f\n", DegreesPerVoltY);
+	Print("Eye coil sampling freq (Hz): %d\n", EyeCoilSamplingFrequency%);
+    Print("Wavemark ports             : %s\n", GetWavemarkPorts$());
+    Print("Continuous ports           : %s\n", GetContinuousPorts$());
+	Print("Reward size (ms)           : %d\n", GetJuiceRewardMS%());
+    
+	' write fixpoint parameters
+	Print("\nFixation point\n");
+	Print("-------------------\n\n");
+	Print("Window radius              : %f\n", WindowRadius);
+	Print("Position (x, degrees)      : %f\n", FixationX);
+	Print("Position (y, degrees)      : %f\n", FixationY);
+	Print("Diameter (degrees)         : %f\n", FixationDiameter);
+	Print("Color                      : %s\n", FixationColor$);
+    
+	' write receptive field location
+    Print("\nReceptive Field Location\n"); 
+    Print("-------------------\n\n");
+    Print("Position (x, degrees)           : %s\n", X);
+	Print("Position (y, degrees)           : %s\n", Y);
+	Print("Width (degrees)                 : %s\n", W);
+	Print("Height (degrees)                : %s\n", H);
+
+
+
+    
+	Print("\nExperimental parameters\n");
+	Print("-------------------------\n\n");
+    
+	Print("Acquisition time (s)   : %f\n", mbAcquisitionTime);
+    Print("Fixation hold time (s)   : %f\n", mbFixationTime);
+    Print("Intertrial time (s)   : %f\n", ITI);
+    Print("Abort penalty time (s)   : %f\n", mbAbortPenaltyTime); 
+    Print("Reward Delay (s)   : %f\n\n", mbRewardDelay);
+    
+    Print("N Grixels per RF   : %d\n", grixelsPerRF);
+    Print("N Grixels per Foreground   : %d\n", grixelsPerCenter);
+    Print("N Pre/Post Frames   : %d\n", nPrePostFrames%);
+    Print("N Frames per Trial (Bars)   : %d\n", nFramesPerTrial%);
+    Print("N Frames per Trial (Annuli)   : %d\n", nFramesPerTrialAnnulus%);
+    Print("Degrees per Grixel   : %f\n", degPerGrixel);
+    Print("Pixels per Grixel   : %d\n", pixelsPerGrixel%);
+    Print("Background Density   : %f\n\n", backgroundDensity);
+    
+    Print("Requested Bar Speed (deg/s)   : %f\n", barSpeed);
+    Print("Actual Bar Speed (deg/s)   : %f\n", barSpeedActual);
+    Print("Actual Frame Duration (s)   : %f\n", secsPerFrameActual);
+    Print("Refreshes per Frame   : %d\n", refreshesPerFrame%);
+    Print("Trial Duration, Bar (s)   : %f\n\n", mbTrialDur);
+    Print("Trial Duration, Annulus (s)   : %f\n\n", mbTrialDurAnnulus);
+    
+
+    Print("Repeats per Condition   : %d\n", nRepeats%);
+    Print("Total Trials Requested   : %d\n", nTrials%);
+    Print("Total Trials Completed   : %d\n", trialCount%);
+    Print("Total Rewards Given   : %d\n", mbRewardCount%);
+    Print("Interleave Conditions?   : %d\n\n", interleave%);
+    
+    if cellType% = 0 then
+        Print("Cell Type   : ON\n");
+    else
+        Print("Cell Type   : OFF\n");
+    endif;
+    Print("Use Cardinal Direction?   : %d\n", useCardinal%);
+    Print("Use Diagonal Direction?   : %d\n\n", useDiagonal%);
+        
+    Print("Use Moving Bar?   : %d\n", useMovingBar%);
+    Print("Use Continuous Moving Bar?   : %d\n", useContinuousMovingBar%);
+    Print("Use Temporally Random Bar?   : %d\n", useTRandBar%);
+    Print("Use Spatially Random Bar?   : %d\n", useSRandBar%);
+    Print("Use Spatially and Temporally Random Bar?   : %d\n", useSTRandBar%);
+    Print("Use Inward Annulus?   : %d\n", useInwardAnnulus%);
+    Print("Use Outward Annulus?   : %d\n", useOutwardAnnulus%);
+    Print("Use Continuous Inward Annulus?   : %d\n", useContinuousInwardAnnulus%);
+    Print("Use Continuous Outward Annulus?   : %d\n", useContinuousOutwardAnnulus%);
+    Print("Use Random Annulus?   : %d\n\n", useRandAnnulus%);
+    
+    Print("Use No Background?   : %d\n", useNoBackground%);
+    Print("Use Static Background?   : %d\n",useStaticBackground%);
+    Print("Use Flickering Background?   : %d\n", useFlickerBackground%);
+    Print("Use Valid Background?   : %d\n", useValidBackground%);
+    Print("Use Invalid Background?   : %d\n", useInvalidBackground%);
+
+
+    
+    Print("\nTrial-By-Trial Details\n");
+	Print("-------------------------\n\n");
+    
+    readHandle% := FileOpen(trialsFile$, 8, 0);
+    ReadSetup("","");  'Cancels all soft separators
+    while countVar% < 300000 and readResult% > -1 do  'right now 600 trials is < 26000 lines, I hard coded a 5000 trial limit, so about 217000 lines max, 300000 is safe and indicates obvious read problem
+        view(readHandle%); 'actively make read file current
+        readResult% := Read(textCopy$);  'only reads one line at a time
+    
+
+        view(parHandle%); 'actively make par file current
+        Print("%s\n",textCopy$);  'write one line at a time
+    
+        countVar% += 1; 'increment count variable - I'm just paranoid about getting stuck in this WHILE loop, though the readResult% SHOULD not fail me
+    wend
+    
+    view(parHandle%); 'actively make par file current
+    FileClose(0);  'closes current handle (par file)
+    view(readHandle%); 'actively make read file current
+    FileClose(0); 'closes current handle (read file) 
+    
+    'Warn just in case something weird happened
+    if countVar% >= 300000 then
+        message("Warning!  PAR file copy of trial spec file may have broken!")
+    endif;
+    
+end;
