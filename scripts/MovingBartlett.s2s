@@ -7,7 +7,7 @@
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-#include "../../Spike2Util/UsreyUtil.s2s"
+#include "../util/UsreyUtil.s2s"
 #include "AttentionExtractFunctions.s2s"
 #include "UsreyFixationPoint.s2s"
 #include "UsreyDAQ.s2s"
@@ -1085,65 +1085,65 @@ end;
 
 proc PrepareTrial()
     
-    trialDescription$ := "Trial " + Str$(trialCount%+1) +", ";  'start with trial count
+    trialDescription$ := "Trial " + Str$(trialOrder%[trialCount%]+1) +", ";  'start with trial count
     
     'Add on trial type, will include possibilities of trial types that are not yet implemented, in case they are eventually implemented
     docase
-    case stimTypeThisTrial%[trialCount%] = 1 then
+    case stimTypeThisTrial%[trialOrder%[trialCount%]] = 1 then 
         trialDescription$ += "MovingBar, "; 'This method of tacking on a string is legit, I verified
         mbThisTrialDur := mbTrialDur;
-    'case stimTypeThisTrial%[trialCount%] = 2 then
+    'case stimTypeThisTrial%[trialOrder%[trialCount%]] = 2 then
         'trialDescription$ += "ContinuousMovingBar, ";
         'mbThisTrialDur := mbTrialDur;  'This is not currently implemented, not sure if this value would be correct
-    case stimTypeThisTrial%[trialCount%] = 3 then
+    case stimTypeThisTrial%[trialOrder%[trialCount%]] = 3 then
         trialDescription$ += "TRandBar, ";
         mbThisTrialDur := mbTrialDur;
-    case stimTypeThisTrial%[trialCount%] = 4 then
+    case stimTypeThisTrial%[trialOrder%[trialCount%]] = 4 then
         trialDescription$ += "SRandBar, ";
         mbThisTrialDur := mbTrialDur;
-    case stimTypeThisTrial%[trialCount%] = 5 then
+    case stimTypeThisTrial%[trialOrder%[trialCount%]] = 5 then
         trialDescription$ += "STRandBar, ";
         mbThisTrialDur := mbTrialDur;
-    case stimTypeThisTrial%[trialCount%] = 6 then
+    case stimTypeThisTrial%[trialOrder%[trialCount%]] = 6 then
         trialDescription$ += "InwardAnnulus, ";
         mbThisTrialDur := mbTrialDurAnnulus;
-    case stimTypeThisTrial%[trialCount%] = 7 then
+    case stimTypeThisTrial%[trialOrder%[trialCount%]] = 7 then
         trialDescription$ += "OutwardAnnulus, ";
         mbThisTrialDur := mbTrialDurAnnulus;
-    'case stimTypeThisTrial%[trialCount%] = 8 then
+    'case stimTypeThisTrial%[trialOrder%[trialCount%]] = 8 then
         'trialDescription$ += "ContinuousInwardAnnulus, ";
         'mbThisTrialDur := mbTrialDurAnnulus;  'This is not currently implemented, not sure if this value would be correct
-    'case stimTypeThisTrial%[trialCount%] = 9 then
+    'case stimTypeThisTrial%[trialOrder%[trialCount%]] = 9 then
         'trialDescription$ += "ContinuousOutwardAnnulus, ";
         'mbThisTrialDur := mbTrialDurAnnulus;  'This is not currently implemented, not sure if this value would be correct
-    case stimTypeThisTrial%[trialCount%] = 10 then
+    case stimTypeThisTrial%[trialOrder%[trialCount%]] = 10 then
         trialDescription$ += "RandAnnulus, "; 
         mbThisTrialDur := mbTrialDurAnnulus;
     endcase
     
     'Add on background type
     docase
-    case bgTypeThisTrial%[trialCount%] = 1 then
+    case bgTypeThisTrial%[trialOrder%[trialCount%]] = 1 then
         trialDescription$ += "NoBG, ";
-    case bgTypeThisTrial%[trialCount%] = 2 then
+    case bgTypeThisTrial%[trialOrder%[trialCount%]] = 2 then
         trialDescription$ += "StaticBG, ";
-    case bgTypeThisTrial%[trialCount%] = 3 then
+    case bgTypeThisTrial%[trialOrder%[trialCount%]] = 3 then
         trialDescription$ += "FlickerBG, ";
-    case bgTypeThisTrial%[trialCount%] = 4 then
+    case bgTypeThisTrial%[trialOrder%[trialCount%]] = 4 then
         trialDescription$ += "ValidBG, ";
-    case bgTypeThisTrial%[trialCount%] = 5 then
+    case bgTypeThisTrial%[trialOrder%[trialCount%]] = 5 then
         trialDescription$ += "InvalidBG, ";
     endcase
     
     'Add on direction
     docase
-    case directionThisTrial%[trialCount%] < 9 then
+    case directionThisTrial%[trialOrder%[trialCount%]] < 9 then
         trialDescription$ += "Deg" + Str$(45*(directionThisTrial%[trialCount%]-1));
-    case directionThisTrial%[trialCount%] = 9 then   'these really, really seem redundant, but they may end up being useful for easily parsing the sampletext
+    case directionThisTrial%[trialOrder%[trialCount%]] = 9 then   'these really, really seem redundant, but they may end up being useful for easily parsing the sampletext
         trialDescription$ += "Inward";
-    case directionThisTrial%[trialCount%] = 10 then
+    case directionThisTrial%[trialOrder%[trialCount%]] = 10 then
         trialDescription$ += "Outward";
-    case directionThisTrial%[trialCount%] = 11 then
+    case directionThisTrial%[trialOrder%[trialCount%]] = 11 then
         trialDescription$ += "RandAnnulus";
     endcase    
 end;
@@ -1286,7 +1286,7 @@ func MovingBartlettDialog%()
         pixelsPerDegree := screenXpixels/(2*screenXdeg);  'easier calculation, doesn't require screenMMPerDegree
         pixelsPerGrixel% := round(pixelsPerDegree*degPerGrixel);  'pix/grx = pix/deg * deg/grx, this is our grid size!
         
-        pixelsPerGrixel% := 2;  'TODO get rid of manual override
+        pixelsPerGrixel% := 17;  'TODO get rid of manual override
         
         printlog("pixels per degree is %f, pixels per grixel is %d\n",pixelsPerDegree,pixelsPerGrixel%);
         
