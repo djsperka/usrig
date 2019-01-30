@@ -144,6 +144,8 @@ var useDiagonal%;
 var isSpatiallyStructured%;
 var trialCount%;  'Will index the current trial
 var trialDescription$;  'For a sampletext before each trial
+var blankType%;  'We may use oversized blanks
+var addlBlankDiagOnly%;  'We may use oversized blanks only on diagonals
 
 
 ' Type variables
@@ -1164,6 +1166,7 @@ func MovingBartlettDialog%()
     var tenInts%[10];
     var type$[2];
     var direction$[3];
+    var blankSize$[4];
     var refreshesPerFrameFloat;  'for local float computation
     
     type$[0] := "On Cell";
@@ -1172,6 +1175,12 @@ func MovingBartlettDialog%()
     direction$[0] := "4 Cardinal directions";
     direction$[1] := "4 Diagonal directions";
     direction$[2] := "All 8 directions";
+    
+    blankSize$[0] := "Regular blank width";
+    blankSize$[1] := "Add 1 pixel to blank";
+    blankSize$[2] := "Add 2 pixels to blank";
+    blankSize$[3] := "Add 1 grixel to blank";
+    
     
 	GetMovingBartlettParameters();
     
@@ -1206,7 +1215,7 @@ func MovingBartlettDialog%()
     DlgCheck(11,"Use valid background?",2,13);
     DlgCheck(12,"Use invalid background?",2,14);
     
-    DlgGroup("Stimuli",42,1,40,11);
+    DlgGroup("Stimuli",42,1,40,13);
     DlgCheck(13,"Use moving bar?",43,2);
     DlgCheck(14,"Use continuous moving bar?",43,3);
     DlgCheck(15,"Use temporal random bar?",43,4);
@@ -1217,12 +1226,14 @@ func MovingBartlettDialog%()
     DlgCheck(20,"Use continuous inward annulus?",43,9);
     DlgCheck(21,"Use continuous outward annulus?",43,10);
     DlgCheck(22,"Use random annulus?",43,11);
+    DlgList(23,25,blankSize$,4,44,12);
+    DlgCheck(24,"Add'l blank on diagonal only?",43,13);
     
     DlgAllow(0, 0, MovingBartlettDialogChanged%);  'not used/written for now
     
 	i%:=DlgShow(ITI,barSpeed,nRepeats%,nPrePostFrames%,interleave%,cellType%,useDirection%,
     useNoBackground%,useStaticBackground%,useFlickerBackground%,useValidBackground%,useInvalidBackground%,
-    tenInts%[]);
+    tenInts%[],blankType%,addlBlankDiagOnly%);
     
     
     useMovingBar% := tenInts%[0];
@@ -1376,6 +1387,8 @@ proc GetMovingBartlettParameters()
     useRandAnnulus% := GetIntRegistryValue%(key$, "useRandAnnulus", useRandAnnulus%);
     cellType% := GetIntRegistryValue%(key$, "cellType", cellType%);
     useDirection% := GetIntRegistryValue%(key$, "useDirection", useDirection%);
+    blankType% := GetIntRegistryValue%(key$, "blankType", blankType%);
+    addlBlankDiagOnly% := GetIntRegistryValue%(key$, "addlBlankDiagOnly", addlBlankDiagOnly%);
     
 end;
 
@@ -1406,6 +1419,8 @@ proc SaveMovingBartlettParameters()
     SetIntRegistryValue(key$, "useRandAnnulus", useRandAnnulus%);
     SetIntRegistryValue(key$, "cellType", cellType%);
     SetIntRegistryValue(key$, "useDirection", useDirection%);
+    SetIntRegistryValue(key$, "blankType", blankType%);
+    SetIntRegistryValue(key$, "addlBlankDiagOnly", addlBlankDiagOnly%);
     
 end;
 
@@ -2551,7 +2566,23 @@ proc WriteForeground(isStruct%,xFG%,yFG%,direc%,px%,onoff%,fgDir$,frameCount%)
         fcount$ := Str$(frameCount%);    
         
     case isStruct% = -1 then
-        leader$ := "blank_px";  'stimulus leader
+        'Leader depends on type of blank selected
+        docase
+        case blankType% = 0 then  'if we request blank type 0, use regular blank
+            leader$ := "blank_px";  'stimulus leader
+        case addlBlankDiagOnly% = 1 and (direc% = 1 or direc% = 3 or direc% = 5 or direc% = 7) then  'if we request to extend blank on diagonal only, and this is cardinal, use regular blank
+            leader$ := "blank_px";  'stimulus leader
+        'If neither of the first two cases trigger, this stimulus uses one of the extended blanks
+        case blankType% = 1 then  'blank type 1 is extended by one pixel on each side
+            leader$ := "fat1blank_px";  'stimulus leader
+        case blankType% = 2 then  'blank type 2 is extended by two pixels on each side
+            leader$ := "fat2blank_px";  'stimulus leader
+        case blankType% = 3 then  'blank type 3 is extended by one grixel on each side
+            leader$ := "fatGblank_px";  'stimulus leader
+        endcase
+        
+        
+        
         onoff$ := "";  'delete on/off, not present for blank
         docase  'Assign direction, drop underscore because these got made without underscores between pixel/(card/diag) - whoops!
         case direc% = 1 or direc% = 3 or direc% = 5 or direc% = 7 then
