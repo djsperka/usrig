@@ -18,6 +18,11 @@ var cmLocalGratingParametersFile$;  ' initialized below
 var cmUseGratingParametersFile% := 0;    ' only if remote is NOT 127.0.0.1
 var cmFixationAlwaysUp% := 0;
 var cmCollectElectrodeData% := 0;
+var cmUseHazardForMaintenance% := 0;  'do we use a hazard function for maintaining fixation?
+var cmMinHazardTime;                  'minimum hazard time, in seconds
+var cmMaxHazardTime;                  'maximum hazard time, in seconds
+var cmMinRewardMS%;                   'minimum reward time, in ms, will be used to OVERWRITE JuiceRewardMSMin% from config/DAQ
+var cmMaxRewardMS%;                   'maximum reward time, in ms, will be used to OVERWRITE JuiceRewardMSMax% from config/DAQ
 
 ' Window handles and channel numbers
 var XChannel%,YChannel%;		' Channel number assigned to eye x and y
@@ -153,214 +158,233 @@ var nTrialsAborted% :=0;		'
 func IdleProcessing%()
 	var iStatus% := 1;	
 	tNow := View(DataWindow%).MaxTime();
-
+    
 	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
 	yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
-
+    
 	' Don't update display every time....
 	if tNow-tLastUpdate > .005 then
 		View(XYWindow%).XYAddData(1,xEye,yEye);
 		tLastUpdate := tNow;
 	endif
-
-
+    
+    
 	docase 
-		case iState% = stateVSGWait% then
+    case iState% = stateVSGWait% then
         
         ' HACK skip wait state!!!!! djs 2/8/2012
         
         'ChangeStateTo(stateStartTrial%, tNow);
         
-			' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
-			tTrigger := View(DataWindow%).NextTime(ReadyChannel%, tLast, vTrigger);
-			if tTrigger > tLastTrigger and vTrigger = 0 then
-				LogStatus("stateVSGWait", "Got leading edge of trigger at " + str$(tTrigger));
-				tLastTrigger := tTrigger;
-                ChangeStateTo(stateVSGWaitConfirm%, tTrigger);
-			endif;
-
-		case iState% = stateVSGWaitConfirm% then
-
-			' Waiting for VSG to confirm it is ready. The downward side of the pulse is expected...
-			tTrigger := View(DataWindow%).NextTime(ReadyChannel%, tLastTrigger, vTrigger);
-			if tTrigger > tLastTrigger and vTrigger = 1 then
-				LogStatus("stateVSGWaitConfirm", "Got trailing edge of trigger");
-				tLastTrigger := tTrigger;
-				ChangeStateTo(stateStartTrial%, tTrigger);
-			endif;
-
-
-		case iState% = stateStartTrial% then
-
-			' Start trial. Put up fixation point.
-			LogStatus("stateStartTrial", "Send F key");
-			SafeSampleKey("F");
-			ChangeStateTo(stateWaitForFixPtOn%, tTrigger);
+        ' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
+        tTrigger := View(DataWindow%).NextTime(ReadyChannel%, tLast, vTrigger);
+        if tTrigger > tLastTrigger and vTrigger = 0 then
+            LogStatus("stateVSGWait", "Got leading edge of trigger at " + str$(tTrigger));
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateVSGWaitConfirm%, tTrigger);
+        endif;
+        
+    case iState% = stateVSGWaitConfirm% then
+        
+        ' Waiting for VSG to confirm it is ready. The downward side of the pulse is expected...
+        tTrigger := View(DataWindow%).NextTime(ReadyChannel%, tLastTrigger, vTrigger);
+        if tTrigger > tLastTrigger and vTrigger = 1 then
+            LogStatus("stateVSGWaitConfirm", "Got trailing edge of trigger");
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateStartTrial%, tTrigger);
+        endif;
+        
+        
+    case iState% = stateStartTrial% then
+        
+        ' Start trial. Put up fixation point.
+        LogStatus("stateStartTrial", "Send F key");
+        SafeSampleKey("F");
+        ChangeStateTo(stateWaitForFixPtOn%, tTrigger);
 		
-		case iState% = stateWaitForFixPtOn% then
-
-			tTrigger := View(DataWindow%).NextTime(TriggerChannel%, tLast, vTrigger);
-			if tTrigger > tLast and vTrigger = 0 then 
-				' Fixation point is up
-				LogStatus("stateWaitForFixPtOn", "Fixpt is on");
-				tLastTrigger := tTrigger;
-				ChangeStateTo(stateWaitForAcquisition%, tTrigger);
-				DrawStim(1);	' actually this draws the location of the fixpt.
-			endif
-
-		case iState% = stateWaitForAcquisition% then
-
-			' Waiting for eye to fall inside of fixation window
-			if InFixationWindow%(xEye, yEye) = 1 then
-				LogStatus("stateWaitForAcquisition", "eye in fixation window");
-				ChangeStateTo(stateHoldFixation%, tNow);
-			else 
-				if tNow - tStateStart > cmAcquisitionTime then
-					' failed to acquire target. 
-					LogStatus("stateWaitForAcquisition", "failed.");
-					ChangeStateTo(stateAbort%, tNow);
-				endif
-			endif
-
-		case iState% = stateAbort% then
+    case iState% = stateWaitForFixPtOn% then
         
-            if cmFixationAlwaysUp% = 1 then
-                LogStatus("stateAbort", "Fixation always up, returning to waiting for acquisition.");
-                ChangeStateTo(stateWaitForAcquisition%, tNow);  'just go back to waiting for acquisition
-            else
-                ' Signal "X" turns off fixpt and stimulus. The next state 'stateWaitForBlank' only checks for 
-                ' fixpt off. 
-                LogStatus("stateAbort", "send f key.");
-                SafeSampleKey("f"); 
-                ChangeStateTo(stateWaitForBlank%, tNow);
-            endif;
+        tTrigger := View(DataWindow%).NextTime(TriggerChannel%, tLast, vTrigger);
+        if tTrigger > tLast and vTrigger = 0 then 
+            ' Fixation point is up
+            LogStatus("stateWaitForFixPtOn", "Fixpt is on");
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateWaitForAcquisition%, tTrigger);
+            DrawStim(1);	' actually this draws the location of the fixpt.
+        endif
         
+    case iState% = stateWaitForAcquisition% then
         
-		case iState% = stateWaitForBlank% then
-
-			' we just wait for fix point off signal in this case. 
-            tTrigger := View(DataWindow%).NextTime(TriggerChannel%, tLast, vTrigger);
-            'printlog("Value on trigger channel is %f\n",ChanValue(TriggerChannel%,tNow));
-			if tTrigger > tLast and vTrigger = 1 then
-                ' Fixation point is off
-                tLastTrigger := tTrigger;
-            
-				'LogStatus("stateWaitForBlank", "Fix pt is off.");
-				'ChangeStateTo(stateInterTrialInterval%, tTrigger);
-                'DrawStim(0);	' actually this draws the location of the fixpt.
-     
-            ChangeStateTo(stateVerifyBlank%, tTrigger);
-            else
-                if tTrigger = -1 and vTrigger = 0 then
-                    'There is a path for the logic here to miss the blank - if there is crosstalk with a width but due to OS delays the actual blank happens before the recheck, we would get stuck here.  So don't.
-                    ChangeStateTo(stateInterTrialInterval%, tTrigger);
-                    LogStatus("stateWaitForBlank", "Blank occured while we were trying to identify crosstalk, move along!");
-                
-                endif
+        ' Waiting for eye to fall inside of fixation window
+        if InFixationWindow%(xEye, yEye) = 1 then
+            LogStatus("stateWaitForAcquisition", "eye in fixation window");
+            ChangeStateTo(stateHoldFixation%, tNow);
+        else 
+            if tNow - tStateStart > cmAcquisitionTime then
+                ' failed to acquire target. 
+                LogStatus("stateWaitForAcquisition", "failed.");
+                ChangeStateTo(stateAbort%, tNow);
             endif
+        endif
         
-        case iState% = stateVerifyBlank% then
+    case iState% = stateAbort% then
         
-            'Here we are making sure that the condition that triggered stateWaitForBlank was NOT a false trigger from crosstalk
-            'The major issue is that the crosstalk is sometimes 'infinitely narrow' - that is, the time of both the upwards and
-            'the downwards transitions is identical.  NextTime can't see both events in that case.
+        if cmFixationAlwaysUp% = 1 then
+            LogStatus("stateAbort", "Fixation always up, returning to waiting for acquisition.");
+            ChangeStateTo(stateWaitForAcquisition%, tNow);  'just go back to waiting for acquisition
+        else
+            ' Signal "X" turns off fixpt and stimulus. The next state 'stateWaitForBlank' only checks for 
+            ' fixpt off. 
+            LogStatus("stateAbort", "send f key.");
+            SafeSampleKey("f"); 
+            ChangeStateTo(stateWaitForBlank%, tNow);
+        endif;
+        
+        
+    case iState% = stateWaitForBlank% then
+        
+        ' we just wait for fix point off signal in this case. 
+        tTrigger := View(DataWindow%).NextTime(TriggerChannel%, tLast, vTrigger);
+        'printlog("Value on trigger channel is %f\n",ChanValue(TriggerChannel%,tNow));
+        if tTrigger > tLast and vTrigger = 1 then
+            ' Fixation point is off
+            tLastTrigger := tTrigger;
             
-            tTrigger2 := View(DataWindow%).NextTime(TriggerChannel%, tLastTrigger, vTrigger);  'so check this value again, from the last trigger time
-            docase
-            case tTrigger2 = -1 and vTrigger = 0 then 'no event, channel is low, blank is verified, move forward as expected
+            'LogStatus("stateWaitForBlank", "Fix pt is off.");
+            'ChangeStateTo(stateInterTrialInterval%, tTrigger);
+            'DrawStim(0);	' actually this draws the location of the fixpt.
+            
+            ChangeStateTo(stateVerifyBlank%, tTrigger);
+        else
+            if tTrigger = -1 and vTrigger = 0 then
+                'There is a path for the logic here to miss the blank - if there is crosstalk with a width but due to OS delays the actual blank happens before the recheck, we would get stuck here.  So don't.
                 ChangeStateTo(stateInterTrialInterval%, tTrigger);
-                LogStatus("stateVerifyBlank", "Fix pt is off.");
-                DrawStim(0);	' actually this draws the location of the fixpt.
-            case tTrigger2 = -1 and vTrigger = 1 then 'no event, but channel is high, this implies infinitely narrow crosstalk, go back to wait for blank
-                ChangeStateTo(stateWaitForBlank%, tTrigger); 'go back at the exact same time we came at, this should be OK
-                LogStatus("stateVerifyBlank", "Infinitely narrow crosstalk found, returning to stateWaitForBlank.");
-            case tTrigger2 > tLastTrigger and vTrigger = 0 then 'this is an event, but channel is high, implies crosstalk was not infinitely narrow, go back and wait for blank
-                ChangeStateTo(stateWaitForBlank%, tTrigger2);  'go back to find blanking signal, but move beyond spurious low-to-high transition
-                LogStatus("stateVerifyBlank", "Crosstalk found, returning to stateWaitForBlank.");
-            case tTrigger2 > tLastTrigger and vTrigger = 1 then 'this is an event with channel going low, this implies an initial infinitely narrow crosstalk followed by a true blank signal, move forward
-                ChangeStateTo(stateInterTrialInterval%, tTrigger2);  'use time of event found on this check
-                LogStatus("stateVerifyBlank", "Fix pt is off.");
-                DrawStim(0);	' actually this draws the location of the fixpt.
-            case tTrigger2 < 0 then 'negative error code, report error
-                message("Error!  Check Log!");
-                printlog("Error in stateVerifyBlank, message is: %s\n",Error$(tTrigger2));
-                Quit%();
-            case tTrigger2 < tLastTrigger then
-                message("Error!  tTrigger2 should not be less than tLastTrigger!");
-                printlog("Error in stateVerifyBlank, tTrigger2 returned a seemingly impossible value less than tLast! (%f)\n",tTrigger2);
-                Quit%(); 'hja edit 170517
-            case tTrigger2 = tLastTrigger then
-                message("Error!  tTrigger2 should not be equal to tLastTrigger!");
-                printlog("Error in stateVerifyBlank, tTrigger2 returned a seemingly impossible value equal to tLast! (%f)\n",tTrigger2);
-                Quit%();
-            else 
-                message("Error!  vTrigger is not 0 or 1");
-                printlog("Error in stateVerifyBlank, vTrigger returned a seemingly impossible value! (%f)\n",vTrigger);
-                Quit%();
-            endcase
-            
-            
-		case iState% = stateInterTrialInterval% then
-
-			if tNow - tStateStart > cmTimeOutTime then
-
-				LogStatus("stateInterTrialInterval", "time out is done.");
-				ChangeStateTo(stateStartTrial%, tNow);
-
-			endif
-
-		case iState% = stateHoldFixation% then
-
-			if InFixationWindow%(xEye, yEye) = 0 then
-	       		
-				LogStatus("stateWaitForFixation", "outside fixation window, aborting trial.");
-				ChangeStateTo(stateAbort%, tNow);
-
-			else 
-
-				if tNow - tStateStart > cmFixationDuration then
-
-					' update tStateStart
-					ChangeStateTo(stateMaintainFixation%, tNow);
-					LogStatus("stateWaitForFixation", "successful trial.");
-	
-					' Reward
-					DefaultReward();
-	
-				endif
-
-			endif
+                LogStatus("stateWaitForBlank", "Blank occured while we were trying to identify crosstalk, move along!");
+                
+            endif
+        endif
         
-  		case iState% = stateMaintainFixation% then
-
-			if InFixationWindow%(xEye, yEye) = 0 then
-	       		
-				LogStatus("stateWaitForFixation", "outside fixation window, aborting trial.");
-				ChangeStateTo(stateAbort%, tNow);
-
-			else 
-
-				if tNow - tStateStart > cmMaintainFixation then
-
-					' update tStateStart
-					ChangeStateTo(stateMaintainFixation%, tNow);
-					LogStatus("stateMaintainFixation", "again....");
-	
-					' Reward
-					DefaultReward();
-	
-				endif
-
-			endif
-
-		else
-			
-			' Unknown state!
-			Message("Unknown state=" + str$(iState%));
-			halt;
-
+    case iState% = stateVerifyBlank% then
+        
+        'Here we are making sure that the condition that triggered stateWaitForBlank was NOT a false trigger from crosstalk
+        'The major issue is that the crosstalk is sometimes 'infinitely narrow' - that is, the time of both the upwards and
+        'the downwards transitions is identical.  NextTime can't see both events in that case.
+        
+        tTrigger2 := View(DataWindow%).NextTime(TriggerChannel%, tLastTrigger, vTrigger);  'so check this value again, from the last trigger time
+        docase
+        case tTrigger2 = -1 and vTrigger = 0 then 'no event, channel is low, blank is verified, move forward as expected
+            ChangeStateTo(stateInterTrialInterval%, tTrigger);
+            LogStatus("stateVerifyBlank", "Fix pt is off.");
+            DrawStim(0);	' actually this draws the location of the fixpt.
+        case tTrigger2 = -1 and vTrigger = 1 then 'no event, but channel is high, this implies infinitely narrow crosstalk, go back to wait for blank
+            ChangeStateTo(stateWaitForBlank%, tTrigger); 'go back at the exact same time we came at, this should be OK
+            LogStatus("stateVerifyBlank", "Infinitely narrow crosstalk found, returning to stateWaitForBlank.");
+        case tTrigger2 > tLastTrigger and vTrigger = 0 then 'this is an event, but channel is high, implies crosstalk was not infinitely narrow, go back and wait for blank
+            ChangeStateTo(stateWaitForBlank%, tTrigger2);  'go back to find blanking signal, but move beyond spurious low-to-high transition
+            LogStatus("stateVerifyBlank", "Crosstalk found, returning to stateWaitForBlank.");
+        case tTrigger2 > tLastTrigger and vTrigger = 1 then 'this is an event with channel going low, this implies an initial infinitely narrow crosstalk followed by a true blank signal, move forward
+            ChangeStateTo(stateInterTrialInterval%, tTrigger2);  'use time of event found on this check
+            LogStatus("stateVerifyBlank", "Fix pt is off.");
+            DrawStim(0);	' actually this draws the location of the fixpt.
+        case tTrigger2 < 0 then 'negative error code, report error
+            message("Error!  Check Log!");
+            printlog("Error in stateVerifyBlank, message is: %s\n",Error$(tTrigger2));
+            Quit%();
+        case tTrigger2 < tLastTrigger then
+            message("Error!  tTrigger2 should not be less than tLastTrigger!");
+            printlog("Error in stateVerifyBlank, tTrigger2 returned a seemingly impossible value less than tLast! (%f)\n",tTrigger2);
+            Quit%(); 'hja edit 170517
+        case tTrigger2 = tLastTrigger then
+            message("Error!  tTrigger2 should not be equal to tLastTrigger!");
+            printlog("Error in stateVerifyBlank, tTrigger2 returned a seemingly impossible value equal to tLast! (%f)\n",tTrigger2);
+            Quit%();
+        else 
+            message("Error!  vTrigger is not 0 or 1");
+            printlog("Error in stateVerifyBlank, vTrigger returned a seemingly impossible value! (%f)\n",vTrigger);
+            Quit%();
+        endcase
+        
+        
+    case iState% = stateInterTrialInterval% then
+        
+        if tNow - tStateStart > cmTimeOutTime then
+            
+            LogStatus("stateInterTrialInterval", "time out is done.");
+            ChangeStateTo(stateStartTrial%, tNow);
+            
+        endif
+        
+    case iState% = stateHoldFixation% then
+        
+        if InFixationWindow%(xEye, yEye) = 0 then
+            
+            LogStatus("stateWaitForFixation", "outside fixation window, aborting trial.");
+            ChangeStateTo(stateAbort%, tNow);
+            
+        else 
+            
+            if tNow - tStateStart > cmFixationDuration then
+                
+                ' update tStateStart
+                ChangeStateTo(stateMaintainFixation%, tNow);
+                LogStatus("stateWaitForFixation", "successful trial.");
+                
+                ' Reward
+                if cmUseHazardForMaintenance% = 1 then  'give minimum reward on first fixation if we are using a hazard function
+                    SpecifyReward(JuiceRewardMSMin%);
+                else 'give default reward if we are not using a hazard function
+                    DefaultReward();
+                endif;
+                
+                
+                ' If we are using a hazard function for the duration of MaintainFixation, calculate new hazard time
+                if cmUseHazardForMaintenance% = 1 then
+                    cmMaintainFixation := GetHazardValue();
+                endif;
+                
+            endif
+            
+        endif
+        
+    case iState% = stateMaintainFixation% then
+        
+        if InFixationWindow%(xEye, yEye) = 0 then
+            
+            LogStatus("stateWaitForFixation", "outside fixation window, aborting trial.");
+            ChangeStateTo(stateAbort%, tNow);
+            
+        else 
+            
+            if tNow - tStateStart > cmMaintainFixation then
+                
+                ' update tStateStart, but "changing" state to current state
+                ChangeStateTo(stateMaintainFixation%, tNow);
+                LogStatus("stateMaintainFixation", "again....");
+                
+                ' Reward
+                if cmUseHazardForMaintenance% = 1 then  'give delay-based reward if we are using a hazard function
+                    DelayBasedReward%(cmMinHazardTime,cmMaxHazardTime,cmMaintainFixation);
+                else 'give default reward if we are not using a hazard function
+                    DefaultReward();
+                endif;
+                
+                ' If we are using a hazard function for the duration of MaintainFixation, calculate new hazard time
+                if cmUseHazardForMaintenance% = 1 then
+                    cmFixationDuration := GetHazardValue();
+                endif;
+                
+            endif
+            
+        endif
+        
+    else
+        
+        ' Unknown state!
+        Message("Unknown state=" + str$(iState%));
+        halt;
+        
 	endcase;
-
+    
 	tLast := tNow;
 	return iStatus%;
 end;
@@ -701,6 +725,11 @@ proc GetCoolMouseParameters()
     cmTimeOutTime := GetFloatRegistryValue(key$, "TimeOutTime", cmTimeOutTime);
     cmFixationAlwaysUp%:= GetIntRegistryValue%(key$, "FixationAlwaysUp", cmFixationAlwaysUp%);
     cmCollectElectrodeData% := GetIntRegistryValue%(key$, "CollectElectrodeData", cmCollectElectrodeData%);
+    cmUseHazardForMaintenance% := GetIntRegistryValue%(key$, "UseHazardForMaintenance", cmUseHazardForMaintenance%);
+    cmMinHazardTime := GetFloatRegistryValue(key$, "MinHazardTime", cmMinHazardTime);
+    cmMaxHazardTime := GetFloatRegistryValue(key$, "MaxHazardTime", cmMaxHazardTime);
+    cmMinRewardMS% := GetIntRegistryValue%(key$, "MinRewardMS", cmMinRewardMS%);
+    cmMaxRewardMS% := GetIntRegistryValue%(key$, "MaxRewardMS", cmMaxRewardMS%);
 end
 
 proc SaveCoolMouseParameters()
@@ -712,23 +741,80 @@ proc SaveCoolMouseParameters()
     SetFloatRegistryValue(key$, "TimeOutTime", cmTimeOutTime);
     SetIntRegistryValue(key$, "FixationAlwaysUp", cmFixationAlwaysUp%);
     SetIntRegistryValue(key$, "CollectElectrodeData", cmCollectElectrodeData%);
+    SetIntRegistryValue(key$, "UseHazardForMaintenance", cmUseHazardForMaintenance%);
+    SetFloatRegistryValue(key$, "MinHazardTime", cmMinHazardTime);
+    SetFloatRegistryValue(key$, "MaxHazardTime", cmMaxHazardTime);
+    SetIntRegistryValue(key$, "MinRewardMS", cmMinRewardMS%);
+    SetIntRegistryValue(key$, "MaxRewardMS", cmMaxRewardMS%);
 end
 
 
 func CoolMouseDialog%()
     var status% := 0;
     GetCoolMouseParameters();
+    
     DlgCreate("Alert Cool Mouse Parameters");
     DlgReal(1, "Acquisition Time", 0.01, 100.0);
     DlgReal(2, "Fixation Time", 0.01, 100.0);
-    DlgReal(3, "Maintain Fixation Time", 0.01, 100.0);
-    DlgReal(4, "Time Out Time", 0.01, 100.0);
-    DlgCheck(5, "Keep Fixation Point Up");
-    DlgCheck(6, "Sample From Electrodes");
-    status% := DlgShow(cmAcquisitionTime, cmFixationDuration, cmMaintainFixation, cmTimeOutTime, cmFixationAlwaysUp%, cmCollectElectrodeData%);
+    DlgCheck(3, "Use Hazard Function For Maintain Time");
+    DlgReal(4, "Maintain Fixation Time, Constant", 0.01, 100.0);
+    DlgReal(5, "Maintain Fixation Time, Hazard Min", 0.01, 100.0);
+    DlgReal(6, "Maintain Fixation Time, Hazard Max", 0.01, 100.0);
+    DlgInteger(7, "Hazard Reward, Min (ms)", 10, 1000);
+    DlgInteger(8, "Hazard Reward, Max (ms)", 10, 1000);
+    DlgReal(9, "Time Out Time", 0.01, 100.0);
+    DlgCheck(10, "Keep Fixation Point Up");
+    DlgCheck(11, "Sample From Electrodes");
+    DlgAllow(0, 0, CoolMouseDialogChanged%);
+    status% := DlgShow(cmAcquisitionTime, cmFixationDuration, cmUseHazardForMaintenance%, cmMaintainFixation,
+                       cmMinHazardTime, cmMaxHazardTime, cmMinRewardMS%, cmMaxRewardMS%, 
+                       cmTimeOutTime, cmFixationAlwaysUp%, cmCollectElectrodeData%);
     if status% = 1 then
+        'Check mins/maxes for legality
+        if cmMaxHazardTime < cmMinHazardTime then
+            cmMaxHazardTime := cmMinHazardTime;
+            message("Max hazard time was less than min hazard time!\nBoth values set to prior minimum time!");
+        endif;
+        if cmMaxRewardMS% < cmMinRewardMS% then
+            cmMaxRewardMS% := cmMinRewardMS%;
+            message("Max reward time was less than min reward time!\nBoth values set to prior minimum time!");
+        endif;
+        
+        'Override JuiceRewardMSMin%/JuiceRewardMSMax% with values from dialog
+        'This really isn't great policy and these numbers really should probably be set from within Config/DAQ as
+        'that's where they live, but I guess if Henry complains enough he gets what he wants.  Note that any call
+        'to GetDAQParameters() subsequent to this section will restore the values to the state from Config/DAQ, I
+        'am NOT saving the values written here to the DAQ registry.  Only overriding values if hazard function used.
+        if cmUseHazardForMaintenance% = 1 then
+            JuiceRewardMSMin% := cmMinRewardMS%;
+            JuiceRewardMSMax% := cmMaxRewardMS%;
+        endif;
+        
+        
         SaveCoolMouseParameters();
     endif
     return status%;
 end
 
+
+func CoolMouseDialogChanged%(item%)
+    var status% := 1;
+    
+    DlgEnable(1-DlgValue(3), 4);  'allow constant maintain time based on NOT using hazard function    
+    
+    DlgEnable(DlgValue(3), 5);  'allow hazard min based on using hazard function
+    DlgEnable(DlgValue(3), 6);  'allow hazard max based on using hazard function
+    DlgEnable(DlgValue(3), 7);  'allow hazard min reward time based on using hazard function
+    DlgEnable(DlgValue(3), 8);  'allow hazard max reward time based on using hazard function
+
+    return status%;
+end
+
+
+func GetHazardValue();
+    var out;
+    
+    out := rand(cmMaxHazardTime-cmMinHazardTime,cmMinHazardTime);
+    
+    return out;
+end
