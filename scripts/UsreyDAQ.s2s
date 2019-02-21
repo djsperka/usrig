@@ -200,6 +200,12 @@ func DelayBasedReward%(hazMin,hazMax,hazActual)
                 endif;
                 DeliverRewardMS(JuiceRewardMSMin%);
                 rewardSizeMS% := JuiceRewardMSMin%;
+            case hazMax = hazMin then  'Henry has tried setting these values equal, and it kills things
+                rewardSizeMS% := JuiceRewardMSMin%;  'just give minimum reward in this case, they will probably be the same anyway
+                DeliverRewardMS(rewardSizeMS%);
+            case JuiceRewardMSMax% = JuiceRewardMSMin% then  'Henry has tried to set these values equal, mathematically this should be OK , but let's force it to be OK
+                rewardSizeMS% := JuiceRewardMSMin%;  
+                DeliverRewardMS(rewardSizeMS%);
             else    
                 proportionOfHaz := (hazActual-hazMin)/(hazMax-hazMin);
                 juiceRangeMS := JuiceRewardMSMax% - JuiceRewardMSMin%;
