@@ -60,6 +60,9 @@ var attStimOnsetTime;
 var attHazardMinTime;
 var attHazardExpMeanTime;
 var attHazardCutoffTime;
+var attUseHazardForReward%;
+var attHazRewardMin%;
+var attHazRewardMax%;
 var attAcquisitionTime;
 var attInterTrialTime;  'This is the default intertrial time
 var attInterTrialTimeThisTrial;  'This is a trial-by-trial intertrial time, miss penalty may be added in
@@ -169,11 +172,14 @@ const atttimingdlgStimOnsetTime% := 6;
 const atttimingdlgHazardMinTime% := 7;
 const atttimingdlgHazardExpMeanTime% := 8;
 const atttimingdlgHazardCutoffTime% := 9;
-const atttimingdlgContrastChangeDuration% := 10;
-const atttimingdlgResponseWindow% := 11;
-const atttimingdlgIntertrialTime% := 12;
-const atttimingdlgPenaltyTime% := 13;
-const atttimingdlgLockUncued% := 14;
+const atttimingdlgUseHazardForReward% := 10;
+const atttimingdlgHazRewardMin% := 11;
+const atttimingdlgHazRewardMax% := 12;
+const atttimingdlgContrastChangeDuration% := 13;
+const atttimingdlgResponseWindow% := 14;
+const atttimingdlgIntertrialTime% := 15;
+const atttimingdlgPenaltyTime% := 16;
+const atttimingdlgLockUncued% := 17;
 
 ' constants for color dialog
 var attdlgColorIndexGray% := 0;
@@ -272,7 +278,8 @@ var answerWindowCuedHighlighted%;
 var answerWindowUncuedHighlighted%;
 var cuedResponseWindowCloseTime;
 var uncuedResponseWindowCloseTime;
-
+var trialIsCRForDelayBasedReward%;  'This variable is needed because delay-based reward is treated differently for CRs
+var ActualRewardDuration%;  'we need to keep track of this
 
 'we need to explicitly know the position of the gratings to place the answer windows on the gratings
 var mainX;  'the main grating patch is expected to be the one located over the receptive field
@@ -1739,7 +1746,8 @@ func IdleProcessing%()
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over
             else  'this is a CR, we would have caught fixation break on last check if not
                 queueReward% := 1;
-                ' Correct rejection                    
+                ' Correct rejection   
+                trialIsCRForDelayBasedReward% := 1;
                 attCountAllTrialsCorrect% += 1;
                 attInterTrialTimeThisTrial := attInterTrialTime;
                 SampleText("Correct",tNow);
@@ -1853,7 +1861,18 @@ func IdleProcessing%()
             printlog("Trial complete, Not an opto trial, doOpto = %d, optoState = %d, time = %f\n",attDoOpto%,attOptoState%,tStateStart);
             'give out reward, if necessary, in THIS state if opto is off
             if queueReward% = 1 then
-                Reward%();
+                if attUseHazardForReward% = 1 then 
+                    if trialIsCRForDelayBasedReward% = 0 then
+                        ActualRewardDuration% := DelayBasedReward%(attHazardMinTime,attHazardCutoffTime,trialHazardFunctionTimeCued);  'this only makes sense for stimulus-change trials
+                        SampleText("Delay-based reward, reward duration is " + Str$(ActualRewardDuration%) + " ms",tNow);
+                    else
+                        ActualRewardDuration% := DelayBasedReward%(attHazardMinTime,attHazardCutoffTime,attHazardMinTime); 
+                        SampleText("Delay-based reward, for CR reward duration is minimum of " + Str$(ActualRewardDuration%) + " ms",tNow);                        'Artificially, set this to be the minimum reward
+                        trialIsCRForDelayBasedReward% := 0;  'reset
+                    endif
+                else
+                    Reward%();
+                endif;
                 nTrialsRewarded% += 1;
                 queueReward% := 0;  'reset reward
             endif;
@@ -1874,7 +1893,18 @@ func IdleProcessing%()
             SafeSampleKey("X");  'do this in stateCheckTurnOffOpto
             'give out reward, if necessary, in THIS state if opto is off
             if queueReward% = 1 then
-                Reward%();
+                if attUseHazardForReward% = 1 then 
+                    if trialIsCRForDelayBasedReward% = 0 then
+                        ActualRewardDuration% := DelayBasedReward%(attHazardMinTime,attHazardCutoffTime,trialHazardFunctionTimeCued);  'this only makes sense for stimulus-change trials
+                        SampleText("Delay-based reward, reward duration is " + Str$(ActualRewardDuration%) + " ms",tNow);
+                    else
+                        ActualRewardDuration% := DelayBasedReward%(attHazardMinTime,attHazardCutoffTime,attHazardMinTime); 
+                        SampleText("Delay-based reward, for CR reward duration is minimum of " + Str$(ActualRewardDuration%) + " ms",tNow);                        'Artificially, set this to be the minimum reward
+                        trialIsCRForDelayBasedReward% := 0;  'reset
+                    endif
+                else
+                    Reward%();
+                endif;
                 nTrialsRewarded% += 1;
                 queueReward% := 0;  'reset reward
             endif;
@@ -1893,7 +1923,18 @@ func IdleProcessing%()
         SafeSampleKey("X");  'not done in stateCheckTurnOffOpto if we are actually turning off opto
         'give out reward, if necessary, was not given out in previous state if opto was not off
             if queueReward% = 1 then
-                Reward%();
+                if attUseHazardForReward% = 1 then 
+                    if trialIsCRForDelayBasedReward% = 0 then
+                        ActualRewardDuration% := DelayBasedReward%(attHazardMinTime,attHazardCutoffTime,trialHazardFunctionTimeCued);  'this only makes sense for stimulus-change trials
+                        SampleText("Delay-based reward, reward duration is " + Str$(ActualRewardDuration%) + " ms",tNow);
+                    else
+                        ActualRewardDuration% := DelayBasedReward%(attHazardMinTime,attHazardCutoffTime,attHazardMinTime); 
+                        SampleText("Delay-based reward, for CR reward duration is minimum of " + Str$(ActualRewardDuration%) + " ms",tNow);                        'Artificially, set this to be the minimum reward
+                        trialIsCRForDelayBasedReward% := 0;  'reset
+                    endif
+                else
+                    Reward%();
+                endif;
                 nTrialsRewarded% += 1;
                 queueReward% := 0;  'reset reward
             endif;
@@ -2313,6 +2354,10 @@ proc GetTimingDialogParameters()
     attStimOnsetTime := GetFloatRegistryValue(key$, "StimOnsetTime", 2.0);
     attLockUncuedToCued% := GetIntRegistryValue%(key$, "LockUncuedToCued", 0);
     
+    attUseHazardForReward% := GetIntRegistryValue%(key$, "UseHazardForReward", 0);
+    attHazRewardMin% := GetIntRegistryValue%(key$, "HazRewardMin", 100);
+    attHazRewardMax% := GetIntRegistryValue%(key$, "HazRewardMax", 200);
+    
     
 end;
 
@@ -2338,6 +2383,10 @@ proc SaveTimingDialogParameters()
     SetFloatRegistryValue(key$, "CueOffsetTime", attCueOffsetTime);
     SetFloatRegistryValue(key$, "StimOnsetTime", attStimOnsetTime);
     SetIntRegistryValue(key$, "LockUncuedToCued", attLockUncuedToCued%);
+    
+    SetIntRegistryValue(key$, "UseHazardForReward", attUseHazardForReward%);
+    SetIntRegistryValue(key$, "HazRewardMin", attHazRewardMin%);
+    SetIntRegistryValue(key$, "HazRewardMax", attHazRewardMax%);
     
 end;
 
@@ -2911,6 +2960,9 @@ func TimingDialog%()
     DlgReal(atttimingdlgHazardMinTime%, "Hazard min time(s):", 0, 10);
 	DlgReal(atttimingdlgHazardExpMeanTime%, "Hazard exp mean time(s):", 0, 10);
 	DlgReal(atttimingdlgHazardCutoffTime%, "Hazard cutoff time(s):", 0, 10);
+    DlgCheck(atttimingdlgUseHazardForReward%, "Use Hazard Function For Reward Duration");
+    DlgInteger(atttimingdlgHazRewardMin%, "Hazard Reward, Min (ms)", 10, 2000);
+    DlgInteger(atttimingdlgHazRewardMax%, "Hazard Reward, Max (ms)", 10, 2000);
 	DlgReal(atttimingdlgContrastChangeDuration%, "ContrastChangeDuration(s):",0.1,10);
     DlgReal(atttimingdlgResponseWindow%, "Response Window(s):",0.1,10);
 	DlgReal(atttimingdlgIntertrialTime%, "Intertrial time(s):", .01, 10);
@@ -2920,11 +2972,22 @@ func TimingDialog%()
          
     DlgAllow(0, 0, TimingDialogChanged%);
     i%:=DlgShow(attAcquisitionTime, attFixationCueMinTime, attFixationCueMaxTime, attCueOnsetTime, attCueOffsetTime, attStimOnsetTime,
-    attHazardMinTime, attHazardExpMeanTime, attHazardCutoffTime, attContrastChangeDuration, attResponseWindow,
-    attInterTrialTime, attAbortPenaltyTime, attLockUncuedToCued%);
+    attHazardMinTime, attHazardExpMeanTime, attHazardCutoffTime, attUseHazardForReward%, attHazRewardMin%, attHazRewardMax%,
+    attContrastChangeDuration, attResponseWindow, attInterTrialTime, attAbortPenaltyTime, attLockUncuedToCued%);
     if i% = 1 then
         attFalseAlarmPenaltyTime := attAbortPenaltyTime;
         attMissPenaltyTime := attAbortPenaltyTime;
+        
+        'Override JuiceRewardMSMin%/JuiceRewardMSMax% with values from dialog
+        'This really isn't great policy and these numbers really should probably be set from within Config/DAQ as
+        'that's where they live, but I guess if Henry complains enough he gets what he wants.  Note that any call
+        'to GetDAQParameters() subsequent to this section will restore the values to the state from Config/DAQ, I
+        'am NOT saving the values written here to the DAQ registry.  Only overriding values if hazard function used.
+        if attUseHazardForReward% = 1 then
+            JuiceRewardMSMin% := attHazRewardMin%;
+            JuiceRewardMSMax% := attHazRewardMax%;
+        endif;
+        
         
         SaveTimingDialogParameters();
         
@@ -2935,6 +2998,10 @@ end
 
 func TimingDialogChanged%(item%)
     var status% := 1;
+    
+    DlgEnable(DlgValue(atttimingdlgUseHazardForReward%), atttimingdlgHazRewardMin%);  'allow hazard min reward time based on using hazard function
+    DlgEnable(DlgValue(atttimingdlgUseHazardForReward%), atttimingdlgHazRewardMax%);  'allow hazard max reward time based on using hazard function
+    
     docase
     case item% = atttimingdlgFixationCueMinTime% or item% = atttimingdlgFixationCueMaxTime% then
         ' max >= min
@@ -2958,6 +3025,11 @@ func TimingDialogChanged%(item%)
             status% := 0;
             Message("Response window cannot be < contrast change duration");
         endif
+    case item% = atttimingdlgHazRewardMin% or item% = atttimingdlgHazRewardMax% then
+        if DlgValue(atttimingdlgHazRewardMin%) > DlgValue(atttimingdlgHazRewardMax%) then 
+            status% := 0;
+            Message("Hazard reward min must be <= hazard reward max");
+        endif;
         
         'The stim onset time is now defined to be in terms of time following cue offset, so this case statement is not relevant, an updated version is above
 '    case item% = atttimingdlgCueOnsetTime% or item% = atttimingdlgCueOffsetTime% or item% = atttimingdlgStimOnsetTime% then

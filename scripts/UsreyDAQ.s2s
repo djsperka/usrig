@@ -21,7 +21,10 @@ var EyeCoilSamplingFrequency%;		' Frequency to sample eye coil at
 var NumberOfElectrodes%;		' Number of electrodes (i.e. wavemark inputs) in use
 var JuicePerReward%;			' Number of juice squirts per reward
 var JuiceRewardMS% := 200;      ' for Ben's new juicer this is the length of time juicer is held open.
+var JuiceRewardMSMin%;          ' minimum juicer duration, used for delay-based-reward-size
+var JuiceRewardMSMax%;          ' maximum juicer duration, used for delay-based-reward-size
 var JuicerIndex% := 0;          ' default juicer index will not allow sampling, 1 is open high, 2 is open low
+var wrongJuicerWarningGiven%;   ' Only give wrong juicer type warning once
 var DisplayHardwareIndex% := 0; ' 0 for VSG/ViSaGe, 1 for Render, many scripts will not check this flag and assume VSG
 var EyeXPort%;                  ' Port horizontal eye signal connected to
 var EyeYPort%;                  ' Port vertical eye signal connected to
@@ -171,6 +174,62 @@ func DefaultReward()
 end
 
 
+
+'This is the function that should be called to calculate and deliver a delay-based reward
+func DelayBasedReward%(hazMin,hazMax,hazActual)
+    var juiceRangeMS;  'will be ms, taking out of integer
+    var proportionOfHaz;
+    var rewardSizeMS%;
+    
+    if pReward >= Rand() then
+        docase    
+        case JuicerType% = 1 then  'open-high juicer, dispense based on ms
+            'verify hazActual does not exceed limits, because otherwise we could get bad results - like super-long juice
+            docase
+            case hazActual > hazMax then
+                if wrongJuicerWarningGiven% = 0 then
+                    message("Uh-oh! Actual hazard time greater than maximum hazard time!\nDefault reward given!");
+                    wrongJuicerWarningGiven% := 1;
+                endif;
+                DeliverRewardMS(JuiceRewardMSMax%);
+                rewardSizeMS% := JuiceRewardMSMax%;
+            case hazActual < hazMin then
+                if wrongJuicerWarningGiven% = 0 then
+                    message("Uh-oh! Actual hazard time less than minimum hazard time!\nMinimum reward given!");
+                    wrongJuicerWarningGiven% := 1;
+                endif;
+                DeliverRewardMS(JuiceRewardMSMin%);
+                rewardSizeMS% := JuiceRewardMSMin%;
+            case hazMax = hazMin then  'Henry has tried setting these values equal, and it kills things
+                rewardSizeMS% := JuiceRewardMSMin%;  'just give minimum reward in this case, they will probably be the same anyway
+                DeliverRewardMS(rewardSizeMS%);
+            case JuiceRewardMSMax% = JuiceRewardMSMin% then  'Henry has tried to set these values equal, mathematically this should be OK , but let's force it to be OK
+                rewardSizeMS% := JuiceRewardMSMin%;  
+                DeliverRewardMS(rewardSizeMS%);
+            else    
+                proportionOfHaz := (hazActual-hazMin)/(hazMax-hazMin);
+                juiceRangeMS := JuiceRewardMSMax% - JuiceRewardMSMin%;
+                rewardSizeMS% := JuiceRewardMSMin% + (juiceRangeMS*proportionOfHaz);  'Note, this value will be floored to the nearest ms, not rounded.  I TELL YOU THAT IS GOOD ENOUGH!
+                DeliverRewardMS(rewardSizeMS%);
+            endcase
+        case JuicerType% = 2 then  'open-low juicer, dispense based on number of hits
+            if wrongJuicerWarningGiven% = 0 then
+                message("Delay-based reward was requested, but cannot be granted\nbecause this juicer type does not have variable open duration!");
+                wrongJuicerWarningGiven% := 1;
+            endif;
+            DeliverRewardNum%(JuicePerReward%);
+            rewardSizeMS% := -1;  'return error
+        endcase;
+    else
+        LogStatus("Trial complete", "Random reward not granted!");
+        rewardSizeMS% := 0;
+    endif;
+    return rewardSizeMS%;
+end
+
+
+
+
 'This is the overarching reward function that should be called to get a specified reward
 'when the input is known to be correct for the juicer type
 func SpecifyReward(in%)
@@ -233,6 +292,7 @@ func DAQParametersDialog%()
 
 	var iReturn%;
     var JuicerIndexDecremented%;
+    var fiveInts%[5];  'There can be a maximum of 20 arguments fed to DlgShow, we need to make some space
     
     'This little bit allows us to disallow any values other than legal juicer values
     'without changing the rest of the code
@@ -248,6 +308,13 @@ func DAQParametersDialog%()
     displayHardwareList$[0] := "VSG";
     displayHardwareList$[1] := "Render";
     
+    'Fill fiveInts%
+    fiveInts%[0] := JuicePerReward%;
+    fiveInts%[1] := JuiceRewardMS%;
+    fiveInts%[2] := JuiceRewardMSMin%;
+    fiveInts%[3] := JuiceRewardMSMax%;
+    fiveInts%[4] := JuicerIndexDecremented%;
+    
     
 	DlgCreate("DAQ parameters");
 	DlgInteger(1, "Number of Electrodes:", 1, 32, 0, 0, 1);
@@ -258,27 +325,43 @@ func DAQParametersDialog%()
 	DlgInteger(6, "Eye Coil Sampling Freq (Hz):", 1, 20000);
     DlgReal(7, "Reward Prob (0-1):", 0, 1);
 	DlgInteger(8, "Juice per reward:", 0, 10, 0, 0, 1);
-    DlgInteger(9, "Juice Reward ms:", 0, 1000);
-    DlgList(10, "Juicer Open State:",juicerList2$,2);
-    DlgInteger(11, "Eye X Port", -1, 31);
-    DlgInteger(12, "Eye Y Port", -1, 31);
-    DlgInteger(13, "Joystick Port", -1, 31);
-    DlgCheck(14, "Use Remote Stimulus");
-    DlgString(15, "Remote ip", 21);
-    DlgString(16, "Remote port", 5);
-    DlgString(17, "Slave ip", 21);
-    DlgString(18, "Slave port", 5);
-    DlgList(19, "Display Hardware:",displayHardwareList$,2);
-    DlgCheck(20, "Create Eyetracker Output File");
+    DlgInteger(9, "Juice Reward (default) ms:", 0, 1000);
+    DlgInteger(10, "Juice Reward (min) ms:", 0, 1000);
+    DlgInteger(11, "Juice Reward (max) ms:", 0, 1000);
+    DlgList(12, "Juicer Open State:",juicerList2$,2);
+    DlgInteger(13, "Eye X Port", -1, 31);
+    DlgInteger(14, "Eye Y Port", -1, 31);
+    DlgInteger(15, "Joystick Port", -1, 31);
+    DlgCheck(16, "Use Remote Stimulus");
+    DlgString(17, "Remote ip", 21);
+    DlgString(18, "Remote port", 5);
+    DlgString(19, "Slave ip", 21);
+    DlgString(20, "Slave port", 5);
+    DlgList(21, "Display Hardware:",displayHardwareList$,2);
+    DlgCheck(22, "Create Eyetracker Output File");
     DlgAllow(0xffff, 0, DAQParametersDialogChanged%);
 	iReturn% := DlgShow(NumberOfElectrodes%, DegreesPerVoltX, DegreesPerVoltY, 
                         CalibrationOffsetDegrees, CalibrationComPort%,
-                        EyeCoilSamplingFrequency%, pReward, JuicePerReward%, JuiceRewardMS%,
-                        JuicerIndexDecremented%, EyeXPort%, EyeYPort%, JoystickPort%, 
+                        EyeCoilSamplingFrequency%, pReward, fiveInts%[],
+                        EyeXPort%, EyeYPort%, JoystickPort%, 
                         UseRemoteStimulus%, RemoteStimulusIP$, RemoteStimulusPort$, SlaveStimulusIP$, 
                         SlaveStimulusPort$,DisplayHardwareIndex%,RecordEyeTrackerOutputFile%);
 
 	if iReturn% = 1 then
+        'Unpack fiveInts%
+        JuicePerReward% := fiveInts%[0];
+        JuiceRewardMS% := fiveInts%[1];
+        JuiceRewardMSMin% := fiveInts%[2];
+        JuiceRewardMSMax% := fiveInts%[3];
+        JuicerIndexDecremented% := fiveInts%[4];
+        
+        'Make sure juicer max open time is not less than minimum open time
+        if JuiceRewardMSMax% < JuiceRewardMSMin% then
+            message("Max juicer duration was less than min juicer duration,\nboth values set to max value!");
+            JuiceRewardMSMin% := JuiceRewardMSMax%;
+        endif;
+        
+        
         JuicerIndex% := JuicerIndexDecremented% + 1; 'Correct JuicerIndex%
         SetJuicerSequencerVariable%();  'This allows reset of juicer sequencer variable without restarting the script.  Probably redundant.
 		SaveDAQParameters();
@@ -310,6 +393,8 @@ proc GetDAQParameters()
     NumberOfElectrodes% := GetIntRegistryValue%(key$, "NumberOfElectrodes", 1);
     pReward := GetFloatRegistryValue(key$, "pReward", 1);
     JuicePerReward% := GetIntRegistryValue%(key$, "JuicePerReward", 1);
+    JuiceRewardMSMin% := GetIntRegistryValue%(key$, "JuiceRewardMSMin", JuiceRewardMSMin%);
+    JuiceRewardMSMax% := GetIntRegistryValue%(key$, "JuiceRewardMSMax", JuiceRewardMSMax%);
     JuiceRewardMS% := GetIntRegistryValue%(key$, "JuiceRewardMS", JuiceRewardMS%);
     JuicerIndex% := GetIntRegistryValue%(key$, "JuicerIndex", JuicerIndex%);
     EyeXPort% := GetIntRegistryValue%(key$, "EyeXPort", 14);
@@ -340,6 +425,8 @@ proc SaveDAQParameters()
 	SetIntRegistryValue(key$, "EyeCoilSamplingFrequency", EyeCoilSamplingFrequency%);
 	SetIntRegistryValue(key$, "NumberOfElectrodes", NumberOfElectrodes%);
 	SetIntRegistryValue(key$, "JuicePerReward", JuicePerReward%);
+    SetIntRegistryValue(key$, "JuiceRewardMSMin", JuiceRewardMSMin%);
+    SetIntRegistryValue(key$, "JuiceRewardMSMax", JuiceRewardMSMax%);
     SetIntRegistryValue(key$, "JuiceRewardMS", JuiceRewardMS%);
     SetIntRegistryValue(key$, "JuicerIndex", JuicerIndex%);
     SetIntRegistryValue(key$, "EyeXPort", EyeXPort%);
