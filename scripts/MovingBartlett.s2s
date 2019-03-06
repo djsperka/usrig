@@ -22,10 +22,8 @@ const grixelsPerRF := 5;  'had set this at 7, but I think it's actually 5, the o
 const grixelsPerCenter := 7;  'we will draw 7, but the RF span is 5, make float for math
 var screenXdeg;  'these are the borders of the screen in visual degrees
 var screenYdeg;
-var screenMMPerDegree;
 var pixelsPerDegree;  'since the monitor is 4:3, we don't need to actually calculate both X and Y
-var pi := 3.141592653589793;  'There is a pre-defined constant "_pi", but only on 8.03 and beyond, explicitly defining pi for back-compatibility
-'var origRewardMS%;  'is this necessary?  It was being filled but not used.
+'var pi := 3.141592653589793;  'There is a pre-defined constant "_pi", but only on 8.03 and beyond, explicitly defining pi for back-compatibility
 var backgroundColor$ := "gray";  'This is appropriate to allow both ON/OFF-center cells
 var trialsFile$:="D:\\work\\BartlettFile.txt";
 'trialsFile$:="E:\\testingshit\\BartlettFile.txt";  'For testing on Seager
@@ -45,18 +43,10 @@ var degPerGrixel;
 var refreshesPerFrame%;
 var secsPerFrameIdeal;  'if frame rate were infinite
 var secsPerFrameActual;  'takes into account actual frame rate of monitor
-var screenXgrx%;  'The x distance from the origin (0,0) to the edge of the screen, so half the width of the entire grid
-var screenYgrx%;  'The y distance from the origin (0,0) to the edge of the screen, so half the height of the entire grid
 var pixelsPerGrixel%;  'We will now be choosing grids based on the pixel size of the grid squares
 var RFCenterXPixels%;  'Calculate RF X position in pixels, from center of screen
 var RFCenterYPixels%;  'Calculate RF Y position in pixels, from center of screen
-'If we assume: 500 mm screen distance, 400/300 mm screen width/height, and 0.5 degree minimum RF size (per Henry),
-'then we will have a grid of 46x35 degrees, and with 14 grixels/degree, then 644x490 grixels - so let's buffer that
-'and say 670x500 grixels max.  OK, needs to be odd, so 671x501
-'OK, ignore that.  It's not reasonable.  We are going to restrict this to a maximum of 77x77 (which is 5x the RF on each side)
-const maxXgrx% := 77;
-const maxYgrx% := 77;
-var backgroundGrid[maxXgrx%][maxYgrx%];
+
 
 
 
@@ -146,6 +136,7 @@ var trialCount%;  'Will index the current trial
 var trialDescription$;  'For a sampletext before each trial
 var blankType%;  'We may use oversized blanks
 var addlBlankDiagOnly%;  'We may use oversized blanks only on diagonals
+var alwaysLooking%;
 
 
 ' Type variables
@@ -221,11 +212,6 @@ if Len(dataDataSet$) = 0 then
 endif;
 
 
-'get original reward value from config
-'origRewardMS% := GetJuiceRewardMS%();
-
-'This is a new comment for no reason!
-
 
 ' Assign channel numbers for eye X,Y and trigger. 
 XChannel% := 23;
@@ -261,10 +247,6 @@ endif;
 'As of now, it's becoming clearer what the syntax of the file is
 'So right now we have nTrials%, and we have directionThisTrial%[], stimTypeThisTrial%[], and bgTypeThisTrial%[] filled
 'and we have a trialOrder%[] variable to index them
-
-
-'Let me write a skeleton here...
-
 var currTrial%;  'Index for this trial
 var thisBG%;  'If -1, no background, if 0, write function will choose random background, otherwise use this background
 var mostRecentBG%;  'We don't want to repeat flickering backgrounds, because it could look like motion
@@ -712,11 +694,11 @@ func Start%()
     Extras$ := " -b " + backgroundColor$ + " -d " + GetDistanceToScreenMM$() + " -o " + trialsFile$; 
     
     'Hardcode the fixation point, this is at the center of the screen
-    fixationColor$ := "blue";  
+    'fixationColor$ := "blue";  'Do not hardcode color, because animal may work better with changing color
     FixationX := 0;
     FixationY := 0;
-    FixationX := 3;
-    FixationY := 3;
+    'FixationX := 3;  'This was used to place the fixation point over the location of the moving bar, useful for checking centering while testing
+    'FixationY := 3;
     FixationArg$ := " -f " + str$(FixationX) + "," + str$(FixationY) + "," + str$(FixationDiameter) + "," + fixationColor$;
     
     
@@ -895,7 +877,7 @@ func IdleProcessing%()
     case iState% = stateWaitForAcquisition% then
         ' Waiting for eye to fall inside of fixation window
         docase
-        case Looking%(xEye, yEye) = 1 or 1 then  'TODO get rid of OR 1
+        case Looking%(xEye, yEye) = 1 or alwaysLooking% = 1 then
             PrintLog("stateWaitForAcquisition: eye in fixation window.\n");
             ChangeStateTo(stateHoldFixationToStimOn%, tNow);
             SampleText("Fixation Acquired",tNow);
@@ -911,7 +893,7 @@ func IdleProcessing%()
         
         ' Eye must remain inside of fixation window
         docase
-        case Looking%(xEye, yEye) = 1 or 1 then  'TODO get rid of OR 1
+        case Looking%(xEye, yEye) = 1 or alwaysLooking% = 1 then
             if tNow - tStateStart > mbFixationTime then
                 PrintLog("stateHoldFixationToStimOn: Success. Stimulus up...\n");
                 SafeSampleKey("S");
@@ -948,7 +930,7 @@ func IdleProcessing%()
         
     'This is a simple, non-trigger-counting method of waiting through the stimulus - we could count triggers, but it may not be necessary
     case iState% = stateWaitThroughStimulus% then
-        if Looking%(xEye, yEye) = 1 or 1 then  'TODO get rid of OR 1
+        if Looking%(xEye, yEye) = 1 or alwaysLooking% = 1 then
             if tNow - tStateStart > mbThisTrialDur+mbRewardDelay then  'Also waiting through a reward delay, which is 0 for now
                 PrintLog("Trial Complete: send X key.\n");
                 SampleText("Trial " + Str$(trialCount%+1) + " Complete",tNow);  'Put up sample text indicating trial completion
@@ -1228,12 +1210,13 @@ func MovingBartlettDialog%()
     DlgCheck(22,"Use random annulus?",43,11);
     DlgList(23,25,blankSize$,4,44,12);
     DlgCheck(24,"Add'l blank on diagonal only?",43,13);
+    DlgCheck(25,"Always Looking",43,14);
     
     DlgAllow(0, 0, MovingBartlettDialogChanged%);  'not used/written for now
     
 	i%:=DlgShow(ITI,barSpeed,nRepeats%,nPrePostFrames%,interleave%,cellType%,useDirection%,
     useNoBackground%,useStaticBackground%,useFlickerBackground%,useValidBackground%,useInvalidBackground%,
-    tenInts%[],blankType%,addlBlankDiagOnly%);
+    tenInts%[],blankType%,addlBlankDiagOnly%,alwaysLooking%);
     
     
     useMovingBar% := tenInts%[0];
@@ -1285,38 +1268,20 @@ func MovingBartlettDialog%()
         'Calculate screen values in degrees here
         'ScreenBounds does this calculation correctly, fills screenXdeg,screenYdeg
         ScreenBounds(screenXmm,screenYmm,screenXdeg,screenYdeg);
-        screenMMPerDegree := screenXmm/(2*screenXdeg);  'This is unnecessary now.
-        'The below calculation really needs an ATAN around it, but since we have the function already above...
-        'screenMMPerDegree := Val(GetDistanceToScreenMM$())*pi/180;  
-        'screenXdeg := (screenXmm/2)/screenMMPerDegree;  'we are defining screenX(Y)deg as HALF the screen so it is the distance from center fixation to the edge
-        'screenYdeg := (screenYmm/2)/screenMMPerDegree;  
-        
-        
         
         'Calculate size of pixels, pix/deg = pix/screen / deg/screen
-        'pixelsPerDegree := screenXpixels/(screenXmm/screenMMPerDegree);
-        pixelsPerDegree := screenXpixels/(2*screenXdeg);  'easier calculation, doesn't require screenMMPerDegree
+        pixelsPerDegree := screenXpixels/(2*screenXdeg);  
         pixelsPerGrixel% := round(pixelsPerDegree*degPerGrixel);  'pix/grx = pix/deg * deg/grx, this is our grid size!
         
-        pixelsPerGrixel% := 17;  'TODO get rid of manual override
+        'pixelsPerGrixel% := 17;  'TODO get rid of manual override
         
         printlog("pixels per degree is %f, pixels per grixel is %d\n",pixelsPerDegree,pixelsPerGrixel%);
         
         'Calculate pixel location of RF
         RFCenterXPixels% := round(X*pixelsPerDegree);  'using ROUND because pumping float into int variable might...ceil?  Floor? Just in case.
         RFCenterYPixels% := round(Y*pixelsPerDegree);
-        
-        
-        'Get size of screen in grixels, this is in grixels from 0,0, so whole screen width is -screenXgrx%:screenXgrx%
-        'This will allow us to determine which (if any) grixels are offscreen and pointless to draw
-        'actually, this is no longer relevant I think, nor is the calculation right as it is for ideal grixel size not actual grixel size
-'        screenXgrx% := Ceil(screenXdeg/degPerGrixel);
-'        screenYgrx% := Ceil(screenYdeg/degPerGrixel);
-'        printlog("screen size in grixels is x: %d, y: %d\n",2*screenXgrx%,2*screenYgrx%);
-        
-        
-       
-        
+
+
         
         'Calculate refreshes (time?) between sucessive "Frames" 
         'dataScreenHz (refreshes/s), barSpeed (deg/s), degPerGrixel (deg/grx)
@@ -1389,6 +1354,7 @@ proc GetMovingBartlettParameters()
     useDirection% := GetIntRegistryValue%(key$, "useDirection", useDirection%);
     blankType% := GetIntRegistryValue%(key$, "blankType", blankType%);
     addlBlankDiagOnly% := GetIntRegistryValue%(key$, "addlBlankDiagOnly", addlBlankDiagOnly%);
+    alwaysLooking% := GetIntRegistryValue%(key$, "alwaysLooking", alwaysLooking%);
     
 end;
 
@@ -1421,6 +1387,7 @@ proc SaveMovingBartlettParameters()
     SetIntRegistryValue(key$, "useDirection", useDirection%);
     SetIntRegistryValue(key$, "blankType", blankType%);
     SetIntRegistryValue(key$, "addlBlankDiagOnly", addlBlankDiagOnly%);
+    SetIntRegistryValue(key$, "alwaysLooking", alwaysLooking%);
     
 end;
 
