@@ -18,7 +18,7 @@
 const screenXmm := 400;
 const screenYmm := 300;
 const screenXpixels := 1024;  'since the monitor is 4:3, we don't need to actually calculate both X and Y, not integer to do floating point math
-const grixelsPerRF := 5;  'had set this at 7, but I think it's actually 5, the outer 2 are extra-rf, make float for math
+var grixelsPerRF := 5;  'had set this at 7, but I think it's actually 5, the outer 2 are extra-rf, make float because it can now change
 const grixelsPerCenter := 7;  'we will draw 7, but the RF span is 5, make float for math
 var screenXdeg;  'these are the borders of the screen in visual degrees
 var screenYdeg;
@@ -138,6 +138,7 @@ var trialDescription$;  'For a sampletext before each trial
 var blankType%;  'We may use oversized blanks
 var addlBlankDiagOnly%;  'We may use oversized blanks only on diagonals
 var alwaysLooking%;
+var scaleFactorRF;  'This will allow us to change the number of grixels in the center of the RF
 
 
 ' Type variables
@@ -203,6 +204,7 @@ var iState% := stateVSGWait%;	' present state
 
 var i%;
 var j%;
+var status%;
 
 
 
@@ -249,147 +251,13 @@ else  'I'm not sure there's a built in way to fill an array with its literal ind
 endif;
 
 'Write the TrialsFile$
-'As of now, it's becoming clearer what the syntax of the file is
-'So right now we have nTrials%, and we have directionThisTrial%[], stimTypeThisTrial%[], and bgTypeThisTrial%[] filled
-'and we have a trialOrder%[] variable to index them
-var currTrial%;  'Index for this trial
-var thisBG%;  'If -1, no background, if 0, write function will choose random background, otherwise use this background
-var mostRecentBG%;  'We don't want to repeat flickering backgrounds, because it could look like motion
-var xBG%;  'This will be a coordinate for positioning the background, in X
-var yBG%;  'This will be a coordinate for positioning the background, in Y
-var origxBG%;  'We need to remember the start position for diagonal, because if we are moving them, the number of pixels moved is not constant
-var origyBG%;
-var xFG%;  'This will be a coordinate for positioning the foreground, in X
-var yFG%;  'This will be a coordinate for positioning the foreground, in Y
-var currFrame%;
+status% := WriteTrialsFile();
 
-'Open TrialsFile$ for writing
-trialsFileHandle% := FileOpen(TrialsFile$, 8, 1);  'the handle is actually not used, but that's OK
+'If the trials file failed to write, quit, the error should show up in the log from inside the function
+if status% < 0 then
+    halt;
+endif;
 
-'Write preliminaries for file, it's just the common folder
-Print("Folder %s\n\n",commonDir$);  'commonDir$ is "F:\\work\\", note that example file does not have trailing slash, will have to see how this goes
-
-'Determine foreground center, really only need to do this once per file, though we won't use xFG%/yFG% until a bit later
-GetForegroundCenter(xFG%,yFG%,pixelsPerGrixel%,RFCenterXPixels%,RFCenterYPixels%);
-
-'Loop through each trial, using the value in trialOrder%[i%] as the trial index
-for i% := 0 to nTrials%-1 do
-    'Get current index for this trial
-    currTrial% := trialOrder%[i%];
-    
-    'Write preliminaries for each trial, turns out this is just the trial count
-    Print("Trial %d\n",i%+1);
-    'Printlog("Trial %d, index %d\n",i%+1,currTrial%);  'this was just for testing
-    
-    'Make random draw for background if background is static or drifts (if it flickers, we should draw random background at each frame)
-    docase
-    case bgTypeThisTrial%[currTrial%] = 1 then  'if no background
-        thisBG% := -1;  'there will be no background
-    case bgTypeThisTrial%[currTrial%] = 3 then  'if flicker background
-        thisBG% := 0;  'we will select a random background every frame
-    else
-        thisBG% := ceil(rand(16,0));  'we will select a random background (of 16) for this trial, and stick with it through the trial
-    endcase
-    
-    'Make initial random draw for background center if static or drifting (if flickering, random draw for center at each frame)
-    if thisBG% > -1 then  'just random draw even if flickering, we will just overwrite in that case
-        SelectLegalBackgroundCenter(xBG%,yBG%,pixelsPerGrixel%,bgTypeThisTrial%[currTrial%],directionThisTrial%[currTrial%],RFCenterXPixels%,RFCenterYPixels%,nFramesPerTrial%);
-        origxBG% := xBG%;  'We need to keep this for diagonals; it gets updated for moving backgrounds, but we need to know the original location because number of pixels moved is non-integer
-        origyBG% := yBG%;
-    endif;
-    
-    
-    'Determine if this trial is spatially structured, get ordered list of foreground indices
-    docase
-    case stimTypeThisTrial%[currTrial%] = typeMovingBar% or stimTypeThisTrial%[currTrial%] = typeTRandBar% then
-        isSpatiallyStructured% := 1;
-    case stimTypeThisTrial%[currTrial%] = typeSRandBar% or stimTypeThisTrial%[currTrial%] = typeSTRandBar% then
-        isSpatiallyStructured% := 0;
-    case stimTypeThisTrial%[currTrial%] = typeAnnulus% or stimTypeThisTrial%[currTrial%] = typeRandAnnulus% then
-        isSpatiallyStructured% := 2;
-    'Currently typeContinuousMovingBar%, typeContinuousAnnulus% are not implemented
-    endcase
-    
-    '    const typeMovingBar% := 1;
-'const typeContinuousMovingBar% := 2;
-'const typeTRandBar% := 3;  'temporally random
-'const typeSRandBar% := 4;  'spatially random
-'const typeSTRandBar% := 5;  'temporally and spatially random
-''bartlettMelons
-'const typeAnnulus% := 6;
-'const typeContinuousAnnulus% := 7;
-'const typeRandAnnulus% := 8;
-    
-    
-    'Determine if this trial is temporally structured, assign list of foreground indices based on this
-    docase
-    case stimTypeThisTrial%[currTrial%] = typeMovingBar% or stimTypeThisTrial%[currTrial%] = typeSRandBar% then
-        for j% := 0 to 6 do
-            frameOrder%[j%] := j%;  'This will make the values 0-6, will need to add one (could easily do 1-7 but below line does 0-6, make this congruent)
-        next
-        nFramesThisTrial% := nFramesPerTrial%;
-    case stimTypeThisTrial%[currTrial%] = typeTRandBar% or stimTypeThisTrial%[currTrial%] = typeSTRandBar% then
-        Shuffle%(7,frameOrder%[]);  'This will make the values 0-6, will need to add one
-        nFramesThisTrial% := nFramesPerTrial%;
-    case stimTypeThisTrial%[currTrial%] = typeAnnulus% then
-        for j% := 0 to 3 do
-            frameOrder%[j%] := j%;  'This will make the values 0-3, will need to add one (could easily do 1-4 but below line does 0-3, make this congruent)
-        next
-        for j% := 0 to 2 do
-            frameOrder%[j%+4] := 2-j%;  'This will make the values 2-0, will need to add one (could easily do 1-4 but below line does 0-3, make this congruent)
-        next
-        nFramesThisTrial% := nFramesPerTrialAnnulus%;
-    case stimTypeThisTrial%[currTrial%] = typeRandAnnulus% then
-        for j% := 0 to 3 do
-            frameOrder%[j%] := j%;  'This will make the values 0-3, will need to add one (could easily do 1-4 but below line does 0-3, make this congruent)
-        next
-        for j% := 0 to 2 do
-            frameOrder%[j%+4] := 2-j%;  'This will make the values 2-0, will need to add one (could easily do 1-4 but below line does 0-3, make this congruent)
-        next
-        ShuffleList%(frameOrder%[0:7]);  'This scrambles the values in the 7 indices between 0-6, verified to work correctly
-        'Shuffle%(4,frameOrder%[]);  'This will make the values 0-3, will need to add one
-        nFramesThisTrial% := nFramesPerTrialAnnulus%;
-    'Currently typeContinuousMovingBar%, typeContinuousAnnulus% are not implemented
-    endcase
-    
-    'Loop through each frame
-    currFrame% := 0;
-    for j% := 1 to nFramesThisTrial% do
-        'Write preliminaries for each frame
-        Print("Frames %d\n",1+(refreshesPerFrame%*(j%-1)));  'Write the time (in refreshes) of the current frame
-        
-        'Update center of background if drifting, make random draw of background/center if flickering, no need to do this if there is no background
-        'This function will not move the background on the first frame, because that would not make sense
-        if thisBG% > -1 then 
-            UpdateBackgroundCenter(xBG%,yBG%,pixelsPerGrixel%,bgTypeThisTrial%[currTrial%],directionThisTrial%[currTrial%],RFCenterXPixels%,RFCenterYPixels%,nFramesThisTrial%,j%,origxBG%,origyBG%);
-        endif;
-        
-        'Write background values to file
-        WriteBackground(thisBG%,xBG%,yBG%,directionThisTrial%[currTrial%],pixelsPerGrixel%,cellType%,backgroundDir$,j%,mostRecentBG%);
-        
-        'Write central blank to file on every trial, use -1 to indicate the blank or -2 to indicate the circular blank for annuli
-        if stimTypeThisTrial%[currTrial%] <= 5 then  'rectangular blank
-            WriteForeground(-1,xFG%,yFG%,directionThisTrial%[currTrial%],pixelsPerGrixel%,0,foregroundDir$,0);  'On/Off and FrameCount do not matter for the blank, zeroing them
-        else 'circular blank
-            WriteForeground(-2,xFG%,yFG%,directionThisTrial%[currTrial%],pixelsPerGrixel%,0,foregroundDir$,0);  'On/Off and FrameCount do not matter for the blank, zeroing them
-        endif;
-        
-        'Only write foreground during the central nFramesThisTrial% frames
-        if j% > nPrePostFrames% and j% <= (nFramesThisTrial%-nPrePostFrames%) then
-            currFrame% += 1;
-            'Write foreground to file, this will select/draw correct foreground based on direction, etc.
-            WriteForeground(isSpatiallyStructured%,xFG%,yFG%,directionThisTrial%[currTrial%],pixelsPerGrixel%,cellType%,foregroundDir$,frameOrder%[currFrame%-1]+1);
-        endif;
-    next
-    'Write closer for each trial
-    Print("Frames %d end\n\n",1+(refreshesPerFrame%*(nFramesThisTrial%)));  'Write the time (in refreshes) when stimulus should turn off
-next
-
-'Close file, trial file is now written
-FileClose(0);
-
-
-printlog("Number of trials is %d\n",nTrials%);
 
 'This is where to quit if, for instance, we are testing on a machine without a 1401 attached
 'printlog("Quitting, we are just testing the script!\n");
@@ -1217,13 +1085,16 @@ func MovingBartlettDialog%()
     DlgCheck(21,"Use random annulus?",43,9);
     DlgList(22,25,blankSize$,4,44,10);
     DlgCheck(23,"Add'l blank on diagonal only?",43,11);
-    DlgCheck(24,"Always Looking",43,15);
+    DlgCheck(24,"Always Looking",43,13);
+    DlgReal(25,5,0.1,10,76,14);  
+    DlgText("RF Scale Factor (this value * 5 will be",43,14);
+    DlgText("the number of grixels per RF center)",43,15);
     
     DlgAllow(0, 0, MovingBartlettDialogChanged%);  'not used/written for now
     
 	i%:=DlgShow(ITI,barSpeed,nRepeats%,nPrePostFrames%,interleave%,cellType%,useDirection%,
     useNoBackground%,useStaticBackground%,useFlickerBackground%,useValidBackground%,useInvalidBackground%,
-    useOrthogonalBackground%,eightInts%[],blankType%,addlBlankDiagOnly%,alwaysLooking%);
+    useOrthogonalBackground%,eightInts%[],blankType%,addlBlankDiagOnly%,alwaysLooking%,scaleFactorRF);
     
     
     useMovingBar% := eightInts%[0];
@@ -1260,6 +1131,15 @@ func MovingBartlettDialog%()
         gr$ := GetGratingParameters$("Stimulus");
         ParseGratingParametersBrief%(gr$,X,Y,W,H);
         printlog("RF width (deg) is %f, height (deg) is %f\n",W,H);
+        
+        'Update grixels per RF
+        'This allows us *some* flexibility in scaling the stimulus relative to the RF.
+        'The "default" scaling is 5 grixels (of the 7-grixel stimulus) covering the 
+        'center of the RF as defined by standard mapping.  From the default value, we can
+        'increase or decrease the size by use of this scale factor dialog entry.  Note 
+        'that because ultimately the value of pixelsPerGrixel is integer, this is somewhat
+        'coarse (as is the original 5.0 grixelsPerRF, to be fair).
+        grixelsPerRF := grixelsPerRF*scaleFactorRF;
         
         'Make grixel size, in degrees, such that 5 (well, grix/RF) grixels cover the receptive field
         if W > H then
@@ -1356,6 +1236,8 @@ proc GetMovingBartlettParameters()
     blankType% := GetIntRegistryValue%(key$, "blankType", blankType%);
     addlBlankDiagOnly% := GetIntRegistryValue%(key$, "addlBlankDiagOnly", addlBlankDiagOnly%);
     alwaysLooking% := GetIntRegistryValue%(key$, "alwaysLooking", alwaysLooking%);
+    scaleFactorRF := GetFloatRegistryValue(key$, "scaleFactorRF", scaleFactorRF);
+    
     
 end;
 
@@ -1388,6 +1270,7 @@ proc SaveMovingBartlettParameters()
     SetIntRegistryValue(key$, "blankType", blankType%);
     SetIntRegistryValue(key$, "addlBlankDiagOnly", addlBlankDiagOnly%);
     SetIntRegistryValue(key$, "alwaysLooking", alwaysLooking%);
+    SetFloatRegistryValue(key$, "scaleFactorRF", scaleFactorRF);
     
 end;
 
@@ -2099,33 +1982,53 @@ func GenerateTrials%()
     if useAnnulus% = 1 then
         if useNoBackground% = 1 then
             for j% := 0 to nRepeats%-1 do
-                directionThisTrial%[ci%] := 9;  'this seems redundant with stimtype, but DOES get used
+                directionThisTrial%[ci%] := 1;  'we won't actually use a background, this is unused
                 stimTypeThisTrial%[ci%] := typeAnnulus%;  
                 bgTypeThisTrial%[ci%] := typeNoBackground%; 
                 ci% += 1;  'Increment index
             next;
         endif;
         if useStaticBackground% = 1 then
-            for j% := 0 to nRepeats%-1 do
-                directionThisTrial%[ci%] := 9;  'this seems redundant with stimtype, but DOES get used
-                stimTypeThisTrial%[ci%] := typeAnnulus%;  
-                bgTypeThisTrial%[ci%] := typeStaticBackground%; 
-                ci% += 1;  'Increment index
-            next;
+            if useCardinal% = 1 then
+                for j% := 0 to nRepeats%-1 do
+                    directionThisTrial%[ci%] := 1;  'indicates cardinal bg orientation
+                    stimTypeThisTrial%[ci%] := typeAnnulus%;  
+                    bgTypeThisTrial%[ci%] := typeStaticBackground%; 
+                    ci% += 1;  'Increment index
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for j% := 0 to nRepeats%-1 do
+                    directionThisTrial%[ci%] := 2;  'indicates diagonal bg orientation
+                    stimTypeThisTrial%[ci%] := typeAnnulus%;  
+                    bgTypeThisTrial%[ci%] := typeStaticBackground%; 
+                    ci% += 1;  'Increment index
+                next;
+            endif;
         endif;
         if useFlickerBackground% = 1 then
-            for j% := 0 to nRepeats%-1 do
-                directionThisTrial%[ci%] := 9;  'this seems redundant with stimtype, but DOES get used
-                stimTypeThisTrial%[ci%] := typeAnnulus%; 
-                bgTypeThisTrial%[ci%] := typeFlickerBackground%; 
-                ci% += 1;  'Increment index
-            next;
+            if useCardinal% = 1 then
+                for j% := 0 to nRepeats%-1 do
+                    directionThisTrial%[ci%] := 1;  'indicates cardinal bg orientation
+                    stimTypeThisTrial%[ci%] := typeAnnulus%; 
+                    bgTypeThisTrial%[ci%] := typeFlickerBackground%; 
+                    ci% += 1;  'Increment index
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for j% := 0 to nRepeats%-1 do
+                    directionThisTrial%[ci%] := 2;  'indicates diagonal bg orientation
+                    stimTypeThisTrial%[ci%] := typeAnnulus%; 
+                    bgTypeThisTrial%[ci%] := typeFlickerBackground%; 
+                    ci% += 1;  'Increment index
+                next;
+            endif;
         endif;
         if useValidBackground% = 1 or useInvalidBackground% = 1 or useOrthogonalBackground% = 1 then 
             if useCardinal% = 1 then
                 for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7], do all cardinal directions
                     for j% := 0 to nRepeats%-1 do
-                        directionThisTrial%[ci%] := 9;  'this seems redundant with stimtype, but DOES get used
+                        directionThisTrial%[ci%] := 1;  'indicates cardinal bg orientation
                         directionBGThisTrial%[ci%] := (2*i%)-1;  'Valid/invalid/orthogonal are all the same as spatially random stimulus is non-directional
                         stimTypeThisTrial%[ci%] := typeAnnulus%; 
                         bgTypeThisTrial%[ci%] := typeValidBackground%; 
@@ -2136,7 +2039,7 @@ func GenerateTrials%()
             if useDiagonal% = 1 then
                 for i% := 1 to 4 do '(2*i%) is [2 4 6 8], do all diagonal directions
                     for j% := 0 to nRepeats%-1 do
-                        directionThisTrial%[ci%] := 9;  'this seems redundant with stimtype, but DOES get used
+                        directionThisTrial%[ci%] := 2;  'indicates diagonal bg orientation
                         directionBGThisTrial%[ci%] := (2*i%);  'Valid/invalid/orthogonal are all the same as spatially random stimulus is non-directional
                         stimTypeThisTrial%[ci%] := typeAnnulus%; 
                         bgTypeThisTrial%[ci%] := typeValidBackground%; 
@@ -2150,33 +2053,53 @@ func GenerateTrials%()
     if useContinuousAnnulus% = 1 then
         if useNoBackground% = 1 then
             for j% := 0 to nRepeats%-1 do
-                directionThisTrial%[ci%] := 10;  'this seems redundant with stimtype, but DOES get used
+                directionThisTrial%[ci%] := 1;  'we won't actually use a background, this is unused
                 stimTypeThisTrial%[ci%] := typeContinuousAnnulus%;  
                 bgTypeThisTrial%[ci%] := typeNoBackground%;
                 ci% += 1;  'Increment index
             next;
         endif;
         if useStaticBackground% = 1 then
-            for j% := 0 to nRepeats%-1 do
-                directionThisTrial%[ci%] := 10;  'this seems redundant with stimtype, but DOES get used
-                stimTypeThisTrial%[ci%] := typeContinuousAnnulus%;  
-                bgTypeThisTrial%[ci%] := typeStaticBackground%; 
-                ci% += 1;  'Increment index
-            next;
+            if useCardinal% = 1 then
+                for j% := 0 to nRepeats%-1 do
+                    directionThisTrial%[ci%] := 1;  'indicates cardinal bg orientation
+                    stimTypeThisTrial%[ci%] := typeContinuousAnnulus%;  
+                    bgTypeThisTrial%[ci%] := typeStaticBackground%; 
+                    ci% += 1;  'Increment index
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for j% := 0 to nRepeats%-1 do
+                    directionThisTrial%[ci%] := 2;  'indicates diagonal bg orientation
+                    stimTypeThisTrial%[ci%] := typeContinuousAnnulus%;  
+                    bgTypeThisTrial%[ci%] := typeStaticBackground%; 
+                    ci% += 1;  'Increment index
+                next;
+            endif;
         endif;
         if useFlickerBackground% = 1 then
-            for j% := 0 to nRepeats%-1 do
-                directionThisTrial%[ci%] := 10;  'this seems redundant with stimtype, but DOES get used
-                stimTypeThisTrial%[ci%] := typeContinuousAnnulus%; 
-                bgTypeThisTrial%[ci%] := typeFlickerBackground%;
-                ci% += 1;  'Increment index
-            next;
+            if useCardinal% = 1 then
+                for j% := 0 to nRepeats%-1 do
+                    directionThisTrial%[ci%] := 1;  'indicates cardinal bg orientation
+                    stimTypeThisTrial%[ci%] := typeContinuousAnnulus%; 
+                    bgTypeThisTrial%[ci%] := typeFlickerBackground%;
+                    ci% += 1;  'Increment index
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for j% := 0 to nRepeats%-1 do
+                    directionThisTrial%[ci%] := 2;  'indicates diagonal bg orientation
+                    stimTypeThisTrial%[ci%] := typeContinuousAnnulus%; 
+                    bgTypeThisTrial%[ci%] := typeFlickerBackground%;
+                    ci% += 1;  'Increment index
+                next;
+            endif;
         endif;
         if useValidBackground% = 1 or useInvalidBackground% = 1 or useOrthogonalBackground% = 1 then
             if useCardinal% = 1 then
                 for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7], do all cardinal directions
                     for j% := 0 to nRepeats%-1 do
-                        directionThisTrial%[ci%] := 10;  'this seems redundant with stimtype, but DOES get used
+                        directionThisTrial%[ci%] := 1;  'indicates cardinal bg orientation
                         directionBGThisTrial%[ci%] := (2*i%)-1;  'Valid/invalid/orthogonal are all the same as spatially random stimulus is non-directional
                         stimTypeThisTrial%[ci%] := typeContinuousAnnulus%; 
                         bgTypeThisTrial%[ci%] := typeValidBackground%;
@@ -2187,7 +2110,7 @@ func GenerateTrials%()
             if useDiagonal% = 1 then
                 for i% := 1 to 4 do '(2*i%) is [2 4 6 8], do all diagonal directions
                     for j% := 0 to nRepeats%-1 do
-                        directionThisTrial%[ci%] := 10;  'this seems redundant with stimtype, but DOES get used
+                        directionThisTrial%[ci%] := 2;  'indicates diagonal bg orientation
                         directionBGThisTrial%[ci%] := (2*i%);  'Valid/invalid/orthogonal are all the same as spatially random stimulus is non-directional
                         stimTypeThisTrial%[ci%] := typeContinuousAnnulus%; 
                         bgTypeThisTrial%[ci%] := typeValidBackground%;
@@ -2201,33 +2124,53 @@ func GenerateTrials%()
     if useRandAnnulus% = 1 then
         if useNoBackground% = 1 then
             for j% := 0 to nRepeats%-1 do
-                directionThisTrial%[ci%] := 11;  'this seems redundant with stimtype, but DOES get used
+                directionThisTrial%[ci%] := 1;  'we won't actually use a background, this is unused
                 stimTypeThisTrial%[ci%] := typeRandAnnulus%;  
                 bgTypeThisTrial%[ci%] := typeNoBackground%;
                 ci% += 1;  'Increment index
             next;
         endif;
         if useStaticBackground% = 1 then
-            for j% := 0 to nRepeats%-1 do
-                directionThisTrial%[ci%] := 11;  'this seems redundant with stimtype, but DOES get used
-                stimTypeThisTrial%[ci%] := typeRandAnnulus%; 
-                bgTypeThisTrial%[ci%] := typeStaticBackground%; 
-                ci% += 1;  'Increment index
-            next;
+            if useCardinal% = 1 then
+                for j% := 0 to nRepeats%-1 do
+                    directionThisTrial%[ci%] := 1;  'indicates cardinal bg orientation
+                    stimTypeThisTrial%[ci%] := typeRandAnnulus%; 
+                    bgTypeThisTrial%[ci%] := typeStaticBackground%; 
+                    ci% += 1;  'Increment index
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for j% := 0 to nRepeats%-1 do
+                    directionThisTrial%[ci%] := 2;  'indicates diagonal bg orientation
+                    stimTypeThisTrial%[ci%] := typeRandAnnulus%; 
+                    bgTypeThisTrial%[ci%] := typeStaticBackground%; 
+                    ci% += 1;  'Increment index
+                next;
+            endif;
         endif;
         if useFlickerBackground% = 1 then
-            for j% := 0 to nRepeats%-1 do
-                directionThisTrial%[ci%] := 11;  'this seems redundant with stimtype, but DOES get used
-                stimTypeThisTrial%[ci%] := typeRandAnnulus%; 
-                bgTypeThisTrial%[ci%] := typeFlickerBackground%; 
-                ci% += 1;  'Increment index
-            next;
+            if useCardinal% = 1 then
+                for j% := 0 to nRepeats%-1 do
+                    directionThisTrial%[ci%] := 1;  'indicates cardinal bg orientation
+                    stimTypeThisTrial%[ci%] := typeRandAnnulus%; 
+                    bgTypeThisTrial%[ci%] := typeFlickerBackground%; 
+                    ci% += 1;  'Increment index
+                next;
+            endif;
+            if useDiagonal% = 1 then
+                for j% := 0 to nRepeats%-1 do
+                    directionThisTrial%[ci%] := 2;  'indicates diagonal bg orientation
+                    stimTypeThisTrial%[ci%] := typeRandAnnulus%; 
+                    bgTypeThisTrial%[ci%] := typeFlickerBackground%; 
+                    ci% += 1;  'Increment index
+                next;
+            endif;
         endif;
         if useValidBackground% = 1 or useInvalidBackground% = 1 or useOrthogonalBackground% = 1 then
             if useCardinal% = 1 then
                 for i% := 1 to 4 do '(2*i%)-1 is [1 3 5 7], do all cardinal directions
                     for j% := 0 to nRepeats%-1 do
-                        directionThisTrial%[ci%] := 11;  'this seems redundant with stimtype, but DOES get used
+                        directionThisTrial%[ci%] := 1;  'indicates cardinal bg orientation
                         directionBGThisTrial%[ci%] := (2*i%)-1;  'Valid/invalid/orthogonal are all the same as spatially random stimulus is non-directional
                         stimTypeThisTrial%[ci%] := typeRandAnnulus%; 
                         bgTypeThisTrial%[ci%] := typeValidBackground%; 
@@ -2238,7 +2181,7 @@ func GenerateTrials%()
             if useDiagonal% = 1 then
                 for i% := 1 to 4 do '(2*i%) is [2 4 6 8], do all diagonal directions
                     for j% := 0 to nRepeats%-1 do
-                        directionThisTrial%[ci%] := 11;  'this seems redundant with stimtype, but DOES get used
+                        directionThisTrial%[ci%] := 2;  'indicates diagonal bg orientation
                         directionBGThisTrial%[ci%] := (2*i%);  'Valid/invalid/orthogonal are all the same as spatially random stimulus is non-directional
                         stimTypeThisTrial%[ci%] := typeRandAnnulus%; 
                         bgTypeThisTrial%[ci%] := typeValidBackground%; 
@@ -2264,10 +2207,168 @@ end
 
 
 
+
+'This function writes the trials file - ths was originally standing alone rather than a function
+'but it got long enough to make more sense to farm it out
+func WriteTrialsFile()
+    
+    'As of now, it's becoming clearer what the syntax of the file is
+    'So right now we have nTrials%, and we have directionThisTrial%[], stimTypeThisTrial%[], and bgTypeThisTrial%[] filled
+    'and we have a trialOrder%[] variable to index them - and now added directionBGThisTrial%[] which supercedes any prior
+    'on-the-fly calculations of background direction (when it was only valid/invalid this was easy) to allow for 
+    'orthogonal background motion
+    var currTrial%;  'Index for this trial
+    var thisBG%;  'If -1, no background, if 0, write function will choose random background, otherwise use this background
+    var mostRecentBG%;  'We don't want to repeat flickering backgrounds, because it could look like motion
+    var xBG%;  'This will be a coordinate for positioning the background, in X
+    var yBG%;  'This will be a coordinate for positioning the background, in Y
+    var origxBG%;  'We need to remember the start position for diagonal, because if we are moving them, the number of pixels moved is not constant
+    var origyBG%;
+    var xFG%;  'This will be a coordinate for positioning the foreground, in X
+    var yFG%;  'This will be a coordinate for positioning the foreground, in Y
+    var currFrame%;
+    var shuffleStatus% := 0;
+    
+    'Open TrialsFile$ for writing
+    trialsFileHandle% := FileOpen(TrialsFile$, 8, 1);  'the handle is actually not used, but that's OK
+    
+    'If the trials file doesn't open, get out of here
+    if trialsFileHandle% < 0 then
+        printlog("Trials file did not open, error is: %s\n",Error$(trialsFileHandle%));
+        return trialsFileHandle%;
+    endif;
+    
+    'Write preliminaries for file, it's just the common folder
+    Print("Folder %s\n\n",commonDir$);  'commonDir$ is "F:\\work\\", note that example file does not have trailing slash, will have to see how this goes
+    
+    'Determine foreground center, really only need to do this once per file, though we won't use xFG%/yFG% until a bit later
+    GetForegroundCenter(xFG%,yFG%,pixelsPerGrixel%,RFCenterXPixels%,RFCenterYPixels%);
+    
+    'Loop through each trial, using the value in trialOrder%[i%] as the trial index
+    for i% := 0 to nTrials%-1 do
+        'Get current index for this trial
+        currTrial% := trialOrder%[i%];
+        
+        'Write preliminaries for each trial, turns out the only prelim we need is the trial count
+        Print("Trial %d\n",i%+1);
+        
+        'Make random draw for background if background is static or drifts (if it flickers, we should draw random background at each frame)
+        docase
+        case bgTypeThisTrial%[currTrial%] = typeNoBackground% then  'if no background
+            thisBG% := -1;  'there will be no background
+        case bgTypeThisTrial%[currTrial%] = typeFlickerBackground% then  'if flicker background
+            thisBG% := 0;  'we will select a random background every frame
+        else
+            thisBG% := ceil(rand(16,0));  'we will select a random background (of 16) for this trial, and stick with it through the trial
+        endcase
+        
+        'Make initial random draw for background center if static or drifting (if flickering, random draw for center at each frame)
+        if thisBG% > 0 then  
+            SelectLegalBackgroundCenter(xBG%,yBG%,pixelsPerGrixel%,bgTypeThisTrial%[currTrial%],directionThisTrial%[currTrial%],directionBGThisTrial%[currTrial%],RFCenterXPixels%,RFCenterYPixels%,nFramesPerTrial%);
+            origxBG% := xBG%;  'We need to keep this for diagonals; xBG%/yBG% get updated for moving backgrounds, but we need to know the original location because diagonal step size is non-integer
+            origyBG% := yBG%;
+        endif;
+        
+        
+        'Determine if this trial is SPATIALLY structured, get ordered list of foreground indices
+        docase
+        case stimTypeThisTrial%[currTrial%] = typeMovingBar% or stimTypeThisTrial%[currTrial%] = typeTRandBar% then
+            isSpatiallyStructured% := 1;
+        case stimTypeThisTrial%[currTrial%] = typeSRandBar% or stimTypeThisTrial%[currTrial%] = typeSTRandBar% then
+            isSpatiallyStructured% := 0;
+        case stimTypeThisTrial%[currTrial%] = typeAnnulus% or stimTypeThisTrial%[currTrial%] = typeRandAnnulus% then
+            isSpatiallyStructured% := 2;
+            'Currently typeContinuousMovingBar%, typeContinuousAnnulus% are not implemented
+        endcase
+        
+        
+        'Determine if this trial is TEMPORALLY structured, assign list of foreground indices based on this
+        docase
+        case stimTypeThisTrial%[currTrial%] = typeMovingBar% or stimTypeThisTrial%[currTrial%] = typeSRandBar% then
+            for j% := 0 to 6 do
+                frameOrder%[j%] := j%;  'This will make the values 0-6, will need to add one (could easily do 1-7 but below line does 0-6, make this congruent)
+            next
+            nFramesThisTrial% := nFramesPerTrial%;
+        case stimTypeThisTrial%[currTrial%] = typeTRandBar% or stimTypeThisTrial%[currTrial%] = typeSTRandBar% then
+            Shuffle%(7,frameOrder%[]);  'This will make the values 0-6, will need to add one
+            nFramesThisTrial% := nFramesPerTrial%;
+        case stimTypeThisTrial%[currTrial%] = typeAnnulus% then
+            for j% := 0 to 3 do
+                frameOrder%[j%] := j%;  'This will make the values 0-3, will need to add one (could easily do 1-4 but below line does 0-3, make this congruent)
+            next
+            for j% := 0 to 2 do
+                frameOrder%[j%+4] := 2-j%;  'This will make the values 2-0, will need to add one (could easily do 1-4 but below line does 0-3, make this congruent)
+            next
+            nFramesThisTrial% := nFramesPerTrialAnnulus%;
+        case stimTypeThisTrial%[currTrial%] = typeRandAnnulus% then
+            for j% := 0 to 3 do
+                frameOrder%[j%] := j%;  'This will make the values 0-3, will need to add one (could easily do 1-4 but below line does 0-3, make this congruent)
+            next
+            for j% := 0 to 2 do
+                frameOrder%[j%+4] := 2-j%;  'This will make the values 2-0, will need to add one (could easily do 1-4 but below line does 0-3, make this congruent)
+            next
+            'Only about 40% of the shuffles should have no frames repeated consecutively - check this and reshuffle until we find one
+            while shuffleStatus% = 0 do  'shuffleStatus% starts at 0, CheckShuffle% will return 1 for a "successful" shuffle
+                ShuffleList%(frameOrder%[0:7]);  'This scrambles the values in the 7 indices between 0-6, verified to work correctly
+                shuffleStatus% := CheckShuffle%(frameOrder%[0:7]);  'check the shuffle
+            wend            
+            'Shuffle%(4,frameOrder%[]);  'This will make the values 0-3, will need to add one
+            nFramesThisTrial% := nFramesPerTrialAnnulus%;
+            'Currently typeContinuousMovingBar%, typeContinuousAnnulus% are not implemented
+        endcase
+        
+        'Loop through each frame
+        currFrame% := 0;
+        for j% := 1 to nFramesThisTrial% do
+            'Write preliminaries for each frame
+            Print("Frames %d\n",1+(refreshesPerFrame%*(j%-1)));  'Write the time (in refreshes) of the current frame
+            
+            'Update center of background if drifting, make random draw of background/center if flickering, no need to do this if there is no background
+            'This function will not move the background on the first frame, because that would not make sense
+            if thisBG% > -1 then 
+                UpdateBackgroundCenter(xBG%,yBG%,pixelsPerGrixel%,bgTypeThisTrial%[currTrial%],directionThisTrial%[currTrial%],directionBGThisTrial%[currTrial%],RFCenterXPixels%,RFCenterYPixels%,nFramesThisTrial%,j%,origxBG%,origyBG%);
+            endif;
+            
+            'Write background values to file
+            WriteBackground(thisBG%,xBG%,yBG%,directionThisTrial%[currTrial%],pixelsPerGrixel%,cellType%,backgroundDir$,j%,mostRecentBG%);
+            
+            'Write central blank to file on every trial, use -1 to indicate the blank or -2 to indicate the circular blank for annuli
+            if stimTypeThisTrial%[currTrial%] <= 5 then  'rectangular blank
+                WriteForeground(-1,xFG%,yFG%,directionThisTrial%[currTrial%],pixelsPerGrixel%,0,foregroundDir$,0);  'On/Off and FrameCount do not matter for the blank, zeroing them
+            else 'circular blank
+                WriteForeground(-2,xFG%,yFG%,directionThisTrial%[currTrial%],pixelsPerGrixel%,0,foregroundDir$,0);  'On/Off and FrameCount do not matter for the blank, zeroing them
+            endif;
+            
+            'Only write foreground during the central nFramesThisTrial% frames
+            if j% > nPrePostFrames% and j% <= (nFramesThisTrial%-nPrePostFrames%) then
+                currFrame% += 1;
+                'Write foreground to file, this will select/draw correct foreground based on direction, etc.
+                WriteForeground(isSpatiallyStructured%,xFG%,yFG%,directionThisTrial%[currTrial%],pixelsPerGrixel%,cellType%,foregroundDir$,frameOrder%[currFrame%-1]+1);
+            endif;
+        next
+        'Write closer for each trial
+        Print("Frames %d end\n\n",1+(refreshesPerFrame%*(nFramesThisTrial%)));  'Write the time (in refreshes) when stimulus should turn off
+    next
+    
+    'Close file, trial file is now written
+    FileClose(0);
+    
+    
+    printlog("Number of trials is %d\n",nTrials%);
+    
+    return 1;
+    
+end
+
+
+
+
+
+
 'This process will select a legal background center value
 'Will update x%, y% input values
 'Legal center values will depend on the grixel size, the direction of motion (if any), and the RF center
-proc SelectLegalBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,RFCXPix%,RFCYPix%,nFrames%)
+proc SelectLegalBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,directionBG%,RFCXPix%,RFCYPix%,nFrames%)
     'For flicker/static background, legal positions are only reliant on the size of the screen
     'For moving background, legal positions are also constrained by the number of frames through which the BG has to move
     
@@ -2313,6 +2414,8 @@ proc SelectLegalBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,RFCXPix%,RFCYPi
     var grixelCenterOffsetY%;
     var ppgfloat;  'For cardinal backgrounds, the size of the shift is equal to the number of pixels in a grixel, but for diagonal backgrounds this is not true
     var shiftpergrixel;  'again, for diagonals
+    'Note that regardless of whether the background will ultimately move (static/flicker do not), we need to select the correct background center based on the
+    'current trial's orientation.  direction% holds orientation information even in non-oriented trials.
     docase
     case direction% = 1 or direction% = 3 or direction% = 5 or direction% = 7 then  'cardinal direction offsets, manually calculated
         docase
@@ -2460,34 +2563,34 @@ proc SelectLegalBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,RFCXPix%,RFCYPi
     maxY% := 384;
     'Now update min/max accounting for motion of the background, if any
     'Only valid/invalid/orthogonal backgrounds actually move
-    if bgType% = typeValidBackground% or bgType% = typeInvalidBackground% then
+    if bgType% = typeValidBackground% or bgType% = typeInvalidBackground% or bgType% = typeOrthogonalBackground% then
         docase
-        'For rightward motion of the background, either valid or invalid
-        case (direction% = 1 and bgType% = typeValidBackground%) or (direction% = 5 and bgType% = typeInvalidBackground%) then 
+        'For rightward motion of the background
+        case directionBG% = 1 then 
             maxX% := maxX% - (N%*ppg%);  'the background moves right, must restrict right side to allow six subsequent frames
         'For leftward motion of bg
-        case (direction% = 5 and bgType% = typeValidBackground%) or (direction% = 1 and bgType% = typeInvalidBackground%) then 
+        case directionBG% = 5 then 
             minX% := minX% + (N%*ppg%);  'these follow the same logic as above
         'For upward motion of bg
-        case (direction% = 3 and bgType% = typeValidBackground%) or (direction% = 7 and bgType% = typeInvalidBackground%) then 
+        case directionBG% = 3 then 
             minY% := minY% + (N%*ppg%); 
         'For downward motion of bg
-        case (direction% = 7 and bgType% = typeValidBackground%) or (direction% = 3 and bgType% = typeInvalidBackground%) then 
+        case directionBG% = 7 then 
             maxY% := maxY% - (N%*ppg%);
         'For rightward-up diagonal motion of bg
-        case (direction% = 2 and bgType% = typeValidBackground%) or (direction% = 6 and bgType% = typeInvalidBackground%) then
+        case directionBG% = 2 then
             maxX% := maxX% - round(N%*shiftpergrixel);
             minY% := minY% + round(N%*shiftpergrixel);
         'For leftward-up diagonal motion of bg
-        case (direction% = 4 and bgType% = typeValidBackground%) or (direction% = 8 and bgType% = typeInvalidBackground%) then
+        case directionBG% = 4 then
             minX% := minX% + round(N%*shiftpergrixel);
             minY% := minY% + round(N%*shiftpergrixel);
         'For leftward-down diagonal motion of bg
-        case (direction% = 6 and bgType% = typeValidBackground%) or (direction% = 2 and bgType% = typeInvalidBackground%) then 
+        case directionBG% = 6 then 
             minX% := minX% + round(N%*shiftpergrixel);
             maxY% := maxY% - round(N%*shiftpergrixel);
         'For rightward-down diagonal motion of bg
-        case (direction% = 8 and bgType% = typeValidBackground%) or (direction% = 4 and bgType% = typeInvalidBackground%) then
+        case directionBG% = 8 then
             maxX% := maxX% - round(N%*shiftpergrixel);
             maxY% := maxY% - round(N%*shiftpergrixel);
         endcase
@@ -2542,7 +2645,7 @@ end
 'This process will update the background center values, if necessary
 'Will update x%, y% input values
 'For flicker background will select new legal location, for moving backgrounds will systematically update the center by one grixel
-proc UpdateBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,RFCXPix%,RFCYPix%,nFrames%,frameCount%,origX%,origY%)
+proc UpdateBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,directionBG%,RFCXPix%,RFCYPix%,nFrames%,frameCount%,origX%,origY%)
     var n;
     n := frameCount% -1;
     var ppgfloat;  'For cardinal backgrounds, the size of the shift is equal to the number of pixels in a grixel, but for diagonal backgrounds this is not true
@@ -2556,49 +2659,29 @@ proc UpdateBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,RFCXPix%,RFCYPix%,nF
     case bgType% = typeNoBackground% or bgType% = typeStaticBackground% then  'for no background, or static background, do not change value
         return;  
     case bgType% = typeFlickerBackground% then  'for flicker background, select random legal location
-        SelectLegalBackgroundCenter(x%,y%,ppg%,bgType%,direction%,RFCXPix%,RFCYPix%,nFrames%);
+        SelectLegalBackgroundCenter(x%,y%,ppg%,bgType%,direction%,directionBG%,RFCXPix%,RFCYPix%,nFrames%);
     case frameCount% > 1 then  'for moving backgrounds, move in correct direction, but don't move on the first frame
         docase
-        case direction% = 1 and bgType% = typeValidBackground% then  'valid background, right, background moves ppg% to the right
+        case directionBG% = 1 then  'right, background moves ppg% to the right
             x% := x% + ppg%;
-        case direction% = 1 and bgType% = typeInvalidBackground% then  'invalid background, right, background moves ppg% to the left
+        case directionBG% = 3 then  'up, background moves ppg% up
+            y% := y% + ppg%;   
+        case directionBG% = 5 then  'left, background moves ppg% to the left
             x% := x% - ppg%;
-        case direction% = 3 and bgType% = typeValidBackground% then  'valid background, up, background moves ppg% up
-            y% := y% + ppg%;
-        case direction% = 3 and bgType% = typeInvalidBackground% then  'invalid background, up, background moves ppg% down
-            y% := y% - ppg%;    
-        case direction% = 5 and bgType% = typeValidBackground% then  'valid background, left, background moves ppg% to the left
-            x% := x% - ppg%;
-        case direction% = 5 and bgType% = typeInvalidBackground% then  'invalid background, left, background moves ppg% to the right
-            x% := x% + ppg%;
-        case direction% = 7 and bgType% = typeValidBackground% then  'valid background, down, background moves ppg% down
+        case directionBG% = 7 then  'down, background moves ppg% down
             y% := y% - ppg%;
-        case direction% = 7 and bgType% = typeInvalidBackground% then  'invalid background, down, background moves ppg% up
-            y% := y% + ppg%;
-        case direction% = 2 and bgType% = typeValidBackground% then  'valid background, right+up, background moves ppg% to the right/up
+        case directionBG% = 2 then  'right+up, background moves ppg% to the right/up
             x% := origX% + thisDiagShift%;
             y% := origY% + thisDiagShift%;
-        case direction% = 2 and bgType% = typeInvalidBackground% then  'invalid background, right+up, background moves ppg% to the left/down
-            x% := origX% - thisDiagShift%; 
-            y% := origY% - thisDiagShift%;
-        case direction% = 4 and bgType% = typeValidBackground% then  'valid background, left+up, background moves ppg% to the left/up
+        case directionBG% = 4 then  'left+up, background moves ppg% to the left/up
             x% := origX% - thisDiagShift%;
             y% := origY% + thisDiagShift%;
-        case direction% = 4 and bgType% = typeInvalidBackground% then  'invalid background, left+up, background moves ppg% to the right/down
-            x% := origX% + thisDiagShift%; 
-            y% := origY% - thisDiagShift%;
-        case direction% = 6 and bgType% = typeValidBackground% then  'valid background, left+down, background moves ppg% to the left/down
+        case directionBG% = 6 then  'left+down, background moves ppg% to the left/down
             x% := origX% - thisDiagShift%;
             y% := origY% - thisDiagShift%;
-        case direction% = 6 and bgType% = typeInvalidBackground% then  'invalid background, left+down, background moves ppg% to the right/up
-            x% := origX% + thisDiagShift%; 
-            y% := origY% + thisDiagShift%;
-        case direction% = 8 and bgType% = typeValidBackground% then  'valid background, right+down, background moves ppg% to the right/down
+        case directionBG% = 8 then  'right+down, background moves ppg% to the right/down
             x% := origX% + thisDiagShift%;
             y% := origY% - thisDiagShift%;
-        case direction% = 8 and bgType% = typeInvalidBackground% then  'invalid background, right+down, background moves ppg% to the left/up
-            x% := origX% - thisDiagShift%; 
-            y% := origY% + thisDiagShift%;
         endcase       
         
     endcase
@@ -2624,7 +2707,7 @@ end
 proc WriteBackground(thisBG%,xBG%,yBG%,direc%,px%,onoff%,bgDir$,frameCount%,&mrBG%)
     var fn$; 
     var onoff$;
-    var direc$;
+    var orientation$;
     var tempBG%;
     var thisbg$;
     var ender$;
@@ -2636,11 +2719,13 @@ proc WriteBackground(thisBG%,xBG%,yBG%,direc%,px%,onoff%,bgDir$,frameCount%,&mrB
         onoff$ := "_off_";
     endif;
     
+    'Here, the direction on each trial is sufficient to determine the orientation of the BG (in some cases directionBG is not assigned so just pass direction)
+    'We have no trials where we are using a diagonal background with a cardinal foreground
     docase 
-    case direc% = 1 or direc% = 3 or direc% = 5 or direc% = 7 or direc% = 9 or direc% = 10 or direc% = 11 then  'use cardinalBG for annuli
-        direc$ := "cardinal";
+    case direc% = 1 or direc% = 3 or direc% = 5 or direc% = 7 then 
+        orientation$ := "cardinal";
     case direc% = 2 or direc% = 4 or direc% = 6 or direc% = 8 then
-        direc$ := "diagonal";
+        orientation$ := "diagonal";
     endcase
     
     docase
@@ -2664,7 +2749,7 @@ proc WriteBackground(thisBG%,xBG%,yBG%,direc%,px%,onoff%,bgDir$,frameCount%,&mrB
     endif;
     
     if blank% = 0 then
-        fn$ := bgDir$ + "px" + Str$(px%) + onoff$ + direc$ + "_" + thisbg$ + ".bmp";
+        fn$ := bgDir$ + "px" + Str$(px%) + onoff$ + orientation$ + "_" + thisbg$ + ".bmp";
     else
         if onoff% = 0 then
             fn$ := "blankbg_on.bmp";  'lower case for VSG
@@ -2921,3 +3006,17 @@ proc WriteParameterFile()
     endif;
     
 end;
+
+
+'A simple function that checks an integer list for two consecutive identical values
+'Returns 1 if no consecutive identical values ("OK")
+'Short-circuit returns 0 if consecutive identical values are found ("Not OK")
+func CheckShuffle%(list%[])    
+    var i%;
+    for i% := 0 to len(list%[])-2 do  'use -2 because we subtract 1 to get from LEN to zero-indexing, and another 1 because loop uses i% and i%+1
+        if list%[i%] = list%[i%+1] then
+            return 0;
+        endif;        
+    next
+    return 1;
+end
