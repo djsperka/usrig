@@ -15,8 +15,8 @@
 
 
 '''''''''' Variables ''''''''''
-const screenXmm := 400;
-const screenYmm := 300;
+var screenXmm := 400;  'will actually add to dialog box, 400 is not necessarily correct
+var screenYmm := 300;  'will actually add to dialog box, 300 is not necessarily correct
 const screenXpixels := 1024;  'since the monitor is 4:3, we don't need to actually calculate both X and Y, not integer to do floating point math
 var grixelsPerRF := 5;  'had set this at 7, but I think it's actually 5, the outer 2 are extra-rf, make float because it can now change
 const grixelsPerCenter := 7;  'we will draw 7, but the RF span is 5, make float for math
@@ -318,8 +318,26 @@ proc ScreenBounds(scrXmm,scrYmm,&xmax,&ymax)
     d2s := val(d2s$);
     'printlog("Distance to screen is %f\n",d2s);
     
-    xmax := ATan((scrXmm/2)/d2s)*180/(4.0*ATan(1.0));  'maximum x in degrees
-    ymax := ATan((scrYmm/2)/d2s)*180/(4.0*ATan(1.0));  'maximum y in degrees
+    'As an aside, it really kills me that I have to use the "wrong" calculation here.  We all know
+    'the classic SOH/CAH/TOA - the tangent of an angle of a right triangle is equal to the opposite 
+    'over the adjacent.  The right angle here is between the eye and the center of the screen.  The
+    'adjacent (A) side is the screen distance from the eye (or "d2s" here), the opposite (O) side is
+    'half of the screen width (or "scrXmm/2" here) - and as such O/A is the tangent of the angle.  
+    'Now, it is true that the distance from the screen (A) is "large" (assumed 800 mm here) and half
+    'of the screen width is "small" (about 195 mm here), so the tangent of the angle is "small" 
+    '(about 0.25 here), and that, in radians, as tangent->0, arctangent->tangent, but really, 0.25 is
+    'too large for that approximation to not make any difference - it's such that if you request a
+    'fixation point placement at 9 degrees, you're getting it closer to about 8.8 degrees.  That's a
+    '2%-ish error, and that's not insignificant to me.  (And certainly not insignificant if you're 
+    'lining things up!)
+    
+    'This is technically the correct calculation, but this is NOT the way the VSG does the calculation
+    'xmax := ATan((scrXmm/2)/d2s)*180/(4.0*ATan(1.0));  'maximum x in degrees
+    'ymax := ATan((scrYmm/2)/d2s)*180/(4.0*ATan(1.0));  'maximum y in degrees
+    
+    'This appears to definitely be the way the VSG does the calculation, though it is wrong
+    xmax := ((scrXmm/2)/d2s)*180/(4.0*ATan(1.0));  'maximum x in degrees
+    ymax := ((scrYmm/2)/d2s)*180/(4.0*ATan(1.0));  'maximum y in degrees
     'printlog("Max x is %f degrees and max y is %f degrees\n",xmax,ymax);
     
 end
@@ -961,18 +979,23 @@ proc PrepareTrial()
     case stimTypeThisTrial%[trialOrder%[trialCount%]] = typeMovingBar% then 
         trialDescription$ += "MovingBar, "; 'This method of tacking on a string is legit, I verified
         mbThisTrialDur := mbTrialDur;
+        trialDescription$ += "Deg " + Str$(45*(directionThisTrial%[trialOrder%[trialCount%]]-1)) + ", ";
     'case stimTypeThisTrial%[trialOrder%[trialCount%]] = typeContinuousMovingBar% then
         'trialDescription$ += "ContinuousMovingBar, ";
         'mbThisTrialDur := mbTrialDur;  'This is not currently implemented, not sure if this value would be correct
+        'trialDescription$ += "Deg " + Str$(45*(directionThisTrial%[trialOrder%[trialCount%]]-1)) + ", ";
     case stimTypeThisTrial%[trialOrder%[trialCount%]] = typeTRandBar% then
         trialDescription$ += "TRandBar, ";
         mbThisTrialDur := mbTrialDur;
+        trialDescription$ += "Deg " + Str$(45*(directionThisTrial%[trialOrder%[trialCount%]]-1)) + ", "; 'for now, this is easiest, note that 0 and 180 are equivalent
     case stimTypeThisTrial%[trialOrder%[trialCount%]] = typeSRandBar% then
         trialDescription$ += "SRandBar, ";
         mbThisTrialDur := mbTrialDur;
+        trialDescription$ += "Deg 0, "; 'note that direction is not informative
     case stimTypeThisTrial%[trialOrder%[trialCount%]] = typeSTRandBar% then
         trialDescription$ += "STRandBar, ";
         mbThisTrialDur := mbTrialDur;
+        trialDescription$ += "Deg 0, "; 'note that direction is not informative
     case stimTypeThisTrial%[trialOrder%[trialCount%]] = typeAnnulus% then
         trialDescription$ += "Annulus, ";
         mbThisTrialDur := mbTrialDurAnnulus;
@@ -983,32 +1006,30 @@ proc PrepareTrial()
         trialDescription$ += "RandAnnulus, "; 
         mbThisTrialDur := mbTrialDurAnnulus;
     endcase
+
+    
+    
     
     'Add on background type
     docase
     case bgTypeThisTrial%[trialOrder%[trialCount%]] = typeNoBackground% then
-        trialDescription$ += "NoBG, ";
+        trialDescription$ += "NoBG";
     case bgTypeThisTrial%[trialOrder%[trialCount%]] = typeStaticBackground% then
-        trialDescription$ += "StaticBG, ";
+        trialDescription$ += "StaticBG";
     case bgTypeThisTrial%[trialOrder%[trialCount%]] = typeFlickerBackground% then
-        trialDescription$ += "FlickerBG, ";
+        trialDescription$ += "FlickerBG";
     case bgTypeThisTrial%[trialOrder%[trialCount%]] = typeValidBackground% then
         trialDescription$ += "ValidBG, ";
+        trialDescription$ += "BGDeg " + Str$(45*(directionBGThisTrial%[trialOrder%[trialCount%]]-1));
     case bgTypeThisTrial%[trialOrder%[trialCount%]] = typeInvalidBackground% then
         trialDescription$ += "InvalidBG, ";
+        trialDescription$ += "BGDeg " + Str$(45*(directionBGThisTrial%[trialOrder%[trialCount%]]-1));
+    case bgTypeThisTrial%[trialOrder%[trialCount%]] = typeOrthogonalBackground% then
+        trialDescription$ += "OrthogonalBG, ";
+        trialDescription$ += "BGDeg " + Str$(45*(directionBGThisTrial%[trialOrder%[trialCount%]]-1));
     endcase
     
-    'Add on direction
-    docase
-    case directionThisTrial%[trialOrder%[trialCount%]] < 9 then
-        trialDescription$ += "Deg" + Str$(45*(directionThisTrial%[trialOrder%[trialCount%]]-1));
-    case directionThisTrial%[trialOrder%[trialCount%]] = 9 then   'these really, really seem redundant, but they may end up being useful for easily parsing the sampletext
-        trialDescription$ += "Annulus";
-    case directionThisTrial%[trialOrder%[trialCount%]] = 10 then   'these really, really seem redundant, but they may end up being useful for easily parsing the sampletext
-        trialDescription$ += "ContinuousAnnulus";    
-    case directionThisTrial%[trialOrder%[trialCount%]] = 11 then
-        trialDescription$ += "RandAnnulus";
-    endcase    
+   
 end;
 
 
@@ -1085,16 +1106,20 @@ func MovingBartlettDialog%()
     DlgCheck(21,"Use random annulus?",43,9);
     DlgList(22,25,blankSize$,4,44,10);
     DlgCheck(23,"Add'l blank on diagonal only?",43,11);
-    DlgCheck(24,"Always Looking",43,13);
-    DlgReal(25,5,0.1,10,76,14);  
-    DlgText("RF Scale Factor (this value * 5 will be",43,14);
-    DlgText("the number of grixels per RF center)",43,15);
+    DlgCheck(24,"Always Looking",43,12);
+    DlgReal(25,4,0.1,10,76,13);  
+    DlgText("RF Scale Factor (this value * 5 will be",43,13);
+    DlgText("the number of grixels per RF center)",43,14);
+    DlgReal(26,6,100,1300,56,15);  'Limits seem to give plenty of slack for very unusual monitor sizes
+    DlgReal(27,6,70,1000,76,15);
+    DlgText("Screen X mm",43,15);
+    DlgText("Screen Y mm",63,15);
     
     DlgAllow(0, 0, MovingBartlettDialogChanged%);  'not used/written for now
     
 	i%:=DlgShow(ITI,barSpeed,nRepeats%,nPrePostFrames%,interleave%,cellType%,useDirection%,
     useNoBackground%,useStaticBackground%,useFlickerBackground%,useValidBackground%,useInvalidBackground%,
-    useOrthogonalBackground%,eightInts%[],blankType%,addlBlankDiagOnly%,alwaysLooking%,scaleFactorRF);
+    useOrthogonalBackground%,eightInts%[],blankType%,addlBlankDiagOnly%,alwaysLooking%,scaleFactorRF,screenXmm,screenYmm);
     
     
     useMovingBar% := eightInts%[0];
@@ -1151,14 +1176,31 @@ func MovingBartlettDialog%()
         
         
         'Calculate screen values in degrees here
-        'ScreenBounds does this calculation correctly, fills screenXdeg,screenYdeg
+        'ScreenBounds does this calculation correctly, fills screenXdeg, screenYdeg
+        'Please note that for best results, the values for screenXmm, screenYmm should be
+        '1) Calculated from the values entered in the VSG Desktop monitor configuration
+        '   for X do: 1024 (pixels) * Height-of-square(mm) / Size-of-square (pixels)
+        '   for Y do:  768 (pixels) * Height-of-square(mm) / Size-of-square (pixels)
+        '2) Entered in the dialog box with two values after the decimal point (e.g. 198.34)
         ScreenBounds(screenXmm,screenYmm,screenXdeg,screenYdeg);
         
         'Calculate size of pixels, pix/deg = pix/screen / deg/screen
         pixelsPerDegree := screenXpixels/(2*screenXdeg);  
         pixelsPerGrixel% := round(pixelsPerDegree*degPerGrixel);  'pix/grx = pix/deg * deg/grx, this is our grid size!
+        docase
+        case pixelsPerGrixel% > 17 then
+            message("Requested pixel size is " + Str$(pixelsPerGrixel%) + ", max is 17!");
+            printlog("Requested pixel size is %d, max is 17!",pixelsPerGrixel%);
+            halt
+        case pixelsPerGrixel% < 2 then
+            message("Requested pixel size is " + Str$(pixelsPerGrixel%) + ", min is 2!");
+            printlog("Requested pixel size is %d, min is 2!",pixelsPerGrixel%); 
+            halt            
+        endcase
         
-        'pixelsPerGrixel% := 17;  'TODO get rid of manual override
+        
+        'Manual override for testing
+        'pixelsPerGrixel% := 2;  'TODO get rid of manual override
         
         printlog("pixels per degree is %f, pixels per grixel is %d\n",pixelsPerDegree,pixelsPerGrixel%);
         
@@ -1237,7 +1279,8 @@ proc GetMovingBartlettParameters()
     addlBlankDiagOnly% := GetIntRegistryValue%(key$, "addlBlankDiagOnly", addlBlankDiagOnly%);
     alwaysLooking% := GetIntRegistryValue%(key$, "alwaysLooking", alwaysLooking%);
     scaleFactorRF := GetFloatRegistryValue(key$, "scaleFactorRF", scaleFactorRF);
-    
+    screenXmm := GetFloatRegistryValue(key$, "screenXmm", screenXmm);
+    screenYmm := GetFloatRegistryValue(key$, "screenYmm", screenYmm);
     
 end;
 
@@ -1271,6 +1314,8 @@ proc SaveMovingBartlettParameters()
     SetIntRegistryValue(key$, "addlBlankDiagOnly", addlBlankDiagOnly%);
     SetIntRegistryValue(key$, "alwaysLooking", alwaysLooking%);
     SetFloatRegistryValue(key$, "scaleFactorRF", scaleFactorRF);
+    SetFloatRegistryValue(key$, "screenXmm", screenXmm);
+    SetFloatRegistryValue(key$, "screenYmm", screenYmm);
     
 end;
 
@@ -2242,7 +2287,9 @@ func WriteTrialsFile()
     Print("Folder %s\n\n",commonDir$);  'commonDir$ is "F:\\work\\", note that example file does not have trailing slash, will have to see how this goes
     
     'Determine foreground center, really only need to do this once per file, though we won't use xFG%/yFG% until a bit later
-    GetForegroundCenter(xFG%,yFG%,pixelsPerGrixel%,RFCenterXPixels%,RFCenterYPixels%);
+    'Note that this function literally does nothing but assign xFG% as RFCenterXPixels%, etc.  Somehow I envisioned there being
+    'more to it than that, but there's not.
+    GetForegroundCenter(xFG%,yFG%,RFCenterXPixels%,RFCenterYPixels%);
     
     'Loop through each trial, using the value in trialOrder%[i%] as the trial index
     for i% := 0 to nTrials%-1 do
@@ -2458,7 +2505,7 @@ proc SelectLegalBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,directionBG%,RF
         case ppg% = 14 then 'done
             grixelCenterOffsetX% := -5;
             grixelCenterOffsetY% := -5;
-        case ppg% = 15 then 'This bg is good
+        case ppg% = 15 then 'done
             grixelCenterOffsetX% := -3;
             grixelCenterOffsetY% := 4;
         case ppg% = 16 then  'done
@@ -2469,58 +2516,60 @@ proc SelectLegalBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,directionBG%,RF
             grixelCenterOffsetY% := 5;
         endcase
     else  'diagonal direction offsets
+        'When these are lined up correctly, there is still a bit of "thin artifact" at the edges because of the interpolative
+        'nature of the image rotation.  There's really nothing to be done about it.  One decent fix is to place a one-pixel-extra
+        'blank underneath, which will cause thin gaps rather than thin ghosts.
         ppgfloat := ppg%;
-        'shiftpergrixel := ppgfloat * sqrt(2);
         shiftpergrixel := ppgfloat / sqrt(2);
         docase
-        case ppg% = 2 then  'at this size there's no real point, nothing looks good
+        case ppg% = 2 then  'It's fine I guess, there's no way for it to be good when you do an interpolated rotation of a 2x2 square
             grixelCenterOffsetX% := 1;
             grixelCenterOffsetY% := 1;
-        case ppg% = 3 then  'meh but I don't think it gets better
+        case ppg% = 3 then  'Seems optimalish
             grixelCenterOffsetX% := 3;
-            grixelCenterOffsetY% := -4;
-        case ppg% = 4 then  'probably as good as it gets
-            grixelCenterOffsetX% := 3;
-            grixelCenterOffsetY% := 1;
-        case ppg% = 5 then 'ok but not perfect
+            grixelCenterOffsetY% := -3;
+        case ppg% = 4 then  'Seems optimal
             grixelCenterOffsetX% := 1;
-            grixelCenterOffsetY% := 5;
-        case ppg% = 6 then  'ok but not perfect
-            grixelCenterOffsetX% := 5;
-            grixelCenterOffsetY% := 2;
-        case ppg% = 7 then  'probably as good as it will be
-            grixelCenterOffsetX% := -4;
-            grixelCenterOffsetY% := 1;
-        case ppg% = 8 then  'as good as they get
-            grixelCenterOffsetX% := 0;
-            grixelCenterOffsetY% := 1;
-        case ppg% = 9 then 'probably as good as it will be
+            grixelCenterOffsetY% := 0;
+        case ppg% = 5 then 'Seems optimal
             grixelCenterOffsetX% := 2;
-            grixelCenterOffsetY% := 1;
-        case ppg% = 10 then 'probably as good as it will get
-            grixelCenterOffsetX% := -7;
-            grixelCenterOffsetY% := 1;
-        case ppg% = 11 then  'this is maybe OK
-            grixelCenterOffsetX% := -3;
-            grixelCenterOffsetY% := 1;
-        case ppg% = 12 then  'this is OK, but others are worse
-            grixelCenterOffsetX% := -9;
+            grixelCenterOffsetY% := 6;
+        case ppg% = 6 then  'OK
+            grixelCenterOffsetX% := 7;
+            grixelCenterOffsetY% := 4;
+        case ppg% = 7 then  'Seems optimal
+            grixelCenterOffsetX% := -4;
             grixelCenterOffsetY% := 0;
-        case ppg% = 13 then  'this is probably as good as it gets
-            grixelCenterOffsetX% := -1;
-            grixelCenterOffsetY% := 1;
-        case ppg% = 14 then  'this is probably as good as it gets
-            grixelCenterOffsetX% := -8;
-            grixelCenterOffsetY% := 0;
-        case ppg% = 15 then  'this is close
+        case ppg% = 8 then  'Seems optimal
+            grixelCenterOffsetX% := -2;
+            grixelCenterOffsetY% := -1;
+        case ppg% = 9 then 'Seems optimal
             grixelCenterOffsetX% := 1;
-            grixelCenterOffsetY% := 12;
-        case ppg% = 16 then  'this is close
-            grixelCenterOffsetX% := 6;
             grixelCenterOffsetY% := 0;
-        case ppg% = 17 then  'this is right
+        case ppg% = 10 then 'OK
+            grixelCenterOffsetX% := -8;
+            grixelCenterOffsetY% := -1;
+        case ppg% = 11 then  'OK
+            grixelCenterOffsetX% := -3;
+            grixelCenterOffsetY% := -1;
+        case ppg% = 12 then  'OK
+            grixelCenterOffsetX% := -10;
+            grixelCenterOffsetY% := -1;
+        case ppg% = 13 then  'OK
+            grixelCenterOffsetX% := -3;
+            grixelCenterOffsetY% := -1;
+        case ppg% = 14 then  'OK
+            grixelCenterOffsetX% := -8;
+            grixelCenterOffsetY% := -1;
+        case ppg% = 15 then  'OK
+            grixelCenterOffsetX% := -1;
+            grixelCenterOffsetY% := 10;
+        case ppg% = 16 then  'OK
+            grixelCenterOffsetX% := 5;
+            grixelCenterOffsetY% := -1;
+        case ppg% = 17 then  'OK
             grixelCenterOffsetX% := -7;
-            grixelCenterOffsetY% := 1;
+            grixelCenterOffsetY% := -1;
         endcase
     endcase
     
@@ -2532,12 +2581,13 @@ proc SelectLegalBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,directionBG%,RF
     var onGridY%;
     
     if direction% = 1 or direction% = 3 or direction% = 5 or direction% = 7 then  'cardinal direction
-        onGridX% := 1 + grixelCenterOffsetX% + (RFCXPix% mod ppg%);  'I had to shift the foreground by one pixel each to nail the foreground, so also shift the BG by one
-        onGridY% := 1 + grixelCenterOffsetY% + (RFCYPix% mod ppg%);
+        onGridX% := grixelCenterOffsetX% + (RFCXPix% mod ppg%);  'remove the shift, as foreground has been redone and fixed
+        onGridY% := grixelCenterOffsetY% + (RFCYPix% mod ppg%);
         'So now, any x(y) positions where x(y) = onGridX(Y)% + (N*ppg%), for N=integer, will x(y)-center a grixel on the RF
     else
         onGridX% := 1 + grixelCenterOffsetX% + (RFCXPix% mod shiftpergrixel);  'I had to shift the foreground by one pixel each to nail the foreground, so also shift the BG by one
         onGridY% := 1 + grixelCenterOffsetY% + (RFCYPix% mod shiftpergrixel);
+        'Note that for the diagonals, I set the direction offsets with the "+1" in place, so, just keep it.
         'This should center the grid as well as possible, and
         'any x(y) positions where x(y) = onGridX(Y)% + round(N*shiftpergrixel), should as best as possible center a grixel on the RF
     endif
@@ -2690,15 +2740,17 @@ proc UpdateBackgroundCenter(&x%,&y%,ppg%,bgType%,direction%,directionBG%,RFCXPix
 end
 
 
-proc GetForegroundCenter(&x%,&y%,ppg%,RFCXPix%,RFCYPix%)
+proc GetForegroundCenter(&x%,&y%,RFCXPix%,RFCYPix%)
     'OK, so this function is stupidly easy...but that may be because I haven't fully grokked the pitfalls.
     'So rather than blithely go forward, I'll set the function up and be ready to make this more complicated
+    'OK, yes, this function ACTUALLY DOES NOTHING.
     
     'If x%/y% are 0,0, then the center of the image will be placed at the center of the screen
-    'We want the center of the image at the center of the RF, which we know from RFCXpix%, so this is a simple addition problem
-    'It appears that we have to offset both directions by one pixel to make this actually line up correctly with the fixation point, so do that here
-    x% := RFCXPix%+1;
-    y% := RFCYPix%+1;
+    'We want the center of the image at the center of the RF, which we know from RFCXpix%, so this is a simple addition problem    
+    x% := RFCXPix%;
+    y% := RFCYPix%;
+    'x% := RFCXPix% + 1;  'old version
+    'y% := RFCYPix% + 1;
     
 end
 
@@ -2914,10 +2966,10 @@ proc WriteParameterFile()
 	' write receptive field location
     Print("\nReceptive Field Location\n"); 
     Print("-------------------\n\n");
-    Print("Position (x, degrees)           : %s\n", X);
-	Print("Position (y, degrees)           : %s\n", Y);
-	Print("Width (degrees)                 : %s\n", W);
-	Print("Height (degrees)                : %s\n", H);
+    Print("Position (x, degrees)           : %f\n", X);
+	Print("Position (y, degrees)           : %f\n", Y);
+	Print("Width (degrees)                 : %f\n", W);
+	Print("Height (degrees)                : %f\n", H);
 
 
 
