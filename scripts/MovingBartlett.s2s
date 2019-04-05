@@ -88,6 +88,7 @@ var mbTrialDur;  'calculated based on the number of frames presented.  In second
 var mbTrialDurAnnulus;  'Annulus trials are not as long
 var mbThisTrialDur;  'to use on a trial-by-trial basis
 var mbRewardDelay:=0;  'How long after stim do we wait to give reward?  Set to zero for now, decide if we want to put it into a dialog box
+                       'Note that for what it is worth, the program is currently designed to make the animal FIXATE through the reward delay (fixpt still up), it is not just a pause during downtime
 
 
 ' Condition variables
@@ -200,6 +201,7 @@ const stateWaitForBlank% := 8;          ' Verify removal of fixation point
 const stateWaitForAcquisition% := 9;
 const stateHoldFixationToStimOn% := 10;
 const stateWaitForStimOn% := 11;
+const stateWaitForBlankAbort% := 12;    ' Verify removal of fixation point after abort
 var iState% := stateVSGWait%;	' present state
 
 var i%;
@@ -439,6 +441,7 @@ proc InitializeWindows()
 	DataWindow% := FileNew(0,4);  'show spike shape setup dialog, only opens if there are WaveMark channels in the sampling config
     printlog("datawindow is %d\n",dataWindow%);
 	Window(0,48,100,95);
+    XRange(0,8);
 	View(DataWindow%).WindowVisible(1);
     
     if UsePlexon% = 1 then
@@ -633,6 +636,7 @@ func Start%()
 	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
 	ToolbarEnable(2,1);
 	ToolbarEnable(1,0);
+    ToolbarEnable(4,0);
 	View(DataWindow%);
 	Yield(.1);
     return 1;
@@ -677,7 +681,8 @@ end;
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 ' Used to hard-quit from toolbar. This will close data files without saving!!! 
-' It is important that this function be disabled once sampling is started!!!
+' It is important that this function be disabled once sampling is started, does
+' not have to be re-enabled on the toolbar because stop sampling leads to this anyway
 
 func Quit%()
 	FileClose(-1,-1);
@@ -834,24 +839,47 @@ func IdleProcessing%()
     'This is a simple, non-trigger-counting method of waiting through the stimulus - we could count triggers, but it may not be necessary
     case iState% = stateWaitThroughStimulus% then
         if Looking%(xEye, yEye) = 1 or alwaysLooking% = 1 then
-            if tNow - tStateStart > mbThisTrialDur+mbRewardDelay then  'Also waiting through a reward delay, which is 0 for now
+            if tNow - tStateStart > mbThisTrialDur+mbRewardDelay then  'Also waiting and holding fixation through a reward delay (delay UNTIL reward), which is 0 for now
                 PrintLog("Trial Complete: send X key.\n");
                 SampleText("Trial " + Str$(trialCount%+1) + " Complete",tNow);  'Put up sample text indicating trial completion
                 SafeSampleKey("X");
-                Reward%();
-                mbRewardCount% += 1;  'increment reward count
-                UpdateToolbarText();  'This simply updates the reward count 
-                DrawStim(0);	' this undraws the location of the fixpt.
-                SafeSampleKey("a");  'advance the stimulus
-                trialCount% += 1;  'Increment trial count
-                CurrentAbortTime := 0;  'Do not add any abort penalty time in stateStartTrial if trial is correct
                 ChangeStateTo(stateWaitForBlank%, tNow);
+                
+                
             endif;
         else
-            PrintLog("stateWaitForReward: fixation broken before stimulus over.\n");
+            PrintLog("stateWaitThroughStimulus: fixation broken before stimulus over.\n");
             ChangeStateTo(stateAbort%, tNow);
             SampleText("Eyes Off Screen",tNow);
         endif;
+        
+        
+    case iState% = stateWaitForBlank% then
+        
+        ' we just wait for fix point off signal in this case. 
+        tTrigger := View(DataWindow%).NextTime(FixationPointChannel%, tLast, vTrigger);
+        if tTrigger > tLast then
+            ' Fixation point is off
+            PrintLog("stateWaitForBlank: Fix pt is off.\n");
+            tLastTrigger := tTrigger;               
+            if trialCount% = nTrials% then
+                PrintLog("All trials complete!\n");
+               Stop%();
+            endif;
+            DrawStim(0);	' this undraws the location of the fixpt.
+            SafeSampleKey("a");  'advance the stimulus
+            trialCount% += 1;  'Increment trial count
+            CurrentAbortTime := 0;  'Do not add any abort penalty time in stateStartTrial if trial is correct
+            
+            'just reward within this function
+            if alwaysLooking% = 0 then  'do not give reward when always looking
+                Reward%();
+                mbRewardCount% += 1;  'increment reward count
+                UpdateToolbarText();  'This simply updates the reward count 
+            endif;
+            ChangeStateTo(stateStartTrial%, tNow);  'don't update time, "credits" for time served
+        endif
+        
         
         
     case iState% = stateAbort% then
@@ -864,16 +892,16 @@ func IdleProcessing%()
         CurrentAbortTime := mbAbortPenaltyTime;
         
         ' move on
-        ChangeStateTo(stateWaitForBlank%, tStateStart);  'don't update time, carry forward
+        ChangeStateTo(stateWaitForBlankAbort%, tStateStart);  'don't update time, carry forward
         
         
-    case iState% = stateWaitForBlank% then
+    case iState% = stateWaitForBlankAbort% then
         
         ' we just wait for fix point off signal in this case. 
         tTrigger := View(DataWindow%).NextTime(FixationPointChannel%, tLast, vTrigger);
         if tTrigger > tLast then
             ' Fixation point is off
-            PrintLog("stateWaitForBlank: Fix pt is off.\n");
+            PrintLog("stateWaitForBlankAbort: Fix pt is off.\n");
             tLastTrigger := tTrigger;               
             if trialCount% = nTrials% then
                 PrintLog("All trials complete!\n");
@@ -1148,6 +1176,11 @@ func MovingBartlettDialog%()
             useDiagonal% := 0;
         endif;
         
+        'If we are short-circuiting the fixation period, don't have a fixation hold time
+        if alwaysLooking% = 1 then
+            mbFixationTime := 0;
+        endif;
+       
     
         'Now that we know the stimulus parameters, begin design of stimuli
         
