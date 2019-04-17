@@ -1,0 +1,353 @@
+
+'JoyTrain - a simple script that allows simple joystick training, initially written for Henry
+#include "../util/UsreyUtil.s2s"
+#include "UsreyDAQ.s2s"
+#include "Joystick.s2s"
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' 	JoyTrain script dialog START
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+var status%;
+var trialCount%;  'How many trials have we done?
+var experimenterRewardCount%;  'How many rewards did the experimenter give independent of the trial rewards
+
+var DataWindow%;
+var XYWindow%;
+var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
+var iAnswerWindowChannelMain%;  'this is a terrible variable name
+var iMonitorChannel%;
+var mainX;
+var mainY;
+var mainW;
+var mainH;
+
+'JoyTrain dialog variables
+var nTrials% := 50;  'How many trials will we have?  (Can stop at any time)
+var showStimulus%;  'if 1, show the stimulus
+var stimulusDur := 3;  'stimulus duration, in seconds
+var minRewardDelay := 0.5;  'delay following reward before new reward is allowed (before ITI, if showing stimulus), seconds
+var randRewardDelay;  'and an added randomizing value, zero OK
+var minITI := 0.5;  'delay between trials, minimum
+var randITI;  'delay between trials, added randomizing value, zero OK (use rand(randITI,0); )
+
+var JoyChannel%;
+var FrameTriggerChannel%;
+'var FixationPointChannel%;
+var StimChannel%;
+var StimChangeChannel%;
+var ReadyChannel%;
+
+
+JoyChannel% := 22; 'this is ripped straight from CuedAtten, should be a fine channel.
+FrameTriggerChannel% := 25;
+'FixationPointChannel% := 26;
+StimChannel% := 27;
+StimChangeChannel% := 28;
+ReadyChannel% := 29;
+
+LogInit(1);
+InitJoystick2(JoyChannel%,GetJoystickPort%()); 'now calls InitJoystick2 - we must do this BEFORE calling the main dialog
+
+
+' Check for valid data file path
+if Len(dataDataSet$) = 0 then
+	Message("No data set is selected! Edit Data parameters...");
+	' Might be nice to open the dialog here....
+	halt;
+endif;
+
+
+' run primary dialog
+status% := JoyTrainDialog%();  
+if status% <> 1 then
+	PrintLog("User cancel - exit gracefully\n");
+	halt;
+endif;
+
+
+
+'Create Sample Configuration
+CreateSampleConfiguration();
+
+' Get display windows ready
+InitializeWindows();
+
+' Prepare the toolbar buttons
+InitializeToolbar();
+
+'''End of script, once the toolbar closes, we're done.
+
+
+
+
+'------------------ Subfunctions -------------------
+
+
+proc GetJoyTrainDialogParameters()
+	var stmp$;
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\JoyTrain";
+    
+    nTrials% := GetIntRegistryValue%(key$, "nTrials", nTrials%);
+    showStimulus% := GetIntRegistryValue%(key$, "showStimulus", showStimulus%);
+    stimulusDur := GetFloatRegistryValue(key$, "stimulusDur", stimulusDur);
+    minRewardDelay := GetFloatRegistryValue(key$, "minRewardDelay", minRewardDelay);
+    randRewardDelay := GetFloatRegistryValue(key$, "randRewardDelay", randRewardDelay);
+    minITI := GetFloatRegistryValue(key$, "minITI", minITI);
+    randITI := GetFloatRegistryValue(key$, "randITI", randITI);
+    
+end;
+
+proc SaveJoyTrainDialogParameters()
+	var key$;
+	var stmp$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\JoyTrain";
+    
+    SetIntRegistryValue(key$, "nTrials", nTrials%);
+    SetIntRegistryValue(key$, "showStimulus", showStimulus%);
+    SetFloatRegistryValue(key$, "stimulusDur", stimulusDur);
+    SetFloatRegistryValue(key$, "minRewardDelay", minRewardDelay);
+    SetFloatRegistryValue(key$, "randRewardDelay", randRewardDelay);
+    SetFloatRegistryValue(key$, "minITI", minITI);
+    SetFloatRegistryValue(key$, "randITI", randITI);
+    
+end;
+
+
+func JoyTrainDialog%()
+    var i%;
+
+    GetJoyTrainDialogParameters();
+    
+	DlgCreate("Joystick Training", 25, 10);
+	DlgInteger(1, "Number of trials:", 1, 1000);
+    DlgReal(2, "Minimum reward delay (s):", .01, 10);
+	DlgReal(3, "Random add'l reward delay:", 0, 10);
+    DlgCheck(4, "Show stimulus");
+	DlgReal(5, "Stimulus duration (s):", .01, 100);
+    DlgReal(6, "Minimum ITI (s):", .01, 10);
+    DlgReal(7, "Random add'l ITI (s):", 0, 10); 
+    
+    DlgButton(8, "Joystick Dialog", CallJoystickConfigDialog%,20,9);
+    
+    DlgAllow(0, 0, JoyTrainDialogChanged%);
+    
+    i% := DlgShow(nTrials%,minRewardDelay,randRewardDelay,showStimulus%,stimulusDur,minITI,randITI);
+    
+    if i% = 1 then        
+        
+        SaveJoyTrainDialogParameters();
+
+        return 1;
+    else   
+        Printlog("Joy Train Dialog was cancelled!\n");
+        return 0;
+    endif;
+    
+end
+
+
+func JoyTrainDialogChanged%(item%)
+    var status% := 1;
+    
+    'Ignore item, it's not really important
+    
+    'Just check on whether we are using a stimulus
+    if DlgValue(4) = 0 then  
+        DlgEnable(0,5);  'Disable stimulus duration
+        DlgEnable(0,6);  'Disable ITI
+        DlgEnable(0,7);  'Disable add'l ITI
+    else
+        DlgEnable(1,5);  'Enable stimulus duration
+        DlgEnable(1,6);  'Enable ITI
+        DlgEnable(1,7);  'Enable add'l ITI
+    endif;
+    
+    return status%;
+    
+end
+
+
+'This function ripped directly from CuedAtten, haven't given it any thought yet
+func CallJoystickConfigDialog%()
+    'This function was written simply to prevent "odd" autonaming of files when saving joystick calibration data
+    'Unfortunately, there doesn't seem to be a way to *not* save the data as SampleStop automatically saves it, so
+    'this is the next best thing.  Should work for either dialog-based or toolbar-based calls of Joystick config
+    
+    'Set autoname to use a joystick-based name
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    'if UsePlexon% = 0 then
+    SampleAutoName$(dataCellName$ + "_joystick_000");  'NOTE: maximum of 13 characters!!!    
+    
+    JoystickConfigDialog%();
+    
+    'Set autoname back to what it should be once we return
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    'if UsePlexon% = 0 then
+    SampleAutoName$(dataCellName$ + "_ca_000");  'NOTE: maximum of 13 characters!!!
+    
+    return 1;
+end
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc CreateSampleConfiguration()
+	var index;
+    var key$;
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    SampleClear(); 'Set standard sampling state
+    SampleChannels(64);  '32 does not work, we need more!
+
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    SampleAutoName$(dataCellName$ + "_jtr_000");  'NOTE: maximum of 13 characters!!!
+    SampleAutoFile(1);  'Enable automatic file naming
+    
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    
+	'Channel recording definitions
+	SampleEvent(FrameTriggerChannel%,0,2,3600); 'Trigger channel, level
+	SampleComment$(FrameTriggerChannel%,"Frame");
+	SampleTitle$(FrameTriggerChannel%,"Frame");
+    
+ 	'SampleEvent(FixationPointChannel%,2,2,3600); 'Trigger channel, level
+	'SampleComment$(FixationPointChannel%,"Fixation");
+	'SampleTitle$(FixationPointChannel%,"Fixation");
+	
+	SampleEvent(StimChannel%,3,2,3600); 'Trigger channel, level
+	SampleComment$(StimChannel%,"Stim");
+	SampleTitle$(StimChannel%,"Stim");
+	
+	SampleEvent(StimChangeChannel%,4,2,3600); 'Trigger channel, level
+	SampleComment$(StimChangeChannel%,"Stim Chg.");
+	SampleTitle$(StimChangeChannel%,"Stim Chg.");
+	
+	SampleEvent(ReadyChannel%,6,2,3600); 'Trigger channel, level
+	SampleComment$(ReadyChannel%,"VSG Ready");
+	SampleTitle$(ReadyChannel%,"VSG Ready");
+     
+	SampleTextMark(200);  'increase number of allowed characters to 200
+    
+    SampleSequencer(script$ + "Tuning.pls");
+
+	SampleMode(1); 'Continuous sampling
+end;
+
+
+
+proc InitializeWindows()
+    var index%;
+    var pi := 3.141592653589793;  'There is a pre-defined constant "_pi", but only on 8.03 and beyond, explicitly defining pi for back-compatibility
+    var screenMMPerDegree;
+    var cmScreenXDeg;
+    var cmScreenYDeg;
+    var cmScreenMMX;
+    var cmScreenMMY;
+    
+    
+	'Open the data sampling window
+	DataWindow% := FileNew(0,4);  'show spike shape setup dialog
+    printlog("datawindow is %d\n",dataWindow%);
+	Window(0,48,100,95);
+	View(DataWindow%).WindowVisible(1);
+    
+    
+    'Open an XY view to display, well not eye position but stimulus position
+	XYWindow% := FileNew(12);
+	XRange(-30,30);
+	YRange(-2,-30,30);
+	XYDrawMode(0,5,0);
+	WindowVisible(1);
+	Window(0, 0, 100, 47);
+	XYColour(1,16);
+	XYSize(1,-1);
+    
+    'get locations of stimuli so we can plot the stimulus when it is up
+    ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"),mainX,mainY,mainW,mainH);    
+    
+ 
+    'Create new channels in the XY view to display the answer windows
+    'Main stimulus window
+    for index% := 0 to 35 do
+        FixWindowX[index%] := mainX + mainW * Cos(index%*2*pi/36.0);
+		FixWindowY[index%] := mainY + mainH * Sin(index%*2*pi/36.0);
+	next;
+    iAnswerWindowChannelMain% := XYSetChan(0);
+    XYColour(iAnswerWindowChannelMain%,13);
+	XYDrawMode(iAnswerWindowChannelMain%,2,1);
+	XYJoin(iAnswerWindowChannelMain%,1);
+	'Draw the stimulus window...TODO should really only do this when the stimulus is up.
+	XYAddData(iAnswerWindowChannelMain%, FixWindowX[], FixWindowY[]);
+    
+	'Create a new channel in the XY view to show the monitor's location
+	iMonitorChannel% := XYSetChan(0);
+	XYColour(iMonitorChannel%,13);
+	XYDrawMode(iMonitorChannel%,3,1);
+	XYJoin(iMonitorChannel%,2);
+    
+    'Calculate size of screen in degrees here
+    screenMMPerDegree := Val(GetDistanceToScreenMM$())*pi/180;  
+    cmScreenXDeg := (cmScreenMMX/2)/screenMMPerDegree;  'we are defining fvScreenX(Y)Deg as HALF the screen so it is the distance from fixation to the edge
+    cmScreenYDeg := (cmScreenMMY/2)/screenMMPerDegree;
+    
+    'Show monitor location
+    XYAddData(iMonitorChannel%,-cmScreenXDeg,-cmScreenYDeg); 
+	XYAddData(iMonitorChannel%,cmScreenXDeg,-cmScreenYDeg);
+	XYAddData(iMonitorChannel%,cmScreenXDeg,cmScreenYDeg);
+	XYAddData(iMonitorChannel%,-cmScreenXDeg,cmScreenYDeg);
+    
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitializeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+    
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+	UpdateToolbarText();
+    ToolbarSet(1,"Sample start",Start%);
+	ToolbarSet(2,"Sample stop", Stop%);
+	ToolbarSet(3,"Juice", Reward%);
+	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
+	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
+    'placeholder, not using '6' separates Quit from other functions
+	ToolbarSet(7,"Quit",Quit%);  'TODO, quit different than stop for this?
+	ToolbarEnable(2,0);
+	ToolbarEnable(4,0);
+	ToolbarEnable(5,0);
+	Toolbar("Go",0x3ff);
+    
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' UpdateToolbarText - Print tallies of rewards in toolbar
+'
+
+proc UpdateToolbarText()
+	var s$;
+
+    'only print stats for conditions that have occurred
+    if trialCount% > 0 or experimenterRewardCount% > 0 then  
+        s$ := Print$(" Trial rewards: %d, Experimenter rewards: %d ",trialCount%, experimenterRewardCount%);
+    endif
+
+	ToolbarText(s$);
+    
+end;

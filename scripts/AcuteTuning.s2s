@@ -30,13 +30,8 @@ const READYCHANNELPORT% := 2;
 
 'bit representation of the port number (port 3 = bit 4 = 0001 = 8)
 'NOTE: ports are 0-based so port 3 is the 4th port and thus 4th bit
-'var STIMCHANNELCODE%;
-'STIMCHANNELCODE% := Pow(2, STIMCHANNELPORT%);
-'
-'DJS Use ready channel for the reasy pulse. 
-' Rename vars to make sure
-var READYCHANNELCODE%;
-READYCHANNELCODE% := Pow(2, READYCHANNELPORT%);
+var STIMCHANNELCODE%;
+STIMCHANNELCODE% := Pow(2, STIMCHANNELPORT%);
 
 ' replace vars herezzzzzzzzzzzzzzzz
 
@@ -750,6 +745,10 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
     var mCd1%;
     var mCd2%;
     var preEvent;
+    var myCount%;  'for bursts
+    var myCount2%; 'for bursts
+    var t[10000];  'for bursts, we shouldn'thave more than 10000 spikes in a window here
+    var nBursts%;
     'var index2%;
     
     'vOnOff% is a switch that allows us to plot (in this case) opto-on and opto-off with different colors
@@ -777,6 +776,17 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
 			'endif
 			' NOTE: IGNORING BACKGROUND HERE FOR THE TIME BEING. 
 	    endif 
+        
+        'I'm not yet confident this will work as I'm envisioning it...
+        if tunHistogramBursts% = 1 then  'use channel 3 for bursts
+            ArrConst(t[],0);  'clear time array
+            myCount% := view(TuningWindow%[i%]).ChanData(i%+1, t[], t1, t2);  'This gets a count of the number of spikes in the DESIRED window
+            myCount2% := view(TuningWindow%[i%]).ChanData(i%+1, t[], t1-0.1, t2);   'This gets a count of the number of spikes in the desired window PLUS 100 ms before, because it might be different
+            nBursts% := BurstCount(myCount2%,t[],myCount2%-myCount%);  'This finds and counts bursts
+            if nBursts% >= 0 then
+                View(TuningWindow%[i%]).XYAddData(3, x, nBursts%);    ' channel 1 is opto-off; channel 2 is opto-on
+            endif;
+        endif;
         
         if vOnOff% = 1 then
             'update the raster even if there are no spikes on this trial
@@ -877,7 +887,7 @@ end
 proc InitializeWindows()
     var i%;
     var WindowStep;
-    var ch1%, ch2%;
+    var ch1%, ch2%, ch3%;
     var tunL, tunR, histL, histR, histOptoL, histOptoR;
     
     'set tunL, etc.
@@ -983,6 +993,11 @@ proc InitializeWindows()
             PSTHWindow%[i%] := View(DataWindow%).SetPSTH(tunWavemarkPorts%[i%]+1, 16, 1 /(tunTF*16), 0, 0, 3);  'must use index to tWMP%[] now that channel #s correspond to port #s (+1)
             View(PSTHWindow%[i%]).WindowVisible(0);
         endif        
+        
+        if tunHistogramBursts% = 1 then
+            ch3% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot burst count
+            View(TuningWindow%[i%]).XYColour(ch3%, 13);  'this is another color...should be blue
+        endif;
         
         
         
@@ -1215,24 +1230,8 @@ proc CreateSampleConfiguration()
                 tunValuesIndices%[0] := 0;
             endif;
         endif;
-        
-        ' Note that for inner diam test we have to pass an outer,inner diameter PAIR for each trial.
-        ' First, fetch the outer diameter as currently specified.
-        ' Second, form the argument string in a loop - StringifyProgression only works with a single parameter.
-        
-        var x,y,w,h;
-        var w$;
-        ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"), x, y, w, h);
-        w$ := str$(w) + ",";
-        
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
-        for i% := 0 to tunNValues%-1 do
-            if i% > 0 then 
-                tunValuesStringified$ += ",";
-            endif
-            tunValuesStringified$ += w$ + str$(tunValues[tunValuesIndices%[i%]]);
-        next
-        
+        tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeDriftingBar$ then 
         SampleAutoName$(dataCellName$ + "_bar_000");
         tunNAdvances% := tunBarNSteps%;
@@ -1305,6 +1304,22 @@ proc CreateSampleConfiguration()
         SampleComment$(CameraTriggerChannel%, "CamTrg");
         SampleTitle$(CameraTriggerChannel%, "CamTrg");
     endif
+'    SampleEvent(40,4,2,3600); 'Trigger channel, level
+'	SampleComment$(40,"4");
+'	SampleTitle$(40,"4");
+'    
+'    SampleEvent(41,5,2,3600); 'Trigger channel, level
+'	SampleComment$(41,"5");
+'	SampleTitle$(41,"5");
+'    
+'    SampleEvent(42,6,2,3600); 'Trigger channel, level
+'	SampleComment$(42,"6");
+'	SampleTitle$(42,"6");
+'    
+'    SampleEvent(43,7,2,3600); 'Trigger channel, level
+'	SampleComment$(43,"7");
+'	SampleTitle$(43,"7");
+    
     
     'The below three channels are used for optogenetics and temperature recording
     'Unfortunately, it's not terribly simple to get these in and still allow the same system that 
@@ -1325,7 +1340,26 @@ proc CreateSampleConfiguration()
         SampleWaveform(6,5,5000);  'on adc6
         SampleTitle$(6, "Temperature");
     endif;
-       
+    
+    
+    
+    
+    
+    
+    ' Before assigning Electrode channels, check value of tunRecOptoBox% to make sure
+    ' there are no channel conflicts; if Opto is being used, just block off ADC6
+    ' Opto box efference copy will be on ADC6
+    ' Note that this ability has been killed due to the fact that the opto box doesn't actually output
+    ' the value under analog control.  We could split an efference copy but it seems useless.
+    ' Not fully tested before being abandoned.
+    'if tunRecOptoBox% > 0  and tunDoOpto% > 0 then  'obviously if we're not doing opto then we're not recording the opto box
+    '    if tunNWavemarks% > 6 then
+    '        message("Only 6 'trodes can be recorded with the opto box efference copy!  Reducing to 6!");
+    '        tunNWaveMarks% := 6;
+    '        tunNContinuous% := 6;
+    '    endif
+    'endif
+    
     'if we are recording the laser output, turn off any electrode channels
     if tunLaserDiode% = 1 then
         tunNWavemarks% := 0;  'no wavemarks!
@@ -1334,8 +1368,56 @@ proc CreateSampleConfiguration()
         SampleTitle$(1,"Diode output (laser)");
     endif;
     
+    
+    ' Electrodes: wavemark/continuous
+    ' 12/6/2010
+    ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
+    ' and M waveform channels. 
+    ' Changed!  To avoid confusion wavemarks now are place on channels (Port+1) and waveforms on channels (Port+8)
+'    for i% := 0 to tunNWavemarks%-1 do
+'		'SampleWaveMark(i% + 1, tunWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+'		'SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%])); 
+'        'Trying here to avoid collapsing channel numbers
+'        SampleWaveMark(tunWavemarkPorts%[i%]+1, tunWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+'		SampleTitle$(tunWavemarkPorts%[i%]+1, "WMrk " + str$(tunWavemarkPorts%[i%]));
+'        
+'        ' djs 7-29-2014 Hack to allow all 8 ports. See djs comments. 
+'' djs        if tunWavemarkPorts%[i%] > 6 then
+'        if tunWavemarkPorts%[i%] > 7 then
+'' djs            message("The rig should only be set up to collect data from Ports 0-6!  Quitting!");
+'            message("The rig should only be set up to collect data from Ports 0-7!  Quitting!");
+'            'This message comes up because of the non-collapsed (i.e. non-continuous) channel numbers.  There is a "hack" a few lines below
+'            'which sets the continuous waveforms to live on channels numbered 7 greater than the corresponding WaveMark channel.  We can get
+'            'away with this because the Thomas system which feeds into the CED has only 7 electrode channels which are fed to Ports 0-6 on
+'            'the CED.  As of now, the channels that can legally hold WaveMarks are channels 1-7 and the channels that can legally hold
+'            'continuous waveforms are channels 8-14.  Since channel 19 holds pulses, there isn't a lot more room to work under this scheme
+'            'before needing to reposition other channels anyway (this non-collapsed scheme would work up to a hard-coded 9 rather than 7 Ports).
+'            'So if you need to use Port 7/8, you'll need to change the hardcode here and for tunNContinuous% below to 8/9.  If you need
+'            'to go beyond Port 8, you'll have to either move some of the hardcoded pulse channels, or dump the non-collapsed numbering scheme. -jj
+'            halt;
+'        endif;
+'	next
+'    for i% := 0 to tunNContinuous%-1 do
+'        'SampleWaveform(tunNWavemarks% + i% + 1, tunContinuousPorts%[i%], 20000);
+'        'SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
+'        'Trying here to avoid collapsing channel numbers
+''djs        SampleWaveform(tunContinuousPorts%[i%]+8, tunContinuousPorts%[i%], 20000);  'this hack only works because wavemark chans are limited to channels 1-7
+''djs        SampleTitle$(tunContinuousPorts%[i%]+8, "Cont " + str$(tunContinuousPorts%[i%]));
+'        SampleWaveform(tunContinuousPorts%[i%]+9, tunContinuousPorts%[i%], 20000);  'this hack only works because wavemark chans are limited to channels 1-7
+'        SampleTitle$(tunContinuousPorts%[i%]+9, "Cont " + str$(tunContinuousPorts%[i%]));
+'    next
+    
     CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
-        
+    
+    'Set channel for Opto box efference copy, if needed - turned off because opto box won't output for the analog input
+    'if tunRecOptoBox% > 0 then
+    '    SampleWaveform(13, 5, 1000);  'there are a possible 7 'trodes in ADC0-ADC6; here 5 is port ADC5, 13 is channel: port 5 + 7 'trodes + 1 (because channel numbering starts at 1), 1kHz sampling should be fine
+    '    SampleTitle$(13, "Opto voltage");
+    'endif;
+   
+    
+    
+    
 	SampleSequencer(script$ + "Tuning.pls");
 	SampleOptimise(2,2,Get1401Type%(),2,50);  'Set optimise mode (do this last)
 	SampleMode(1); 'Continuous sampling
@@ -1443,7 +1525,11 @@ func Stop%()
     'next
     
     if tunNWavemarks% > 0 then
-        InvestigateRastersDialog%();
+        var ird%;
+        ird% := 1;
+        while ird% > 0 do  'Keep running this dialog until the user hits cancel
+            ird% := InvestigateRastersDialog%();
+        wend;
     endif;
     
     'We are getting strange freezes, sometimes, for no apparent reason. The PAR, SMR, and MAT files are written
@@ -1716,8 +1802,64 @@ func Start%()
             
             SetPulsedOptoSequencerVariables();  'this replaces a lot of code here, will be used again on each trial if necessary
             
+'            stimRemaining := tunStimulusDuration;
+'            stimRemaining := stimRemaining - tunPulsedOptoOnset;  'duration of stimulus after onset delay
+'            stimRemaining := stimRemaining - tunPulsedOptoWidth;  'duration of stimulus after first opto pulse
+'            if stimRemaining < 0 then  'if first pulse will extend beyond stimulus duration
+'                tunOptoNPulses% := 0;  'turn off opto by using no pulses
+'                'tell user they blew it
+'                Message("The first opto pulse will extend beyond the stimulus!  Quitting!!!");
+'                Quit%();
+'            else
+'                tempNPulses% := tunOptoNPulses% - 1;  'how many more pulses are left?
+'                tempCount% := 1;  'temporary successful pulse count
+'                while tempNPulses% > 0 do
+'                    stimRemaining := stimRemaining - tunPulsedOptoWidth - tunPulsedOptoIPI;  'subtract duration of one more pulse+IPI
+'                    if stimRemaining < 0 then  'if this pulse will extend beyond stimulus duration
+'                        Message("Due to stimulus length, only " + Str$(tempCount%) + " pulses can be completed!");
+'                        tunOptoNPulses% := tempCount%;  'only use this many pulses if user does not recalculate
+'                        stimRemaining := stimRemaining + tunPulsedOptoWidth + tunPulsedOptoIPI;  'add back duration of one more pulse+IPI, gets actual stimulus duration remaining
+'                        tempNPulses% := 0;  'break while
+'                    else  'if this pulse is OK
+'                        tempCount% += 1;  'increment temporary successful pulse count
+'                    endif;
+'                    tempNPulses% -= 1;  'decrement temporary pulse count remaining
+'                wend
+'            endif;
         endif;
-                
+        
+        
+        'This is replaced by SetPulsedOptoSequencerVariables() above
+        'If pulsing, set sample sequencer variables
+'        if tunOptoUsePulse% = 1 then  'yes, this is the same "if" as above, just seems cleaner this way
+'            SampleSeqVar(6,tunOptoNPulses%);  'set number of pulses
+'            printlog("Opto N pulses is %d\n",tunOptoNPulses%);
+'            'For below calculations, the standard numbers we are getting are in seconds, sequencer period is in MS (because that's how it comes)
+'            
+'            tempSeqVarValue := tunPulsedOptoWidth*1000/SequencerPeriodMS;  'do math in float
+'            tempSeqVarValue% := tempSeqVarValue-2;  'now convert to integer, subtract two ticks for sequencer instructions
+'            SampleSeqVar(7,tempSeqVarValue%);  'set duration of pulse in clock ticks
+'            printlog("Opto width is %d\n",tempSeqVarValue%);
+'            
+'            tempSeqVarValue := tunPulsedOptoIPI*1000/SequencerPeriodMS;  'do math in float
+'            tempSeqVarValue% := tempSeqVarValue-3;  'now convert to integer, subtract three ticks for sequencer instructions
+'            SampleSeqVar(8,tempSeqVarValue%);  'set interpulse interval in clock ticks
+'            printlog("Opto IPI width is %d\n",tempSeqVarValue%);
+'            
+'            tempSeqVarValue := tunPulsedOptoOnset*1000/SequencerPeriodMS;  'do math in float
+'            tempSeqVarValue% := tempSeqVarValue-1;  'now convert to integer, subtract one tick for sequencer instructions
+'            SampleSeqVar(9,tempSeqVarValue%);  'set pre-pulse stimulus duration in clock ticks
+'            printlog("Opto onset is %d\n",tempSeqVarValue%);
+'            
+'            tempSeqVarValue := stimRemaining*1000/SequencerPeriodMS;  'do math in float
+'            tempSeqVarValue% := tempSeqVarValue-3;  'now convert to integer, subtract three ticks for sequencer instructions
+'            SampleSeqVar(10,tempSeqVarValue%);  'set post-pulse stimulus duration in clock ticks
+'            printlog("Opto remaining time is %d\n",tempSeqVarValue%);
+'        endif;
+        
+        
+        
+        
     endif;
     
     'build background gray level string
@@ -1728,7 +1870,7 @@ func Start%()
     'Extras$ := " -b " + tunBackgroundColor$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 2 -v";
     'Extras$ := " -b " + tunBGStr$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 2 -v";
     Extras$ := " -b " + tunBGStr$ + " -d " + GetAcuteDistanceToScreenMM$();
-    Extras$ := Extras$ + " -p " + Str$(READYCHANNELCODE%) + " -v";  'changed ready pulse (-p) to 4 so that it comes on port 2 - this is bitmapped, not linear mapped
+    Extras$ := Extras$ + " -p " + Str$(STIMCHANNELCODE%) + " -v";  'changed ready pulse (-p) to 4 so that it comes on port 2 - this is bitmapped, not linear mapped
 
     'DisplayHardwareIndex%
     'RemoteStimulusIP$
@@ -1739,13 +1881,7 @@ func Start%()
     
     'By default, set ProgName$ to be FIXSTIM
     if DisplayHardwareIndex% = 0 then
-        
-        if UseRemoteStimulus% = 0 then
-            ProgName$ := "\\fixstim.exe ";
-        else
-            ProgName$ := "\\remote.exe " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
-        endif
-
+        ProgName$ := "\\fixstim.exe ";
     else
         ProgName$ := "\\render_relay.exe ";        
         bin$ := "C:\\Users\\Lab\\Desktop\\render_relay";
@@ -1802,16 +1938,16 @@ func Start%()
         
     case tunType$ = tunTypeID$ then
         
-        Tune$ := " -M " + Values$;
+        'Tune$ := Dual$ + " -A " + Values$;
+        Tune$ := " -I " + Values$;
         
     case tunType$ = tunTypeNullTest$ then
-        
-        Tune$ := " -P " + Str$(tunNullTestTF) + ",";
         if tunNullTestStepFunc% = 0 then
-            Tune$ += "q," + Values$;
+            Tune$ := " -P " + Str$(tunNullTestTF) + "," + Values$;
         else
-            Tune$ += "s," + Values$;
+            Tune$ := " -w -P " + Str$(tunNullTestTF) + "," + Values$;  'What new letter shall we use here?
         endif;
+        
         
     case tunType$ = tunTypeDriftingBar$ then
         
@@ -1854,6 +1990,9 @@ func Start%()
         bin$ := tempBinDir$; 
     endif      
     ' ==================================================================== '
+    
+    PrintLog(cmdLine$+"\n");
+    PrintLog("num advances is %d and num repeats is %d\n",tunNAdvances%,tunNRepeats%);
     
     ' Record initial text marks. The command line may need to be broken into pieces. 
     if tunTriggerHack% = 0 then
@@ -1986,7 +2125,7 @@ func InvestigateRastersDialog%()
     
     i%:=DlgShow(ind1%,ind2%);  'we're not keeping any of these values
     
-    return 1;
+    return i%;
         
 end;
 
@@ -2153,4 +2292,23 @@ proc SetPulsedOptoSequencerVariables()
     tempSeqVarValue% := tempSeqVarValue-3;  'now convert to integer, subtract three ticks for sequencer instructions
     SampleSeqVar(10,tempSeqVarValue%);  'set post-pulse stimulus duration in clock ticks
     printlog("Opto remaining time is %d\n",tempSeqVarValue%);
+end
+
+
+
+'--------- BurstCount -----------
+func BurstCount(nSpikes%,times[],startInd%)
+    var nBurstsFound%;
+    var i%;
+    
+    ArrDiff(times[]);  'Will do a difference on times[], times[0] does not change, times[1] is times[1]-times[0], etc.
+    
+    for i% := startInd% to nSpikes%-2 do  'we are looking at spikes i% and i%+1, so the last legal pair to check is: i% = nSpikes%-2; i%+1 = nSpikes%-1
+        if times[i%] >= 0.1 and times[i%+1] <= 0.004 then
+            nBurstsFound% += 1;
+        endif;
+    next;
+    
+    return nBurstsFound%;
+    
 end
