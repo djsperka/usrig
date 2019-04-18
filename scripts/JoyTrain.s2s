@@ -34,6 +34,12 @@ var randRewardDelay;  'and an added randomizing value, zero OK
 var minITI := 0.5;  'delay between trials, minimum
 var randITI;  'delay between trials, added randomizing value, zero OK (use rand(randITI,0); )
 
+
+'Idle processing variables
+var tLast;
+
+
+'Channel variables
 var JoyChannel%;
 var FrameTriggerChannel%;
 'var FixationPointChannel%;
@@ -316,22 +322,43 @@ end;
 '
 proc InitializeToolbar()
     
-	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
-	ToolbarVisible(1);
-	UpdateToolbarText();
-    ToolbarSet(1,"Sample start",Start%);
-	ToolbarSet(2,"Sample stop", Stop%);
-	ToolbarSet(3,"Juice", Reward%);
-	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
-	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
+'	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+'	ToolbarVisible(1);
+'	UpdateToolbarText();
+'    ToolbarSet(1,"Sample start",Start%);
+'	ToolbarSet(2,"Sample stop", Stop%);
+'	ToolbarSet(3,"Juice", Reward%);
+'	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
+'	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
     'placeholder, not using '6' separates Quit from other functions
-	ToolbarSet(7,"Quit",Quit%);  'TODO, quit different than stop for this?
-	ToolbarEnable(2,0);
-	ToolbarEnable(4,0);
-	ToolbarEnable(5,0);
-	Toolbar("Go",0x3ff);
+'	ToolbarSet(7,"Quit",Quit%);  'TODO, quit different than stop for this?
+'	ToolbarEnable(2,0);
+'	ToolbarEnable(4,0);
+'	ToolbarEnable(5,0);
+'	Toolbar("Go",0x3ff);
     
 end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+    
+    'start sampling
+    if UsePlexon% = 1 then
+        SampleStart(1);  'set sampling to start on a trigger     
+    else
+    	SampleStart(0); 'Start sampling now
+    endif;
+    
+    ' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");  'this is DIGOUT
+    SafeSampleKey("Z");  'this is DIGLOW
+    Yield();
+    tLast := View(DataWindow%).MaxTime();
+    
+end
 
 
 
