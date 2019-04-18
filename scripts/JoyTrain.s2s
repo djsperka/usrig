@@ -15,6 +15,8 @@ var status%;
 var trialCount%;  'How many trials have we done?
 var experimenterRewardCount%;  'How many rewards did the experimenter give independent of the trial rewards
 
+const RENDERDEFAULTIP$ := "128.120.140.49";
+
 var DataWindow%;
 var XYWindow%;
 var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
@@ -326,15 +328,8 @@ proc InitializeToolbar()
 '	ToolbarVisible(1);
 '	UpdateToolbarText();
 '    ToolbarSet(1,"Sample start",Start%);
-'	ToolbarSet(2,"Sample stop", Stop%);
+'	ToolbarSet(2,"Quit", Stop%);
 '	ToolbarSet(3,"Juice", Reward%);
-'	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
-'	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
-    'placeholder, not using '6' separates Quit from other functions
-'	ToolbarSet(7,"Quit",Quit%);  'TODO, quit different than stop for this?
-'	ToolbarEnable(2,0);
-'	ToolbarEnable(4,0);
-'	ToolbarEnable(5,0);
 '	Toolbar("Go",0x3ff);
     
 end;
@@ -342,6 +337,19 @@ end;
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Start%()
+    var Stim$;
+    var Tune$;
+    var Extras$;
+    var stimSpec$;
+    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var contrast%; 
+    var cv$, pattern$, aperture$;
+    var ProgName$;
+    var RenderIP$;
+    var jsonFilePre$;
+    var cmdLine$;
+    var tempBinDir$;
+    var StimHandle%;
     
     'start sampling
     if UsePlexon% = 1 then
@@ -357,6 +365,72 @@ func Start%()
     SafeSampleKey("Z");  'this is DIGLOW
     Yield();
     tLast := View(DataWindow%).MaxTime();
+    
+    'Get stimulus specs no matter what.  If we aren't presenting a stimulus, don't ever ask for the "S"
+    stimSpec$ := GetGratingParameters$("Stimulus");
+    Stim$ := " -s " + stimSpec$;
+    
+    'Parse the grating parameters, we really only want contrast
+    ParseGratingParameters%(stimSpec$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    'Use the currently-requested contrast at THE contrast
+    Tune$ := " -C " + str$(contrast%);
+    'Set the rest of the command line stuff
+    Extras$ := " -b " + "gray" + " -d " + GetDistanceToScreenMM$();  'just saying "gray" and not bothering with giving user the option on BG color
+    
+    tempBinDir$ := bin$;
+    
+    'By default, set ProgName$ to be FIXSTIM
+    if DisplayHardwareIndex% = 0 then
+        
+        if UseRemoteStimulus% = 0 then
+            ProgName$ := "\\fixstim.exe ";
+        else
+            ProgName$ := "\\remote.exe " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
+        endif
+
+    else
+        ProgName$ := "\\render_relay.exe ";        
+        bin$ := "C:\\Users\\Lab\\Desktop\\render_relay";
+        
+        jsonFilePre$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
+        
+        'if the user has selected to use remote stimulus then assume that the IP given is for render
+        'otherwise fall back to the hardcoded constant at the top of this script (which needs to be
+        'changed each time the render machine is rebooted)
+        if UseRemoteStimulus% = 1 then            
+            RenderIP$ := RemoteStimulusIP$;
+        else
+            RenderIP$ := RENDERDEFAULTIP$;
+        endif
+        
+        ProgName$ := ProgName$ + "-ip " + RenderIP$ + " -prefix " + jsonFilePre$ + " ";
+    endif
+    
+    
+    cmdLine$ := "cmd /c " + bin$ + ProgName$ + Extras$ + Stim$ + Tune$;
+    
+    ' ==================================================================== '
+    ' NOTE: 20170410 PCA
+    ' reset bin$ back to its original value so we don't screw anything
+    ' else up
+    if DisplayHardwareIndex% = 1 then
+        bin$ := tempBinDir$; 
+    endif      
+    ' ==================================================================== '
+    
+    'Begin the stimulus program. 
+	PrintLog(cmdLine$+"\n");
+	StimHandle% := ProgRun(cmdLine$,1);
+	if StimHandle% <0 then 
+        Message("Could not start stimulus."); 
+        halt; 
+    endif
+    
+'    ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(1,0);  'Disable start
+	View(DataWindow%);
+	Yield(.1);
+    return 1;
     
 end
 
