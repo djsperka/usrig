@@ -98,6 +98,11 @@ var memorychannel2% := 29;
 var memorychannelopto% := 45;  'avoiding textmarks
 'var memorychannelvisible% := 0;  'unused...?
 
+var optoOffChan% := 1;  'This will be the primary channel on the histogram
+var optoOnChan%;
+var optoOffF1Chan%;
+var optoOnF1Chan%;
+var burstChan%;
 
 
 ' replace hereZZZZZZZZZZZZZZZZZZZZZZZZZZ
@@ -768,9 +773,14 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
 		rate := View(DataWindow%).Count(i%+1, t1, t2)/(t2-t1);
         'tunRateCum[i%] := tunRateCum[i%] + rate;  
         'if tunRateCum[i%] >= 0 then  
-		if rate >= 0 then
-            View(TuningWindow%[i%]).XYAddData(vOnOff%, x, rate);    ' channel 1 is opto-off; channel 2 is opto-on
-			'if vOnOff% = 1 then
+        if rate >= 0 then
+            if vOnOff% = 1 then
+                View(TuningWindow%[i%]).XYAddData(optoOffChan%, x, rate);    ' channel 1 is opto-off; channel 2 is opto-on
+            else
+                View(TuningWindow%[i%]).XYAddData(optoOnChan%, x, rate);
+            endif;
+        
+                'if vOnOff% = 1 then
 				' this is signal
                 'PrintLog("%d Count %f\n", i%, rate*(t2-t1));
 				'View(TuningWindow%[i%]).XYAddData(1, x, rate);    ' channel 1 is data; channel 2 is background
@@ -783,13 +793,15 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
 	    endif 
         
         'I'm not yet confident this will work as I'm envisioning it...
-        if tunHistogramBursts% = 1 then  'use channel 3 for bursts
+        if tunHistogramBursts% = 1 then  'use channel burstChan% for bursts
             ArrConst(t[],0);  'clear time array
-            myCount% := view(TuningWindow%[i%]).ChanData(i%+1, t[], t1, t2);  'This gets a count of the number of spikes in the DESIRED window
-            myCount2% := view(TuningWindow%[i%]).ChanData(i%+1, t[], t1-0.1, t2);   'This gets a count of the number of spikes in the desired window PLUS 100 ms before, because it might be different
+            myCount% := view(DataWindow%).ChanData(i%+1, t[], t1, t2);  'This gets a count of the number of spikes in the DESIRED window
+            myCount2% := view(DataWindow%).ChanData(i%+1, t[], t1-0.1, t2);   'This gets a count of the number of spikes in the desired window PLUS 100 ms before, because it might be different
             nBursts% := BurstCount(myCount2%,t[],myCount2%-myCount%);  'This finds and counts bursts
             if nBursts% >= 0 then
-                View(TuningWindow%[i%]).XYAddData(3, x, nBursts%);    ' channel 1 is opto-off; channel 2 is opto-on
+                View(TuningWindow%[i%]).XYAddData(burstChan%, x, nBursts%);    
+            'else
+                'View(TuningWindow%[i%]).XYAddData(burstChan%, x, 3.14);  'testing
             endif;
         endif;
         
@@ -839,10 +851,10 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
             
             docase
             case vOnOff% = 1 then
-                View(TuningWindow%[i%]).XYAddData(3, x, fftData[1]);
+                View(TuningWindow%[i%]).XYAddData(optoOffF1Chan%, x, fftData[1]);
                 tunF1Sum[i%][index%] += fftData[1];
             case vOnOff% = 2 then
-                View(TuningWindow%[i%]).XYAddData(4, x, fftData[1]);  
+                View(TuningWindow%[i%]).XYAddData(optoOnF1Chan%, x, fftData[1]);  
                 tunF1Sum[i%][index%] += fftData[1];
             endcase
             'tunF1Cum[i%] += fftdata[1];
@@ -983,16 +995,19 @@ proc InitializeWindows()
         endif
         
         FrontView(DataWindow%);  'bring main window back to front to avoid view is not a time view shit
-        
+    
+        optoOnChan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Make this even if we aren't using opto
+        View(TuningWindow%[i%]).XYColour(optoOnChan%, 11);
+    
         ' Create psth window if f1 and f2 analysis needed
         if tunDoF12% = 1 then
             
-            ch1% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1
-            View(TuningWindow%[i%]).XYColour(ch1%, 16);
+            optoOffF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1
+            View(TuningWindow%[i%]).XYColour(optoOffF1Chan%, 16);
             'ch2% := View(TuningWindow%[i%]).XYSetChan(0);   ' used to plot f2
             'View(TuningWindow%[i%]).XYColour(ch2%, 38);
-            ch2% := View(TuningWindow%[i%]).XYSetChan(0);   ' appropriating this to plot f1 of opto-on
-            View(TuningWindow%[i%]).XYColour(ch2%, 38);
+            optoOnF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' appropriating this to plot f1 of opto-on
+            View(TuningWindow%[i%]).XYColour(optoOnF1Chan%, 38);
             LogStatus("InitializeWindows", "Channel " + str$(i%+1) + " " + str$(ch1%) + " " + str$(ch2%));
             'PSTHWindow%[i%] := View(DataWindow%).SetPSTH(i%+1, 16, 1 /(tunTF*16), 0, 0, 3);
             PSTHWindow%[i%] := View(DataWindow%).SetPSTH(tunWavemarkPorts%[i%]+1, 16, 1 /(tunTF*16), 0, 0, 3);  'must use index to tWMP%[] now that channel #s correspond to port #s (+1)
@@ -1000,10 +1015,9 @@ proc InitializeWindows()
         endif        
         
         if tunHistogramBursts% = 1 then
-            ch3% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot burst count
-            View(TuningWindow%[i%]).XYColour(ch3%, 13);  'this is another color...should be blue
+            burstChan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot burst count
+            View(TuningWindow%[i%]).XYColour(burstChan%, 15);  'this is another color...should be light blue
         endif;
-        
         
         
     next
@@ -1472,11 +1486,7 @@ func Stop%()
     'next
     
     if tunNWavemarks% > 0 then
-        var ird%;
-        ird% := 1;
-        while ird% > 0 do  'Keep running this dialog until the user hits cancel
-            ird% := InvestigateRastersDialog%();
-        wend;
+        InvestigateRastersDialog%();
     endif;
     
     'We are getting strange freezes, sometimes, for no apparent reason. The PAR, SMR, and MAT files are written
@@ -2202,7 +2212,9 @@ func BurstCount(nSpikes%,times[],startInd%)
             nBurstsFound% += 1;
         endif;
     next;
-    
+
+    'printlog("Number of spikes is %d and number of bursts is %d\n",nSpikes%,nBurstsFound%);
+
     return nBurstsFound%;
     
 end
