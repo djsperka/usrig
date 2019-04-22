@@ -50,6 +50,7 @@ var tLastTrigger;
 var vTrigger;
 var tStateStart;
 var JuiceRewardMS;  'need a float version of this
+var ITI;
 
 
 'State variables
@@ -557,14 +558,12 @@ func IdleProcessing%()
             PrintLog("state stateVSGWaitConfirm: Got trailing edge of trigger\n");
             tLastTrigger := tTrigger;
             ChangeStateTo(stateWaitJoyCenter%, tTrigger);
-            
-             
         endif;    
         
     case iState% = stateWaitJoyCenter% then
         'This is the start point for every trial - we have to wait here to make sure that the joystick has been centered.
-        if tNow > tStateStart + JuiceRewardMS/1000 then 'wait through the reward before checking; first time through there will be an extra delay but the animal won't notice it
-            if JoyAnswer%(JoyChannel%,tNow) = 2 then
+        if tNow > tStateStart + ITI then 
+            if JoyAnswer%(JoyChannel%,tNow) = 2 or 1 then
                 PrintLog("state stateWaitJoyCenter: Joystick is in center, trial starting at %f\n",tNow);
                 
                 if showStimulus% = 1 then
@@ -635,11 +634,17 @@ func IdleProcessing%()
     case iState% = stateTrialComplete% then
         trialCount% += 1;  'Keep track of how many times the experimenter gave a reward
         UpdateToolbarText();
+        superFake% := 0;
         if trialCount% >= nTrials% then
             Stop%();
             iStatus% := 0;
         else
             changeStateTo(stateWaitJoyCenter%, tNow);
+            if showStimulus% = 1 then
+                ITI := rand(randITI,minITI);
+            else
+                ITI := rand(randRewardDelay,minRewardDelay);
+            endif;
         endif;
         
         
