@@ -8,6 +8,7 @@
 
 #include "../util/UsreyUtil.s2s"
 #include "../util/FileUtilities.s2s"
+#include "UsreyDAQ.s2s"
 
 var amsFramesPerTerm%;
 var amsDotSize%;
@@ -219,11 +220,11 @@ proc CreateSampleConfiguration()
     SampleEvent(amsChanTrigger%, 0, 1, 1000); 
     SampleTitle$(amsChanTrigger%, "Terms");
     
-   	SampleEvent(amsChanVSGReady%, 6, 2, 200); 'Trigger channel, level
+   	SampleEvent(amsChanVSGReady%, 1, 2, 200); 'Trigger channel, level
 	SampleComment$(amsChanVSGReady%, "VSG Rdy");
 	SampleTitle$(amsChanVSGReady%, "VSG Rdy");
     
-	SampleSequencer(script$ + "AcuteMSequence.pls");
+	SampleSequencer(script$ + "Tuning.pls");
     SampleOptimise(2, 2, 2, 2, 50);  'Set optimise mode (do this last)
     SampleMode(1); 'Continuous sampling
     
@@ -307,13 +308,19 @@ func Start%()
     ' Start sampling
     SampleStart(0);
     View(amsWindowData%);    
-
-    if amsUseMEAMSeq% = 0 then
-        cmd$ := GetBinDir$(1) + "msequence.exe -t " + str$(amsFramesPerTerm%) + " -d " + str$(amsDotSize%) + 
-        " -p " + str$(amsXOrigin%) + "," + str$(-amsYOrigin%) + " -R " + str$(amsRepeats%) + " -f " + GetStimDir$(1) + "MSequenceTerms";
+    
+    if GetUseRemoteStimulus%() = 0 then
+        if amsUseMEAMSeq% = 0 then
+            cmd$ := GetBinDir$(1) + "msequence.exe -t " + str$(amsFramesPerTerm%) + " -d " + str$(amsDotSize%) + 
+            " -p " + str$(amsXOrigin%) + "," + str$(-amsYOrigin%) + " -R " + str$(amsRepeats%) + " -f " + GetStimDir$(1) + "MSequenceTerms";
+        else
+            cmd$ := GetBinDir$(1) + "meamseq.exe -t " + str$(amsFramesPerTerm%) + " -d " + str$(amsDotSize%) + 
+            " -p " + str$(amsXOrigin%) + "," + str$(-amsYOrigin%) + " -R " + str$(amsRepeats%) + " -m " + GetStimDir$(1) + "MSequenceTerms" + " -o 15 -r 16 -c 16 -T";
+        endif
     else
-        cmd$ := GetBinDir$(1) + "meamseq.exe -t " + str$(amsFramesPerTerm%) + " -d " + str$(amsDotSize%) + 
-        " -p " + str$(amsXOrigin%) + "," + str$(-amsYOrigin%) + " -R " + str$(amsRepeats%) + " -m " + GetStimDir$(1) + "MSequenceTerms" + " -o 15 -r 16 -c 16 -T";
+        cmd$ := GetBinDir$(1) + "remote.exe " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " msequence " + 
+        " -r 16 -c 16 -t " + str$(amsFramesPerTerm%) + " -d " + str$(amsDotSize%) + 
+        " -p " + str$(amsXOrigin%) + "," + str$(-amsYOrigin%) + " -R " + str$(amsRepeats%)
     endif
     
     LogInfo(cmd$);
@@ -353,7 +360,7 @@ func Stop%()
     ToolbarEnable(3, 0);
     
     ' send the quit command before stopping sampling
-    SampleKey("q");
+    SampleKey("Q");
     while ProgStatus(amsHandleStim) > 0 do
         Yield(1);
     wend
@@ -411,7 +418,7 @@ func Idle%()
         ' Issue sample key to start stim, then switch to looking for triggers
         LogStatus("stateStartStim", "Starting stimulus.");
         Yield(1.0);
-        SampleKey("s");
+        SampleKey("S");
         ChangeStateTo(stateStim%, tNow);
         
     case iState% = stateStim% then
