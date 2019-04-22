@@ -14,12 +14,16 @@
 var status%;
 var trialCount%;  'How many trials have we done?
 var experimenterRewardCount%;  'How many rewards did the experimenter give independent of the trial rewards
+var progStarted%;
+var StimHandle%;
+
+var superFake%;
 
 const RENDERDEFAULTIP$ := "128.120.140.49";
 
 var DataWindow%;
 var XYWindow%;
-var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
+var StimWindowX[36],StimWindowY[36];	' points for displaying stimulus location in xy view
 var iAnswerWindowChannelMain%;  'this is a terrible variable name
 var iMonitorChannel%;
 var mainX;
@@ -35,10 +39,29 @@ var minRewardDelay := 0.5;  'delay following reward before new reward is allowed
 var randRewardDelay;  'and an added randomizing value, zero OK
 var minITI := 0.5;  'delay between trials, minimum
 var randITI;  'delay between trials, added randomizing value, zero OK (use rand(randITI,0); )
-
+var directionForReward%;  'this will hold 0 if either up/down, 1 for up, 2 for down.
 
 'Idle processing variables
 var tLast;
+var tNow;
+var iState%;
+var tTrigger;
+var tLastTrigger;
+var vTrigger;
+var tStateStart;
+var JuiceRewardMS;  'need a float version of this
+
+
+'State variables
+const stateVSGWait% := 1;
+const stateVSGWaitConfirm% := 2;
+const stateWaitJoyCenter% := 3;
+const stateWaitJoyOut% := 4;
+const stateRequestStimulus% := 5;
+const stateWaitForStimOn% := 6;
+const stateWaitJoyOutStimulus% := 7;
+const stateWaitForBlank% := 8;
+const stateTrialComplete% := 9;
 
 
 'Channel variables
@@ -107,6 +130,7 @@ proc GetJoyTrainDialogParameters()
     randRewardDelay := GetFloatRegistryValue(key$, "randRewardDelay", randRewardDelay);
     minITI := GetFloatRegistryValue(key$, "minITI", minITI);
     randITI := GetFloatRegistryValue(key$, "randITI", randITI);
+    directionForReward% := GetIntRegistryValue%(key$, "directionForReward", directionForReward%);
     
 end;
 
@@ -122,12 +146,17 @@ proc SaveJoyTrainDialogParameters()
     SetFloatRegistryValue(key$, "randRewardDelay", randRewardDelay);
     SetFloatRegistryValue(key$, "minITI", minITI);
     SetFloatRegistryValue(key$, "randITI", randITI);
+    SetIntRegistryValue(key$, "directionForReward", directionForReward%);
     
 end;
 
 
 func JoyTrainDialog%()
     var i%;
+    var dirRew$[3];
+    dirRew$[0] := "Respond Either Up or Down";
+    dirRew$[1] := "Respond Up";
+    dirRew$[2] := "Respond Down";
 
     GetJoyTrainDialogParameters();
     
@@ -135,16 +164,17 @@ func JoyTrainDialog%()
 	DlgInteger(1, "Number of trials:", 1, 1000);
     DlgReal(2, "Minimum reward delay (s):", .01, 10);
 	DlgReal(3, "Random add'l reward delay:", 0, 10);
-    DlgCheck(4, "Show stimulus");
-	DlgReal(5, "Stimulus duration (s):", .01, 100);
-    DlgReal(6, "Minimum ITI (s):", .01, 10);
-    DlgReal(7, "Random add'l ITI (s):", 0, 10); 
+    DlgList(4, 25, dirRew$[], 3);
+    DlgCheck(5, "Show stimulus");
+	DlgReal(6, "Stimulus duration (s):", .01, 100);
+    DlgReal(7, "Minimum ITI (s):", .01, 10);
+    DlgReal(8, "Random add'l ITI (s):", 0, 10); 
     
     DlgButton(8, "Joystick Dialog", CallJoystickConfigDialog%,20,9);
     
     DlgAllow(0, 0, JoyTrainDialogChanged%);
     
-    i% := DlgShow(nTrials%,minRewardDelay,randRewardDelay,showStimulus%,stimulusDur,minITI,randITI);
+    i% := DlgShow(nTrials%,minRewardDelay,randRewardDelay,directionForReward%,showStimulus%,stimulusDur,minITI,randITI);
     
     if i% = 1 then        
         
@@ -165,14 +195,14 @@ func JoyTrainDialogChanged%(item%)
     'Ignore item, it's not really important
     
     'Just check on whether we are using a stimulus
-    if DlgValue(4) = 0 then  
-        DlgEnable(0,5);  'Disable stimulus duration
-        DlgEnable(0,6);  'Disable ITI
-        DlgEnable(0,7);  'Disable add'l ITI
+    if DlgValue(5) = 0 then  
+        DlgEnable(0,6);  'Disable stimulus duration
+        DlgEnable(0,7);  'Disable ITI
+        DlgEnable(0,8);  'Disable add'l ITI
     else
-        DlgEnable(1,5);  'Enable stimulus duration
-        DlgEnable(1,6);  'Enable ITI
-        DlgEnable(1,7);  'Enable add'l ITI
+        DlgEnable(1,6);  'Enable stimulus duration
+        DlgEnable(1,7);  'Enable ITI
+        DlgEnable(1,8);  'Enable add'l ITI
     endif;
     
     return status%;
@@ -286,15 +316,15 @@ proc InitializeWindows()
     'Create new channels in the XY view to display the answer windows
     'Main stimulus window
     for index% := 0 to 35 do
-        FixWindowX[index%] := mainX + mainW * Cos(index%*2*pi/36.0);
-		FixWindowY[index%] := mainY + mainH * Sin(index%*2*pi/36.0);
+        StimWindowX[index%] := mainX + mainW * Cos(index%*2*pi/36.0);
+		StimWindowY[index%] := mainY + mainH * Sin(index%*2*pi/36.0);
 	next;
     iAnswerWindowChannelMain% := XYSetChan(0);
     XYColour(iAnswerWindowChannelMain%,13);
 	XYDrawMode(iAnswerWindowChannelMain%,2,1);
 	XYJoin(iAnswerWindowChannelMain%,1);
 	'Draw the stimulus window...TODO should really only do this when the stimulus is up.
-	XYAddData(iAnswerWindowChannelMain%, FixWindowX[], FixWindowY[]);
+	XYAddData(iAnswerWindowChannelMain%, StimWindowX[], StimWindowY[]);
     
 	'Create a new channel in the XY view to show the monitor's location
 	iMonitorChannel% := XYSetChan(0);
@@ -324,13 +354,14 @@ end;
 '
 proc InitializeToolbar()
     
-'	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
-'	ToolbarVisible(1);
-'	UpdateToolbarText();
-'    ToolbarSet(1,"Sample start",Start%);
-'	ToolbarSet(2,"Quit", Stop%);
-'	ToolbarSet(3,"Juice", Reward%);
-'	Toolbar("Go",0x3ff);
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+	UpdateToolbarText();
+    ToolbarSet(1,"Sample start",Start%);
+	ToolbarSet(2,"Quit", Stop%);
+	ToolbarSet(3,"Juice", Reward%);
+    ToolbarSet(4,"FakeJoyMove", SuperFakeFunctionToFakeJoystickMovement%);
+	Toolbar("Go",0x3ff);
     
 end;
 
@@ -349,14 +380,18 @@ func Start%()
     var jsonFilePre$;
     var cmdLine$;
     var tempBinDir$;
-    var StimHandle%;
     
-    'start sampling
-    if UsePlexon% = 1 then
-        SampleStart(1);  'set sampling to start on a trigger     
-    else
-    	SampleStart(0); 'Start sampling now
-    endif;
+    
+    'start sampling - not going to be recording during this so don't include plexon options
+    SampleStart(0); 'Start sampling now
+    
+    'Change offset of joystick channel
+    View(DataWindow%).ChanOffset(JoyChannel%,joystickOffset);  'use value from registry
+    
+    'Set value of right/left joystick
+    GetJoystickParameters();  'now we run the joystick functions from Sperka, should work smoothly
+    DisplayJoystickParameters();
+    
     
     ' Set Sequencer Variable #3 based on juicer type 
     SetJuicerSequencerVariable%();
@@ -424,15 +459,198 @@ func Start%()
 	if StimHandle% <0 then 
         Message("Could not start stimulus."); 
         halt; 
+    else
+        progStarted% := 1;
     endif
     
-'    ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+    iState% := stateVSGWait%;
+    JuiceRewardMS := JuiceRewardMS%;  'Need a float to do a proper calculation in the idle loop
+    
+    ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
 	ToolbarEnable(1,0);  'Disable start
 	View(DataWindow%);
 	Yield(.1);
     return 1;
     
 end
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+    'This function incorporates the necessary basics from the Stop%() and Quit%() functions
+    'in normal usreylab code
+
+	' Disable idle process func
+	ToolbarSet(0,"");
+    
+    ' Tell stim app to shut down if it is running
+    if progStarted% = 1 then
+        SafeSampleKey("Q");
+        Yield(.1);
+    endif;
+    
+    'If we are still sampling,sStop sampling
+    if SampleStatus()=2 then
+        SampleStop();
+    endif;
+    
+    
+	ProgKill(StimHandle%);
+	while ProgStatus(StimHandle%) > 0 do
+		Yield();
+	wend
+    
+    ' Increment daily totals and save them, seems useless to do this if we didn't even start the program
+    if progStarted% = 1 then
+        TotalTrials% := trialCount%;
+        TotalRewards% := trialCount% + experimenterRewardCount%;
+        SaveDailyTotals();
+    endif;
+
+    ' Write parameter file - there CAN'T be any reason to do this, right?
+	'WriteParameterFile();
+    
+    FileClose(-1,-1);
+	return 0;
+    
+end;
+
+
+func IdleProcessing%()
+	var iStatus% := 1;	
+    var tempanswer%;
+    var temptext$;
+    
+    'The trick here is that sometimes sampling isn't caught up on all channels.  MaxTime() may return a lower
+    'value than MaxTime(ChanN%). When we find a trigger and try to place a TextMark, SampleText will do an internal
+    'call to MaxTime() - no channel # - to determine whether to place it at the requested time or at MaxTime().
+    'In some instances, this has resulted in the TextMark being placed earlier than the event which caused it.
+    'We are now explicitly checking for this - if we find it, we have to avoid updating tLast and continue checking
+    'in order to not miss the trigger AND to put the TextMark at the right time.
+    'Note that we will ONLY do the additional check in instances where a timed TextMark is being placed at the 
+    'time of the trigger.
+    
+    'Note that the joystick functions that exist in the Usrey lab for now only work on a single dimension
+    'of the joystick, and up to now the code that I have been implementing follows that.  If we need a second
+    'dimension that will be something that has to be dealt with.  In the meantime, it doesn't really make any
+    'sense to use an XY display to show a 1-D joystick, so I'll stick with just the channel display for now.
+    'DrawStim(1); will draw stimulus on CED XY window
+    'DrawStim(0); will blank stimulus on CED XY window
+    
+    tNow := View(DataWindow%).MaxTime();
+   
+    docase 
+    case iState% = stateVSGWait% then
+        ' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
+        tTrigger := View(DataWindow%).NextTime(ReadyChannel%, tLast, vTrigger);
+        if tTrigger > tLastTrigger and vTrigger = 0 then
+            PrintLog("state stateVSGWait: Got leading edge of trigger\n");
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateVSGWaitConfirm%, tTrigger);
+        endif;
+        
+    case iState% = stateVSGWaitConfirm% then
+        ' Waiting for VSG to confirm it is ready. The downward side of the pulse is expected...
+        tTrigger := View(DataWindow%).NextTime(ReadyChannel%, tLastTrigger, vTrigger);
+        if tTrigger > tLastTrigger and vTrigger = 1 then
+            PrintLog("state stateVSGWaitConfirm: Got trailing edge of trigger\n");
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateWaitJoyCenter%, tTrigger);
+            
+             
+        endif;    
+        
+    case iState% = stateWaitJoyCenter% then
+        'This is the start point for every trial - we have to wait here to make sure that the joystick has been centered.
+        if tNow > tStateStart + JuiceRewardMS/1000 then 'wait through the reward before checking; first time through there will be an extra delay but the animal won't notice it
+            if JoyAnswer%(JoyChannel%,tNow) = 2 then
+                PrintLog("state stateWaitJoyCenter: Joystick is in center, trial starting at %f\n",tNow);
+                
+                if showStimulus% = 1 then
+                    ChangeStateTo(stateRequestStimulus%, tNow);
+                else
+                    ChangeStateTo(stateWaitJoyOut%, tNow);
+                endif;  
+            endif;
+        endif;
+        
+    case iState% = stateWaitJoyOut% then
+        docase  'TODO - make sure that below definitions work with regard to Up/Down with actual joystick setup, may need to swap "1" and "3" from results of JoyAnswer%()
+        case (JoyAnswer%(JoyChannel%,tNow) = 1 or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 1) then
+            DefaultReward();  'do not use Reward%() because that increments the experimenter-gave-reward variable
+            ChangeStateTo(stateTrialComplete%, tNow);
+        case (JoyAnswer%(JoyChannel%,tNow) = 3 or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 2) then
+            DefaultReward();  'do not use Reward%() because that increments the experimenter-gave-reward variable
+            ChangeStateTo(stateTrialComplete%, tNow);
+        'Note that we are not doing anything if the animal goes in the "wrong" direction
+        endcase
+        
+        
+    case iState% = stateRequestStimulus% then
+        ' Start trial. Put up stimulus.
+        LogStatus("StartTrial", "Request stimulus");
+        SafeSampleKey("S");  'request stimulus  
+        ChangeStateTo(stateWaitForStimOn%, tNow);
+        
+        
+    case iState% = stateWaitForStimOn% then
+        tTrigger := View(DataWindow%).NextTime(StimChannel%, tLast, vTrigger);
+        if tTrigger > tLast and vTrigger = 0 then
+            ' grating is up
+            PrintLog("stateWaitForStimOn: Stim is up.\n");
+            DrawStim(1);  'Draw the location of the stim on the XY window
+            ChangeStateTo(stateWaitJoyOutStimulus%, tTrigger);     
+        endif;
+        
+        
+    case iState% = stateWaitJoyOutStimulus% then
+        docase  'TODO - make sure that below definitions work with regard to Up/Down with actual joystick setup, may need to swap "1" and "3" from results of JoyAnswer%()
+        case (JoyAnswer%(JoyChannel%,tNow) = 1 or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 1) then
+            SafeSampleKey("X");  'Request stimulus down
+            DrawStim(0);  'Remove stimulus indicator from XY window
+            DefaultReward();  'do not use Reward%() because that increments the experimenter-gave-reward variable
+            ChangeStateTo(stateWaitForBlank%, tNow);
+        case (JoyAnswer%(JoyChannel%,tNow) = 3 or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 2) then
+            SafeSampleKey("X");  'Request stimulus down
+            DrawStim(0);  'Remove stimulus indicator from XY window
+            DefaultReward();  'do not use Reward%() because that increments the experimenter-gave-reward variable
+            ChangeStateTo(stateWaitForBlank%, tNow);
+        'Note that we are not doing anything if the animal goes in the "wrong" direction
+        endcase
+        
+        
+    case iState% = stateWaitForBlank% then
+        ' we just wait for fix point off signal in this case. 
+        tTrigger := View(DataWindow%).NextTime(StimChannel%, tLast, vTrigger);
+        if tTrigger > tLast then
+            ' Fixation point is off
+            PrintLog("stateWaitForBlank: Stim is off.\n");
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateTrialComplete%, tTrigger);
+        endif;
+        
+        
+        
+    case iState% = stateTrialComplete% then
+        trialCount% += 1;  'Keep track of how many times the experimenter gave a reward
+        UpdateToolbarText();
+        if trialCount% >= nTrials% then
+            Stop%();
+            iStatus% := 0;
+        else
+            changeStateTo(stateWaitJoyCenter%, tNow);
+        endif;
+        
+        
+    endcase
+    
+    
+    return iStatus%;
+end
+
+
+
 
 
 
@@ -451,4 +669,77 @@ proc UpdateToolbarText()
 
 	ToolbarText(s$);
     
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Reward%()
+    DefaultReward();
+    'No sample text, just use 'R' from keyboard channel
+    experimenterRewardCount% += 1;  'Keep track of how many times the experimenter gave a reward
+	return 1;
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Change this so it reads the joystick - this is a single axis
+func JoyAnswer%(chan%,now)
+    var ans% := -1;
+    var v;
+    'v := ChanValue(chan%,now);
+    'printlog("voltage is %f\n",v);
+    if ChanKind(chan%) > 0 then  'if the channel does not exist, return 0
+        ans% := GetJoystickPosition%(v);   
+    else
+        ans% := 0;
+    endif;
+        
+    
+    if ans% = -1 then
+        printlog("There has been an error in reading the joystick!  GetJoystickPosition% has returned -1!\n");
+    endif
+    
+    
+	return ans%;
+    
+    'This function will return:
+    '1 if joystick is left (Up?  Down?)
+    '2 if joystick is center
+    '3 if joystick is right (Down? Up?)
+    '0 if joystick is in undefined position (between left/center or between center/right)
+    '-1 on error
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawStim
+' 
+' Draws stimulus in xy window (iDraw%==1) or blanks it (0). 
+proc DrawStim(iDraw%)
+
+	if iDraw% > 0 then
+		' Draw stimulus in xy window
+        View(XYWindow%).XYAddData(iAnswerWindowChannelMain%, StimWindowX[], StimWindowY[]);
+	else 
+		' erase the stim from xy view
+        View(XYWindow%).XYDelete(iAnswerWindowChannelMain%);
+	endif
+
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+	if tStart > 0 then tStateStart := tStart; endif;
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func SuperFakeFunctionToFakeJoystickMovement%()
+    superFake% := 1;
+	return 1;
 end;
