@@ -563,7 +563,7 @@ func IdleProcessing%()
     case iState% = stateWaitJoyCenter% then
         'This is the start point for every trial - we have to wait here to make sure that the joystick has been centered.
         if tNow > tStateStart + ITI then 
-            if JoyAnswer%(JoyChannel%,tNow) = 2 or 1 then
+            if JoyAnswer%(JoyChannel%,tNow) = 2 or superFake% = 0 then
                 PrintLog("state stateWaitJoyCenter: Joystick is in center, trial starting at %f\n",tNow);
                 
                 if showStimulus% = 1 then
@@ -578,9 +578,11 @@ func IdleProcessing%()
         docase  'TODO - make sure that below definitions work with regard to Up/Down with actual joystick setup, may need to swap "1" and "3" from results of JoyAnswer%()
         case (JoyAnswer%(JoyChannel%,tNow) = 1 or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 1) then
             DefaultReward();  'do not use Reward%() because that increments the experimenter-gave-reward variable
+            PrintLog("stateWaitJoyOut: Up response, rewarding.\n");
             ChangeStateTo(stateTrialComplete%, tNow);
         case (JoyAnswer%(JoyChannel%,tNow) = 3 or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 2) then
             DefaultReward();  'do not use Reward%() because that increments the experimenter-gave-reward variable
+            PrintLog("stateWaitJoyOut: Down response, rewarding.\n");
             ChangeStateTo(stateTrialComplete%, tNow);
         'Note that we are not doing anything if the animal goes in the "wrong" direction
         endcase
@@ -588,7 +590,7 @@ func IdleProcessing%()
         
     case iState% = stateRequestStimulus% then
         ' Start trial. Put up stimulus.
-        LogStatus("StartTrial", "Request stimulus");
+        PrintLog("stateRequestStimulus: Requesting stimulus.\n");
         SafeSampleKey("S");  'request stimulus  
         ChangeStateTo(stateWaitForStimOn%, tNow);
         
@@ -609,11 +611,20 @@ func IdleProcessing%()
             SafeSampleKey("X");  'Request stimulus down
             DrawStim(0);  'Remove stimulus indicator from XY window
             DefaultReward();  'do not use Reward%() because that increments the experimenter-gave-reward variable
+            trialCount% += 1;  'Keep track of how many times the experimenter gave a reward
+            PrintLog("stateWaitJoyOutStimulus: Up response, rewarding.\n");
             ChangeStateTo(stateWaitForBlank%, tNow);
         case (JoyAnswer%(JoyChannel%,tNow) = 3 or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 2) then
             SafeSampleKey("X");  'Request stimulus down
             DrawStim(0);  'Remove stimulus indicator from XY window
             DefaultReward();  'do not use Reward%() because that increments the experimenter-gave-reward variable
+            trialCount% += 1;  'Keep track of how many times the experimenter gave a reward
+            PrintLog("stateWaitJoyOutStimulus: Down response, rewarding.\n");
+            ChangeStateTo(stateWaitForBlank%, tNow);
+        case tNow > tStateStart+stimulusDur then 'waited too long, get an ITI
+            SafeSampleKey("X");  'Request stimulus down
+            DrawStim(0);  'Remove stimulus indicator from XY window
+            PrintLog("stateWaitJoyOutStimulus: No response, will repeat trial after ITI.\n");
             ChangeStateTo(stateWaitForBlank%, tNow);
         'Note that we are not doing anything if the animal goes in the "wrong" direction
         endcase
@@ -632,19 +643,24 @@ func IdleProcessing%()
         
         
     case iState% = stateTrialComplete% then
-        trialCount% += 1;  'Keep track of how many times the experimenter gave a reward
+        
         UpdateToolbarText();
-        superFake% := 0;
         if trialCount% >= nTrials% then
+            PrintLog("stateTrialComplete: All stimuli done, quitting.\n");
             Stop%();
             iStatus% := 0;
         else
-            changeStateTo(stateWaitJoyCenter%, tNow);
             if showStimulus% = 1 then
                 ITI := rand(randITI,minITI);
             else
                 ITI := rand(randRewardDelay,minRewardDelay);
             endif;
+            'The ITI has to be AT LEAST the duration of the reward, so we don't allow the delivery of a reward while the juicer is open
+            if ITI < JuiceRewardMS/1000 then
+                ITI := JuiceRewardMS/1000;
+            endif;
+            PrintLog("stateTrialComplete: Trial %d complete.\n",trialCount%);
+            changeStateTo(stateWaitJoyCenter%, tNow);
         endif;
         
         
@@ -680,8 +696,9 @@ end;
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Reward%()
     DefaultReward();
-    'No sample text, just use 'R' from keyboard channel
+    'No sample text, 'R' from keyboard channel is only indicator
     experimenterRewardCount% += 1;  'Keep track of how many times the experimenter gave a reward
+    UpdateToolbarText();
 	return 1;
 end;
 
@@ -744,7 +761,10 @@ end;
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'This just allows us to toggle "superFake%", which in turn is just a quick variable that
+'allows us to pretend there's a joystick present, just for testing out the idle loop in
+'anticipation of actually connecting a joystick.
 func SuperFakeFunctionToFakeJoystickMovement%()
-    superFake% := 1;
+    superFake% := 1-superFake%;
 	return 1;
 end;

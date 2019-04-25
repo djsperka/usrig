@@ -246,6 +246,7 @@ endif;
 'bgTypeThisTrial%[], stimTypeThisTrial%[], directionThisTrial%[], nTrials%
 GenerateTrials%();
 
+
 'If we are checking approximate time, calculate and display this, then quit.
 if approximateTime% = 1 then
     EstimateExperimentDuration();  'This procedure will simply make a quick calculation and display the results in a message box/logfile
@@ -412,11 +413,14 @@ proc CreateSampleConfiguration()
         CreateElectrodeSamplingConfiguration(1, 11);
     endcase;
 	
-    ' Set up eye channels whether using Plexon or not
-	SampleWaveform(XChannel%,GetEyeXPort%(),1000);
-	SampleTitle$(XChannel%,"Eye X");
-	SampleWaveform(YChannel%,GetEyeYPort%(),1000);
-	SampleTitle$(YChannel%,"Eye Y");
+    ' Set up eye channels whether using Plexon or not, but do not set up eye channels if we are not checking fixation
+    if alwaysLooking% = 0 then
+        SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+        SampleTitle$(XChannel%,"Eye X");
+        SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+        SampleTitle$(YChannel%,"Eye Y");
+    endif;
+    
     
     'I don't know what this is, but it's a problem for Plexon configs
     '    if UsePlexon% = 0 and UsePlexon7WM15CN% = 0 then  'Kill it if we're using the Plexon
@@ -471,35 +475,37 @@ proc InitializeWindows()
     endif;
     
     
-	'Open an XY view to display eye position, etc.
-	XYWindow% := FileNew(12);
-	XRange(-30,30);
-	YRange(-2,-30,30);
-	XYDrawMode(0,5,0);
-	WindowVisible(1);
-	Window(0, 0, 100, 47);
-	XYColour(1,16);
-	XYSize(1,-1);
+	'Open an XY view to display eye position, stimulus location, etc.
+    XYWindow% := FileNew(12);
+    XRange(-30,30);
+    YRange(-2,-30,30);
+    XYDrawMode(0,5,0);
+    WindowVisible(1);
+    Window(0, 0, 100, 47);
+    XYColour(1,16);
+    XYSize(1,-1);
     
     
     
     'Calcuate the fixation window
-	var index%;
-	var twopi;
-	twopi := 2.0*4.0*ATan(1.0);
-	
-	for index% := 0 to 35 do
-		FixWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
-		FixWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
-	next;
+    var index%;
+    var twopi;
+    twopi := 2.0*4.0*ATan(1.0);
     
-	'Create a new channel in the XY view to display the fixation window, draw it directly
-	iFixationWindowChannel% := XYSetChan(0);
-	XYColour(iFixationWindowChannel%,13);
-	XYDrawMode(iFixationWindowChannel%,2,1);
-	XYJoin(iFixationWindowChannel%,1);
-	'Draw the fixation window
-	XYAddData(iFixationWindowChannel%, FixWindowX[], FixWindowY[]);
+    if alwaysLooking% = 0 then  'Do not create the fixation window if we are not monitoring fixation
+        for index% := 0 to 35 do
+            FixWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
+            FixWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
+        next;
+        
+        'Create a new channel in the XY view to display the fixation window, draw it directly
+        iFixationWindowChannel% := XYSetChan(0);
+        XYColour(iFixationWindowChannel%,13);
+        XYDrawMode(iFixationWindowChannel%,2,1);
+        XYJoin(iFixationWindowChannel%,1);
+        'Draw the fixation window
+        XYAddData(iFixationWindowChannel%, FixWindowX[], FixWindowY[]);
+    endif;
     
     
     'Create a new channel in the XY view to show the monitor's location, draw it directly
@@ -620,8 +626,11 @@ func Start%()
     'FixationY := 0;
     'FixationX := 3;  'This can be used to hardcode the fixation point over the location of the moving bar, useful for checking centering while testing, but why not just set the values in Config?
     'FixationY := 3;
-    FixationArg$ := " -f " + str$(FixationX) + "," + str$(FixationY) + "," + str$(FixationDiameter) + "," + fixationColor$;
-    
+    if alwaysLooking% = 1 then
+        FixationArg$ := "";  'do not put up a fixation point if there is no fixation monitoring
+    else
+        FixationArg$ := " -f " + str$(FixationX) + "," + str$(FixationY) + "," + str$(FixationDiameter) + "," + fixationColor$;
+    endif;
     
     ' djs Update this to use remote stim when configured
     if GetUseRemoteStimulus%() = 1 then
@@ -726,13 +735,13 @@ func IdleProcessing%()
     tNow := View(DataWindow%).MaxTime();
     
     'get eye position, but don't check if tNow is small enough that we would give a negative value to ChanMeasure
-    if tNow > .006 then
+    if tNow > .006 and alwaysLooking% = 0 then
         xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
         yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
     endif;
     
     ' Don't update display every time....
-    if tNow-tLastUpdate > .005 then
+    if tNow-tLastUpdate > .005 and alwaysLooking% = 0 then
         View(XYWindow%).XYAddData(1,xEye,yEye);
         tLastUpdate := tNow;
     endif
@@ -872,15 +881,16 @@ func IdleProcessing%()
             ' Fixation point is off
             PrintLog("stateWaitForBlank: Fix pt is off.\n");
             tLastTrigger := tTrigger;               
-            if trialCount% = nTrials% then
-                PrintLog("All trials complete!\n");
-               Stop%();
-            endif;
+            
             DrawStim(0);	' this undraws the location of the fixpt.
-            SafeSampleKey("a");  'advance the stimulus
             trialCount% += 1;  'Increment trial count
             CurrentAbortTime := 0;  'Do not add any abort penalty time in stateStartTrial if trial is correct
+            if trialCount% = nTrials% then
+                PrintLog("All trials complete!\n");
+                Stop%();
+            endif;
             
+            SafeSampleKey("a");  'advance the stimulus
             'just reward within this function
             if alwaysLooking% = 0 then  'do not give reward when always looking
                 Reward%();
@@ -915,7 +925,7 @@ func IdleProcessing%()
             tLastTrigger := tTrigger;               
             if trialCount% = nTrials% then
                 PrintLog("All trials complete!\n");
-               Stop%();
+                Stop%();
             endif;
             ChangeStateTo(stateStartTrial%, tNow);  'don't update time, "credits" for time served
         endif
