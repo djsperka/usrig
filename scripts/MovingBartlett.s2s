@@ -143,7 +143,7 @@ var addlBlankDiagOnly%;  'We may use oversized blanks only on diagonals
 var alwaysLooking%;
 var scaleFactorRF;  'This will allow us to change the number of grixels in the center of the RF
 var approximateTime%;  'Instead of running the experiment, approximate the time the experiment will take
-
+var bgDensityIndex%;
 
 ' Type variables
 'backgrounds
@@ -1098,6 +1098,7 @@ func MovingBartlettDialog%()
     var direction$[3];
     var blankSize$[4];
     var refreshesPerFrameFloat;  'for local float computation
+    var bgDensity$[3];
     
     type$[0] := "On Cell";
     type$[1] := "Off Cell";
@@ -1111,6 +1112,9 @@ func MovingBartlettDialog%()
     blankSize$[2] := "Add 2 pixels to blank";
     blankSize$[3] := "Add 1 grixel to blank";
     
+    bgDensity$[0] := "BG density 100%";
+    bgDensity$[1] := "BG density 10%";
+    bgDensity$[2] := "BG density 1%";
     
 	GetMovingBartlettParameters();
     
@@ -1137,6 +1141,7 @@ func MovingBartlettDialog%()
     DlgCheck(5,"Interleave Trials?",2,6);
     DlgList(6,15,type$,2,25,7);
     DlgList(7,25,direction$,3,15,8);
+    
     
     
     DlgGroup("Backgrounds",1,9,40,7);
@@ -1167,12 +1172,13 @@ func MovingBartlettDialog%()
     DlgText("Screen X mm",43,15);
     DlgText("Screen Y mm",63,15);
     DlgCheck(28,"Calculate Approximate Time",2,16);   'Do NOT save this in registry, force it to be checked to use it
+    DlgList(29,17,bgDensity$,3,65,16);
     
     DlgAllow(0, 0, MovingBartlettDialogChanged%);  'not used/written for now
     
 	i%:=DlgShow(ITI,barSpeed,nRepeats%,nPrePostFrames%,interleave%,cellType%,useDirection%,
     useNoBackground%,useStaticBackground%,useFlickerBackground%,useValidBackground%,useInvalidBackground%,
-    useOrthogonalBackground%,eightInts%[],blankType%,addlBlankDiagOnly%,alwaysLooking%,threeReals[],approximateTime%);
+    useOrthogonalBackground%,eightInts%[],blankType%,addlBlankDiagOnly%,alwaysLooking%,threeReals[],approximateTime%,bgDensityIndex%);
     
     'Unpack eightInts%[]
     useMovingBar% := eightInts%[0];
@@ -1204,6 +1210,16 @@ func MovingBartlettDialog%()
         else
             useDiagonal% := 0;
         endif;
+        
+        'If we are using a different set of background images (lower density for training) change folder here
+        docase
+        case bgDensityIndex% = 2 then  'these are not terribly clever, just a hardcode is good enough
+            backgroundDir$ := backgroundDir$ + "bg01\\";
+        case bgDensityIndex% = 3 then
+            backgroundDir$ := backgroundDir$ + "bg001\\";
+        endcase
+        
+        
         
         'If we are short-circuiting the fixation period, don't have a fixation hold time
         if alwaysLooking% = 1 then
@@ -1343,6 +1359,7 @@ proc GetMovingBartlettParameters()
     scaleFactorRF := GetFloatRegistryValue(key$, "scaleFactorRF", scaleFactorRF);
     screenXmm := GetFloatRegistryValue(key$, "screenXmm", screenXmm);
     screenYmm := GetFloatRegistryValue(key$, "screenYmm", screenYmm);
+    bgDensityIndex% := GetIntRegistryValue%(key$, "bgDensityIndex", bgDensityIndex%);
     
 end;
 
@@ -1378,6 +1395,7 @@ proc SaveMovingBartlettParameters()
     SetFloatRegistryValue(key$, "scaleFactorRF", scaleFactorRF);
     SetFloatRegistryValue(key$, "screenXmm", screenXmm);
     SetFloatRegistryValue(key$, "screenYmm", screenYmm);
+    SetIntRegistryValue(key$, "bgDensityIndex", bgDensityIndex%);
     
 end;
 
