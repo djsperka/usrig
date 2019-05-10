@@ -83,7 +83,6 @@ while(strcmp(msg,'StopM')~=1)
     if strcmp(msg,'StopM')==1 return; end
     msg=str2num(msg);
     BlockSize=size(msg,2)-1;
-    
     if (isempty(msg)==0)
         Channel=msg(1);
         if (TermsProcessed(Channel)+BlockSize) > 32767

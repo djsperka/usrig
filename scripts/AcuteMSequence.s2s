@@ -31,6 +31,7 @@ var amsNContinuous% := 0;
 ' daq channels for triggers from vsg
 var amsChanTrigger% := 21;
 var amsChanVSGReady% := 22;
+var amsChanStim%    := 23;
 
 ' prog handles
 var amsHandleMsgSvr := -1;
@@ -52,6 +53,7 @@ var iState% := stateStartup%;              ' This holds the current state
 ' stuff left over from original script. 
 var index;
 var TriggerTime:=-1,NextTriggerTime, BlockData$[8],BlockIndex;
+var FirstTriggerTime := -1;
 var SpikeCount;
 var TriggerNumber:=0;
 var TimeLeft,PercentComplete;
@@ -112,7 +114,7 @@ func AcuteMSequenceDialog%()
     DlgInteger(2, "Dot size: ", 4, 24, 0, 0, 4);
     DlgInteger(3, "Center X coord: ", -400, 400);
     DlgInteger(4, "Center Y coord: ", -300, 300);
-    DlgInteger(5, "Number of repeats: ", 1, 100);
+    DlgInteger(5, "Number of cycles: ", 1, 100);
     DlgList(6, "Color properties: ", amsColor$[]);
     status% := DlgShow(amsFramesPerTerm%, amsDotSize%, amsXOrigin%, amsYOrigin%, amsRepeats%, amsColorIndex%);
     
@@ -220,9 +222,13 @@ proc CreateSampleConfiguration()
     SampleEvent(amsChanTrigger%, 0, 1, 1000); 
     SampleTitle$(amsChanTrigger%, "Terms");
     
-   	SampleEvent(amsChanVSGReady%, 1, 2, 200); 'Trigger channel, level
+   	SampleEvent(amsChanVSGReady%, 1, 2, 1000); 'Trigger channel, level
 	SampleComment$(amsChanVSGReady%, "VSG Rdy");
 	SampleTitle$(amsChanVSGReady%, "VSG Rdy");
+    
+   	SampleEvent(amsChanStim%, 3, 2, 1000); 'Trigger channel, level
+	SampleComment$(amsChanStim%, "Stim");
+	SampleTitle$(amsChanStim%, "Stim");
     
 	SampleSequencer(script$ + "Tuning.pls");
     SampleOptimise(2, 2, 2, 2, 50);  'Set optimise mode (do this last)
@@ -271,7 +277,7 @@ proc SaveParameterFile()
         Print("\"Dot Size\" %f\n",amsDotSize%);
         Print("\"X Origin\" %f\n",amsXOrigin%);
         Print("\"Y Origin\" %f\n",amsYOrigin%);
-        Print("\"Number of Repeats\" %d\n",amsRepeats%);
+        Print("\"Number of Cycles\" %d\n",amsRepeats%);
         Print("\"Screen Distance\" %s\n", GetDistanceToScreenMM$());
         FileClose();
     endif
@@ -423,7 +429,8 @@ func Idle%()
         
     case iState% = stateStim% then
         
-        if CountSpikes%() < 0 then
+'        if CountSpikes%() < 0 then
+        if CountSpikesWithDelay%(0) < 0 then
             ChangeStateTo(stateDone%, tNow);
         endif
         
@@ -470,7 +477,12 @@ func CountSpikes%()
     NextTriggerTime:=View(amsWindowData%).NextTime(amsChanTrigger%,TriggerTime);
     if NextTriggerTime > 0 then
         '        if TriggerTime < 0 then
+        if TriggerNumber mod 1000 = 0 then
+            PrintLog("next %f now %f delta %f\n", NextTriggerTime, MaxTime(), MaxTime()-NextTriggerTime);
+        endif
+        
         if TriggerNumber mod 32768 = 0 then
+            FirstTriggerTime := NextTriggerTime;
             TriggerTime := NextTriggerTime;
             TriggerNumber := TriggerNumber + 1;
         else
@@ -511,6 +523,93 @@ func CountSpikes%()
     
     return status%;
 end
+
+
+func CountSpikesWithDelay%(msFromLastCheck%)
+
+    var status% := 1;   ' will be set to -1 when all triggers have been counted
+    
+    ' TriggerTime is the last trigger time we have processed. 
+    ' The 'processing' here is to search for triggers up to the current time (the previous version
+    ' looked for the next trigger only - leads to pile-up of unprocessed triggers on current hardware). 
+    ' If msFromLastCheck% is greater than zero, then we only process if (MaxTime() - TriggerTime) is greater 
+    ' than msFromLastCheck%. 
+    '
+    ' Make sure that these arrays are large enough.
+    
+    var triggers[1000];
+    var spikes[1000];    
+    var ntrig%;
+    var nspikes%;
+    var tNow;
+    var tLastTrigger;
+    var tTempTrigger;
+    var ichannel%;
+    var itrig%;
+    
+    tNow := MaxTime();    
+    if msFromLastCheck% <= 0 or TriggerTime < 0 or tNow-TriggerTime>msFromLastCheck% then
+        
+        ' Get whatever triggers there are to be found. 
+        ' Since ChanData will return events that occur AT the initial time, I add a small 
+        ' amount to it so the trigger is not found again. 
+        ntrig% := ChanData(amsChanTrigger%, triggers, TriggerTime+.001, tNow);
+        if ntrig% > 0 then
+            
+            if TriggerNumber mod 32768 = 0 then
+                
+                TriggerTime := triggers[0];
+                TriggerNumber := TriggerNumber + 1;
+                PrintLog("Initial trigger at %f\n", TriggerTime);
+            
+            else
+                
+                ' save time of last trigger found as the endpoint of spike search. 
+                ' TODO: Stop at the trigger that closes the LAST bin in the msequence. This probably only matters 
+                ' if a repeat>1 is used.
+                tLastTrigger := triggers[ntrig%-1];
+                
+                for ichannel% := 1 to amsNWavemarks% do 
+                    tTempTrigger := TriggerTime;
+                    for itrig% := 0 to ntrig%-1 do
+                        nspikes% := View(amsWindowData%).count(amsWavemarkPorts%[ichannel%-1]+1, tTempTrigger, triggers[itrig%]);
+                        BlockData$[ichannel%-1]:=BlockData$[ichannel%-1]+" "+str$(nspikes%);
+                        tTempTrigger := triggers[itrig%];
+                    next 
+                next
+                
+                TriggerTime := triggers[ntrig%-1];
+                BlockIndex += (ntrig%);
+                TriggerNumber += (ntrig%);
+                
+                'PrintLog("Found %d triggers, holding %d\n", ntrig%, BlockIndex);
+                'PrintLog("Time %f num %d\n", TriggerTime, TriggerNumber);
+
+                    
+                ' Was that the last trigger? 
+                if TriggerNumber >= 32768 * amsRepeats% then
+                    status% := -1;
+                endif
+                    
+                ' BlockIndex counts the number of terms we've collected and stored in BlockData$[] for each channel. 
+                ' I'm just using a high water mark where the string of the first channel is >128 chars
+                if status% < 0 or BlockIndex > 100 or Len(BlockData$[0])>128 then
+                    'PrintLog("SendData: %d %d(>100) %d(>128)\n", status%, BlockIndex, Len(BlockData$[0]));
+                    for ichannel% := 1 to amsNWavemarks% do 
+                        SendMessage(BlockData$[ichannel%-1]);
+                        BlockData$[ichannel%-1]:=str$(ichannel%);
+                    next
+                    PercentComplete:=TriggerNumber/(32768*amsRepeats%);  'This line and the following line removed from
+                    TimeLeft:=(TriggerTime/PercentComplete)-TriggerTime;  'FOR loop just above because they only need to be done once -jj
+                    ToolbarText("M Sequence "+str$(100*PercentComplete)+"% complete. Estimated "+str$(TimeLeft)+" seconds left");
+                    BlockIndex:=0;
+                endif
+            endif
+        endif
+    endif
+    return status%;
+end
+
 
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''

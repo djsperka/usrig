@@ -1,0 +1,368 @@
+' $Id$
+' Update 11/8/11 Jeff, includes SafeSampleKey and multi-juicer updates
+
+#include "../util/ChannelUtilities.s2s"
+#include "../util/UsreyUtil.s2s"
+#include "UsreyGratings.s2s"
+#include "UsreyDAQ.s2s"
+
+' Cool Mouse specific parameters
+var cmRemoteGratingParametersFile$; ' initialized below
+var cmLocalGratingParametersFile$;  ' initialized below
+var cmUseGratingParametersFile% := 0;    ' only if remote is NOT 127.0.0.1
+var cmCollectElectrodeData% := 0;
+
+' Window handles and channel numbers
+var XChannel%,YChannel%;		' Channel number assigned to eye x and y
+var TriggerChannel%;			' Channel number assigned to vsg trigger input (i.e. trigger sent by vsg)
+var ReadyChannel%;			' channel number for VSG ready pulse signal
+var DataWindow%;	' time view
+var XYWindow%;		' window with eye pos shown
+var iStimChannel%;	' channel number for stimulus in xy window
+var iStimWindowChannel%;' channel number for stimulus window in xy window
+var iMonitorChannel%;	' channel number for monitor position display in xy window
+var StimHandle%;	' handle for stimulus application
+var cmNWavemarks% := 0;
+var cmWavemarkPorts%[16];
+var cmNContinuous% := 0;
+var cmContinuousPorts%[16];
+
+' Stimulus location stuff
+var iStimX%[8];
+var iStimY%[8];
+var iStimIndex%;
+var cmScreenMMX := 400;  'we will assume that the 0,0 coordinate of fixation is at the center of the screen, and calculate the screen size from there
+var cmScreenMMY := 300;
+var cmScreenXDeg;  'Defined as the distance from the center of the screen to the edge, for ease with creating the LookingAtScreen%() function
+var cmScreenYDeg;
+var screenMMPerDegree;
+
+' Initialized logging
+LogInit(1);
+
+' initialize filenames for remote case. The filenames must be coordinated so that the 'remote' 
+' name is the filename as viewed from the remote machine. The 'local' name is the same
+' file but viewed from the local machine.
+
+cmRemoteGratingParametersFile$ := "s:\\cmouse-grating-parameters.txt";
+cmLocalGratingParametersFile$ := GetStimDir$(1) + "cmouse-grating-parameters.txt";
+
+
+'Note: this has been stolen from Tuning - Henry is having crashing problems and he believes that using the
+'standard recording setup abolishes them
+' Fetch electrode information. 
+docase
+case UsePlexon% = 1 then
+    cmNWavemarks% := 13;  '13 wavemarks on the micro for plexon
+    cmNContinuous% := 0;  'no continuous on the micro for plexon
+    var i%;
+    for i% := 0 to 12 do
+        cmWavemarkPorts%[i%] := i%;
+    next;
+case UsePlexon7WM15CN% = 1 then 
+    cmNWavemarks% := 7;  '7 wavemarks
+    cmNContinuous% := 15;  '15 continuous
+    for i% := 0 to 7 do
+        cmWavemarkPorts%[i%] := i%;
+    next;
+else
+    cmNWavemarks% := GetWavemarkPorts%(cmWavemarkPorts%[]);
+    cmNContinuous% := GetContinuousPorts%(cmContinuousPorts%[]);
+endcase;
+
+
+' Dialog
+if AcuteCoolMouseDialog%() <> 1 then
+    halt;
+endif
+
+
+
+
+
+' Assign channel numbers for eye X,Y and trigger. 
+XChannel% := 21;
+YChannel% := 22;
+TriggerChannel% := 23;
+ReadyChannel% := 24;
+
+ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 31;  'Keyboard (default) is highest non-electrode channel used by this function
+
+
+CreateSampleConfiguration();
+
+
+' Get display windows ready
+InitializeWindows();
+
+' Prepare the toolbar buttons
+InitializeToolbar();
+
+
+'===============================================================================================
+
+
+
+var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
+var tLast:=-1;		' last time we checked for a trigger. 
+var xEye, yEye;		' eye positions
+var tLastUpdate:=-1;	' last time view was updated
+var vTrigger;		' set by NextTime to indicate trigger transition
+var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
+var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
+var tTrigger:=-1;	' temp var for newly discovered trigger times
+var tTrigger2:=-1;  'temp var for trigger times, used to check for infinitely narrow crosstalk
+var tStimOn:=-1;	' time that stim was turned on. Used to measure spike rates 
+
+
+' Constants for states
+const stateStartTrial%:=0;		' Start trial state
+const stateWaitForFixPtOn%:=1;		' Waiting for fixation point return trigger (on)
+const stateWaitForBlank%:=2;		' Waiting for fixation point return trigger (off)
+const stateWaitForStimOn%:=3;		' Wait for stimulus return trigger (on)
+const stateWaitForStimOff%:=4;		' Wait for stimulus return trigger (off)
+const stateWaitForAcquisition%:=5;	' Waiting for subject to acquire fixation point
+const stateHoldFixation%:=6;		' Holding fixation point
+const stateAbort%:=7;			' Failed trial state
+const stateMaintainFixation%:=8;	' Maintaining fixation (stim off period)
+const stateInterTrialInterval%:=9;	' time out after failed trial
+const stateVSGWait%:=10;		' wait for vsg to send ready signal #1
+const stateVSGWaitConfirm%:=11;		' waif for vsg to send ready signal #2
+const stateTrialCompleted%:=12;		' trial has been completed successfully
+const stateDone%:=13;
+const stateVerifyBlank% := 14;
+var iState% := stateVSGWait%;	' present state
+
+var nTrialsStarted%:=0;
+var nTrialsCompleted%:=0;
+var nTrialsAborted% :=0;		' 
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+	if tStart > 0 then tStateStart := tStart; endif;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc CreateSampleConfiguration()
+	var index;
+	SampleClear(); 'Set standard sampling state
+    SampleChannels(64);  '32 does not work, we need more!
+	SampleAutoFile(0); 'Enable automatic file naming
+    
+	' Set path for new data files
+	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3, 1);
+	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1, 1);
+	SampleAutoName$(dataCellName$ + "_cm_000");
+	SampleAutoFile(1);
+        
+	' channel to look for ready signal from vsg
+	SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+	SampleComment$(ReadyChannel%,"VSG Ready");
+	SampleTitle$(ReadyChannel%,"VSG Ready");    
+    
+    'Note: this has been stolen from Tuning - Henry is having crashing problems and he believes that using the
+    'standard recording setup abolishes them
+    ' Set up channels for sampling electrodes.
+    if cmCollectElectrodeData% = 1 then
+        var i%;
+        docase
+        case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
+            CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
+        case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
+            CreateElectrodeSamplingConfiguration7WM15CN(); 
+        case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
+            CreateElectrodeSamplingConfiguration15WF15WF2k();
+        case UsePlexon24WF% = 1 then
+            CreateElectrodeSamplingConfiguration24WF(); 
+        case JoePlexon1% = 1 then
+            CreateJoePlexon1SamplingConfigurationMaster();
+        case JoePlexon2% = 1 then
+            message("Electrode Configuration JoePlexon2 is not yet implemented!");
+            halt;
+        else
+            ' Electrodes: wavemark/continuous
+            ' 12/6/2010
+            ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
+            ' and M waveform channels. 
+            '        for i% := 0 to cmNWavemarks%-1 do
+            '            SampleWaveMark(i% + 1, cmWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+            '            SampleTitle$(i% + 1, "WMrk " + str$(cmWavemarkPorts%[i%])); 
+            '        next
+            '        for i% := 0 to cmNContinuous%-1 do
+            '            SampleWaveform(cmNWavemarks% + i% + 1, cmContinuousPorts%[i%], 20000);
+            '            SampleTitle$(cmNWavemarks% + i% + 1, "Cont " + str$(cmContinuousPorts%[i%]));
+            '        next
+            CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
+        endcase;
+    endif;
+    
+    
+    
+	SampleSequencer(script$ + "Tuning.pls");
+	SampleOptimise(2, 2, Get1401Type%(), 2, 50);  'Set optimise mode (do this last)
+	SampleMode(1); 'Continuous sampling
+end;
+
+
+
+proc InitializeWindows()
+
+	'Open the data sampling window
+	DataWindow% := FileNew(0,4);
+	Window(-0.235849,52.746,97.2484,99.8856);
+    XRange(0, 30);
+	View(DataWindow%).WindowVisible(1);
+
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitilizeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+	ToolbarSet(1,"Start",Start%);
+	ToolbarSet(2,"Stop", Stop%);
+	ToolbarEnable(2,0);
+	Toolbar("Go", 0x3ff);
+
+end;
+
+
+' Used to hard-quit from toolbar. This will close data files without saving!!!
+' It is important that this function be disabled once sampling is started!!!
+
+func Quit%()
+	FileClose(-1,-1);
+	return 0;
+end;
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+	var CommandLine$;
+	var Extras$;
+    var RemoteArg$;
+    var remoteExtras$;
+    var i%;
+    
+	SampleStart(0); 'Start sampling
+    
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");
+
+    Extras$ := " -b gray -p 2 -A " + " -d " + GetDistanceToScreenMM$() + " -g " + GetGratingParameters$("Stimulus");
+    if GetUseRemoteStimulus%() = 1 then
+        
+        ' We only use remote parameters file if the remote is 192.168.x.x, not 127.0.0.1
+        if InStr(GetRemoteStimulusIP$(), "127.0.0.1") = 0 then
+            LogStatus("Start()", "Remote stimulus on a local port.");
+            cmUseGratingParametersFile% := 1;
+            RemoteExtras$ := " -r " + cmRemoteGratingParametersFile$;
+            
+            ' Clear remote grating parameters file before we start cmouse
+            i% := FileDelete(cmLocalGratingParametersFile$);
+            LogStatus("Start()", "delete " + cmLocalGratingParametersFile$ + " status " + str$(i%));
+        endif
+                
+        ' Command line in this case has remote ip and port...
+        RemoteArg$ := " " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " cmouse ";
+       	CommandLine$ := "cmd /c " + bin$ + "\\remote " + RemoteArg$ + Extras$ + RemoteExtras$;
+    else
+       	CommandLine$ := "cmd /c " + bin$ + "\\cmouse" + Extras$;
+    endif;
+    
+	'ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);
+	ToolbarEnable(1,0);
+	View(DataWindow%);
+	Yield(.1);
+    
+	'Begin the stimulus program.
+	LogStatus("Start()", CommandLine$);
+	StimHandle% := ProgRun(CommandLine$,1);
+	if StimHandle% <0 then 
+		Message("Could not start stimulus."); 
+		SampleStop();
+		halt; 
+	endif
+
+	return 1;	
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+    
+	' Disable idle process func
+	ToolbarSet(0,"");
+
+	' Tell stim app to shut down
+	SafeSampleKey("Q");
+	Yield(1.0);
+	SampleStop();
+    
+    ' if remote, check for updated stimulus
+    if GetUseRemoteStimulus%() = 1 and InStr(GetRemoteStimulusIP$(), "127.0.0.1") > 0 then
+        if FileOpen(cmLocalGratingParametersFile$, 8, 0) < 0 then
+            LogError("Stop%()", "Cannot open registry parameters file. Saved grating parameters cannot be pushed to registry.");
+        else
+            var stmp$;
+            Read(stmp$);
+            LogStatus("Stop%()", "Got grating parameters from cmouse: " + stmp$);
+            FileClose();
+            SaveGratingParameters("Stimulus", stmp$);
+        endif
+    endif
+    return 0;
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func GetStimX()
+	return FixationX;
+end;
+
+func GetStimY()
+	return FixationY;
+end;
+
+proc GetAcuteCoolMouseParameters()
+    var key$;
+    key$ := GetRegistryKey$(1) + "\\AcuteCoolMouse";
+    cmCollectElectrodeData% := GetIntRegistryValue%(key$, "CollectElectrodeData", cmCollectElectrodeData%);
+end
+
+proc SaveAcuteCoolMouseParameters()
+    var key$;
+    key$ := GetRegistryKey$(1) + "\\AcuteCoolMouse";
+    SetIntRegistryValue(key$, "CollectElectrodeData", cmCollectElectrodeData%);
+ end
+
+
+func AcuteCoolMouseDialog%()
+    var status% := 0;
+    GetAcuteCoolMouseParameters();
+    
+    DlgCreate("Acute Cool Mouse Parameters");
+    DlgCheck(1, "Sample From Electrodes");
+    DlgAllow(0, 0);
+    status% := DlgShow(cmCollectElectrodeData%);
+    if status% = 1 then
+        SaveAcuteCoolMouseParameters();
+    endif
+    return status%;
+end
+
