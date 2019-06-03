@@ -1,0 +1,61 @@
+
+' ============================================================================ '
+' Serial Port constants
+' ============================================================================ '
+const serialCOMPort% := 5; 
+const serialBaudRate% := 115200;
+const serialDataBits% := 8;
+const serialParity% := 0;
+const serialStopBits% := 1;
+const serialFlowCtrl% := 0;
+
+var neuropixelStatus%;
+var serialStatus%;
+var autoNameStr$;
+autoNameStr$ := "fakeFolder_001";
+
+
+'''Open Serial Port
+SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
+
+
+'''Send START signal to listener
+neuropixelStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "START " + autoNameStr$, "\n");
+
+'''If listener fails to acknowledge start of recording, inform user, close serial port, quit
+if neuropixelStatus% = 0 then
+    message("SpikeGLX recording did not successfully start!  Quitting!"); 
+    SerialClose(serialCOMPort%);
+    Halt;
+endif;
+
+'''If recording is started, allow recording to continue until user decides to stop it
+message("Waiting...close serial connection by pressing OK");
+
+'''Send STOP signal to listener
+serialStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "STOP", "\n");
+
+'''Close serial port regardless of outcome
+SerialClose(serialCOMPort%);
+
+'''If listener does not report recording stopped, inform user
+if serialStatus% = 0 then
+    message("Warning! SpikeGLX recording may not have stopped!\nPlease manually stop SpikeGLX!");
+endif;
+
+'''End of testing script
+
+
+
+'---- Subfunction SendSerialMsgNeuropixel----
+func SendSerialMsgNeuropixel(port%, msg$, term$)
+    var buffer$;
+    var status% := 1;
+    SerialWrite(port%, msg$, term$);
+    SerialRead(port%, buffer$, term$);
+    if not (buffer$ = "ACK") then
+        PrintLog("[ERROR]: Failed to receive ACK from imaging acq machine\n");
+        status% := 0;
+    endif
+    return status%;
+end;
