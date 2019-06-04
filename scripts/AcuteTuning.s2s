@@ -270,6 +270,8 @@ const statePulsedOpto%:=25;
 const stateWaitPulsedOpto%:=26;
 const stateWaitCameraTrigger%:=27;
 const stateWaitCameraBaselinePeriod%:=28;
+const stateSendNeuropixelStart%:=29;  'we are not sure if we can even trigger the GLX remotely.  Keep skeleton as there is a good chance we will need this in the future for other software.
+
 
 var iState% := stateVSGWait%;	' present state
 
@@ -286,13 +288,15 @@ var triggeredCamera% := 0;
 ' ============================================================================ '
 ' Serial Port constants
 ' ============================================================================ '
-const serialCOMPort% := 1;
+const serialCOMPort% := 5; 
 const serialBaudRate% := 115200;
 const serialDataBits% := 8;
 const serialParity% := 0;
 const serialStopBits% := 1;
 const serialFlowCtrl% := 0;
 
+var neuropixelStatus%;
+var autoNameStr$;
 var stimOffTime;
 var tOpt;
 var pulseFound%;
@@ -327,12 +331,15 @@ func IdleProcessing%()
             'Yield(1.0);
             tLastTrigger := tFall;
             'ChangeStateTo(stateCheckTurnOnOpto%, tFall);
-            if tunCameraMode% = cameraModeWait% then
+            docase
+            case tunDoNeuropixel% = 1 then
+                ChangeStateTo(stateSendNeuropixelStart%, tFall);
+            case tunCameraMode% = cameraModeWait% then
                 ChangeStateTo(stateWaitCameraTrigger%, tFall);
             else
                 ChangeStateTo(stateInterTrialInterval%, tFall);
                 'ChangeStateTo(stateCheckTurnOnOpto%, tFall);
-            endif;
+            endcase;
         else
             if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                 LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
@@ -340,6 +347,22 @@ func IdleProcessing%()
             endif;
         endif;
         
+        
+        
+    case iState% = stateSendNeuropixelStart% then
+        'We would do one of two things here, either trigger a DIG I/O line up, or send a 
+        'serial instruction (and wait for a return serial acknowledgment), but we are not
+        'certain at this moment that either will work.
+        
+        neuropixelStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "START " + autoNameStr$, "\n");
+        if neuropixelStatus% = 0 then
+            message("SpikeGLX recording did not successfully start!  Quitting!"); 
+            Stop%();
+        endif;
+        
+        ChangeStateTo(stateInterTrialInterval%, tFall);  'this will allow us to go forward in the event we accidentally check the DoNeuropixel box
+        
+        'ChangeStateTo(stateInterTrialInterval%, someTimingValueHere);  'If implemented, put in a real time for tStateStart
         
     case iState% = stateWaitCameraTrigger% then
         if View(DataWindow%).FindPulseUp%(CameraTriggerChannel%, -1, tRise, tFall) = 1 then
@@ -673,7 +696,7 @@ func IdleProcessing%()
         docase
         case nTrialsCompleted% = (tunNAdvances%+1)*tunNRepeats% then
             ' We're all done
-            ChangeStateTo(stateDone%, tNow);
+            'ChangeStateTo(stateDone%, tNow);  'This does nothing, stateDone% does not exist!
             Stop%();
             iStatus% := 0;
         case (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 then 'toggle tunOptoState at the end of a block, use interblock time
@@ -733,6 +756,21 @@ proc SendSerialMsg(port%, msg$, term$)
         PrintLog("[ERROR]: Failed to receive AWK from imaging acq machine\n");
     endif
 end;
+
+
+func SendSerialMsgNeuropixel(port%, msg$, term$)
+    var buffer$;
+    var status% := 1;
+    SerialWrite(port%, msg$, term$);
+    SerialRead(port%, buffer$, term$);
+    if not (buffer$ = "ACK") then
+        PrintLog("[ERROR]: Failed to receive ACK from imaging acq machine\n");
+        PrintLog("Received " + buffer$ + " instead\n");
+        status% := 0;
+    endif
+    return status%;
+end;
+
 
 func GetPlotXCoord(nTrials%)
     return tunValues[tunValuesIndices%[nTrials%]];
@@ -1126,6 +1164,11 @@ proc CreateSampleConfiguration()
 '	SampleAutoFile(0); 'Enable automatic file naming
 	SampleAutoComment(0); 'Prompt for comment after sampling
 	SampleAutoCommit(60); 'Seconds between each file commit
+    if tunDoNeuropixel% = 1 then
+        SampleBigFile(0);  'Create an .smr file INSTEAD of .smrx so that Scottie's analysis suite can read it, max file size is 2GB
+        'SampleBigFile(1);  'Create a "big" .smr file, max file size 1 TB.  It is not known if Scottie's analysis suite can read these.
+    endif;
+    
     
     ' Set path for new data files, and for those saved automatically
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
@@ -1149,7 +1192,7 @@ proc CreateSampleConfiguration()
     docase
         
     case tunType$ = tunTypeContrast$ then 
-        SampleAutoName$(dataCellName$ + "_con_000");
+        autoNameStr$ := SampleAutoName$(dataCellName$ + "_con_000");
         tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1167,7 +1210,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  'shorter, should work the same as above commented line, keeping old line for contrast only just in case...
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeOrientation$ then 
-        SampleAutoName$(dataCellName$ + "_ori_000");
+        autoNameStr$ := SampleAutoName$(dataCellName$ + "_ori_000");
         tunNRepeats% := tunOriNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1184,7 +1227,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeSpatial$ then 
-        SampleAutoName$(dataCellName$ + "_spa_000");
+        autoNameStr$ := SampleAutoName$(dataCellName$ + "_spa_000");
         tunNRepeats% := tunSpatialNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1201,7 +1244,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeTemporal$ then 
-        SampleAutoName$(dataCellName$ + "_tem_000");
+        autoNameStr$ := SampleAutoName$(dataCellName$ + "_tem_000");
         tunNRepeats% := tunTemporalNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1218,7 +1261,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeArea$ then 
-        SampleAutoName$(dataCellName$ + "_area_000");
+        autoNameStr$ := SampleAutoName$(dataCellName$ + "_area_000");
         tunNRepeats% := tunAreaNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1235,7 +1278,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeID$ then 
-        SampleAutoName$(dataCellName$ + "_id_000");
+        autoNameStr$ := SampleAutoName$(dataCellName$ + "_id_000");
         tunNRepeats% := tunIDNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1268,14 +1311,14 @@ proc CreateSampleConfiguration()
         next
         
     case tunType$ = tunTypeDriftingBar$ then 
-        SampleAutoName$(dataCellName$ + "_bar_000");
+        autoNameStr$ := SampleAutoName$(dataCellName$ + "_bar_000");
         tunNAdvances% := tunBarNSteps%;
         tunNRepeats% := tunBarNRepeats%*(1+tunDoOpto%);
         GetRepeatedParameterProgression%(tunBarNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunBarMinOrientation, tunBarMaxOrientation, 0, tunBarProgression%);
         tunNValues% := (tunBarNSteps%+1)*tunBarNRepeats%*(1+tunDoOpto%);
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeNullTest$ then 
-        SampleAutoName$(dataCellName$ + "_nulltest_000");
+        autoNameStr$ := SampleAutoName$(dataCellName$ + "_nulltest_000");
         tunNRepeats% := tunNullTestNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1292,14 +1335,28 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeCRG$ then 
-        SampleAutoName$(dataCellName$ + "_crg_000");
+        autoNameStr$ := SampleAutoName$(dataCellName$ + "_crg_000");
         tunNAdvances% := tunCRGMNSteps%;
         tunNRepeats% := tunCRGMNRepeats%*(1+tunDoOpto%);
         GetRepeatedParameterProgression%(tunCRGMNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunCRGMMinContrast, tunCRGMMaxContrast, 1, tunCRGMProgression%);
         tunNValues% := (tunCRGMNSteps%+1)*tunCRGMNRepeats%*(1+tunDoOpto%);
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+    case tunType$ = tunTypeStimTrigPSTH$ then
+        autoNameStr$ := SampleAutoName$(dataCellName$ + "_stp_000");
+        tunNRepeats% := 1;
+        tunNAdvances% := tunSTPNStims%-1;
+        if tunNAdvances% > 0 then
+            GetRepeatedParameterProgression%(tunSTPNStims%, tunNRepeats%, tunValues[], tunValuesIndices%[], 0, 0, 1, tunContrastProgression%);
+        else  'cannot run GRPP on a value of 0 steps, simply use minimum value
+            tunValues[0] := 0;
+            tunValuesIndices%[0] := 0;
+        endif;
+        tunNValues% := (tunSTPNStims%)*tunNRepeats%;
+        tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+    case tunType$ = tunTypeCSD$ then
+        autoNameStr$ := SampleAutoName$(dataCellName$ + "_csd_000");
     else
-        SampleAutoName$(dataCellName$ + "_tun_000");
+        autoNameStr$ := SampleAutoName$(dataCellName$ + "_tun_000");
     endcase;
     
     printlog("values are %f\n",tunValues[]);
@@ -1396,6 +1453,7 @@ end;
 func Stop%()
     var i%, j%, m%, mylen%;
     var fn$;
+    var serialStatus%;
     var chanToExport%[30];
     
 	' Disable idle process func
@@ -1416,7 +1474,18 @@ func Stop%()
     else
         Yield(0.1);
     endif
-
+    
+    docase
+    case tunDoNeuropixel% = 1 and neuropixelStatus% = 1 then 
+        serialStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "STOP", "\n");
+        SerialClose(serialCOMPort%);
+        if serialStatus% = 0 then
+            message("Warning! SpikeGLX recording may not have stopped!\nPlease manually stop SpikeGLX!");
+        endif;
+    case tunDoNeuropixel% = 1 and neuropixelStatus% = 0 then 'On failure to start recording, neuropixelStatus% will be 0, don't try stopping recording that didn't start
+        SerialClose(serialCOMPort%);
+    endcase;
+    
 	SampleStop();
 
 	ProgKill(StimHandle%);
@@ -1633,6 +1702,18 @@ proc WriteParameterFile()
 			Print("Values: " + tunValuesStringified$ + "\n");
             Print("\n");
         
+        case tunType$ = tunTypeStimTrigPSTH$ then
+
+            Print("Type:                  : Stimulus Triggered PSTH\n");
+			Print("NStims,StimISI: %d,%f\n", tunSTPNStims%, tunSTPISI);
+            Print("\n");
+        
+        case tunType$ = tunTypeCSD$ then        
+
+            Print("Type:                  : Current Source Density\n");
+			Print("NStims,StimISI: %d,%f\n", tunCSDNFlips%, tunCSDISI);
+            Print("\n");
+        
 		else
 
 			Print("TuningCurve Error - unknown value for tunType$: %s\n", tunType$);
@@ -1727,7 +1808,12 @@ func Start%()
     if tunCameraMode% = cameraModeTrigger% then
         SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
         SendSerialMsg(serialCOMPort%, GetParameterString$(), "\n");
-    endif
+    endif;
+    
+    'For serial communications with Neuropixel, use the same values (I think??) but do not send initial message
+    if tunDoNeuropixel% =  1 then
+        SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
+    endif;
     
 '    var XHairArg$;
 	
@@ -1880,6 +1966,15 @@ func Start%()
         
         Tune$ := " -F " + tunMSeqLocation$ + tunCRGBal$ + Str$(tunCRGMFramesPerTurn%) + "," + Str$(tunCRGMFirstTerm%) + "," + Str$(tunCRGNumTerms%) + "," + Values$;  'Values$ indicates the contrasts
         
+    case tunType$ = tunTypeStimTrigPSTH$ then
+        'Just do a contrast tuning curve with values of 0
+        Tune$ := " -C " + Values$;
+        
+    case tunType$ = tunTypeCSD$ then        
+
+        Tune$ := CreateFFFlashString$(tunCSDNFlips%,tunCSDISI);
+        Stim$ := "";  'We do not want any stim value set
+
     else
 
         Message("Error - unknown value for tunType$: " + tunType$);
@@ -2218,3 +2313,28 @@ func BurstCount(nSpikes%,times[],startInd%)
     return nBurstsFound%;
     
 end
+
+
+
+
+'--------- CreateFFFlashString$ -----------
+func CreateFFFlashString$(NFlips%,ISI);
+    var outString$;
+    var framesPerTermLocal%;
+    var ValuesLocal$;
+    var i%;
+    
+    'Make a long string of black followed by white flashes
+    for i% := 1 to NFlips% do
+        ValuesLocal$ := ValuesLocal$ + "01";
+    next
+    
+    
+    'Get number of frames per flash
+    framesPerTermLocal% := dataScreenHz*ISI;  
+    
+    outString$ := " -e " + ValuesLocal$ + " -L " + Str$(framesPerTermLocal%) + " ";
+    
+    return outString$;
+end
+
