@@ -2,7 +2,7 @@
 ' ============================================================================ '
 ' Serial Port constants
 ' ============================================================================ '
-const serialCOMPort% := 5; 
+const serialCOMPort% := 8; 
 const serialBaudRate% := 115200;
 const serialDataBits% := 8;
 const serialParity% := 0;
@@ -12,12 +12,13 @@ const serialFlowCtrl% := 0;
 var neuropixelStatus%;
 var serialStatus%;
 var autoNameStr$;
-autoNameStr$ := "fakeFolder_001";
+autoNameStr$ := "fakeFolder_004";
 
 
 '''Open Serial Port
-SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
-
+var ret;
+ret := SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
+printlog("SerialOpen return %d\n", ret);
 
 '''Send START signal to listener
 neuropixelStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "START " + autoNameStr$, "\n");
@@ -49,13 +50,26 @@ endif;
 
 '---- Subfunction SendSerialMsgNeuropixel----
 func SendSerialMsgNeuropixel(port%, msg$, term$)
-    var buffer$;
-    var status% := 1;
-    SerialWrite(port%, msg$, term$);
-    SerialRead(port%, buffer$, term$);
-    if not (buffer$ = "ACK") then
-        PrintLog("[ERROR]: Failed to receive ACK from imaging acq machine\n");
-        status% := 0;
+var buffer$;
+var count% := 60;
+var status% := 0;
+SerialWrite(port%, msg$, term$);
+while count% > 0 and status% < 1 do
+    count% := count% - 1;
+    status% := SerialRead(port%, buffer$, term$);
+    printlog("read status %d buffer %s\n", status%, buffer$);
+    if status% > 0 then
+        if not (buffer$ = "ACK") then
+            PrintLog("[ERROR]: Failed to receive ACK from imaging acq machine\n");
+            message("Received error from Neuropixel listener!  Error is\n" + buffer$);
+            status% := 0;
+            break;
+        endif
     endif
-    return status%;
+wend;
+if status% > 0 then
+    return 1;
+else
+    return 0;
+endif    
 end;

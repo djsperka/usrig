@@ -172,6 +172,7 @@ var tunSTPISI;
 'Current Source Density variables
 var tunCSDNFlips%;
 var tunCSDISI;
+var tunCSDNStims%;
 
 
 
@@ -186,6 +187,7 @@ var dontToggleOpto% := 0;  'by default, toggle opto on every block
 'var tunRecOptoBox% := 0;      'record the output from the opto box?
 'var tunRecStimulator% := 0;   'record the stimulator?
 var tunOptoNPulses%;
+var optoDialogRun%;
 var tunPulsedOptoOnset;
 var tunPulsedOptoWidth;
 var tunPulsedOptoIPI;
@@ -198,8 +200,6 @@ var tunPulsedOptoIPIClockSteps%;
 
 ' Strings that hold grating parameters
 var tunGratingParams$;
-
-
 
 
 
@@ -359,11 +359,6 @@ func TuningCurveScriptDialog%()
     '	if i%=tundlgOrientationButton% or i%=tundlgContrastButton% or i%=tundlgSpatialButton% or i%=tundlgTemporalButton% or i%=tundlgAreaButton% then
     if i% = 1 then
         
-        'We are using the "opto" settings to trigger the stimulator for neuropixel
-        if tunDoNeuropixel% = 1 then
-            tunDoOpto% := 1;
-        endif;
-        
         if tunDoOpto% = 0 then  'it will be useful to make sure that tunOptoState% is 0 if we're not at all doin Opto
             tunOptoState% := 0;
         endif;
@@ -406,11 +401,14 @@ func TuningCurveScriptDialogChanged%(item%)
     'DlgEnable(DlgValue(7) > 0,7);
     
     'This disables the "OK" button (though it will have different labels) until an experiment is selected
-    if TuningCurveScriptDialogAllowOK% = 1 then
+    docase
+    case DlgValue(10) = 1 and optoDialogRun% = 0 then
+        DlgEnable(0,-1);  'disable "OK" is opto is checked but dialog is not run
+    case TuningCurveScriptDialogAllowOK% = 1 then
         DlgEnable(1,-1);  'enable "OK" 
     else
         DlgEnable(0,-1);  'Otherwise disable "OK"
-    endif;
+    endcase;
     
     return 1;
 end
@@ -689,14 +687,16 @@ end;
 proc GetCurrentSourceDensityParameters()
 	var stmp$;
 	var key$;
-	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\CRGM"; 
+    key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\CRGM"; 
+    tunCSDNStims% := GetIntRegistryValue%(key$, "CSDNStims", tunCSDNStims%);
     tunCSDNFlips% := GetIntRegistryValue%(key$, "CSDNFlips", tunCSDNFlips%);
     tunCSDISI := GetFloatRegistryValue(key$, "CSDISI", tunCSDISI);
 end;
 
 proc SaveCurrentSourceDensityParameters()
 	var key$;
-	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\CRGM";
+    key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\CRGM";
+    SetIntRegistryValue(key$, "CSDNStims", tunCSDNStims%);
     SetIntRegistryValue(key$, "CSDNFlips", tunCSDNFlips%);
     SetFloatRegistryValue(key$, "CSDISI", tunCSDISI);
 end;
@@ -1343,8 +1343,8 @@ func StimTrigPSTHDialog%()
 	var i%;
 	GetStimTrigPSTHParameters();
 	DlgCreate("Run Stimulus Triggered PSTH");
-	DlgInteger(1, "Number of E-Stims", 0, 10000);
-	DlgReal(2, "Interstimulation Interval (s)", 0.001, 360);
+    DlgInteger(1, "Number of E-Stims", 0, 10000);
+	DlgReal(2, "E-Stim ISI (s)", 0.001, 360);
     
 	i% := DlgShow(tunSTPNStims%, tunSTPISI);
 
@@ -1397,11 +1397,12 @@ func CurrentSourceDensityDialog%()
 	var iReturn%;
 	var i%;
 	GetCurrentSourceDensityParameters();
-    DlgCreate("Run Stimulus Triggered PSTH");
-	DlgInteger(1, "Number of Screen Flips", 0, 10000);
-	DlgReal(2, "Inters-flip Interval (s)", 0.001, 360);
+    DlgCreate("Run Current Source Density");
+    DlgInteger(1, "Number of Stimuli", 0, 10000);
+	DlgInteger(2, "Number of Screen Flips per stim", 0, 10000);
+	DlgReal(3, "Inter-flip Interval (s)", 0.001, 360);
 
-	i% := DlgShow(tunCSDNFlips%, tunCSDISI);
+	i% := DlgShow(tunCSDNStims%, tunCSDNFlips%, tunCSDISI);
 
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
@@ -1510,23 +1511,23 @@ func TunOptoDialog%()
     labels$[2] := "Random First";
     labels$[3] := "Opto On All Blocks";
 	GetTunOptoParameters();
-	DlgCreate("Optogenetics Parameters");
-    DlgGroup("Common Parameters", 1, 1, 38, 5);
-    DlgReal(1, "Opto Voltage Out (V)",0.0002,5,20,2); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
-    DlgList(2, "Order of blocks",labels$,4,20,3);
+	DlgCreate("Optogenetics Parameters",0,0,45);
+    DlgGroup("Common Parameters", 1, 1, 43, 5);
+    DlgReal(1, "Opto Voltage Out (V)",0.0002,5,30,2); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+    DlgList(2, "Order of blocks",labels$,4,25,3);
     DlgCheck(3, "Use pulsing opto",2,4);
     DlgCheck(4, "Record Laser Diode",2,5);
-    DlgGroup("Wrap-Around Opto", 1, 6, 38, 4);
-    DlgReal(5, "PreStimulus Opto On (s)",0,10,20,7);
-    DlgReal(6, "PostStimulus Opto On (s)",0,10,20,8);
+    DlgGroup("Wrap-Around Opto", 1, 6, 43, 4);
+    DlgReal(5, "PreStimulus Opto On (s)",0,10,30,7);
+    DlgReal(6, "PostStimulus Opto On (s)",0,10,30,8);
     DlgCheck(7, "Keep Opto on between stims",2,9);
-    DlgGroup("Pulsing Opto", 1, 10, 38, 6);
-    DlgInteger(8, "Opto # Pulses ",0,1000,20,11);
-    DlgReal(9, "Opto Period Onset (s)",0,stimdur,20,12);
-    DlgReal(10, "Opto Pulse Width (s)",0,stimdur,20,13);
-    'DlgReal(11, "Opto Interpulse Interval (s)",0,100,20,14);
-    DlgReal(11, "Min Opto Interpulse Interval (s)",0,100,20,14);
-    DlgReal(12, "Max Opto Interpulse Interval (s)",0,100,20,15);
+    DlgGroup("Pulsing Opto", 1, 10, 43, 6);
+    DlgInteger(8, "Opto # Pulses ",0,1000,30,11);
+    DlgReal(9, "Opto Period Onset (s)",0,stimdur,30,12);
+    DlgReal(10, "Opto Pulse Width (s)",0,stimdur,30,13);
+    'DlgReal(11, "Opto Interpulse Interval (s)",0,100,30,14);
+    DlgReal(11, "Min Opto Interpulse Interval (s)",0,100,30,14);
+    DlgReal(12, "Max Opto Interpulse Interval (s)",0,100,30,15);
     
     'DlgCheck(6, "Record control box voltage");
     'DlgCheck(7, "Record stimulator");
@@ -1549,7 +1550,8 @@ func TunOptoDialog%()
     ' before things proceed. 
     'tunMaximalDiam := tunAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
 	if i% = 1 then
-		SaveTunOptoParameters();
+        SaveTunOptoParameters();
+        optoDialogRun% := 1;  'Force dialog to be run if using opto
         docase
         case tunOptoStartState% = 3 then
             dontToggleOpto% := 1;

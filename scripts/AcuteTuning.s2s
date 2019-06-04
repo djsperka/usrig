@@ -288,7 +288,7 @@ var triggeredCamera% := 0;
 ' ============================================================================ '
 ' Serial Port constants
 ' ============================================================================ '
-const serialCOMPort% := 5; 
+const serialCOMPort% := 8; 
 const serialBaudRate% := 115200;
 const serialDataBits% := 8;
 const serialParity% := 0;
@@ -353,6 +353,9 @@ func IdleProcessing%()
         'We would do one of two things here, either trigger a DIG I/O line up, or send a 
         'serial instruction (and wait for a return serial acknowledgment), but we are not
         'certain at this moment that either will work.
+        'autoNameStr$ := FileName$(2) + FileName$(3) + FileName$(4);
+        autoNameStr$ := dataDataSet$ + "_" + FileName$(-4);
+        printlog("Sending START to Neuropixel, using name string '%s'\n",autoNameStr$);
         
         neuropixelStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "START " + autoNameStr$, "\n");
         if neuropixelStatus% = 0 then
@@ -385,6 +388,7 @@ func IdleProcessing%()
         
         
     case iState% = stateCheckTurnOnOpto% then
+        'printlog("tunOptoUsePulse is %d and tunOptoState is %d and dontToggleOpto is %d\n",tunOptoUsePulse%,tunOptoState%,dontToggleOpto%);
         docase
         case tunDoOpto% = 0 then 'if this is not an opto trial, just start it
             ChangeStateTo(stateStartTrial%, tNow);
@@ -760,15 +764,27 @@ end;
 
 func SendSerialMsgNeuropixel(port%, msg$, term$)
     var buffer$;
-    var status% := 1;
+    var count% := 60;  'Yikes, it takes a long time to get the Neuropixel stuff ready!
+    var status% := 0;
     SerialWrite(port%, msg$, term$);
-    SerialRead(port%, buffer$, term$);
-    if not (buffer$ = "ACK") then
-        PrintLog("[ERROR]: Failed to receive ACK from imaging acq machine\n");
-        PrintLog("Received " + buffer$ + " instead\n");
-        status% := 0;
-    endif
-    return status%;
+    while count% > 0 and status% < 1 do
+        count% := count% - 1;
+        status% := SerialRead(port%, buffer$, term$);
+        printlog("read status %d buffer %s\n", status%, buffer$);
+        if status% > 0 then
+            if not (buffer$ = "ACK") then
+                PrintLog("[ERROR]: Failed to receive ACK from imaging acq machine\n");
+                message("Received error from Neuropixel listener!  Error is\n" + buffer$);
+                status% := 0;
+                break;
+            endif
+        endif
+    wend;
+    if status% > 0 then
+        return 1;
+    else
+        return 0;
+    endif    
 end;
 
 
@@ -1148,6 +1164,24 @@ proc TuningCurveLabels(iport%)
 			XUnits$("Contrast (%)");
 			ChanTitle$(1, "Chan 1");
             XRange(tunCRGMMinContrast, tunCRGMMaxContrast);
+    
+        case tunType$ = tunTypeCSD$ then
+            'For this, I don't think we actually care, we just want to not throw a warning
+            myTitle$ := s$ + " - CSD = ";
+            myTitle2$ := " - CSD = ";
+			WindowTitle$("Current Source Density - " + s$);
+			XUnits$("Not Meaningful (%)");
+			ChanTitle$(1, "Chan 1");
+            XRange(tunCRGMMinContrast, tunCRGMMaxContrast);  'yeah, whatever
+    
+        case tunType$ = tunTypeStimTrigPSTH$ then
+            'For this, I don't think we actually care, we just want to not throw a warning
+            myTitle$ := s$ + " - STP = ";
+            myTitle2$ := " - STP = ";
+			WindowTitle$("Stim Triggered PSTH - " + s$);
+			XUnits$("Not Meaningful (%)");
+			ChanTitle$(1, "Chan 1");
+            XRange(tunCRGMMinContrast, tunCRGMMaxContrast);  'yeah, whatever
 		else
 
 			Message("TuningCurveLabels Error - unknown value for tunType$: " + tunType$);
@@ -1192,7 +1226,7 @@ proc CreateSampleConfiguration()
     docase
         
     case tunType$ = tunTypeContrast$ then 
-        autoNameStr$ := SampleAutoName$(dataCellName$ + "_con_000");
+        SampleAutoName$(dataCellName$ + "_con_000");
         tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1210,7 +1244,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  'shorter, should work the same as above commented line, keeping old line for contrast only just in case...
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeOrientation$ then 
-        autoNameStr$ := SampleAutoName$(dataCellName$ + "_ori_000");
+        SampleAutoName$(dataCellName$ + "_ori_000");
         tunNRepeats% := tunOriNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1227,7 +1261,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeSpatial$ then 
-        autoNameStr$ := SampleAutoName$(dataCellName$ + "_spa_000");
+        SampleAutoName$(dataCellName$ + "_spa_000");
         tunNRepeats% := tunSpatialNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1244,7 +1278,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeTemporal$ then 
-        autoNameStr$ := SampleAutoName$(dataCellName$ + "_tem_000");
+        SampleAutoName$(dataCellName$ + "_tem_000");
         tunNRepeats% := tunTemporalNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1261,7 +1295,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeArea$ then 
-        autoNameStr$ := SampleAutoName$(dataCellName$ + "_area_000");
+        SampleAutoName$(dataCellName$ + "_area_000");
         tunNRepeats% := tunAreaNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1278,7 +1312,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeID$ then 
-        autoNameStr$ := SampleAutoName$(dataCellName$ + "_id_000");
+        SampleAutoName$(dataCellName$ + "_id_000");
         tunNRepeats% := tunIDNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1311,14 +1345,14 @@ proc CreateSampleConfiguration()
         next
         
     case tunType$ = tunTypeDriftingBar$ then 
-        autoNameStr$ := SampleAutoName$(dataCellName$ + "_bar_000");
+        SampleAutoName$(dataCellName$ + "_bar_000");
         tunNAdvances% := tunBarNSteps%;
         tunNRepeats% := tunBarNRepeats%*(1+tunDoOpto%);
         GetRepeatedParameterProgression%(tunBarNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunBarMinOrientation, tunBarMaxOrientation, 0, tunBarProgression%);
         tunNValues% := (tunBarNSteps%+1)*tunBarNRepeats%*(1+tunDoOpto%);
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeNullTest$ then 
-        autoNameStr$ := SampleAutoName$(dataCellName$ + "_nulltest_000");
+        SampleAutoName$(dataCellName$ + "_nulltest_000");
         tunNRepeats% := tunNullTestNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
@@ -1335,14 +1369,14 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeCRG$ then 
-        autoNameStr$ := SampleAutoName$(dataCellName$ + "_crg_000");
+        SampleAutoName$(dataCellName$ + "_crg_000");
         tunNAdvances% := tunCRGMNSteps%;
         tunNRepeats% := tunCRGMNRepeats%*(1+tunDoOpto%);
         GetRepeatedParameterProgression%(tunCRGMNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunCRGMMinContrast, tunCRGMMaxContrast, 1, tunCRGMProgression%);
         tunNValues% := (tunCRGMNSteps%+1)*tunCRGMNRepeats%*(1+tunDoOpto%);
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeStimTrigPSTH$ then
-        autoNameStr$ := SampleAutoName$(dataCellName$ + "_stp_000");
+        SampleAutoName$(dataCellName$ + "_stp_000");
         tunNRepeats% := 1;
         tunNAdvances% := tunSTPNStims%-1;
         if tunNAdvances% > 0 then
@@ -1354,9 +1388,12 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunSTPNStims%)*tunNRepeats%;
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeCSD$ then
-        autoNameStr$ := SampleAutoName$(dataCellName$ + "_csd_000");
+        SampleAutoName$(dataCellName$ + "_csd_000");
+        tunNValues% := tunCSDNStims%;  'I don't think this does anything, in too much of a hurry to check
+        tunNAdvances% := tunCSDNStims%-1;
+        tunNRepeats% := 1;
     else
-        autoNameStr$ := SampleAutoName$(dataCellName$ + "_tun_000");
+        SampleAutoName$(dataCellName$ + "_tun_000");
     endcase;
     
     printlog("values are %f\n",tunValues[]);
@@ -1969,10 +2006,12 @@ func Start%()
     case tunType$ = tunTypeStimTrigPSTH$ then
         'Just do a contrast tuning curve with values of 0
         Tune$ := " -C " + Values$;
+        tunStimulusDuration := tunSTPISI;  'redefine stimulus duration
         
     case tunType$ = tunTypeCSD$ then        
 
         Tune$ := CreateFFFlashString$(tunCSDNFlips%,tunCSDISI);
+        tunStimulusDuration := tunCSDISI*tunCSDNFlips%*2;  'redefine stimulus duration
         Stim$ := "";  'We do not want any stim value set
 
     else
