@@ -1888,6 +1888,8 @@ func Start%()
     var tempSeqVarValue;
     var tempSeqVarValue%;
     var tempBinDir$;
+    var DGrat$;
+    var DGratParam$;
     
     if renderIsBroken% = 1 then
         message("Variable renderIsBroken has been set!  \nWe are FLYING BLIND, IGNORING ALL INCOMING PULSES!");
@@ -2068,7 +2070,11 @@ func Start%()
         
     case tunType$ = tunTypeDanish$ then
         Tune$ := " -H " + Values$;
-        
+        'Only set DGrat/DGratParam if we're using them
+        DGrat$ := " -s ";
+        DGratParam$ := GetGratingParameters$("Distractor1");  'the donut - this goes FIRST 
+        Stim$ := DGrat$ + DGratParam$ + Stim$;  'Adjust stim for Danish syntax
+    
     else
 
         Message("Error - unknown value for tunType$: " + tunType$);

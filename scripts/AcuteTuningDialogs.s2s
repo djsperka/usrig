@@ -371,6 +371,16 @@ func TuningCurveScriptDialog%()
         
         if tunDoOpto% = 0 then  'it will be useful to make sure that tunOptoState% is 0 if we're not at all doin Opto
             tunOptoState% := 0;
+        else  'If we ARE doing opto, set opto start state here, rather than in Opto dialog, allows us to not open dialog (we got parameters up top)
+            docase
+            case tunOptoStartState% = 3 then
+                dontToggleOpto% := 1;
+                tunOptoState% := 1;
+            case tunOptoStartState% = 2 then
+                tunOptoState% := round(Rand());
+            else
+                tunOptoState% := tunOptoStartState%;
+            endcase;
         endif;
         
         if tunCRGMFirstTerm% > tunCRGMNumTerms% - 100 - (tunStimulusDuration*dataScreenHz) then
@@ -412,8 +422,8 @@ func TuningCurveScriptDialogChanged%(item%)
     
     'This disables the "OK" button (though it will have different labels) until an experiment is selected
     docase
-    case DlgValue(10) = 1 and optoDialogRun% = 0 then
-        DlgEnable(0,-1);  'disable "OK" is opto is checked but dialog is not run
+    'case DlgValue(10) = 1 and optoDialogRun% = 0 then  'we may not use this after all
+    '    DlgEnable(0,-1);  'disable "OK" is opto is checked but dialog is not run
     case TuningCurveScriptDialogAllowOK% = 1 then
         DlgEnable(1,-1);  'enable "OK" 
     else
@@ -1655,16 +1665,18 @@ func TunOptoDialog%()
     'tunMaximalDiam := tunAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
 	if i% = 1 then
         SaveTunOptoParameters();
-        optoDialogRun% := 1;  'Force dialog to be run if using opto
-        docase
-        case tunOptoStartState% = 3 then
-            dontToggleOpto% := 1;
-            tunOptoState% := 1;
-        case tunOptoStartState% = 2 then
-            tunOptoState% := round(Rand());
-        else
-            tunOptoState% := tunOptoStartState%;
-        endcase;
+        'optoDialogRun% := 1;  'Force dialog to be run if using opto, may not use this after all
+    
+        'This is now done in the main dialog if Opto is selected, allows user to NOT open subdialog every time
+        'docase
+        'case tunOptoStartState% = 3 then
+        '    dontToggleOpto% := 1;
+        '    tunOptoState% := 1;
+        'case tunOptoStartState% = 2 then
+        '    tunOptoState% := round(Rand());
+        'else
+        '    tunOptoState% := tunOptoStartState%;
+        'endcase;
         'printlog("Opto start state is %d\n",tunOptoState%);  'yep, works
         
         'do temporary calculation to make sure all pulses will occur during the stimulus
