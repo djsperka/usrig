@@ -50,6 +50,7 @@ const tundlgIDButton% := 19;
 const tundlgSelectTuningFileButton% := 20;
 const tundlgStimPSTHButton% := 21;
 const tundlgCSDButton% := 22;
+const tundlgDanishButton% := 23;
 
 
 const tunTypeNone$ := "None";
@@ -65,7 +66,8 @@ const tunTypeID$ := "I";    ' inner diameter tuning
 'const tunTypeDonut$ := "H";
 'const tunTypeBerliner$ := "B";
 const tunTypeStimTrigPSTH$ := "X";
-const tunTypeCSD$ := "D";
+const tunTypeCSD$ := "CSD";
+const tunTypeDanish$ := "DN";
 var tunType$:=tunTypeNone$;
 
 const tunContextDAQ$ := "DAQ";
@@ -174,6 +176,14 @@ var tunCSDNFlips%;
 var tunCSDISI;
 var tunCSDNStims%;
 
+
+' Danishes
+var tunDanishNSteps%;           ' # steps in outer diameter tuning curve
+var tunDanishNRepeats%;         ' # repeats in outer diameter tuning curve
+var tunDanishMinOuterDiameter;  ' min outer diameter
+var tunDanishMaxOuterDiameter;  ' max outer diameter
+var tunDanishProgression%;      ' if 1, progression is random
+var tunDanishIncludeBlank%;     ' if 1, include "blank" (that is, zero-size donut) in tuning curve
 
 
 ' Optogenetics variables
@@ -320,7 +330,7 @@ func TuningCurveScriptDialog%()
 	DlgButton(tundlgAreaButton%, "Area", TuningCurveAreaDialog%, 30, 17);
     DlgButton(tundlgNullTestButton%, "Null Test", TuningCurveNullTestDialog%, 30, 18);
 	DlgButton(tundlgIDButton%, "InnerDiam", TuningCurveIDDialog%, 30, 19);
-    
+    DlgButton(tundlgDanishButton%, "Danishes", TuningCurveDanishDialog%, 30, 20);
     
     DlgGroup("Non-Grating Stimuli", 1, 21, dlgwid%-2, 2);
     DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 22);
@@ -700,6 +710,31 @@ proc SaveCurrentSourceDensityParameters()
     SetIntRegistryValue(key$, "CSDNFlips", tunCSDNFlips%);
     SetFloatRegistryValue(key$, "CSDISI", tunCSDISI);
 end;
+
+
+proc GetTuningCurveDanishParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\Danish";
+    tunDanishNSteps% := GetIntRegistryValue%(key$, "DanishNSteps", tunDanishNSteps%);
+    tunDanishNRepeats% := GetIntRegistryValue%(key$, "DanishNRepeats", tunDanishNRepeats%);
+    tunDanishMinOuterDiameter := GetFloatRegistryValue(key$, "DanishMinOuterDiameter", tunDanishMinOuterDiameter);
+    tunDanishMaxOuterDiameter := GetFloatRegistryValue(key$, "DanishMaxOuterDiameter", tunDanishMaxOuterDiameter);
+    tunDanishProgression% := GetIntRegistryValue%(key$, "DanishProgression", tunDanishProgression%);
+    tunDanishIncludeBlank% := GetIntRegistryValue%(key$, "DanishIncludeBlank", tunDanishIncludeBlank%);
+end;
+
+
+proc SaveTuningCurveDanishParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\Danish";
+    SetIntRegistryValue(key$, "DanishNSteps", tunDanishNSteps%);
+    SetIntRegistryValue(key$, "DanishNRepeats", tunDanishNRepeats%);
+    SetFloatRegistryValue(key$, "DanishMinOuterDiameter", tunDanishMinOuterDiameter);
+    SetFloatRegistryValue(key$, "DanishMaxOuterDiameter", tunDanishMaxOuterDiameter);
+    SetIntRegistryValue(key$, "DanishProgression", tunDanishProgression%);
+    SetIntRegistryValue(key$, "DanishIncludeBlank", tunDanishIncludeBlank%);
+end;
+
 
 
 
@@ -1451,6 +1486,75 @@ end;
 
 
 
+func TuningCurveDanishDialog%()
+	var iReturn% := 0;
+	var i%;
+    var sValues$;
+    var iValue%:=0;
+    var result[1000];
+    var indices%[1000];
+    
+	GetTuningCurveDanishParameters();
+    
+    
+	DlgCreate("Danish Tuning Curve Parameters");
+	DlgInteger(1, "Number of Steps", 2, 100);
+    'DlgInteger(1, "Number of Stimuli", 1, 100);
+	DlgInteger(2, "Number of Repeats", 1, 1000);
+	DlgReal(3, "Min Outer Diameter", 0.1, 100);
+	DlgReal(4, "Max Outer Diameter", 0.1, 100);
+	DlgCheck(5, "Random Progression");
+    DlgCheck(6, "Include Blank");
+    DlgButton(151, "Core Grating", TunDlgGratingCore%);
+    DlgButton(152, "Donut Grating", TunDlgGratingDonut%);
+    DlgButton(153, "Core Vals -> Donut", TunCoreValsToDonut%);
+    DlgButton(154, "Donut Vals -> Core", TunDonutValsToCore%);
+    'DlgAllow(0xffff, 0, TuningCurveDanishDialogChanged%);
+	
+    i% := DlgShow(tunDanishNSteps%, tunDanishNRepeats%, tunDanishMinOuterDiameter, tunDanishMaxOuterDiameter, tunDanishProgression%, tunDanishIncludeBlank%);
+    
+    'for now, no dummy-proofing
+
+
+	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
+    ' 
+    ' djs 2/4/2011
+    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+    ' before things proceed. 
+	if i% = 1 then
+		SaveTuningCurveDanishParameters();
+		tunType$ := tunTypeDanish$;
+        
+        'Reset dialog OK button text on Select dialog, and note which experiment to run
+        DlgValue$(-1,"Run Danishes");
+        TuningCurveScriptDialogAllowOK% := 1;  'Prepare to enable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
+        
+		if tunContext$ = tunContextDAQ$ then
+            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+            iReturn% := 1;
+		else
+			iReturn% := 1;
+		endif;
+	endif;
+	if i% = 0 then
+		tunType$ := tunTypeNone$;
+		if tunContext$ = tunContextDAQ$ then
+			iReturn% := 1;
+		else
+			iReturn% := 2;
+		endif;
+	endif;
+    
+	return iReturn%;
+end;
+
 
 
 
@@ -1787,6 +1891,283 @@ func TuningCurveNullTestDialogChanged%(item%)
         DlgEnable(0,3);
         DlgEnable(0,4);
     endif;
+    return 1;
+end
+
+
+func TunDlgGratingCore%()
+    
+    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var contrast%;
+    var param$, cv$, pattern$, aperture$;
+    var label$;
+    var i%;
+    var tunGratingParamsStat$;
+    
+    tunGratingParams$ := GetGratingParameters$("Stimulus");
+    i% := GratingParametersDialogCore%(label$, tunGratingParams$, tunGratingParamsStat$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    if i% = 1 then
+        SaveGratingParameters("Stimulus", tunGratingParams$);
+        'SaveGratingParameters("StatStimulus", tunGratingParamsStat$);
+    endif
+    
+    return 1;
+end
+
+func TunDlgGratingDonut%()
+    
+    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var contrast%;
+    var param$, cv$, pattern$, aperture$;
+    var label$;
+    var i%;
+    var tunGratingParamsStat$;
+    
+    tunGratingParams$ := GetGratingParameters$("Distractor1");
+    i% := GratingParametersDialogDonut%(label$, tunGratingParams$, tunGratingParamsStat$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    if i% = 1 then
+        SaveGratingParameters("Distractor1", tunGratingParams$);
+        'SaveGratingParameters("StatStimulus", tunGratingParamsStat$);
+    endif
+    
+    return 1;
+end
+
+
+func TunCoreValsToDonut%()
+    
+    var x, y, w, h, iw, ih;
+    var contrast%;
+    var sf, tf, ori, phase;
+    var cv$, pattern$, aperture$;
+    
+    var tempParams$;
+    
+    tempParams$ := GetGratingParameters$("Stimulus");
+    ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    iw := w;  'set grating width to make a donut that surrounds the core, of arbitrary width
+    ih := h;
+    w := iw+1;
+    h := ih+1;
+    tempParams$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    SaveGratingParameters("Distractor1", tempParams$);
+    
+    return 1;
+end
+
+
+func TunDonutValsToCore%()
+    
+    var x, y, w, h, iw, ih;
+    var contrast%;
+    var sf, tf, ori, phase;
+    var cv$, pattern$, aperture$;
+    
+    var tempParams$;
+    
+    tempParams$ := GetGratingParameters$("Distractor1");
+    ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    w := iw;  'set grating width to make a core that fits inside the donut, of zero inner diameter
+    h := ih;
+    iw := 0;
+    ih := 0;
+    tempParams$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    SaveGratingParameters("Stimulus", tempParams$);
+    
+    return 1;
+end
+
+
+func GratingParametersDialogCore%(label$, &param$, &statparam$, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$)
+    
+	var i% := 15;  'That's right, 15, which is the button that we want to use for copying parameters over
+    
+	var ColorVectorList$[5];
+	var cvl$[5];
+	var icvl% := 0;
+    var icvlS% := 0;
+	ColorVectorList$[0]:="Black/White";	cvl$[0]:="b";
+	ColorVectorList$[1]:="L cone";		cvl$[1]:="l";
+	ColorVectorList$[2]:="M cone";		cvl$[2]:="m";
+	ColorVectorList$[3]:="S cone";		cvl$[3]:="s";
+	ColorVectorList$[4]:="Custom";		cvl$[4]:="custom";
+    
+	var PatternList$[2];
+	var pl$[2];
+	var ipl% := 0;
+    var iplS% := 0;
+	PatternList$[0]:="Sine";	pl$[0]:="s";
+	PatternList$[1]:="Square";	pl$[1]:="q";
+    
+	var ApertureList$[2];
+	var al$[2];
+	var ial% := 0;
+    var ialS% := 0;
+	ApertureList$[0]:="Ellipse";	al$[0]:="e";
+	ApertureList$[1]:="Rectangle";	al$[1]:="r";
+    
+    while i% = 15 do
+        
+        ' If the passed param$ is non-empty, then parse it before opening the dialog. 
+        if Len(param$)>0 then
+            if ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$) = 0 then
+                icvl% := FindMatchedStringIndex%(cv$, cvl$[], 2, 0);
+                ipl% := FindMatchedStringIndex%(pattern$, pl$[], 2, 0);
+                ial% := FindMatchedStringIndex%(aperture$, al$, 3, 0);
+            endif
+        endif
+        
+        DlgCreate("Grating parameters: " + label$, 25, 11);
+        '    DlgAllow(0, 0, GratingParametersDialogDoubleCheck%);
+        DlgReal(1, "X:", -40, 40);
+        DlgReal(2, "Y:", -40, 40);
+        DlgReal(3, "Outer Width:", .1, 30);
+        DlgReal(4, "Outer Height:", .1, 30);
+        DlgReal(5, "Inner Width:", 0, 30);
+        DlgReal(6, "Inner Height:", 0, 30);
+        DlgInteger(7, "Contrast(%):", -100, 100);
+        DlgReal(8, "Spatial Freq:", .01, 10);
+        DlgReal(9, "Temporal Freq:", 0, 10);
+        DlgReal(10, "Orientation (degrees):", -360, 360);
+        DlgReal(11, "Initial Phase (deg, 0 = white at center)", 0, 360);
+        DlgList(12, "Color:", ColorVectorList$[]);
+        DlgList(13, "Pattern:", PatternList$[]);
+        DlgList(14, "Aperture:", ApertureList$[]);
+        DlgButton(15, "Copy from Donut!", TunCopyDonutVals%(param$));
+        
+        i% := DlgShow(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, icvl%, ipl%, ial%);
+        Convert180(phase);
+        
+    wend;
+      
+	if i%=1 then
+		cv$ := cvl$[icvl%];
+		pattern$ := pl$[ipl%];
+		aperture$ := al$[ial%];
+        if w > iw and h > ih then  'don't let inner dimensions of donut be larger than outer
+            ' save parameters, not using static but easier to just leave it in
+            param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+            statparam$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$);  'hardcoded zero TF
+        else
+            message("Inner diameters cannot be greater than outer diameters!  Try Again!");
+        endif;
+    endif
+    return i%;
+end;
+
+
+
+func GratingParametersDialogDonut%(label$, &param$, &statparam$, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$)
+    
+	var i% := 15;  'That's right, 15, which is the button that we want to use for copying parameters over
+    
+	var ColorVectorList$[5];
+	var cvl$[5];
+	var icvl% := 0;
+    var icvlS% := 0;
+	ColorVectorList$[0]:="Black/White";	cvl$[0]:="b";
+	ColorVectorList$[1]:="L cone";		cvl$[1]:="l";
+	ColorVectorList$[2]:="M cone";		cvl$[2]:="m";
+	ColorVectorList$[3]:="S cone";		cvl$[3]:="s";
+	ColorVectorList$[4]:="Custom";		cvl$[4]:="custom";
+    
+	var PatternList$[2];
+	var pl$[2];
+	var ipl% := 0;
+    var iplS% := 0;
+	PatternList$[0]:="Sine";	pl$[0]:="s";
+	PatternList$[1]:="Square";	pl$[1]:="q";
+    
+	var ApertureList$[2];
+	var al$[2];
+	var ial% := 0;
+    var ialS% := 0;
+	ApertureList$[0]:="Ellipse";	al$[0]:="e";
+	ApertureList$[1]:="Rectangle";	al$[1]:="r";
+    
+    while i% = 15 do
+        
+        ' If the passed param$ is non-empty, then parse it before opening the dialog. 
+        if Len(param$)>0 then
+            if ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$) = 0 then
+                icvl% := FindMatchedStringIndex%(cv$, cvl$[], 2, 0);
+                ipl% := FindMatchedStringIndex%(pattern$, pl$[], 2, 0);
+                ial% := FindMatchedStringIndex%(aperture$, al$, 3, 0);
+            endif
+        endif
+        
+        DlgCreate("Grating parameters: " + label$, 25, 11);
+        '    DlgAllow(0, 0, GratingParametersDialogDoubleCheck%);
+        DlgReal(1, "X:", -40, 40);
+        DlgReal(2, "Y:", -40, 40);
+        DlgReal(3, "Outer Width:", .1, 30);
+        DlgReal(4, "Outer Height:", .1, 30);
+        DlgReal(5, "Inner Width:", 0, 30);
+        DlgReal(6, "Inner Height:", 0, 30);
+        DlgInteger(7, "Contrast(%):", -100, 100);
+        DlgReal(8, "Spatial Freq:", .01, 10);
+        DlgReal(9, "Temporal Freq:", 0, 10);
+        DlgReal(10, "Orientation (degrees):", -360, 360);
+        DlgReal(11, "Initial Phase (deg, 0 = white at center)", 0, 360);
+        DlgList(12, "Color:", ColorVectorList$[]);
+        DlgList(13, "Pattern:", PatternList$[]);
+        DlgList(14, "Aperture:", ApertureList$[]);
+        DlgButton(15, "Copy From Core", TunCopyCoreVals%(param$));
+        
+        i% := DlgShow(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, icvl%, ipl%, ial%);
+        Convert180(phase);
+        
+    wend;
+    
+	if i%=1 then
+		cv$ := cvl$[icvl%];
+		pattern$ := pl$[ipl%];
+		aperture$ := al$[ial%];
+        if w > iw and h > ih then  'don't let inner dimensions of donut be larger than outer
+            ' save parameters, not using static but easier to just leave it in
+            param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+            statparam$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$);  'hardcoded zero TF
+        else
+            message("Inner diameters cannot be greater than outer diameters!  Try Again!");
+        endif;
+    endif;
+    return i%;
+end;
+
+
+func TunCopyDonutVals%(&param$)
+    var x, y, w, h, iw, ih;
+    var contrast%;
+    var sf, tf, ori, phase;
+    var cv$, pattern$, aperture$;
+    'Simply using "Distractor1" rather than making a separate "Donut" grating, can change if it's a problem
+    param$ := GetGratingParameters$("Distractor1");
+    ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    w := iw;  'set grating width to make a core that fits inside the donut, of zero inner diameter
+    h := ih;
+    iw := 0;
+    ih := 0;
+    param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+
+
+    return 1;
+end
+
+func TunCopyCoreVals%(&param$)
+    
+    var x, y, w, h, iw, ih;
+    var contrast%;
+    var sf, tf, ori, phase;
+    var cv$, pattern$, aperture$;    
+    
+    param$ := GetGratingParameters$("Stimulus");
+    ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    iw := w;  'set grating width to make a donut that surrounds the core, of arbitrary width
+    ih := h;
+    w := iw+1;
+    h := ih+1;
+    param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+
     return 1;
 end
 
