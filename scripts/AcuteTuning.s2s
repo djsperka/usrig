@@ -986,6 +986,9 @@ proc InitializeWindows()
     
 	'Open the data sampling window
 	DataWindow% := FileNew(0,4);
+    if DataWindow% < 0 then
+        PrintLog("FileNew Error: %s\n", Error$(DataWindow%));
+    endif
 	Window(0,48,50,95);
     XRange(0, 30);
 	View(DataWindow%).WindowVisible(1);
@@ -1023,13 +1026,15 @@ proc InitializeWindows()
         'Create raster/PSTH result view for each electrode
         rasterTotal := rasterPre + rasterPost + tunStimulusDuration;  'calculate total raster time
         histBins% := rasterTotal/histBinWidth;  'and number of bins
-        handlePSTH%[i%] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins%,histBinWidth,rasterPre,memChanRasterTriggers%,3);  '3 makes rasters and scales to spikes per second
+        'handlePSTH%[i%] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins%,histBinWidth,rasterPre,memChanRasterTriggers%,3);  '3 makes rasters and scales to spikes per second
+        handlePSTH%[i%] := View(DataWindow%).SetPsth(i%+1,histBins%,histBinWidth,rasterPre,memChanRasterTriggers%,3);  '3 makes rasters and scales to spikes per second
         View(handlePSTH%[i%]).windowtitle$("No Data");  'name gets changed later
         View(handlePSTH%[i%]).Window(histL, i%*WindowStep, histR, (i%+1)*WindowStep);  'size window as above, squeeze in
         View(handlePSTH%[i%]).WindowVisible(1);  'make window visible
         
         if tunDoOpto% = 1 then  'Create raster/PSTH result view for each electrode, opto-on
-            handlePSTH%[i%+8] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins%,histBinWidth,rasterPre,memChanRasterTriggersOpto%,3);  '3 makes rasters and scales to spikes per second
+            'handlePSTH%[i%+8] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins%,histBinWidth,rasterPre,memChanRasterTriggersOpto%,3);  '3 makes rasters and scales to spikes per second
+            handlePSTH%[i%+8] := View(DataWindow%).SetPsth(i%+1,histBins%,histBinWidth,rasterPre,memChanRasterTriggersOpto%,3);  '3 makes rasters and scales to spikes per second
             View(handlePSTH%[i%+8]).windowtitle$("No Data");  'name gets changed later
             View(handlePSTH%[i%+8]).Window(histOptoL, i%*WindowStep, histOptoR, (i%+1)*WindowStep);  'size window as above, squeeze in
             View(handlePSTH%[i%+8]).WindowVisible(1);  'make window visible
@@ -1037,13 +1042,15 @@ proc InitializeWindows()
             'Make PSTH for Scotty
             histBins2% := rasterTotal/.005;  'hard code to 5 ms
             'This one is for opto-on stimuli
-            handlePSTH%[i%+16] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins2%,.005,rasterPre,StimChannel%,1);  '1 enables spikes per second
+            'handlePSTH%[i%+16] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins2%,.005,rasterPre,StimChannel%,1);  '1 enables spikes per second
+            handlePSTH%[i%+16] := View(DataWindow%).SetPsth(i%+1,histBins2%,.005,rasterPre,StimChannel%,1);  '1 enables spikes per second
             View(handlePSTH%[i%+16]).windowtitle$("No Data");  'name gets changed later
             View(handlePSTH%[i%+16]).WindowVisible(1);  'make window visible
             'but not sizing this, just let it be whatever
             
             'this one is for opto-off stimuli
-            handlePSTH%[i%+24] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins2%,.005,rasterPre,StimChannel%,1);  '1 enables spikes per second
+            'handlePSTH%[i%+24] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins2%,.005,rasterPre,StimChannel%,1);  '1 enables spikes per second
+            handlePSTH%[i%+24] := View(DataWindow%).SetPsth(i%+1,histBins2%,.005,rasterPre,StimChannel%,1);  '1 enables spikes per second
             View(handlePSTH%[i%+24]).windowtitle$("No Data");  'name gets changed later
             View(handlePSTH%[i%+24]).WindowVisible(1);  'make window visible
             
@@ -1064,8 +1071,8 @@ proc InitializeWindows()
             optoOnF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' appropriating this to plot f1 of opto-on
             View(TuningWindow%[i%]).XYColour(optoOnF1Chan%, 38);
             LogStatus("InitializeWindows", "Channel " + str$(i%+1) + " " + str$(ch1%) + " " + str$(ch2%));
-            'PSTHWindow%[i%] := View(DataWindow%).SetPSTH(i%+1, 16, 1 /(tunTF*16), 0, 0, 3);
-            PSTHWindow%[i%] := View(DataWindow%).SetPSTH(tunWavemarkPorts%[i%]+1, 16, 1 /(tunTF*16), 0, 0, 3);  'must use index to tWMP%[] now that channel #s correspond to port #s (+1)
+            'PSTHWindow%[i%] := View(DataWindow%).SetPSTH(tunWavemarkPorts%[i%]+1, 16, 1 /(tunTF*16), 0, 0, 3);  'must use index to tWMP%[] now that channel #s correspond to port #s (+1)
+            PSTHWindow%[i%] := View(DataWindow%).SetPSTH(i%+1, 16, 1 /(tunTF*16), 0, 0, 3);  'well, channel #s DON'T correspond to port #s, so...
             View(PSTHWindow%[i%]).WindowVisible(0);
         endif        
         
