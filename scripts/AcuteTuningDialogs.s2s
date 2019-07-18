@@ -199,14 +199,16 @@ var dontToggleOpto% := 0;  'by default, toggle opto on every block
 var tunOptoNPulses%;
 var optoDialogRun%;
 var tunPulsedOptoOnset;
+var tunPulsedOptoOnsetMin;
+var tunPulsedOptoOnsetMax;
 var tunPulsedOptoWidth;
 var tunPulsedOptoIPI;
 var tunPulsedOptoIPImin;
 var tunPulsedOptoIPImax;
-var tunPulsedOptoOnsetClockSteps%;
-var tunPulsedOptoOffsetClockSteps%;
-var tunPulsedOptoWidthClockSteps%;
-var tunPulsedOptoIPIClockSteps%;
+'var tunPulsedOptoOnsetClockSteps%;  'These variables are completely unused
+'var tunPulsedOptoOffsetClockSteps%;
+'var tunPulsedOptoWidthClockSteps%;
+'var tunPulsedOptoIPIClockSteps%;
 
 ' Strings that hold grating parameters
 var tunGratingParams$;
@@ -318,9 +320,9 @@ func TuningCurveScriptDialog%()
     DlgGroup("Grating Parameters", 1, 11, dlgwid%-2, 2);
     DlgButton(tundlgGratingParametersButton%, "Grating Parameters", TunDlgGratingMaster%, 2, 12);
     
-    DlgGroup("Optogenetics", 1, 13, dlgwid%-2, 3);
-    DlgCheck(10,"Opto On",2,14);
-    DlgButton(tundlgOptogeneticsButton%, "Optogenetics Parameters", TunOptoDialog%, 2, 15);
+    DlgGroup("Optogenetics/E-Stim", 1, 13, dlgwid%-2, 3);
+    DlgCheck(10,"Opto/E-Stim On",2,14);
+    DlgButton(tundlgOptogeneticsButton%, "Opto/E-Stim Parameters", TunOptoDialog%, 2, 15);
     
     DlgGroup("Individual Tuning Curve Types", 1, 16, dlgwid%-2, 5);
 	DlgButton(tundlgOrientationButton%, "Orientation", TuningCurveOrientationDialog%, 2, 17);
@@ -762,6 +764,8 @@ proc GetTunOptoParameters()
     tunLaserDiode% := GetIntRegistryValue%(key$, "LaserDiode", tunLaserDiode%);
     tunOptoNPulses% := GetIntRegistryValue%(key$, "OptoNPulses", tunOptoNPulses%);
     tunPulsedOptoOnset := GetFloatRegistryValue(key$, "PulsedOptoOnset", tunPulsedOptoOnset);
+    tunPulsedOptoOnsetMin := GetFloatRegistryValue(key$, "PulsedOptoOnsetMin", tunPulsedOptoOnsetMin);
+    tunPulsedOptoOnsetMax := GetFloatRegistryValue(key$, "PulsedOptoOnsetMax", tunPulsedOptoOnsetMax);
     tunPulsedOptoWidth := GetFloatRegistryValue(key$, "PulsedOptoWidth", tunPulsedOptoWidth);
     tunPulsedOptoIPI := GetFloatRegistryValue(key$, "PulsedOptoIPI", tunPulsedOptoIPI);
     tunPulsedOptoIPImin := GetFloatRegistryValue(key$, "PulsedOptoIPImin", tunPulsedOptoIPImin);
@@ -785,6 +789,8 @@ proc SaveTunOptoParameters()
     SetIntRegistryValue(key$, "LaserDiode", tunLaserDiode%);
     SetIntRegistryValue(key$, "OptoNPulses", tunOptoNPulses%);
     SetFloatRegistryValue(key$, "PulsedOptoOnset", tunPulsedOptoOnset);
+    SetFloatRegistryValue(key$, "PulsedOptoOnsetMin", tunPulsedOptoOnsetMin);
+    SetFloatRegistryValue(key$, "PulsedOptoOnsetMax", tunPulsedOptoOnsetMax);
     SetFloatRegistryValue(key$, "PulsedOptoWidth", tunPulsedOptoWidth);
     SetFloatRegistryValue(key$, "PulsedOptoIPI", tunPulsedOptoIPI);
     SetFloatRegistryValue(key$, "PulsedOptoIPImin", tunPulsedOptoIPImin);
@@ -1620,28 +1626,32 @@ func TunOptoDialog%()
     var tempCount%;
     stimdur := dlgvalue(1);  'get stimulus duration value from calling (main) dialog, limit opto period based on this
     
-    labels$[0] := "Opto Off First";
-    labels$[1] := "Opto On First";
+    labels$[0] := "Opto/E-Stim Off First";
+    labels$[1] := "Opto/E-Stim On First";
     labels$[2] := "Random First";
-    labels$[3] := "Opto On All Blocks";
+    labels$[3] := "Opto/E-Stim On All Blocks";
 	GetTunOptoParameters();
-	DlgCreate("Optogenetics Parameters",0,0,45);
+	DlgCreate("Optogenetics/E-Stim Parameters",0,0,45);
     DlgGroup("Common Parameters", 1, 1, 43, 5);
-    DlgReal(1, "Opto Voltage Out (V)",0.0002,5,30,2); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
-    DlgList(2, "Order of blocks",labels$,4,25,3);
-    DlgCheck(3, "Use pulsing opto",2,4);
+    DlgReal(1, "Voltage Out (V)",0.0002,5,30,2); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+    'DlgList(2, "Order of blocks",labels$,4,25,3);  'We need to make the listbox wider, so the syntax changes and we have to DlgText the label
+    DlgText("Order of blocks",2,3);
+    DlgList(2, 23,labels$,4,20,3);
+    DlgCheck(3, "Use E-Stim/Use pulsing opto",2,4);
     DlgCheck(4, "Record Laser Diode",2,5);
     DlgGroup("Wrap-Around Opto", 1, 6, 43, 4);
     DlgReal(5, "PreStimulus Opto On (s)",0,10,30,7);
     DlgReal(6, "PostStimulus Opto On (s)",0,10,30,8);
     DlgCheck(7, "Keep Opto on between stims",2,9);
-    DlgGroup("Pulsing Opto", 1, 10, 43, 6);
-    DlgInteger(8, "Opto # Pulses ",0,1000,30,11);
-    DlgReal(9, "Opto Period Onset (s)",0,stimdur,30,12);
-    DlgReal(10, "Opto Pulse Width (s)",0,stimdur,30,13);
-    'DlgReal(11, "Opto Interpulse Interval (s)",0,100,30,14);
-    DlgReal(11, "Min Opto Interpulse Interval (s)",0,100,30,14);
-    DlgReal(12, "Max Opto Interpulse Interval (s)",0,100,30,15);
+    DlgGroup("E-Stim/Pulsing Opto", 1, 10, 43, 6);
+    DlgInteger(8, "# Pulses ",0,1000,30,11);
+    'DlgReal(9, "Period Onset (s)",0,stimdur,30,12);
+    DlgReal(9, "Min 1st Pulse Onset (s)",0,stimdur,30,12);
+    DlgReal(10, "Max 1st Pulse Onset (s)",0,stimdur,30,13);
+    DlgReal(11, "Pulse Width (s)",0,stimdur,30,14);
+    'DlgReal(11, "Interpulse Interval (s)",0,100,30,14);
+    DlgReal(12, "Min Interpulse Interval (s)",0,100,30,15);
+    DlgReal(13, "Max Interpulse Interval (s)",0,100,30,16);
     
     'DlgCheck(6, "Record control box voltage");
     'DlgCheck(7, "Record stimulator");
@@ -1650,7 +1660,7 @@ func TunOptoDialog%()
     
 	'i% := DlgShow(tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoVoltageOut,tunOptoStartState%);',tunRecOptoBox%,tunRecStimulator%);
 	'changing order with bigger dialog - note that with addition of the dialogChanged function the above will not be terribly relevant ever again
-    i% := DlgShow(tunOptoVoltageOut,tunOptoStartState%,tunOptoUsePulse%,tunLaserDiode%,tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoNPulses%,tunPulsedOptoOnset,tunPulsedOptoWidth,tunPulsedOptoIPImin,tunPulsedOptoIPImax);
+    i% := DlgShow(tunOptoVoltageOut,tunOptoStartState%,tunOptoUsePulse%,tunLaserDiode%,tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoNPulses%,tunPulsedOptoOnsetMin,tunPulsedOptoOnsetMax,tunPulsedOptoWidth,tunPulsedOptoIPImin,tunPulsedOptoIPImax);
     ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
     ' 
@@ -1683,7 +1693,7 @@ func TunOptoDialog%()
         'unfortunately we will have to do this AGAIN once the script starts because the user could change the stimulus duration after the opto parameters
         'fortunately, the calculation is the same and it all worked on the first try
         if tunOptoUsePulse% = 1 then
-            stimdur := stimdur - tunPulsedOptoOnset;  'duration of stimulus after onset delay
+            stimdur := stimdur - tunPulsedOptoOnsetMax;  'duration of stimulus after maximum onset delay
             stimdur := stimdur - tunPulsedOptoWidth;  'duration of stimulus after first opto pulse
             if stimdur < 0 then  'if first pulse will extend beyond stimulus duration
                 tunOptoNPulses% := 0;  'turn off opto by using no pulses

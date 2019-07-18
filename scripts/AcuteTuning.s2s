@@ -411,8 +411,9 @@ func IdleProcessing%()
     case iState% = statePulsedOpto% then
         
         if tunPulsedOptoIPImax <> tunPulsedOptoIPImin then
-            'Set random IPI on every trial
+            'Set random IPI, onset on every trial
             tunPulsedOptoIPI := Rand(tunPulsedOptoIPImax-tunPulsedOptoIPImin,tunPulsedOptoIPImin);  'this will work if max=min or even if max<min.  Simple.  Nice.
+            tunPulsedOptoOnset := Rand(tunPulsedOptoOnsetMax-tunPulsedOptoOnsetMin,tunPulsedOptoOnsetMin);  'this will work if max=min or even if max<min.  Simple.  Nice.
             SetPulsedOptoSequencerVariables();
             SampleText("Pulsed Opto IPI is " + str$(tunPulsedOptoIPI));
         endif        
@@ -811,7 +812,7 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
     var preEvent;
     var myCount%;  'for bursts
     var myCount2%; 'for bursts
-    var t[10000];  'for bursts, we shouldn'thave more than 10000 spikes in a window here
+    var t[10000];  'for bursts, we shouldn't have more than 10000 spikes in a window here
     var nBursts%;
     'var index2%;
     
@@ -1825,7 +1826,9 @@ proc WriteParameterFile()
         Print("Order of blocks : %s\n", label$[tunOptoStartState%]);
         if tunOptoUsePulse% = 1 then
             Print("Pulsing Opto selected\n");
-            Print("Opto#Pulses,OptoPeriodOnset,OptoPulseWidth,OptoInterpulseInterval: %d,%f,%f,%f\n",tunOptoNPulses%,tunPulsedOptoOnset,tunPulsedOptoWidth,tunPulsedOptoIPI);
+            'Print("Opto#Pulses,OptoPeriodOnset,OptoPulseWidth,OptoInterpulseInterval: %d,%f,%f,%f\n",tunOptoNPulses%,tunPulsedOptoOnset,tunPulsedOptoWidth,tunPulsedOptoIPI);
+            Print("Opto#Pulses,OptoPeriodOnsetMin,OptoPulseOnsetMax,OptoPulseWidth,OptoInterpulseIntervalMin,OptoInterpulseIntervalMax: ");
+            Print("%d,%f,%f,%f,%f,%f\n",tunOptoNPulses%,tunPulsedOptoOnsetMin,tunPulsedOptoOnsetMax,tunPulsedOptoWidth,tunPulsedOptoIPImin,tunPulsedOptoIPImax);
         else
             Print("Wraparound Opto selected\n");
             Print("PreStimulusOptoOn,PostStimulusOptoOn,KeepOptoOnBetweenStims: %f,%f,%d\n",tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%);
@@ -1932,9 +1935,9 @@ func Start%()
         'parameters, we need to check the parameters again (even though the opto dialog box did it already)
         if tunOptoUsePulse% = 1 then
             
-            'Set random IPI
+            'Set random IPI, Onset
             tunPulsedOptoIPI := Rand(tunPulsedOptoIPImax-tunPulsedOptoIPImin,tunPulsedOptoIPImin);  'this will work if max=min or even if max<min.  Simple.  Nice.
-            
+            tunPulsedOptoOnset := Rand(tunPulsedOptoOnsetMax-tunPulsedOptoOnsetMin,tunPulsedOptoOnsetMin);  'this will work if max=min or even if max<min.  Simple.  Nice.
             SetPulsedOptoSequencerVariables();  'this replaces a lot of code here, will be used again on each trial if necessary
             
         endif;
