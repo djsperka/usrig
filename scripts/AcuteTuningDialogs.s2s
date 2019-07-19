@@ -816,12 +816,15 @@ func TuningCurveOrientationDialog%()
     DlgString(7,40,255,"",3);  'for visual confirmation of selected seq file
     DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
     
-    DlgCheck(8, "Use plaids [grating orientation determines angle]", 0, 9);
+    'DlgCheck(8, "Use plaids [grating orientation determines angle]", 0, 9);
     
     DlgAllow(0xffff, 0, TuningCurveGenericDialogChanged%);
     
-	i% := DlgShow(tunOriNSteps%, tunOriNRepeats%, tunOriMinOrientation, tunOriMaxOrientation, tunOriProgression%, tunOriUseFile%, tunOriTuningFile$, tunOriUsePlaid%);
-
+    'Removing plaid option as it doesn't work without REX
+	'i% := DlgShow(tunOriNSteps%, tunOriNRepeats%, tunOriMinOrientation, tunOriMaxOrientation, tunOriProgression%, tunOriUseFile%, tunOriTuningFile$, tunOriUsePlaid%);
+    i% := DlgShow(tunOriNSteps%, tunOriNRepeats%, tunOriMinOrientation, tunOriMaxOrientation, tunOriProgression%, tunOriUseFile%, tunOriTuningFile$);
+    tunOriUsePlaid% := 0;  'Just hard code this, makes it easier to put this back in if it is ever a thing.
+    
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
     ' djs 2/4/2011
