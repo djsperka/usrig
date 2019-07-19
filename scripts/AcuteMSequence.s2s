@@ -16,6 +16,9 @@ var amsXOrigin%, amsYOrigin%;
 var amsRepeats% := 1;
 var amsColorIndex%;
 var amsColor$[4];
+var amsDoNeuropixel%;
+var neuropixelStatus%;
+var autoNameStr$;
 
 ' set to 1 if using visage
 var amsUseMEAMSeq% := 1;
@@ -26,6 +29,16 @@ var amsWavemarkPorts%[amsNPorts%];
 var amsContinuousPorts%[amsNPorts%];
 var amsNWavemarks% := 0;
 var amsNContinuous% := 0;
+
+' ============================================================================ '
+' Serial Port constants
+' ============================================================================ '
+const serialCOMPort% := 8; 
+const serialBaudRate% := 115200;
+const serialDataBits% := 8;
+const serialParity% := 0;
+const serialStopBits% := 1;
+const serialFlowCtrl% := 0;
 
 
 ' daq channels for triggers from vsg
@@ -47,6 +60,7 @@ const stateVSGConfirm%          :=  3;
 const stateStartStim%           :=  4;
 const stateStim%                :=  5;
 const stateDone%                :=  6;
+const stateSendNeuropixelStart% :=  7;
 
 var iState% := stateStartup%;              ' This holds the current state
 
@@ -116,7 +130,8 @@ func AcuteMSequenceDialog%()
     DlgInteger(4, "Center Y coord: ", -300, 300);
     DlgInteger(5, "Number of cycles: ", 1, 100);
     DlgList(6, "Color properties: ", amsColor$[]);
-    status% := DlgShow(amsFramesPerTerm%, amsDotSize%, amsXOrigin%, amsYOrigin%, amsRepeats%, amsColorIndex%);
+    DlgCheck(7,"Do Neuropixel Recording",2,7);
+    status% := DlgShow(amsFramesPerTerm%, amsDotSize%, amsXOrigin%, amsYOrigin%, amsRepeats%, amsColorIndex%, amsDoNeuropixel%);
     
     if status% = 1 then
         
@@ -150,6 +165,7 @@ proc GetAcuteMSequenceParameters()
     amsYOrigin% := GetIntRegistryValue%(key$, "YOrigin", amsYOrigin%);
     amsRepeats% := GetIntRegistryValue%(key$, "Repeats", amsRepeats%);
     amsColorIndex% := GetIntRegistryValue%(key$, "ColorIndex", amsColorIndex%);
+    amsDoNeuropixel% := GetIntRegistryValue%(key$, "DoNeuropixel", amsDoNeuropixel%);
     return;
 end
 
@@ -162,6 +178,7 @@ proc SaveAcuteMSequenceParameters()
     SetIntRegistryValue(key$, "YOrigin", amsYOrigin%);
     SetIntRegistryValue(key$, "Repeats", amsRepeats%);
     SetIntRegistryValue(key$, "ColorIndex", amsColorIndex%);
+    SetIntRegistryValue(key$, "DoNeuropixel", amsDoNeuropixel%);
     return;
 end
 
@@ -173,6 +190,10 @@ proc CreateSampleConfiguration()
 	SampleClear(); 'Set standard sampling state
 	SampleAutoComment(0); 'Prompt for comment after sampling
 	SampleAutoCommit(60); 'Seconds between each file commit
+    if amsDoNeuropixel% = 1 then
+        SampleBigFile(0);  'Create an .smr file INSTEAD of .smrx so that Scottie's analysis suite can read it, max file size is 2GB
+        'SampleBigFile(1);  'Create a "big" .smr file, max file size 1 TB.  It is not known if Scottie's analysis suite can read these.
+    endif;
     
     FilePathSet(GetDataPathRoot$() + "\\" + GetDataSetName$(), 3);
     FilePathSet(GetDataPathRoot$() + "\\" + GetDataSetName$(), 1);
@@ -308,6 +329,13 @@ func Start%()
     ' clear those out by sending a special message "clear" via SendMessage. 
     ProgRun(GetBinDir$(1) + "SendMessage clear");
     
+    
+    'For serial communications with Neuropixel, use the same values but do not send initial message
+    if amsDoNeuropixel% =  1 then
+        SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
+    endif;    
+    
+    
     ' now as user to start matlab processing. 
     Message("Start MultiRealTimeM(" + str$(amsNWavemarks%) + ") and press OK to start");
     
@@ -359,6 +387,7 @@ end;
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Stop%()
+    var serialStatus%;
     
     ' remove the idle process. 
     ToolbarSet(0, "");
@@ -367,6 +396,19 @@ func Stop%()
     
     ' send the quit command before stopping sampling
     SampleKey("Q");
+    
+    docase
+    case amsDoNeuropixel% = 1 and neuropixelStatus% = 1 then 
+        serialStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "STOP", "\n");
+        SerialClose(serialCOMPort%);
+        if serialStatus% = 0 then
+            message("Warning! SpikeGLX recording may not have stopped!\nPlease manually stop SpikeGLX!");
+        endif;
+    case amsDoNeuropixel% = 1 and neuropixelStatus% = 0 then 'On failure to start recording, neuropixelStatus% will be 0, don't try stopping recording that didn't start
+        SerialClose(serialCOMPort%);
+    endcase;
+    
+    
     while ProgStatus(amsHandleStim) > 0 do
         Yield(1);
     wend
@@ -416,8 +458,25 @@ func Idle%()
         if tTrigger > tLastTrigger and vTrigger = 1 then                
             LogStatus("stateVSGConfirm", "Got trailing edge of trigger.");
             tLastTrigger := tTrigger;
-            ChangeStateTo(stateStartStim%, tTrigger);
+            if amsDoNeuropixel% = 0 then
+                ChangeStateTo(stateStartStim%, tTrigger);
+            else
+                ChangeStateTo(stateSendNeuropixelStart%, tTrigger);
+            endif;
         endif;
+        
+    case iState% = stateSendNeuropixelStart% then
+
+        autoNameStr$ := dataDataSet$ + "_" + FileName$(-4);
+        printlog("Sending START to Neuropixel, using name string '%s'\n",autoNameStr$);
+        
+        neuropixelStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "START " + autoNameStr$, "\n");
+        if neuropixelStatus% = 0 then
+            message("SpikeGLX recording did not successfully start!  Quitting!"); 
+            Stop%();
+        endif;
+        
+        ChangeStateTo(stateStartStim%,View(amsWindowData%).MaxTime());  'If implemented, put in a real time for tStateStart
             
     case iState% = stateStartStim% then
         
@@ -635,3 +694,28 @@ wend
 end
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
+
+func SendSerialMsgNeuropixel(port%, msg$, term$)
+    var buffer$;
+    var count% := 60;  'Yikes, it takes a long time to get the Neuropixel stuff ready!
+    var status% := 0;
+    SerialWrite(port%, msg$, term$);
+    while count% > 0 and status% < 1 do
+        count% := count% - 1;
+        status% := SerialRead(port%, buffer$, term$);
+        printlog("read status %d buffer %s\n", status%, buffer$);
+        if status% > 0 then
+            if not (buffer$ = "ACK") then
+                PrintLog("[ERROR]: Failed to receive ACK from imaging acq machine\n");
+                message("Received error from Neuropixel listener!  Error is\n" + buffer$);
+                status% := 0;
+                break;
+            endif
+        endif
+    wend;
+    if status% > 0 then
+        return 1;
+    else
+        return 0;
+    endif    
+end;
