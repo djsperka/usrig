@@ -706,6 +706,22 @@ func IdleProcessing%()
         
     case iState% = stateTrialCompleted% then
         printlog("number of trials completed is %d\n",nTrialsCompleted%);
+        
+'        'Set stimCodes[0] to hold the index of the current stimulus
+'        stimCodes%[0] := tunValuesIndices%[nTrialsCompleted%]; 'nTrialsCompleted has not yet been incremented, so this is right
+'        'log stimulus start time in pseudotextmark channel and for raster triggering
+'        if tunOptoState% = 0 then
+'            view(DataWindow%).MemSetItem(memChanRasterTriggers%,0,tStimOn,stimCodes%[],Str$(tunValues[tunValuesIndices%[nTrialsCompleted%]]));
+'        else
+'            view(DataWindow%).MemSetItem(memChanRasterTriggersOpto%,0,tStimOn,stimCodes%[],Str$(tunValues[tunValuesIndices%[nTrialsCompleted%]]));
+'        endif;
+'        
+'        view(DataWindow%).MemSetItem(memChanBetterTextMark%,0,tStimOn,stimCodes%[],Str$(tunValues[tunValuesIndices%[nTrialsCompleted%]]));
+'        
+'        ' Process spikes
+'        PlotSpikes(tStimOn, tNow, tunOptoState%+1, nTrialsCompleted%);
+        
+        
         docase
         case nTrialsCompleted% = (tunNAdvances%+1)*tunNRepeats% then
             ' We're all done
@@ -1224,6 +1240,7 @@ end;
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 proc CreateSampleConfiguration()
 	var i%;
+    var tunOptoRepeats%;
 
 	SampleClear(); 'Set standard sampling state
     SampleChannels(64);  '32 does not work, we need more!
@@ -1254,12 +1271,20 @@ proc CreateSampleConfiguration()
         FileClose();  'close the file
     endif
     
+    'Calculate number of repeats to do.  If Opto is always on, don't double the repeats
+    if tunOptoStartState% = 3 then 
+        tunOptoRepeats% := 1
+    else
+        tunOptoRepeats% := 1 + tunDoOpto%;
+    endif;
+    
     
     docase
         
     case tunType$ = tunTypeContrast$ then 
         SampleAutoName$(dataCellName$ + "_con_000");
-        tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunContrastNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunContrastProgression%);
@@ -1277,7 +1302,8 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeOrientation$ then 
         SampleAutoName$(dataCellName$ + "_ori_000");
-        tunNRepeats% := tunOriNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunOriNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunOriNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunOriProgression%);
@@ -1294,7 +1320,8 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeSpatial$ then 
         SampleAutoName$(dataCellName$ + "_spa_000");
-        tunNRepeats% := tunSpatialNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunSpatialNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunSpatialNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunSpatialProgression%);
@@ -1311,7 +1338,8 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeTemporal$ then 
         SampleAutoName$(dataCellName$ + "_tem_000");
-        tunNRepeats% := tunTemporalNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunTemporalNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunTemporalNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunTemporalProgression%);
@@ -1328,7 +1356,8 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeArea$ then 
         SampleAutoName$(dataCellName$ + "_area_000");
-        tunNRepeats% := tunAreaNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunAreaNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunAreaNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunAreaProgression%);
@@ -1345,7 +1374,8 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeID$ then 
         SampleAutoName$(dataCellName$ + "_id_000");
-        tunNRepeats% := tunIDNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunIDNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunIDNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunIDProgression%);
@@ -1379,13 +1409,15 @@ proc CreateSampleConfiguration()
     case tunType$ = tunTypeDriftingBar$ then 
         SampleAutoName$(dataCellName$ + "_bar_000");
         tunNAdvances% := tunBarNSteps%;
-        tunNRepeats% := tunBarNRepeats%*(1+tunDoOpto%);
+        'tunNRepeats% := tunBarNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunBarNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         GetRepeatedParameterProgression%(tunBarNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunBarMinOrientation, tunBarMaxOrientation, 0, tunBarProgression%);
         tunNValues% := (tunBarNSteps%+1)*tunBarNRepeats%*(1+tunDoOpto%);
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeNullTest$ then 
         SampleAutoName$(dataCellName$ + "_nulltest_000");
-        tunNRepeats% := tunNullTestNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunNullTestNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunNullTestNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunNullTestProgression%);
@@ -1403,7 +1435,8 @@ proc CreateSampleConfiguration()
     case tunType$ = tunTypeCRG$ then 
         SampleAutoName$(dataCellName$ + "_crg_000");
         tunNAdvances% := tunCRGMNSteps%;
-        tunNRepeats% := tunCRGMNRepeats%*(1+tunDoOpto%);
+        'tunNRepeats% := tunCRGMNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunCRGMNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         GetRepeatedParameterProgression%(tunCRGMNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunCRGMMinContrast, tunCRGMMaxContrast, 1, tunCRGMProgression%);
         tunNValues% := (tunCRGMNSteps%+1)*tunCRGMNRepeats%*(1+tunDoOpto%);
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
@@ -1428,7 +1461,8 @@ proc CreateSampleConfiguration()
     case tunType$ = tunTypeDanish$ then 
         SampleAutoName$(dataCellName$ + "_dan_000");
         tunNAdvances% := tunDanishNSteps%;
-        tunNRepeats% := tunDanishNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunDanishNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunDanishNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunDanishIncludeBlank% = 0 then
             GetRepeatedParameterProgression%(tunDanishNSteps%+1, tunDanishNRepeats%, tunValues[], tunValuesIndices%[], tunDanishMinOuterDiameter, tunDanishMaxOuterDiameter, 1, tunDanishProgression%); 
             tunNValues% := (tunDanishNSteps%+1)*tunDanishNRepeats%;
