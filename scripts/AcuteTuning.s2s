@@ -102,6 +102,8 @@ var optoOffChan% := 1;  'This will be the primary channel on the histogram
 var optoOnChan%;
 var optoOffF1Chan%;
 var optoOnF1Chan%;
+var optoOffF2Chan%;
+var optoOnF2Chan%;
 var burstChan%;
 
 
@@ -806,7 +808,7 @@ end;
 
 
 
-proc PlotSpikes(t1, t2, vOnOff%, index%)
+proc PlotSpikes(t1, t2, whichPlot%, index%)
 	var rate;
     var i%;
     var tSweep;
@@ -822,7 +824,7 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
     var nBursts%;
     'var index2%;
     
-    'vOnOff% is a switch that allows us to plot (in this case) opto-on and opto-off with different colors
+    'whichPlot% is a switch that allows us to plot (in this case) opto-on and opto-off with different colors
     
     x := GetPlotXCoord(index%);
     xind% := GetPlotXIndex%(index%);  'for keeping an average...may be difficult to implement
@@ -835,13 +837,13 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
         'tunRateCum[i%] := tunRateCum[i%] + rate;  
         'if tunRateCum[i%] >= 0 then  
         if rate >= 0 then
-            if vOnOff% = 1 then
+            if whichPlot% = 1 then
                 View(TuningWindow%[i%]).XYAddData(optoOffChan%, x, rate);    ' channel 1 is opto-off; channel 2 is opto-on
             else
                 View(TuningWindow%[i%]).XYAddData(optoOnChan%, x, rate);
             endif;
         
-                'if vOnOff% = 1 then
+                'if whichPlot% = 1 then
 				' this is signal
                 'PrintLog("%d Count %f\n", i%, rate*(t2-t1));
 				'View(TuningWindow%[i%]).XYAddData(1, x, rate);    ' channel 1 is data; channel 2 is background
@@ -866,7 +868,7 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
             endif;
         endif;
         
-        if vOnOff% = 1 then
+        if whichPlot% = 1 then
             'update the raster even if there are no spikes on this trial
             view(handlePSTH%[i%]).process(0,view(-1).maxtime(),1,1,0,MemChanRasterTriggers%,rasterTotal,rasterPre,stimCodes%[0]);  'Update single-stim histogram        
             'And update the title, to indicate which stimulus it is
@@ -911,13 +913,18 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
 			ArrFFT(fftData[], 4); 
             
             docase
-            case vOnOff% = 1 then
+            case whichPlot% = 1 then
                 View(TuningWindow%[i%]).XYAddData(optoOffF1Chan%, x, fftData[1]);
                 tunF1Sum[i%][index%] += fftData[1];
-            case vOnOff% = 2 then
+                View(TuningWindow%[i%]).XYAddData(optoOffF2Chan%, x, fftData[2]);
+                tunF2Sum[i%][index%] += fftData[2];
+            case whichPlot% = 2 then
                 View(TuningWindow%[i%]).XYAddData(optoOnF1Chan%, x, fftData[1]);  
                 tunF1Sum[i%][index%] += fftData[1];
+                View(TuningWindow%[i%]).XYAddData(optoOnF2Chan%, x, fftData[2]);  
+                tunF2Sum[i%][index%] += fftData[2];
             endcase
+            
             'tunF1Cum[i%] += fftdata[1];
             'tunF2Cum[i%] += fftdata[2];
             'View(TuningWindow%[i%]).XYSort(2,1);  'sort by x
@@ -1070,12 +1077,14 @@ proc InitializeWindows()
         ' Create psth window if f1 and f2 analysis needed
         if tunDoF12% = 1 then
             
-            optoOffF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1
-            View(TuningWindow%[i%]).XYColour(optoOffF1Chan%, 16);
-            'ch2% := View(TuningWindow%[i%]).XYSetChan(0);   ' used to plot f2
-            'View(TuningWindow%[i%]).XYColour(ch2%, 38);
-            optoOnF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' appropriating this to plot f1 of opto-on
+            optoOffF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1 (of opto-off), red
+            View(TuningWindow%[i%]).XYColour(optoOffF1Chan%, 16);     ' At some point we may want to move to ChanColourSet(), but not necessary at this point.
+            optoOffF2Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 (of opto-off), magenta
+            View(TuningWindow%[i%]).XYColour(optoOffF2Chan%, 17);
+            optoOnF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1 of opto-on, green
             View(TuningWindow%[i%]).XYColour(optoOnF1Chan%, 38);
+            optoOnF2Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 of opto-on, pale green
+            View(TuningWindow%[i%]).XYColour(optoOnF2Chan%, 35);
             LogStatus("InitializeWindows", "Channel " + str$(i%+1) + " " + str$(ch1%) + " " + str$(ch2%));
             'PSTHWindow%[i%] := View(DataWindow%).SetPSTH(tunWavemarkPorts%[i%]+1, 16, 1 /(tunTF*16), 0, 0, 3);  'must use index to tWMP%[] now that channel #s correspond to port #s (+1)
             PSTHWindow%[i%] := View(DataWindow%).SetPSTH(i%+1, 16, 1 /(tunTF*16), 0, 0, 3);  'well, channel #s DON'T correspond to port #s, so...
