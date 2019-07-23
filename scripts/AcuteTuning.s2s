@@ -1104,19 +1104,27 @@ proc InitializeWindows()
         FrontView(DataWindow%);  'bring main window back to front to avoid view is not a time view shit
     
         optoOnChan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Make this even if we aren't using opto
-        View(TuningWindow%[i%]).XYColour(optoOnChan%, 11);
+        'View(TuningWindow%[i%]).XYColour(optoOnChan%, 11);
+        View(TuningWindow%[i%]).ChanColourSet(optoOnChan%, 1, .1, .8, .1);  'green for on
+        optoOffChan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Make this even if we aren't using opto
+        'View(TuningWindow%[i%]).XYColour(optoOffChan%, 0);
+        View(TuningWindow%[i%]).ChanColourSet(optoOffChan%, 1, .8, .1, .1);  'red for off
     
         ' Create psth window if f1 and f2 analysis needed
         if tunDoF12% = 1 then
             
             optoOffF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1 (of opto-off), red
-            View(TuningWindow%[i%]).XYColour(optoOffF1Chan%, 16);     ' At some point we may want to move to ChanColourSet(), but not necessary at this point.
+            'View(TuningWindow%[i%]).XYColour(optoOffF1Chan%, 16);     ' At some point we may want to move to ChanColourSet(), but not necessary at this point.
+            View(TuningWindow%[i%]).ChanColourSet(optoOffF1Chan%, 1, 1, 0, 0);
             optoOffF2Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 (of opto-off), magenta
-            View(TuningWindow%[i%]).XYColour(optoOffF2Chan%, 17);
+            'View(TuningWindow%[i%]).XYColour(optoOffF2Chan%, 17);
+            View(TuningWindow%[i%]).ChanColourSet(optoOffF2Chan%, 1, 1, 0.8, 0.8);
             optoOnF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1 of opto-on, green
-            View(TuningWindow%[i%]).XYColour(optoOnF1Chan%, 38);
+            'View(TuningWindow%[i%]).XYColour(optoOnF1Chan%, 38);
+            View(TuningWindow%[i%]).ChanColourSet(optoOnF1Chan%, 1, 0, 1, 0);
             optoOnF2Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 of opto-on, pale green
-            View(TuningWindow%[i%]).XYColour(optoOnF2Chan%, 35);
+            'View(TuningWindow%[i%]).XYColour(optoOnF2Chan%, 35);
+            View(TuningWindow%[i%]).ChanColourSet(optoOnF2Chan%, 1, 0.8, 1, 0.8);
             LogStatus("InitializeWindows", "Channel " + str$(i%+1) + " " + str$(ch1%) + " " + str$(ch2%));
             'PSTHWindow%[i%] := View(DataWindow%).SetPSTH(tunWavemarkPorts%[i%]+1, 16, 1 /(tunTF*16), 0, 0, 3);  'must use index to tWMP%[] now that channel #s correspond to port #s (+1)
             PSTHWindow%[i%] := View(DataWindow%).SetPSTH(i%+1, 16, 1 /(tunTF*16), 0, 0, 3);  'well, channel #s DON'T correspond to port #s, so...
