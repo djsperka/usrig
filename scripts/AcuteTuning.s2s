@@ -47,6 +47,7 @@ READYCHANNELCODE% := Pow(2, READYCHANNELPORT%);
 const tunMaxTrials% := 1000;
 var tunValues[tunMaxTrials%];
 var tunValuesIndices%[tunMaxTrials%]; 
+var tunTwoWayContrastValues[tunMaxTrials%];
 var tunNValues%;
 var tunValuesStringified$;
 var nTriggersExpected%;     'only for tunTypeCRG$
@@ -84,10 +85,16 @@ var handlePSTHend%[10];  'For creating rasters at the end
 ' Rely on the fact that arrays are initialized with 0s in Spike2. 
 var tunF1Sum[16][tunMaxTrials%];
 var tunF2Sum[16][tunMaxTrials%];
+var tunF1OptoSum[16][tunMaxTrials%];
+var tunF2OptoSum[16][tunMaxTrials%];
+var tunF1SumDesc[16][tunMaxTrials%];  'We need to have these also keep separate track of descending for two-way contrast
+var tunF2SumDesc[16][tunMaxTrials%];
+var tunF1OptoSumDesc[16][tunMaxTrials%];
+var tunF2OPtoSumDesc[16][tunMaxTrials%];
 var tunTF;              ' Will need to use this during FFT analysis. Use at your own risk....
-var tunF1Cum[16];
-var tunF2Cum[16];
-var tunRateCum[16];
+'var tunF1Cum[16];  'These are unused, their lines are all commented out
+'var tunF2Cum[16];
+'var tunRateCum[16];
 
 ' djs 10-19-11 trigger hack for Visage trigger bug.
 var tunTriggerHack% := 0;  'setting to 0 to read from stim channel due to RENDER trigger line hell
@@ -104,6 +111,12 @@ var optoOffF1Chan%;
 var optoOnF1Chan%;
 var optoOffF2Chan%;
 var optoOnF2Chan%;
+var optoOffChanDesc%;
+var optoOnChanDesc%;
+var optoOffF1ChanDesc%;
+var optoOnF1ChanDesc%;
+var optoOffF2ChanDesc%;
+var optoOnF2ChanDesc%;
 var burstChan%;
 
 
@@ -489,7 +502,12 @@ func IdleProcessing%()
         
         ' Start trial. Put up stimulus.
         LogStatus("StartTrial", "Request stimulus");
-        SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
+        if tunType$ = tunTypeTwoWayContrast$ then  'We need to write a distinct SampleText for two-way contrast to indicate ascending, descending stimuli
+            SampleText("T," + GetPlotXCoordTWC$(nTrialsCompleted%));
+        else
+            SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
+        endif;
+        
         SafeSampleKey("S");
         'iHoldCount% := 0;
         ChangeStateTo(stateWaitForStimTrigger%, tNow);
@@ -834,6 +852,30 @@ func GetPlotXCoord(nTrials%)
 end;
 
 
+func GetPlotXCoordTWC(nTrials%,&isDescending%)
+    var temp;
+    temp := tunValues[tunValuesIndices%[nTrials%]];
+    if temp <= 100 then
+        isDescending% := 0;
+        return temp;
+    else
+        isDescending% := 1;
+        return temp-100;
+    endif;
+end;
+
+
+func GetPlotXCoordTWC$(nTrials%)
+    var temp;
+    temp := tunValues[tunValuesIndices%[nTrials%]];
+    if temp <= 100 then
+        return Str$(temp) + ", ascending";
+    else
+        return Str$(temp-100) + ", descending";
+    endif;
+end;
+
+
 func GetPlotXIndex%(nTrials%)
     return tunValuesIndices%[nTrials%];
 end;
@@ -854,15 +896,18 @@ proc PlotSpikes(t1, t2, whichPlot%, index%)
     var myCount2%; 'for bursts
     var t[10000];  'for bursts, we shouldn't have more than 10000 spikes in a window here
     var nBursts%;
-    'var index2%;
+    var isDescending%;
     
     'whichPlot% is a switch that allows us to plot (in this case) opto-on and opto-off with different colors
     
-    x := GetPlotXCoord(index%);
-    xind% := GetPlotXIndex%(index%);  'for keeping an average...may be difficult to implement
     
-    'index2% := ArrFindFloat%(tunValues[],x);  'this is going to correspond to the index of the XYPlot that will be deleted/updated
-    'actually, xind% should do this more easily.
+    if tunType$ = tunTypeTwoWayContrast$ then
+        x := GetPlotXCoordTWC(index%,isDescending%);  'Will get correct x-value, fill isDescending
+    else
+        x := GetPlotXCoord(index%);  'Getting correct x-value is trivial
+    endif;
+    
+    'xind% := GetPlotXIndex%(index%);  'for keeping an average...may be difficult to implement (currently unused!)
     
 	for i% := 0 to tunNWavemarks%-1 do
 		rate := View(DataWindow%).Count(i%+1, t1, t2)/(t2-t1);
@@ -870,9 +915,17 @@ proc PlotSpikes(t1, t2, whichPlot%, index%)
         'if tunRateCum[i%] >= 0 then  
         if rate >= 0 then
             if whichPlot% = 1 then
-                View(TuningWindow%[i%]).XYAddData(optoOffChan%, x, rate);    ' channel 1 is opto-off; channel 2 is opto-on
+                if isDescending% = 0 then
+                    View(TuningWindow%[i%]).XYAddData(optoOffChan%, x, rate);    ' channel 1 is opto-off; channel 2 is opto-on
+                else
+                    View(TuningWindow%[i%]).XYAddData(optoOffChanDesc%, x, rate);
+                endif;
             else
-                View(TuningWindow%[i%]).XYAddData(optoOnChan%, x, rate);
+                if isDescending% = 0 then
+                    View(TuningWindow%[i%]).XYAddData(optoOnChan%, x, rate);
+                else
+                    View(TuningWindow%[i%]).XYAddData(optoOnChanDesc%, x, rate);
+                endif;
             endif;
         
                 'if whichPlot% = 1 then
@@ -933,7 +986,7 @@ proc PlotSpikes(t1, t2, whichPlot%, index%)
         endif;
         
             
-        'do F1 if requested, F2 not currently done
+        'do F1/F2 if requested
         if tunDoF12% = 1 then
             ' Process for each cycle of the stimulus. A single cycle of the stim takes 1/tf
 			View(PSTHWindow%[i%]);
@@ -945,18 +998,30 @@ proc PlotSpikes(t1, t2, whichPlot%, index%)
 			ArrFFT(fftData[], 4); 
             
             docase
-            case whichPlot% = 1 then
+            case whichPlot% = 1 and isDescending% = 1 then
+                View(TuningWindow%[i%]).XYAddData(optoOffF1ChanDesc%, x, fftData[1]);
+                tunF1SumDesc[i%][index%] += fftData[1];
+                View(TuningWindow%[i%]).XYAddData(optoOffF2ChanDesc%, x, fftData[2]);
+                tunF2SumDesc[i%][index%] += fftData[2];
+            case whichPlot% = 2 and isDescending% = 1 then
+                View(TuningWindow%[i%]).XYAddData(optoOnF1ChanDesc%, x, fftData[1]);  
+                tunF1OptoSumDesc[i%][index%] += fftData[1];
+                View(TuningWindow%[i%]).XYAddData(optoOnF2ChanDesc%, x, fftData[2]);  
+                tunF2OptoSumDesc[i%][index%] += fftData[2];
+            case whichPlot% = 1 then  'isDescending% = 0
                 View(TuningWindow%[i%]).XYAddData(optoOffF1Chan%, x, fftData[1]);
                 tunF1Sum[i%][index%] += fftData[1];
                 View(TuningWindow%[i%]).XYAddData(optoOffF2Chan%, x, fftData[2]);
                 tunF2Sum[i%][index%] += fftData[2];
-            case whichPlot% = 2 then
+            case whichPlot% = 2 then  'isDescending% = 0
                 View(TuningWindow%[i%]).XYAddData(optoOnF1Chan%, x, fftData[1]);  
-                tunF1Sum[i%][index%] += fftData[1];
+                tunF1OptoSum[i%][index%] += fftData[1];
                 View(TuningWindow%[i%]).XYAddData(optoOnF2Chan%, x, fftData[2]);  
-                tunF2Sum[i%][index%] += fftData[2];
+                tunF2OptoSum[i%][index%] += fftData[2];
             endcase
             
+            
+            'This code is old, hasn't been implemented in quite some time and is definitely behind
             'tunF1Cum[i%] += fftdata[1];
             'tunF2Cum[i%] += fftdata[2];
             'View(TuningWindow%[i%]).XYSort(2,1);  'sort by x
@@ -1103,28 +1168,37 @@ proc InitializeWindows()
         
         FrontView(DataWindow%);  'bring main window back to front to avoid view is not a time view shit
     
-        optoOnChan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Make this even if we aren't using opto
-        'View(TuningWindow%[i%]).XYColour(optoOnChan%, 11);
-        View(TuningWindow%[i%]).ChanColourSet(optoOnChan%, 1, .1, .8, .1);  'green for on
-        optoOffChan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Make this even if we aren't using opto
-        'View(TuningWindow%[i%]).XYColour(optoOffChan%, 0);
-        View(TuningWindow%[i%]).ChanColourSet(optoOffChan%, 1, .8, .1, .1);  'red for off
-    
+        optoOnChan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Make this even if we aren't using opto/E-stim
+        View(TuningWindow%[i%]).ChanColourSet(optoOnChan%, 1, .1, .8, .1);  'deep green for on
+        optoOffChan% := View(TuningWindow%[i%]).XYSetChan(0);   
+        View(TuningWindow%[i%]).ChanColourSet(optoOffChan%, 1, .8, .1, .1);  'deep red for off
+        
+        optoOnChanDesc% := View(TuningWindow%[i%]).XYSetChan(0);   ' Make this even if we aren't using opto/E-stim
+        View(TuningWindow%[i%]).ChanColourSet(optoOnChanDesc%, 1, 0, 0, 1);  'deep blue for on
+        optoOffChanDesc% := View(TuningWindow%[i%]).XYSetChan(0);   
+        View(TuningWindow%[i%]).ChanColourSet(optoOffChanDesc%, 1, .6, .1, 1);  'deep purple for off
+        
         ' Create psth window if f1 and f2 analysis needed
         if tunDoF12% = 1 then
             
             optoOffF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1 (of opto-off), red
-            'View(TuningWindow%[i%]).XYColour(optoOffF1Chan%, 16);     ' At some point we may want to move to ChanColourSet(), but not necessary at this point.
             View(TuningWindow%[i%]).ChanColourSet(optoOffF1Chan%, 1, 1, 0, 0);
-            optoOffF2Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 (of opto-off), magenta
-            'View(TuningWindow%[i%]).XYColour(optoOffF2Chan%, 17);
+            optoOffF2Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 (of opto-off), pale red
             View(TuningWindow%[i%]).ChanColourSet(optoOffF2Chan%, 1, 1, 0.8, 0.8);
             optoOnF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1 of opto-on, green
-            'View(TuningWindow%[i%]).XYColour(optoOnF1Chan%, 38);
             View(TuningWindow%[i%]).ChanColourSet(optoOnF1Chan%, 1, 0, 1, 0);
             optoOnF2Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 of opto-on, pale green
-            'View(TuningWindow%[i%]).XYColour(optoOnF2Chan%, 35);
             View(TuningWindow%[i%]).ChanColourSet(optoOnF2Chan%, 1, 0.8, 1, 0.8);
+            
+            optoOffF1ChanDesc% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1 (of opto-off Desc), blue
+            View(TuningWindow%[i%]).ChanColourSet(optoOffF1ChanDesc%, 1, 0.4, 0.4, 1);
+            optoOffF2ChanDesc% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 (of opto-off Desc), pale blue
+            View(TuningWindow%[i%]).ChanColourSet(optoOffF2ChanDesc%, 1, 0.7, 0.8, 1);
+            optoOnF1ChanDesc% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1 of opto-on Desc, purple
+            View(TuningWindow%[i%]).ChanColourSet(optoOnF1ChanDesc%, 1, 0.75, 0.45, 1);
+            optoOnF2ChanDesc% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 of opto-on Desc, pale purple
+            View(TuningWindow%[i%]).ChanColourSet(optoOnF2ChanDesc%, 1, 0.9, 0.75, 1);            
+            
             LogStatus("InitializeWindows", "Channel " + str$(i%+1) + " " + str$(ch1%) + " " + str$(ch2%));
             'PSTHWindow%[i%] := View(DataWindow%).SetPSTH(tunWavemarkPorts%[i%]+1, 16, 1 /(tunTF*16), 0, 0, 3);  'must use index to tWMP%[] now that channel #s correspond to port #s (+1)
             PSTHWindow%[i%] := View(DataWindow%).SetPSTH(i%+1, 16, 1 /(tunTF*16), 0, 0, 3);  'well, channel #s DON'T correspond to port #s, so...
@@ -1155,6 +1229,15 @@ proc TuningCurveLabels(iport%)
         XUnits$("Contrast (%)");
         ChanTitle$(1, "Chan 1");
         XRange(tunContrastMinContrast, tunContrastMaxContrast);
+        
+    case tunType$ = tunTypeTwoWayContrast$ then
+        
+        myTitle$ := s$ + " - Two Way Contrast = ";
+        myTitle2$ := " - Two Way Contrast = ";
+        WindowTitle$("Two Way Contrast Tuning (over 100 is downwards) - " + s$);
+        XUnits$("Contrast (%)");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunTwoWayContrastMinContrast, tunTwoWayContrastMaxContrast+100);
         
     case tunType$ = tunTypeOrientation$ then
         
@@ -1264,6 +1347,7 @@ end;
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 proc CreateSampleConfiguration()
 	var i%;
+    var j%;
     var tunOptoRepeats%;
 
 	SampleClear(); 'Set standard sampling state
@@ -1324,6 +1408,41 @@ proc CreateSampleConfiguration()
         'tunNValues% := (tunContrastNSteps%+1)*tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  'shorter, should work the same as above commented line, keeping old line for contrast only just in case...
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+    case tunType$ = tunTypeTwoWayContrast$ then 'This function needs to make something like 10 20 40 80 180 140 120 110... for tunValues using GRPP or the like
+        SampleAutoName$(dataCellName$ + "_twc_000");
+        'tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunTwoWayContrastNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        if tunUseFile% = 1 then
+            tunNAdvances% := tunFileLen%-1;
+            ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],0);  'force progression to 0 here, can't be random
+        else
+            tunNAdvances% := 2*tunTwoWayContrastNSteps%+1;
+            if tunNAdvances% > 1 then
+                'no option for randomization in GRPPTWC, would not make sense, note that we are hardcoding iLog% to 1, I checked and linear contrast WOULD work
+                GetRepeatedParameterProgressionTwoWayContrast%(tunTwoWayContrastNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunTwoWayContrastMinContrast, tunTwoWayContrastMaxContrast, 1);  
+            else  'cannot run GRPP on a value of 0 steps, simply use minimum value
+                tunValues[0] := tunTwoWayContrastMinContrast;
+                tunValuesIndices%[0] := 0;
+            endif;
+        endif;
+        tunNValues% := (tunNAdvances%+1)*tunNRepeats%; 
+        
+        'here assign tunTwoWayContrastValues[] to have literal contrast value (e.g. 10 20 40 80 80 40 20 10) based on tunValues (e.g. 10 20 40 80 180 140 120 110)
+        'this COULD have been done in GRPPTWC about 9 lines above, but would then not adjust the values from an input file, this way we fix either
+        for j% := 0 to tunMaxTrials%-1 do
+            if tunValues[j%] <= 100 then
+                tunTwoWayContrastValues[j%] := tunValues[j%];
+            else
+                tunTwoWayContrastValues[j%] := tunValues[j%]-100;
+            endif;
+        next
+
+        tunValuesStringified$ := StringifyProgression$(tunNValues%, tunTwoWayContrastValues, tunValuesIndices%); 'note we don't use tunValues
+        'Sanity check, the values created are correct
+        'printlog("TunValues is %f\n",tunValues[0:2*(tunTwoWayContrastNSteps%+1)]);
+        'printlog("TunTwoWayContrastValues is %f\n",tunTwoWayContrastValues[0:2*(tunTwoWayContrastNSteps%+1)]);
+        'printlog("tunValuesStringified$ is %s\n",tunValuesStringified$);
+        'halt;
     case tunType$ = tunTypeOrientation$ then 
         SampleAutoName$(dataCellName$ + "_ori_000");
         'tunNRepeats% := tunOriNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
@@ -1677,6 +1796,20 @@ func Stop%()
             m% := Max(tunF1Sum[i%][]);
             LogStatus("F1 Max", "Channel " + str$(i%+1) + " Port " + str$(tunWavemarkPorts%[i%]) + " max F1 at x=" + str$(tunValues[m%]));
         next
+        for i% := 0 to tunNWavemarks%-1 do
+            m% := Max(tunF2Sum[i%][]);
+            LogStatus("F2 Max", "Channel " + str$(i%+1) + " Port " + str$(tunWavemarkPorts%[i%]) + " max F2 at x=" + str$(tunValues[m%]));
+        next
+        if tunType$ = tunTypeTwoWayContrast$ then
+            for i% := 0 to tunNWavemarks%-1 do
+                m% := Max(tunF1SumDesc[i%][]);
+                LogStatus("F1 Max, Descending", "Channel " + str$(i%+1) + " Port " + str$(tunWavemarkPorts%[i%]) + " max F1 at x=" + str$(tunValues[m%]));
+            next
+            for i% := 0 to tunNWavemarks%-1 do
+                m% := Max(tunF2SumDesc[i%][]);
+                LogStatus("F2 Max, Descending", "Channel " + str$(i%+1) + " Port " + str$(tunWavemarkPorts%[i%]) + " max F2 at x=" + str$(tunValues[m%]));
+            next
+        endif;
     endif    
     
     ' Plot rasters for each individual stimulus, for each electrode
@@ -1808,6 +1941,12 @@ proc WriteParameterFile()
         Print("Values: " + tunValuesStringified$ + "\n");
         Print("\n");
         
+    case tunType$ = tunTypeTwoWayContrast$ then
+        
+        Print("Type:                  : Two Way Contrast\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunTwoWayContrastMinContrast, tunTwoWayContrastMaxContrast, tunTwoWayContrastNSteps%, tunTwoWayContrastNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");        
         
     case tunType$ = tunTypeOrientation$ then
         
@@ -2071,7 +2210,7 @@ func Start%()
     endif
     
 	docase 
-    case tunType$ = tunTypeContrast$ then
+    case tunType$ = tunTypeContrast$ or tunType$ = tunTypeTwoWayContrast$ then  'The call to the VSG is the same for both, Values$ will change of course
         
         'Tune$ := Dual$ + " -C " + Values$;
         Tune$ := " -C " + Values$;

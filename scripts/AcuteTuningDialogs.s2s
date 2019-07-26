@@ -51,6 +51,7 @@ const tundlgSelectTuningFileButton% := 20;
 const tundlgStimPSTHButton% := 21;
 const tundlgCSDButton% := 22;
 const tundlgDanishButton% := 23;
+const tundlgTwoWayContrastButton% := 24;
 
 
 const tunTypeNone$ := "None";
@@ -68,6 +69,7 @@ const tunTypeID$ := "I";    ' inner diameter tuning
 const tunTypeStimTrigPSTH$ := "X";
 const tunTypeCSD$ := "CSD";
 const tunTypeDanish$ := "DN";
+const tunTypeTwoWayContrast$ := "TWC";
 var tunType$:=tunTypeNone$;
 
 const tunContextDAQ$ := "DAQ";
@@ -96,6 +98,15 @@ var tunContrastMaxContrast;		' max contrast
 var tunContrastProgression%;
 var tunContrastUseFile%;
 var tunContrastTuningFile$;
+
+'Two Way Contrast next
+var tunTwoWayContrastNSteps%;			' # steps between max and min in two way contrast tuning curve, there will be 2x this number of stims in one repeat
+var tunTwoWayContrastNRepeats%;		    ' # repeats in contrast tuning curve
+var tunTwoWayContrastMinContrast;		' min contrast
+var tunTwoWayContrastMaxContrast;		' max contrast
+var tunTwoWayContrastUseFile%;
+var tunTwoWayContrastTuningFile$;
+
 
 ' Spatial next
 var tunSpatialNSteps%;			' # steps in spatial freq tuning curve
@@ -324,23 +335,24 @@ func TuningCurveScriptDialog%()
     DlgCheck(10,"Opto/E-Stim On",2,14);
     DlgButton(tundlgOptogeneticsButton%, "Opto/E-Stim Parameters", TunOptoDialog%, 2, 15);
     
-    DlgGroup("Individual Tuning Curve Types", 1, 16, dlgwid%-2, 5);
+    DlgGroup("Individual Tuning Curve Types", 1, 16, dlgwid%-2, 6);
 	DlgButton(tundlgOrientationButton%, "Orientation", TuningCurveOrientationDialog%, 2, 17);
 	DlgButton(tundlgContrastButton%, "Contrast", TuningCurveContrastDialog%, 2, 18);
 	DlgButton(tundlgSpatialButton%, "Spatial Freq", TuningCurveSpatialDialog%, 2, 19);
 	DlgButton(tundlgTemporalButton%, "Temporal Freq", TuningCurveTemporalDialog%, 2, 20);
+    DlgButton(tundlgTwoWayContrastButton%, "Two Way Contrast", TuningCurveTwoWayContrastDialog%, 2, 21);
 	DlgButton(tundlgAreaButton%, "Area", TuningCurveAreaDialog%, 30, 17);
     DlgButton(tundlgNullTestButton%, "Null Test", TuningCurveNullTestDialog%, 30, 18);
 	DlgButton(tundlgIDButton%, "InnerDiam", TuningCurveIDDialog%, 30, 19);
     DlgButton(tundlgDanishButton%, "Danishes", TuningCurveDanishDialog%, 30, 20);
     
-    DlgGroup("Non-Grating Stimuli", 1, 21, dlgwid%-2, 2);
-    DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 22);
-    DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 30, 22);
+    DlgGroup("Non-Grating Stimuli", 1, 22, dlgwid%-2, 2);
+    DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 23);
+    DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 30, 23);
     
-    DlgGroup("Neuropixel JIT Stimuli", 1, 23, dlgwid%-2, 2);
-    DlgButton(tundlgStimPSTHButton%, "E-Stim PSTH", StimTrigPSTHDialog%, 2, 24);
-    DlgButton(tundlgCSDButton%, "Current Source Density", CurrentSourceDensityDialog%, 21, 24);
+    DlgGroup("Neuropixel JIT Stimuli", 1, 24, dlgwid%-2, 2);
+    DlgButton(tundlgStimPSTHButton%, "E-Stim PSTH", StimTrigPSTHDialog%, 2, 25);
+    DlgButton(tundlgCSDButton%, "Current Source Density", CurrentSourceDensityDialog%, 21, 25);
     
     DlgAllow(0xffff, 0, TuningCurveScriptDialogChanged%);
     
@@ -490,6 +502,31 @@ proc SaveTuningCurveContrastParameters()
     SetFloatRegistryValue(key$, "MaxContrast", tunContrastMaxContrast);
     SetIntRegistryValue(key$, "UseFile", tunContrastUseFile%);
     SetStringRegistryValue(key$, "TuningFile", tunContrastTuningFile$);
+end;
+
+
+proc GetTuningCurveTwoWayContrastParameters()
+	var stmp$;
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\TwoWayContrast";
+    
+    tunTwoWayContrastNSteps% := GetIntRegistryValue%(key$, "NSteps", tunTwoWayContrastNSteps%);
+    tunTwoWayContrastNRepeats% := GetIntRegistryValue%(key$, "NRepeats", tunTwoWayContrastNRepeats%);
+    tunTwoWayContrastMinContrast := GetFloatRegistryValue(key$, "MinContrast", tunTwoWayContrastMinContrast);
+    tunTwoWayContrastMaxContrast := GetFloatRegistryValue(key$, "MaxContrast", tunTwoWayContrastMaxContrast);
+    tunTwoWayContrastUseFile% := GetIntRegistryValue%(key$, "UseFile", tunTwoWayContrastUseFile%);
+    tunTwoWayContrastTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunTwoWayContrastTuningFile$);
+end;
+
+proc SaveTuningCurveTwoWayContrastParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\TwoWayContrast";
+    SetIntRegistryValue(key$, "NSteps", tunTwoWayContrastNSteps%);
+    SetIntRegistryValue(key$, "NRepeats", tunTwoWayContrastNRepeats%);
+    SetFloatRegistryValue(key$, "MinContrast", tunTwoWayContrastMinContrast);
+    SetFloatRegistryValue(key$, "MaxContrast", tunTwoWayContrastMaxContrast);
+    SetIntRegistryValue(key$, "UseFile", tunTwoWayContrastUseFile%);
+    SetStringRegistryValue(key$, "TuningFile", tunTwoWayContrastTuningFile$);
 end;
 
 proc GetTuningCurveSpatialParameters()
@@ -934,6 +971,75 @@ func TuningCurveContrastDialog%()
 
 	return iReturn%;
 end;
+
+
+
+
+func TuningCurveTwoWayContrastDialog%()
+	var iReturn% := 0;
+	var i%;
+	GetTuningCurveTwoWayContrastParameters();
+	DlgCreate("Two Way Contrast Tuning Curve Parameters");
+	DlgInteger(1, "Number of Steps", 0, 99);
+	DlgInteger(2, "Number of Repeats", 1, 500);
+	DlgReal(3, "Min Contrast (%)", 0.1, 100);
+	DlgReal(4, "Max Contrast (%)", 0.1, 100);
+    DlgCheck(5, "Use File For Tuning Values, 101-200 are downwards!");
+    DlgString(6,40,255,"",3);  'for visual confirmation of selected seq file
+    DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
+    DlgAllow(0xffff, 0, TuningCurveGenericDialogChanged%);
+    
+	i% := DlgShow(tunTwoWayContrastNSteps%, tunTwoWayContrastNRepeats%, tunTwoWayContrastMinContrast, tunTwoWayContrastMaxContrast, tunTwoWayContrastUseFile%, tunTwoWayContrastTuningFile$);
+	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
+    ' djs 2/4/2011
+    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+    ' before things proceed. 
+	if i% = 1 then
+		SaveTuningCurveTwoWayContrastParameters();
+'		PrintLog("TuningCurveTwoWayContrastDialog - user hit OK\n");
+		tunType$ := tunTypeTwoWayContrast$;
+        tunUseFile% := tunTwoWayContrastUseFile%;
+        tunTuningFile$ := tunTwoWayContrastTuningFile$;
+        
+        'Reset dialog OK button text on Select dialog, and note which experiment to run
+        DlgValue$(-1,"Run 2Way Contrast");
+        TuningCurveScriptDialogAllowOK% := 1;  'Prepare to enable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
+        
+		if tunContext$ = tunContextDAQ$ then
+            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+            iReturn% := 1;
+		else
+			iReturn% := 1;
+		endif;
+	endif;
+	if i% = 0 then
+'		PrintLog("TuningCurveContrastDialog - user hit Cancel\n");
+		tunType$ := tunTypeNone$;
+		if tunContext$ = tunContextDAQ$ then
+			iReturn% := 1;
+		else
+			iReturn% := 2;
+		endif;
+        'Reset dialog OK button text on Select dialog, and note we need to pick an expt.
+        DlgValue$(-1,"Select Expt.");
+        TuningCurveScriptDialogAllowOK% := 0;  'Prepare to disable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Disables "OK" button, -1 is sham input
+	endif;
+
+	return iReturn%;
+end;
+
+
+
+
+
 
 func TuningCurveSpatialDialog%()
 	var iReturn% := 0;
@@ -1663,7 +1769,8 @@ func TunOptoDialog%()
     
 	'i% := DlgShow(tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoVoltageOut,tunOptoStartState%);',tunRecOptoBox%,tunRecStimulator%);
 	'changing order with bigger dialog - note that with addition of the dialogChanged function the above will not be terribly relevant ever again
-    i% := DlgShow(tunOptoVoltageOut,tunOptoStartState%,tunOptoUsePulse%,tunLaserDiode%,tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoNPulses%,tunPulsedOptoOnsetMin,tunPulsedOptoOnsetMax,tunPulsedOptoWidth,tunPulsedOptoIPImin,tunPulsedOptoIPImax);
+    i% := DlgShow(tunOptoVoltageOut,tunOptoStartState%,tunOptoUsePulse%,tunLaserDiode%,tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoNPulses%,
+    tunPulsedOptoOnsetMin,tunPulsedOptoOnsetMax,tunPulsedOptoWidth,tunPulsedOptoIPImin,tunPulsedOptoIPImax);
     ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
     ' 

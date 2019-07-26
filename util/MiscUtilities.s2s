@@ -466,7 +466,144 @@ end
 
 
 
+'****f* Spike2Util/MiscUtilities/GetRepeatedParameterProgressionTwoWayContrast%
+' NAME
+' GetRepeatedParameterProgressionTwoWayContrast%(n%, nr%, result[], indices%[], firstval, lastval, ilog%, irandom%)
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a starting
+' value to an ending value, and then from the ending value back to the starting value. 
+' The progression can be linear or logarithmic, and the set may be repeated any number of 
+' times. Unlike other versions of GRPP, the parameter order CANNOT be randomized, as the
+' ascending/descending aspect of the parameters is the fundamental point. Note that the 
+' output of the second half of this progression will be displaced +100 from the output of
+' the first half, e.g. the parameter values written to result[] might be [10 20 40 80 180 140 120 110]
+' This is used to facilitate online plotting of the responses to the ascending and descending
+' portions of the progression separately. Further steps are required in the main code to create
+' a parallel version of result[] with the literal values on the descending side. The code is
+' specifically designed for contrast; there is no principled reason that the +100 convention
+' would not work for some other parameters (e.g. spFreq, tempFreq, area, innerDiam) but it would
+' be obviously problematic for values that can extend beyond 100 (orientation, null test).
+' n% : Number of values to generate for the ascending portion of the progression; the endpoints 
+'      will be doubled, so the actual length of an ascending/descending sequence will be 2*n%
+' nr% : Number of repeats to generate
+' result[] : Parameter values are placed here, with the latter, descending half incremented by 100
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' firstval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both firstval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' 
+' The indices always complete a set of n% values (0...n%-1) before starting another set. 
+' SEE ALSO
+' GetParameterProgression
+'****
 
+
+func GetRepeatedParameterProgressionTwoWayContrast%(n%, nr%, result[], indices%[], firstval, lastval, ilog%)
+    var status% := 0;
+    docase
+    case Len(result[]) < 2*n%*nr% or Len(indices%[]) < 2*n%*nr% then
+        status% := 1;
+    case n% < 2 or nr% < 1 then
+        status% := 1;
+    else
+        var ir%;
+        var is%;
+        for ir% := 0 to nr%-1 do
+            is% := GetTwoWayParameterProgression%(n%, result[ir%*2*n%:2*n%], indices%[ir%*2*n%:2*n%], firstval, lastval, ilog%, 100);
+            if is% <> 0 then
+                PrintLog("GetRepeatedParameterProgression%()", "Error (" + str$(is%) + ")during repeat# " + str$(ir%));
+                status% := is%;
+            endif
+        next
+    endcase
+    return status%;
+end
+
+
+
+
+'****f* Spike2Util/MiscUtilities/GetTwoWayParameterProgression%
+' NAME
+' GetTwoWayParameterProgression%
+' SYNOPSIS
+' Prepares an array containing a set of parameters that progress from a starting
+' value to an ending value, then repeat the ending value and return to the starting
+' value. The second half of the progression can be offset by an arbitrary value. 
+' The progression can be linear or logarithmic, but the order of the parameters
+' cannot be randomized, as the purpose is for a structured ascending/descending design.
+' INPUTS
+' n% : Number of values to generate for the ascending portion of the parameters. The
+'      descending portion of the parameters will be the same length, so the total number
+'      of parameters generated will be 2*n%
+' result[] : Parameter values are placed here
+' indices%[] : Indices into result[] array. Use these to obtain the progression requested
+' firstval : first/starting parameter value 
+' lastval : last/ending parameter value
+' ilog% : Generate linear (log) progression if ilog = 0 (1). 
+' secondhalfoffset : a value to add to each of the parameters in the second half
+' RETURN VALUE
+' Returns 0 on success, nonzero value otherwise (bad value for n%, or else result/indices 
+' not large enough)
+' NOTES
+' For log progressions both firstval and lastval must be > 0. 
+'
+' The array indices%[] is the order you should follow when accessing the 
+' values in result[]. In other words, the order of the parameters is 
+' result[indices%[0]], result[indices%[1]], ... 
+' In the case of a non-randomized progression you can use this method or you can 
+' safely use result[0], result[1], ....
+' SEE ALSO
+' GetRepeatedParameterProgression
+'****
+
+func GetTwoWayParameterProgression%(n%, result[], indices%[], firstval, lastval, ilog%, secondhalfoffset)
+    var status% := 0;
+    docase
+    case Len(result[]) < 2*n% or Len(indices%[]) < 2*n% then
+        status% := 1;
+    case n% < 2 then
+        status% := 1;
+    case ilog% <> 0 and (firstval <= 0 or lastval<= 0) then
+        status% := 1;
+    else
+        var stepsize;
+        var i%;
+        for i% := 0 to (2*n%)-1 do
+            indices%[i%] := i%;
+        next
+        if ilog% <> 0 then
+            var firstlog, lastlog;
+            ' Generate log progression
+            firstlog := log(firstval);
+            lastlog := log(lastval);
+            stepsize := (lastlog - firstlog)/(n%-1);
+            for i% := 0 to n%-1 do
+                result[i%] := pow(10, firstlog + i% * stepsize);
+                result[(2*n%)-1-i%]  := secondhalfoffset + pow(10, firstlog + i% * stepsize);
+            next;
+        else
+            ' Generate linear progression
+            stepsize := (lastval - firstval)/(n%-1);
+            for i% := 0 to n%-1 do
+                result[i%] := firstval + i% * stepsize;
+                result[(2*n%)-1-i%]  := secondhalfoffset + firstval + i% * stepsize;
+            next;
+        endif
+        
+    endcase
+    return status%;
+end
 
 
 
