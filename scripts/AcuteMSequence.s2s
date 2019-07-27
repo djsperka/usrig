@@ -16,6 +16,12 @@ var amsXOrigin%, amsYOrigin%;
 var amsRepeats% := 1;
 var amsColorIndex%;
 var amsColor$[4];
+var amsDoNeuropixel%;
+var neuropixelStatus%;
+var autoNameStr$;
+var SequencerPeriodMS;
+var amsDoOptoEstim%;
+var amsOptoEstimInterval;
 
 ' set to 1 if using visage
 var amsUseMEAMSeq% := 1;
@@ -26,6 +32,16 @@ var amsWavemarkPorts%[amsNPorts%];
 var amsContinuousPorts%[amsNPorts%];
 var amsNWavemarks% := 0;
 var amsNContinuous% := 0;
+
+' ============================================================================ '
+' Serial Port constants
+' ============================================================================ '
+const serialCOMPort% := 8; 
+const serialBaudRate% := 115200;
+const serialDataBits% := 8;
+const serialParity% := 0;
+const serialStopBits% := 1;
+const serialFlowCtrl% := 0;
 
 
 ' daq channels for triggers from vsg
@@ -47,6 +63,7 @@ const stateVSGConfirm%          :=  3;
 const stateStartStim%           :=  4;
 const stateStim%                :=  5;
 const stateDone%                :=  6;
+const stateSendNeuropixelStart% :=  7;
 
 var iState% := stateStartup%;              ' This holds the current state
 
@@ -56,6 +73,8 @@ var TriggerTime:=-1,NextTriggerTime, BlockData$[8],BlockIndex;
 var FirstTriggerTime := -1;
 var SpikeCount;
 var TriggerNumber:=0;
+var TriggerNumberThisInterval%:=0;
+var numTriggersPerOptoEstim%;
 var TimeLeft,PercentComplete;
 
 
@@ -116,7 +135,11 @@ func AcuteMSequenceDialog%()
     DlgInteger(4, "Center Y coord: ", -300, 300);
     DlgInteger(5, "Number of cycles: ", 1, 100);
     DlgList(6, "Color properties: ", amsColor$[]);
-    status% := DlgShow(amsFramesPerTerm%, amsDotSize%, amsXOrigin%, amsYOrigin%, amsRepeats%, amsColorIndex%);
+    DlgCheck(7,"Do Neuropixel Recording",2,7);
+    DlgCheck(8, "Do Opto/E-stim",2,8);
+    DlgReal(9, "Opto/E-Stim Interval (s)", 0.01, 1000);
+    
+    status% := DlgShow(amsFramesPerTerm%, amsDotSize%, amsXOrigin%, amsYOrigin%, amsRepeats%, amsColorIndex%, amsDoNeuropixel%,amsDoOptoEstim%,amsOptoEstimInterval);
     
     if status% = 1 then
         
@@ -150,6 +173,10 @@ proc GetAcuteMSequenceParameters()
     amsYOrigin% := GetIntRegistryValue%(key$, "YOrigin", amsYOrigin%);
     amsRepeats% := GetIntRegistryValue%(key$, "Repeats", amsRepeats%);
     amsColorIndex% := GetIntRegistryValue%(key$, "ColorIndex", amsColorIndex%);
+    amsDoNeuropixel% := GetIntRegistryValue%(key$, "DoNeuropixel", amsDoNeuropixel%);
+    amsDoOptoEstim% := GetIntRegistryValue%(key$, "DoOptoEstim", amsDoOptoEstim%);
+    amsOptoEstimInterval := GetFloatRegistryValue(key$, "OptoEstimInterval", amsOptoEstimInterval);
+    
     return;
 end
 
@@ -162,6 +189,9 @@ proc SaveAcuteMSequenceParameters()
     SetIntRegistryValue(key$, "YOrigin", amsYOrigin%);
     SetIntRegistryValue(key$, "Repeats", amsRepeats%);
     SetIntRegistryValue(key$, "ColorIndex", amsColorIndex%);
+    SetIntRegistryValue(key$, "DoNeuropixel", amsDoNeuropixel%);
+    SetIntRegistryValue(key$, "DoOptoEstim", amsDoOptoEstim%);
+    SetFloatRegistryValue(key$, "OptoEstimInterval", amsOptoEstimInterval);
     return;
 end
 
@@ -173,6 +203,10 @@ proc CreateSampleConfiguration()
 	SampleClear(); 'Set standard sampling state
 	SampleAutoComment(0); 'Prompt for comment after sampling
 	SampleAutoCommit(60); 'Seconds between each file commit
+    if amsDoNeuropixel% = 1 then
+        SampleBigFile(0);  'Create an .smr file INSTEAD of .smrx so that Scottie's analysis suite can read it, max file size is 2GB
+        'SampleBigFile(1);  'Create a "big" .smr file, max file size 1 TB.  It is not known if Scottie's analysis suite can read these.
+    endif;
     
     FilePathSet(GetDataPathRoot$() + "\\" + GetDataSetName$(), 3);
     FilePathSet(GetDataPathRoot$() + "\\" + GetDataSetName$(), 1);
@@ -229,6 +263,18 @@ proc CreateSampleConfiguration()
    	SampleEvent(amsChanStim%, 3, 2, 1000); 'Trigger channel, level
 	SampleComment$(amsChanStim%, "Stim");
 	SampleTitle$(amsChanStim%, "Stim");
+    
+    'Add a digital marker channel (channel 32 by default) for pulsing optogenetics (and wraparound, PLS updated)
+    'Will record a '1' for laser on and a '0' for laser off
+    if amsDoOptoEstim% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"Laser On");
+        
+        SampleWaveform(7,6,5000);  'on adc7
+        SampleTitle$(7, "OptoCopy");
+    endif
+    
+    
     
 	SampleSequencer(script$ + "Tuning.pls");
     SampleOptimise(2, 2, 2, 2, 50);  'Set optimise mode (do this last)
@@ -308,12 +354,28 @@ func Start%()
     ' clear those out by sending a special message "clear" via SendMessage. 
     ProgRun(GetBinDir$(1) + "SendMessage clear");
     
+    
+    'For serial communications with Neuropixel, use the same values but do not send initial message
+    if amsDoNeuropixel% =  1 then
+        SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
+    endif;    
+    
+    
     ' now as user to start matlab processing. 
     Message("Start MultiRealTimeM(" + str$(amsNWavemarks%) + ") and press OK to start");
     
     ' Start sampling
     SampleStart(0);
-    View(amsWindowData%);    
+    View(amsWindowData%);  
+    
+    SequencerPeriodMS := SampleSeqClock(1);  'Get the clock period of the sequencer, in MS, must do this after starting sampling
+    
+    if amsDoOptoEstim% then
+        SetPulsedOptoSequencerVariables();
+        numTriggersPerOptoEstim% := amsOptoEstimInterval*dataScreenHz;
+        numTriggersPerOptoEstim% := numTriggersPerOptoEstim%/amsFramesPerTerm%;
+    endif;   
+    
     
     if GetUseRemoteStimulus%() = 0 then
         if amsUseMEAMSeq% = 0 then
@@ -359,6 +421,7 @@ end;
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Stop%()
+    var serialStatus%;
     
     ' remove the idle process. 
     ToolbarSet(0, "");
@@ -367,6 +430,19 @@ func Stop%()
     
     ' send the quit command before stopping sampling
     SampleKey("Q");
+    
+    docase
+    case amsDoNeuropixel% = 1 and neuropixelStatus% = 1 then 
+        serialStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "STOP", "\n");
+        SerialClose(serialCOMPort%);
+        if serialStatus% = 0 then
+            message("Warning! SpikeGLX recording may not have stopped!\nPlease manually stop SpikeGLX!");
+        endif;
+    case amsDoNeuropixel% = 1 and neuropixelStatus% = 0 then 'On failure to start recording, neuropixelStatus% will be 0, don't try stopping recording that didn't start
+        SerialClose(serialCOMPort%);
+    endcase;
+    
+    
     while ProgStatus(amsHandleStim) > 0 do
         Yield(1);
     wend
@@ -416,8 +492,25 @@ func Idle%()
         if tTrigger > tLastTrigger and vTrigger = 1 then                
             LogStatus("stateVSGConfirm", "Got trailing edge of trigger.");
             tLastTrigger := tTrigger;
-            ChangeStateTo(stateStartStim%, tTrigger);
+            if amsDoNeuropixel% = 0 then
+                ChangeStateTo(stateStartStim%, tTrigger);
+            else
+                ChangeStateTo(stateSendNeuropixelStart%, tTrigger);
+            endif;
         endif;
+        
+    case iState% = stateSendNeuropixelStart% then
+
+        autoNameStr$ := dataDataSet$ + "_" + FileName$(-4);
+        printlog("Sending START to Neuropixel, using name string '%s'\n",autoNameStr$);
+        
+        neuropixelStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "START " + autoNameStr$, "\n");
+        if neuropixelStatus% = 0 then
+            message("SpikeGLX recording did not successfully start!  Quitting!"); 
+            Stop%();
+        endif;
+        
+        ChangeStateTo(stateStartStim%,View(amsWindowData%).MaxTime());  'If implemented, put in a real time for tStateStart
             
     case iState% = stateStartStim% then
         
@@ -456,73 +549,73 @@ end;
 
 
 
-
-func CountSpikes%()
-
-    var status% := 1;   ' will be set to -1 when all triggers have been counted
-    
-    ' TriggerTime is the last trigger found. On starting the msequence TriggerTime is initialized to -1.
-    ' NextTriggerTime is the first trigger found after TriggerTime. When both NextTriggerTime and TriggerTime
-    ' are valid (neither is <0) they consitute the full period of a single term of the m-sequence.
-    ' 
-    ' Note that the line below was from the original msequence code -- in that script sampling started on the first 
-    ' trigger, and that trigger is NOT in the data file. The first term of the m-sequence starts at time 0, however, 
-    ' so the value of TriggerTime is set to 0 before starting. This script starts sampling prior to the onset of the
-    ' first term of the msequence, so the first trigger found in the file must be saved; we do not count spikes until
-    ' we find the second trigger. When multiple repeats are run there is further confusion. The modulo division 
-    ' takes care of all: Whenever the number of triggers counted (TriggerNumber) is a multiple of 32768 we have to 
-    ' save one trigger before counting spikes in trigger intervals. 
-'    if TriggerTime=-1 then TriggerTime:=0; endif    
-    
-    NextTriggerTime:=View(amsWindowData%).NextTime(amsChanTrigger%,TriggerTime);
-    if NextTriggerTime > 0 then
-        '        if TriggerTime < 0 then
-        if TriggerNumber mod 1000 = 0 then
-            PrintLog("next %f now %f delta %f\n", NextTriggerTime, MaxTime(), MaxTime()-NextTriggerTime);
-        endif
-        
-        if TriggerNumber mod 32768 = 0 then
-            FirstTriggerTime := NextTriggerTime;
-            TriggerTime := NextTriggerTime;
-            TriggerNumber := TriggerNumber + 1;
-        else
-            ' TriggerTime is valid, so the interval [TriggerTime, NextTriggerTime] is a term in the sequence. 
-            ' Count spikes for each data channel and save it in BlockData$[]
-            for index := 1 to amsNWavemarks% do 
-                'SpikeCount:=View(amsWindowData%).count(index,TriggerTime,NextTriggerTime);
-                SpikeCount:=View(amsWindowData%).count(amsWavemarkPorts%[index-1]+1,TriggerTime,NextTriggerTime);
-                BlockData$[index-1]:=BlockData$[index-1]+" "+str$(SpikeCount);
-            next 
-            TriggerTime:=NextTriggerTime;
-            BlockIndex:=BlockIndex+1;
-            TriggerNumber:=TriggerNumber+1;
-            
-            ' Was that the last trigger? 
-            if TriggerNumber = 32768 * amsRepeats% then
-                status% := -1;
-            endif
-            
-            ' BlockIndex counts the number of terms we've collected and stored in BlockData$[] for each channel. 
-            ' The test below seems to be a rough way of balancing computing time against the rate at which terms
-            ' pile up. Not too sure about that, though. Regardless, the test determines when we push the BlockData$[]
-            ' up to the MsgSvr.
-            
-            if BlockIndex*amsFramesPerTerm%>=(40*amsNWavemarks%) or status% < 0 then 
-                for index := 1 to amsNWavemarks% do 
-                    SendMessage(BlockData$[index-1]);
-                    BlockData$[index-1]:=str$(index);
-                next
-                PercentComplete:=TriggerNumber/(32768*amsRepeats%);  'This line and the following line removed from
-                TimeLeft:=(TriggerTime/PercentComplete)-TriggerTime;  'FOR loop just above because they only need to be done once -jj
-                ToolbarText("M Sequence "+str$(100*PercentComplete)+"% complete. Estimated "+str$(TimeLeft)+" seconds left");
-                BlockIndex:=0;
-            endif
-            
-        endif
-    endif
-    
-    return status%;
-end
+'This function has been deprecated in favor of CountSpikesWithDelay%(), doubt we'll go back to it...
+'func CountSpikes%()
+'
+'    var status% := 1;   ' will be set to -1 when all triggers have been counted
+'    
+'    ' TriggerTime is the last trigger found. On starting the msequence TriggerTime is initialized to -1.
+'    ' NextTriggerTime is the first trigger found after TriggerTime. When both NextTriggerTime and TriggerTime
+'    ' are valid (neither is <0) they consitute the full period of a single term of the m-sequence.
+'    ' 
+'    ' Note that the line below was from the original msequence code -- in that script sampling started on the first 
+'    ' trigger, and that trigger is NOT in the data file. The first term of the m-sequence starts at time 0, however, 
+'    ' so the value of TriggerTime is set to 0 before starting. This script starts sampling prior to the onset of the
+'    ' first term of the msequence, so the first trigger found in the file must be saved; we do not count spikes until
+'    ' we find the second trigger. When multiple repeats are run there is further confusion. The modulo division 
+'    ' takes care of all: Whenever the number of triggers counted (TriggerNumber) is a multiple of 32768 we have to 
+'    ' save one trigger before counting spikes in trigger intervals. 
+''    if TriggerTime=-1 then TriggerTime:=0; endif    
+'    
+'    NextTriggerTime:=View(amsWindowData%).NextTime(amsChanTrigger%,TriggerTime);
+'    if NextTriggerTime > 0 then
+'        '        if TriggerTime < 0 then
+'        if TriggerNumber mod 1000 = 0 then
+'            PrintLog("next %f now %f delta %f\n", NextTriggerTime, MaxTime(), MaxTime()-NextTriggerTime);
+'        endif
+'        
+'        if TriggerNumber mod 32768 = 0 then
+'            FirstTriggerTime := NextTriggerTime;
+'            TriggerTime := NextTriggerTime;
+'            TriggerNumber := TriggerNumber + 1;
+'        else
+'            ' TriggerTime is valid, so the interval [TriggerTime, NextTriggerTime] is a term in the sequence. 
+'            ' Count spikes for each data channel and save it in BlockData$[]
+'            for index := 1 to amsNWavemarks% do 
+'                'SpikeCount:=View(amsWindowData%).count(index,TriggerTime,NextTriggerTime);
+'                SpikeCount:=View(amsWindowData%).count(amsWavemarkPorts%[index-1]+1,TriggerTime,NextTriggerTime);
+'                BlockData$[index-1]:=BlockData$[index-1]+" "+str$(SpikeCount);
+'            next 
+'            TriggerTime:=NextTriggerTime;
+'            BlockIndex:=BlockIndex+1;
+'            TriggerNumber:=TriggerNumber+1;
+'            
+'            ' Was that the last trigger? 
+'            if TriggerNumber = 32768 * amsRepeats% then
+'                status% := -1;
+'            endif
+'            
+'            ' BlockIndex counts the number of terms we've collected and stored in BlockData$[] for each channel. 
+'            ' The test below seems to be a rough way of balancing computing time against the rate at which terms
+'            ' pile up. Not too sure about that, though. Regardless, the test determines when we push the BlockData$[]
+'            ' up to the MsgSvr.
+'            
+'            if BlockIndex*amsFramesPerTerm%>=(40*amsNWavemarks%) or status% < 0 then 
+'                for index := 1 to amsNWavemarks% do 
+'                    SendMessage(BlockData$[index-1]);
+'                    BlockData$[index-1]:=str$(index);
+'                next
+'                PercentComplete:=TriggerNumber/(32768*amsRepeats%);  'This line and the following line removed from
+'                TimeLeft:=(TriggerTime/PercentComplete)-TriggerTime;  'FOR loop just above because they only need to be done once -jj
+'                ToolbarText("M Sequence "+str$(100*PercentComplete)+"% complete. Estimated "+str$(TimeLeft)+" seconds left");
+'                BlockIndex:=0;
+'            endif
+'            
+'        endif
+'    endif
+'    
+'    return status%;
+'end
 
 
 func CountSpikesWithDelay%(msFromLastCheck%)
@@ -560,6 +653,7 @@ func CountSpikesWithDelay%(msFromLastCheck%)
                 
                 TriggerTime := triggers[0];
                 TriggerNumber := TriggerNumber + 1;
+                TriggerNumberThisInterval% := TriggerNumberThisInterval% + 1;
                 PrintLog("Initial trigger at %f\n", TriggerTime);
             
             else
@@ -581,9 +675,18 @@ func CountSpikesWithDelay%(msFromLastCheck%)
                 TriggerTime := triggers[ntrig%-1];
                 BlockIndex += (ntrig%);
                 TriggerNumber += (ntrig%);
+                TriggerNumberThisInterval% += ntrig%;
                 
                 'PrintLog("Found %d triggers, holding %d\n", ntrig%, BlockIndex);
                 'PrintLog("Time %f num %d\n", TriggerTime, TriggerNumber);
+                
+                'If the number of triggers in this interval exceeds the number of triggers required per 
+                'Opto/E-Stim pulse, send a pulse and reset
+                if amsDoOptoEstim% and TriggerNumberThisInterval% >= numTriggersPerOptoEstim% then
+                    SafeSampleKey("p");
+                    TriggerNumberThisInterval% := 0;  'reset number of triggers
+                endif; 
+                
 
                     
                 ' Was that the last trigger? 
@@ -635,3 +738,90 @@ wend
 end
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
+
+func SendSerialMsgNeuropixel(port%, msg$, term$)
+    var buffer$;
+    var count% := 60;  'Yikes, it takes a long time to get the Neuropixel stuff ready!
+    var status% := 0;
+    SerialWrite(port%, msg$, term$);
+    while count% > 0 and status% < 1 do
+        count% := count% - 1;
+        status% := SerialRead(port%, buffer$, term$);
+        printlog("read status %d buffer %s\n", status%, buffer$);
+        if status% > 0 then
+            if not (buffer$ = "ACK") then
+                PrintLog("[ERROR]: Failed to receive ACK from imaging acq machine\n");
+                message("Received error from Neuropixel listener!  Error is\n" + buffer$);
+                status% := 0;
+                break;
+            endif
+        endif
+    wend;
+    if status% > 0 then
+        return 1;
+    else
+        return 0;
+    endif    
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'This proc sets the sequencer variables for pulsing opto/E-stim
+'We will run this at the beginning
+proc SetPulsedOptoSequencerVariables()
+    
+    var tempSeqVarValue;
+    var tempSeqVarValue%;
+    var PulsedOptoWidth := 0.01;  'Hard code the width of the pulse to 10 ms
+    var voltageInteger%;
+    var OptoVoltageOut := 3;  'Hard code the value to 3 volts, that's what is being used normally
+    
+    'set sequencer variable 4 for opto voltage
+    'Please note that the input for this has to be a 32-bit variable. Use vdac32% to get the right value.
+    voltageInteger% := vdac32%(OptoVoltageOut, 1, 0);
+    SampleSeqVar(4,voltageInteger%);
+    printlog("Voltage integer is %d\n",voltageInteger%);
+    
+    'For below calculation, the standard numbers we are getting are in seconds, sequencer period is in MS (because that's how it comes)
+    tempSeqVarValue := PulsedOptoWidth*1000/SequencerPeriodMS;  'do math in float
+    tempSeqVarValue% := tempSeqVarValue-2;  'now convert to integer, subtract two ticks for sequencer instructions
+    SampleSeqVar(7,tempSeqVarValue%);  'set duration of pulse in clock ticks
+    printlog("Opto/E-stim pulse width is %d clock ticks\n",tempSeqVarValue%);
+end
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' The vdac32% function converts a value in user DAC units into an integer value
+'  (the result of the function) suitable for passing into a sequencer variable
+'  for use in the DAC, ADDAC, RAMP and OFFSET sequencer instructions. It mimics
+'  the vdac32() expression in the text sequence compiler.
+'
+' out     is the output value that you want to generate, in user DAC units.
+' scale   is the user DAC units corresponding to one volt on the actual DAC
+'         (or two volts for a ten-volt system). This is exactly the same as
+'         the DACscale field used with the SET or SDAC directives.
+' offset  is the user DAC units corresponding to zero volts output. This is
+'         exactly the same as the DACOffset field in SET or SDAC.
+'
+' If you want to use this function to calculate the slope for a ramp, use
+'  vdac32%(volts/sticks%(time)) for maximum accuracy.
+'
+func vdac32%(out, scale, offset)
+var v32;                                ' Real variable for the calculation
+out := out - offset;                    ' First compensate for offset
+v32 := ((out * (6553.6 / scale)) * 65536.0);   ' Floating point result
+var v32%;                               ' Integer value for the result
+if v32 > 2147483647.0 then              ' 2147483647 is the largest positive
+    v32% := 2147483647;                 '  integer value
+else
+    if v32 < -2147483647.0 then         ' -2147483648 is the lowest negative value
+        v32% := -2147483647;            '  but we have to stay one above that
+    else
+        v32% := round(v32);             ' We can be sure this will not overflow
+    endif;
+endif;
+return v32%;
+end

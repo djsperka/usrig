@@ -47,6 +47,7 @@ READYCHANNELCODE% := Pow(2, READYCHANNELPORT%);
 const tunMaxTrials% := 1000;
 var tunValues[tunMaxTrials%];
 var tunValuesIndices%[tunMaxTrials%]; 
+var tunTwoWayContrastValues[tunMaxTrials%];
 var tunNValues%;
 var tunValuesStringified$;
 var nTriggersExpected%;     'only for tunTypeCRG$
@@ -84,10 +85,16 @@ var handlePSTHend%[10];  'For creating rasters at the end
 ' Rely on the fact that arrays are initialized with 0s in Spike2. 
 var tunF1Sum[16][tunMaxTrials%];
 var tunF2Sum[16][tunMaxTrials%];
+var tunF1OptoSum[16][tunMaxTrials%];
+var tunF2OptoSum[16][tunMaxTrials%];
+var tunF1SumDesc[16][tunMaxTrials%];  'We need to have these also keep separate track of descending for two-way contrast
+var tunF2SumDesc[16][tunMaxTrials%];
+var tunF1OptoSumDesc[16][tunMaxTrials%];
+var tunF2OPtoSumDesc[16][tunMaxTrials%];
 var tunTF;              ' Will need to use this during FFT analysis. Use at your own risk....
-var tunF1Cum[16];
-var tunF2Cum[16];
-var tunRateCum[16];
+'var tunF1Cum[16];  'These are unused, their lines are all commented out
+'var tunF2Cum[16];
+'var tunRateCum[16];
 
 ' djs 10-19-11 trigger hack for Visage trigger bug.
 var tunTriggerHack% := 0;  'setting to 0 to read from stim channel due to RENDER trigger line hell
@@ -102,6 +109,14 @@ var optoOffChan% := 1;  'This will be the primary channel on the histogram
 var optoOnChan%;
 var optoOffF1Chan%;
 var optoOnF1Chan%;
+var optoOffF2Chan%;
+var optoOnF2Chan%;
+var optoOffChanDesc%;
+var optoOnChanDesc%;
+var optoOffF1ChanDesc%;
+var optoOnF1ChanDesc%;
+var optoOffF2ChanDesc%;
+var optoOnF2ChanDesc%;
 var burstChan%;
 
 
@@ -270,6 +285,8 @@ const statePulsedOpto%:=25;
 const stateWaitPulsedOpto%:=26;
 const stateWaitCameraTrigger%:=27;
 const stateWaitCameraBaselinePeriod%:=28;
+const stateSendNeuropixelStart%:=29;  'we are not sure if we can even trigger the GLX remotely.  Keep skeleton as there is a good chance we will need this in the future for other software.
+
 
 var iState% := stateVSGWait%;	' present state
 
@@ -286,13 +303,15 @@ var triggeredCamera% := 0;
 ' ============================================================================ '
 ' Serial Port constants
 ' ============================================================================ '
-const serialCOMPort% := 1;
+const serialCOMPort% := 8; 
 const serialBaudRate% := 115200;
 const serialDataBits% := 8;
 const serialParity% := 0;
 const serialStopBits% := 1;
 const serialFlowCtrl% := 0;
 
+var neuropixelStatus%;
+var autoNameStr$;
 var stimOffTime;
 var tOpt;
 var pulseFound%;
@@ -327,12 +346,15 @@ func IdleProcessing%()
             'Yield(1.0);
             tLastTrigger := tFall;
             'ChangeStateTo(stateCheckTurnOnOpto%, tFall);
-            if tunCameraMode% = cameraModeWait% then
+            docase
+            case tunDoNeuropixel% = 1 then
+                ChangeStateTo(stateSendNeuropixelStart%, tFall);
+            case tunCameraMode% = cameraModeWait% then
                 ChangeStateTo(stateWaitCameraTrigger%, tFall);
             else
                 ChangeStateTo(stateInterTrialInterval%, tFall);
                 'ChangeStateTo(stateCheckTurnOnOpto%, tFall);
-            endif;
+            endcase;
         else
             if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                 LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
@@ -340,6 +362,25 @@ func IdleProcessing%()
             endif;
         endif;
         
+        
+        
+    case iState% = stateSendNeuropixelStart% then
+        'We would do one of two things here, either trigger a DIG I/O line up, or send a 
+        'serial instruction (and wait for a return serial acknowledgment), but we are not
+        'certain at this moment that either will work.
+        'autoNameStr$ := FileName$(2) + FileName$(3) + FileName$(4);
+        autoNameStr$ := dataDataSet$ + "_" + FileName$(-4);
+        printlog("Sending START to Neuropixel, using name string '%s'\n",autoNameStr$);
+        
+        neuropixelStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "START " + autoNameStr$, "\n");
+        if neuropixelStatus% = 0 then
+            message("SpikeGLX recording did not successfully start!  Quitting!"); 
+            Stop%();
+        endif;
+        
+        'ChangeStateTo(stateInterTrialInterval%, tFall);  'this will allow us to go forward in the event we accidentally check the DoNeuropixel box
+        
+        ChangeStateTo(stateInterTrialInterval%, View(DataWindow%).MaxTime());  'If implemented, put in a real time for tStateStart
         
     case iState% = stateWaitCameraTrigger% then
         if View(DataWindow%).FindPulseUp%(CameraTriggerChannel%, -1, tRise, tFall) = 1 then
@@ -362,6 +403,7 @@ func IdleProcessing%()
         
         
     case iState% = stateCheckTurnOnOpto% then
+        'printlog("tunOptoUsePulse is %d and tunOptoState is %d and dontToggleOpto is %d\n",tunOptoUsePulse%,tunOptoState%,dontToggleOpto%);
         docase
         case tunDoOpto% = 0 then 'if this is not an opto trial, just start it
             ChangeStateTo(stateStartTrial%, tNow);
@@ -384,11 +426,18 @@ func IdleProcessing%()
     case iState% = statePulsedOpto% then
         
         if tunPulsedOptoIPImax <> tunPulsedOptoIPImin then
-            'Set random IPI on every trial
+            'Set random IPI every trial
             tunPulsedOptoIPI := Rand(tunPulsedOptoIPImax-tunPulsedOptoIPImin,tunPulsedOptoIPImin);  'this will work if max=min or even if max<min.  Simple.  Nice.
             SetPulsedOptoSequencerVariables();
             SampleText("Pulsed Opto IPI is " + str$(tunPulsedOptoIPI));
-        endif        
+        endif     
+        
+        if tunPulsedOptoOnsetMax <> tunPulsedOptoOnsetMin then
+            'Set random onset on every trial
+            tunPulsedOptoOnset := Rand(tunPulsedOptoOnsetMax-tunPulsedOptoOnsetMin,tunPulsedOptoOnsetMin);  'this will work if max=min or even if max<min.  Simple.  Nice.
+            SetPulsedOptoSequencerVariables();
+            SampleText("Pulsed Opto Onset is " + str$(tunPulsedOptoOnset));
+        endif 
         
         SafeSampleKey("P");  'start pulsed opto, the whole sequence is controlled by the sequencer
         tOpt := View(DataWindow%).MaxTime();
@@ -400,6 +449,22 @@ func IdleProcessing%()
     case iState% = stateWaitPulsedOpto% then 'wait for sequencer-controlled timing to complete
         if tNow > tStateStart + tunStimulusDuration + 0.1 then 'wait an extra tenth of a second just in case
             ChangeStateTo(stateTrialCompleted%,tNow);
+            
+            
+            'Set stimCodes[0] to hold the index of the current stimulus
+            stimCodes%[0] := tunValuesIndices%[nTrialsCompleted%]; 'nTrialsCompleted has not yet been incremented, so this is right
+            'log stimulus start time in pseudotextmark channel and for raster triggering
+            if tunOptoState% = 0 then
+                view(DataWindow%).MemSetItem(memChanRasterTriggers%,0,tOpt,stimCodes%[],Str$(tunValues[tunValuesIndices%[nTrialsCompleted%]]));
+            else
+                view(DataWindow%).MemSetItem(memChanRasterTriggersOpto%,0,tOpt,stimCodes%[],Str$(tunValues[tunValuesIndices%[nTrialsCompleted%]]));
+            endif;
+            
+            view(DataWindow%).MemSetItem(memChanBetterTextMark%,0,tOpt,stimCodes%[],Str$(tunValues[tunValuesIndices%[nTrialsCompleted%]]));
+            ' Process spikes
+            PlotSpikes(tOpt, tNow-0.1, tunOptoState%+1, nTrialsCompleted%);
+            
+            
             'the "X" is not necessary as the pulsed opto sequence does the stimulus-off.  But maybe somebody someday will want to SEE the "X"...can uncomment if so
             'SafeSampleKey("X"); 
             'Advance, this we DO have to do
@@ -437,7 +502,12 @@ func IdleProcessing%()
         
         ' Start trial. Put up stimulus.
         LogStatus("StartTrial", "Request stimulus");
-        SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
+        if tunType$ = tunTypeTwoWayContrast$ then  'We need to write a distinct SampleText for two-way contrast to indicate ascending, descending stimuli
+            SampleText("T," + GetPlotXCoordTWC$(nTrialsCompleted%));
+        else
+            SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
+        endif;
+        
         SafeSampleKey("S");
         'iHoldCount% := 0;
         ChangeStateTo(stateWaitForStimTrigger%, tNow);
@@ -670,10 +740,26 @@ func IdleProcessing%()
         
     case iState% = stateTrialCompleted% then
         printlog("number of trials completed is %d\n",nTrialsCompleted%);
+        
+'        'Set stimCodes[0] to hold the index of the current stimulus
+'        stimCodes%[0] := tunValuesIndices%[nTrialsCompleted%]; 'nTrialsCompleted has not yet been incremented, so this is right
+'        'log stimulus start time in pseudotextmark channel and for raster triggering
+'        if tunOptoState% = 0 then
+'            view(DataWindow%).MemSetItem(memChanRasterTriggers%,0,tStimOn,stimCodes%[],Str$(tunValues[tunValuesIndices%[nTrialsCompleted%]]));
+'        else
+'            view(DataWindow%).MemSetItem(memChanRasterTriggersOpto%,0,tStimOn,stimCodes%[],Str$(tunValues[tunValuesIndices%[nTrialsCompleted%]]));
+'        endif;
+'        
+'        view(DataWindow%).MemSetItem(memChanBetterTextMark%,0,tStimOn,stimCodes%[],Str$(tunValues[tunValuesIndices%[nTrialsCompleted%]]));
+'        
+'        ' Process spikes
+'        PlotSpikes(tStimOn, tNow, tunOptoState%+1, nTrialsCompleted%);
+        
+        
         docase
         case nTrialsCompleted% = (tunNAdvances%+1)*tunNRepeats% then
             ' We're all done
-            ChangeStateTo(stateDone%, tNow);
+            'ChangeStateTo(stateDone%, tNow);  'This does nothing, stateDone% does not exist!
             Stop%();
             iStatus% := 0;
         case (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 then 'toggle tunOptoState at the end of a block, use interblock time
@@ -734,8 +820,59 @@ proc SendSerialMsg(port%, msg$, term$)
     endif
 end;
 
+
+func SendSerialMsgNeuropixel(port%, msg$, term$)
+    var buffer$;
+    var count% := 60;  'Yikes, it takes a long time to get the Neuropixel stuff ready!
+    var status% := 0;
+    SerialWrite(port%, msg$, term$);
+    while count% > 0 and status% < 1 do
+        count% := count% - 1;
+        status% := SerialRead(port%, buffer$, term$);
+        printlog("read status %d buffer %s\n", status%, buffer$);
+        if status% > 0 then
+            if not (buffer$ = "ACK") then
+                PrintLog("[ERROR]: Failed to receive ACK from imaging acq machine\n");
+                message("Received error from Neuropixel listener!  Error is\n" + buffer$);
+                status% := 0;
+                break;
+            endif
+        endif
+    wend;
+    if status% > 0 then
+        return 1;
+    else
+        return 0;
+    endif    
+end;
+
+
 func GetPlotXCoord(nTrials%)
     return tunValues[tunValuesIndices%[nTrials%]];
+end;
+
+
+func GetPlotXCoordTWC(nTrials%,&isDescending%)
+    var temp;
+    temp := tunValues[tunValuesIndices%[nTrials%]];
+    if temp <= 100 then
+        isDescending% := 0;
+        return temp;
+    else
+        isDescending% := 1;
+        return temp-100;
+    endif;
+end;
+
+
+func GetPlotXCoordTWC$(nTrials%)
+    var temp;
+    temp := tunValues[tunValuesIndices%[nTrials%]];
+    if temp <= 100 then
+        return Str$(temp) + ", ascending";
+    else
+        return Str$(temp-100) + ", descending";
+    endif;
 end;
 
 
@@ -745,7 +882,7 @@ end;
 
 
 
-proc PlotSpikes(t1, t2, vOnOff%, index%)
+proc PlotSpikes(t1, t2, whichPlot%, index%)
 	var rate;
     var i%;
     var tSweep;
@@ -757,30 +894,41 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
     var preEvent;
     var myCount%;  'for bursts
     var myCount2%; 'for bursts
-    var t[10000];  'for bursts, we shouldn'thave more than 10000 spikes in a window here
+    var t[10000];  'for bursts, we shouldn't have more than 10000 spikes in a window here
     var nBursts%;
-    'var index2%;
+    var isDescending%;
     
-    'vOnOff% is a switch that allows us to plot (in this case) opto-on and opto-off with different colors
+    'whichPlot% is a switch that allows us to plot (in this case) opto-on and opto-off with different colors
     
-    x := GetPlotXCoord(index%);
-    xind% := GetPlotXIndex%(index%);  'for keeping an average...may be difficult to implement
     
-    'index2% := ArrFindFloat%(tunValues[],x);  'this is going to correspond to the index of the XYPlot that will be deleted/updated
-    'actually, xind% should do this more easily.
+    if tunType$ = tunTypeTwoWayContrast$ then
+        x := GetPlotXCoordTWC(index%,isDescending%);  'Will get correct x-value, fill isDescending
+    else
+        x := GetPlotXCoord(index%);  'Getting correct x-value is trivial
+    endif;
+    
+    'xind% := GetPlotXIndex%(index%);  'for keeping an average...may be difficult to implement (currently unused!)
     
 	for i% := 0 to tunNWavemarks%-1 do
 		rate := View(DataWindow%).Count(i%+1, t1, t2)/(t2-t1);
         'tunRateCum[i%] := tunRateCum[i%] + rate;  
         'if tunRateCum[i%] >= 0 then  
         if rate >= 0 then
-            if vOnOff% = 1 then
-                View(TuningWindow%[i%]).XYAddData(optoOffChan%, x, rate);    ' channel 1 is opto-off; channel 2 is opto-on
+            if whichPlot% = 1 then
+                if isDescending% = 0 then
+                    View(TuningWindow%[i%]).XYAddData(optoOffChan%, x, rate);    ' channel 1 is opto-off; channel 2 is opto-on
+                else
+                    View(TuningWindow%[i%]).XYAddData(optoOffChanDesc%, x, rate);
+                endif;
             else
-                View(TuningWindow%[i%]).XYAddData(optoOnChan%, x, rate);
+                if isDescending% = 0 then
+                    View(TuningWindow%[i%]).XYAddData(optoOnChan%, x, rate);
+                else
+                    View(TuningWindow%[i%]).XYAddData(optoOnChanDesc%, x, rate);
+                endif;
             endif;
         
-                'if vOnOff% = 1 then
+                'if whichPlot% = 1 then
 				' this is signal
                 'PrintLog("%d Count %f\n", i%, rate*(t2-t1));
 				'View(TuningWindow%[i%]).XYAddData(1, x, rate);    ' channel 1 is data; channel 2 is background
@@ -805,7 +953,7 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
             endif;
         endif;
         
-        if vOnOff% = 1 then
+        if whichPlot% = 1 then
             'update the raster even if there are no spikes on this trial
             view(handlePSTH%[i%]).process(0,view(-1).maxtime(),1,1,0,MemChanRasterTriggers%,rasterTotal,rasterPre,stimCodes%[0]);  'Update single-stim histogram        
             'And update the title, to indicate which stimulus it is
@@ -838,7 +986,7 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
         endif;
         
             
-        'do F1 if requested, F2 not currently done
+        'do F1/F2 if requested
         if tunDoF12% = 1 then
             ' Process for each cycle of the stimulus. A single cycle of the stim takes 1/tf
 			View(PSTHWindow%[i%]);
@@ -850,13 +998,30 @@ proc PlotSpikes(t1, t2, vOnOff%, index%)
 			ArrFFT(fftData[], 4); 
             
             docase
-            case vOnOff% = 1 then
+            case whichPlot% = 1 and isDescending% = 1 then
+                View(TuningWindow%[i%]).XYAddData(optoOffF1ChanDesc%, x, fftData[1]);
+                tunF1SumDesc[i%][index%] += fftData[1];
+                View(TuningWindow%[i%]).XYAddData(optoOffF2ChanDesc%, x, fftData[2]);
+                tunF2SumDesc[i%][index%] += fftData[2];
+            case whichPlot% = 2 and isDescending% = 1 then
+                View(TuningWindow%[i%]).XYAddData(optoOnF1ChanDesc%, x, fftData[1]);  
+                tunF1OptoSumDesc[i%][index%] += fftData[1];
+                View(TuningWindow%[i%]).XYAddData(optoOnF2ChanDesc%, x, fftData[2]);  
+                tunF2OptoSumDesc[i%][index%] += fftData[2];
+            case whichPlot% = 1 then  'isDescending% = 0
                 View(TuningWindow%[i%]).XYAddData(optoOffF1Chan%, x, fftData[1]);
                 tunF1Sum[i%][index%] += fftData[1];
-            case vOnOff% = 2 then
+                View(TuningWindow%[i%]).XYAddData(optoOffF2Chan%, x, fftData[2]);
+                tunF2Sum[i%][index%] += fftData[2];
+            case whichPlot% = 2 then  'isDescending% = 0
                 View(TuningWindow%[i%]).XYAddData(optoOnF1Chan%, x, fftData[1]);  
-                tunF1Sum[i%][index%] += fftData[1];
+                tunF1OptoSum[i%][index%] += fftData[1];
+                View(TuningWindow%[i%]).XYAddData(optoOnF2Chan%, x, fftData[2]);  
+                tunF2OptoSum[i%][index%] += fftData[2];
             endcase
+            
+            
+            'This code is old, hasn't been implemented in quite some time and is definitely behind
             'tunF1Cum[i%] += fftdata[1];
             'tunF2Cum[i%] += fftdata[2];
             'View(TuningWindow%[i%]).XYSort(2,1);  'sort by x
@@ -931,6 +1096,9 @@ proc InitializeWindows()
     
 	'Open the data sampling window
 	DataWindow% := FileNew(0,4);
+    if DataWindow% < 0 then
+        PrintLog("FileNew Error: %s\n", Error$(DataWindow%));
+    endif
 	Window(0,48,50,95);
     XRange(0, 30);
 	View(DataWindow%).WindowVisible(1);
@@ -968,13 +1136,15 @@ proc InitializeWindows()
         'Create raster/PSTH result view for each electrode
         rasterTotal := rasterPre + rasterPost + tunStimulusDuration;  'calculate total raster time
         histBins% := rasterTotal/histBinWidth;  'and number of bins
-        handlePSTH%[i%] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins%,histBinWidth,rasterPre,memChanRasterTriggers%,3);  '3 makes rasters and scales to spikes per second
+        'handlePSTH%[i%] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins%,histBinWidth,rasterPre,memChanRasterTriggers%,3);  '3 makes rasters and scales to spikes per second
+        handlePSTH%[i%] := View(DataWindow%).SetPsth(i%+1,histBins%,histBinWidth,rasterPre,memChanRasterTriggers%,3);  '3 makes rasters and scales to spikes per second
         View(handlePSTH%[i%]).windowtitle$("No Data");  'name gets changed later
         View(handlePSTH%[i%]).Window(histL, i%*WindowStep, histR, (i%+1)*WindowStep);  'size window as above, squeeze in
         View(handlePSTH%[i%]).WindowVisible(1);  'make window visible
         
         if tunDoOpto% = 1 then  'Create raster/PSTH result view for each electrode, opto-on
-            handlePSTH%[i%+8] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins%,histBinWidth,rasterPre,memChanRasterTriggersOpto%,3);  '3 makes rasters and scales to spikes per second
+            'handlePSTH%[i%+8] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins%,histBinWidth,rasterPre,memChanRasterTriggersOpto%,3);  '3 makes rasters and scales to spikes per second
+            handlePSTH%[i%+8] := View(DataWindow%).SetPsth(i%+1,histBins%,histBinWidth,rasterPre,memChanRasterTriggersOpto%,3);  '3 makes rasters and scales to spikes per second
             View(handlePSTH%[i%+8]).windowtitle$("No Data");  'name gets changed later
             View(handlePSTH%[i%+8]).Window(histOptoL, i%*WindowStep, histOptoR, (i%+1)*WindowStep);  'size window as above, squeeze in
             View(handlePSTH%[i%+8]).WindowVisible(1);  'make window visible
@@ -982,13 +1152,15 @@ proc InitializeWindows()
             'Make PSTH for Scotty
             histBins2% := rasterTotal/.005;  'hard code to 5 ms
             'This one is for opto-on stimuli
-            handlePSTH%[i%+16] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins2%,.005,rasterPre,StimChannel%,1);  '1 enables spikes per second
+            'handlePSTH%[i%+16] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins2%,.005,rasterPre,StimChannel%,1);  '1 enables spikes per second
+            handlePSTH%[i%+16] := View(DataWindow%).SetPsth(i%+1,histBins2%,.005,rasterPre,StimChannel%,1);  '1 enables spikes per second
             View(handlePSTH%[i%+16]).windowtitle$("No Data");  'name gets changed later
             View(handlePSTH%[i%+16]).WindowVisible(1);  'make window visible
             'but not sizing this, just let it be whatever
             
             'this one is for opto-off stimuli
-            handlePSTH%[i%+24] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins2%,.005,rasterPre,StimChannel%,1);  '1 enables spikes per second
+            'handlePSTH%[i%+24] := View(DataWindow%).SetPsth(tunWavemarkPorts%[i%]+1,histBins2%,.005,rasterPre,StimChannel%,1);  '1 enables spikes per second
+            handlePSTH%[i%+24] := View(DataWindow%).SetPsth(i%+1,histBins2%,.005,rasterPre,StimChannel%,1);  '1 enables spikes per second
             View(handlePSTH%[i%+24]).windowtitle$("No Data");  'name gets changed later
             View(handlePSTH%[i%+24]).WindowVisible(1);  'make window visible
             
@@ -996,21 +1168,40 @@ proc InitializeWindows()
         
         FrontView(DataWindow%);  'bring main window back to front to avoid view is not a time view shit
     
-        optoOnChan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Make this even if we aren't using opto
-        View(TuningWindow%[i%]).XYColour(optoOnChan%, 11);
-    
+        optoOnChan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Make this even if we aren't using opto/E-stim
+        View(TuningWindow%[i%]).ChanColourSet(optoOnChan%, 1, .1, .8, .1);  'deep green for on
+        optoOffChan% := View(TuningWindow%[i%]).XYSetChan(0);   
+        View(TuningWindow%[i%]).ChanColourSet(optoOffChan%, 1, .8, .1, .1);  'deep red for off
+        
+        optoOnChanDesc% := View(TuningWindow%[i%]).XYSetChan(0);   ' Make this even if we aren't using opto/E-stim
+        View(TuningWindow%[i%]).ChanColourSet(optoOnChanDesc%, 1, 0, 0, 1);  'deep blue for on
+        optoOffChanDesc% := View(TuningWindow%[i%]).XYSetChan(0);   
+        View(TuningWindow%[i%]).ChanColourSet(optoOffChanDesc%, 1, .6, .1, 1);  'deep purple for off
+        
         ' Create psth window if f1 and f2 analysis needed
         if tunDoF12% = 1 then
             
-            optoOffF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1
-            View(TuningWindow%[i%]).XYColour(optoOffF1Chan%, 16);
-            'ch2% := View(TuningWindow%[i%]).XYSetChan(0);   ' used to plot f2
-            'View(TuningWindow%[i%]).XYColour(ch2%, 38);
-            optoOnF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' appropriating this to plot f1 of opto-on
-            View(TuningWindow%[i%]).XYColour(optoOnF1Chan%, 38);
+            optoOffF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1 (of opto-off), red
+            View(TuningWindow%[i%]).ChanColourSet(optoOffF1Chan%, 1, 1, 0, 0);
+            optoOffF2Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 (of opto-off), pale red
+            View(TuningWindow%[i%]).ChanColourSet(optoOffF2Chan%, 1, 1, 0.8, 0.8);
+            optoOnF1Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1 of opto-on, green
+            View(TuningWindow%[i%]).ChanColourSet(optoOnF1Chan%, 1, 0, 1, 0);
+            optoOnF2Chan% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 of opto-on, pale green
+            View(TuningWindow%[i%]).ChanColourSet(optoOnF2Chan%, 1, 0.8, 1, 0.8);
+            
+            optoOffF1ChanDesc% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1 (of opto-off Desc), blue
+            View(TuningWindow%[i%]).ChanColourSet(optoOffF1ChanDesc%, 1, 0.4, 0.4, 1);
+            optoOffF2ChanDesc% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 (of opto-off Desc), pale blue
+            View(TuningWindow%[i%]).ChanColourSet(optoOffF2ChanDesc%, 1, 0.7, 0.8, 1);
+            optoOnF1ChanDesc% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f1 of opto-on Desc, purple
+            View(TuningWindow%[i%]).ChanColourSet(optoOnF1ChanDesc%, 1, 0.75, 0.45, 1);
+            optoOnF2ChanDesc% := View(TuningWindow%[i%]).XYSetChan(0);   ' Used to plot f2 of opto-on Desc, pale purple
+            View(TuningWindow%[i%]).ChanColourSet(optoOnF2ChanDesc%, 1, 0.9, 0.75, 1);            
+            
             LogStatus("InitializeWindows", "Channel " + str$(i%+1) + " " + str$(ch1%) + " " + str$(ch2%));
-            'PSTHWindow%[i%] := View(DataWindow%).SetPSTH(i%+1, 16, 1 /(tunTF*16), 0, 0, 3);
-            PSTHWindow%[i%] := View(DataWindow%).SetPSTH(tunWavemarkPorts%[i%]+1, 16, 1 /(tunTF*16), 0, 0, 3);  'must use index to tWMP%[] now that channel #s correspond to port #s (+1)
+            'PSTHWindow%[i%] := View(DataWindow%).SetPSTH(tunWavemarkPorts%[i%]+1, 16, 1 /(tunTF*16), 0, 0, 3);  'must use index to tWMP%[] now that channel #s correspond to port #s (+1)
+            PSTHWindow%[i%] := View(DataWindow%).SetPSTH(i%+1, 16, 1 /(tunTF*16), 0, 0, 3);  'well, channel #s DON'T correspond to port #s, so...
             View(PSTHWindow%[i%]).WindowVisible(0);
         endif        
         
@@ -1030,102 +1221,145 @@ proc TuningCurveLabels(iport%)
     's$ := "Port " + str$(iport%);
     s$ := "Electrode " + str$(iport%);
 	docase 
-		case tunType$ = tunTypeContrast$ then
+    case tunType$ = tunTypeContrast$ then
         
-            myTitle$ := s$ + " - Contrast = ";
-            myTitle2$ := " - Contrast = ";
-			WindowTitle$("Contrast Tuning - " + s$);
-			XUnits$("Contrast (%)");
-			ChanTitle$(1, "Chan 1");
-			XRange(tunContrastMinContrast, tunContrastMaxContrast);
-
-		case tunType$ = tunTypeOrientation$ then
+        myTitle$ := s$ + " - Contrast = ";
+        myTitle2$ := " - Contrast = ";
+        WindowTitle$("Contrast Tuning - " + s$);
+        XUnits$("Contrast (%)");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunContrastMinContrast, tunContrastMaxContrast);
         
-            myTitle$ := s$ + " - Orientation = ";
-            myTitle2$ := " - Orientation = ";
-			WindowTitle$("Orientation Tuning - " + s$);
-			XUnits$("Orientation (degrees)");
-			ChanTitle$(1, "Chan 1");
-			XRange(tunOriMinOrientation, tunOriMaxOrientation);
-
-		case tunType$ = tunTypeSpatial$ then
+    case tunType$ = tunTypeTwoWayContrast$ then
         
-            myTitle$ := s$ + " - Spatial Freq = ";
-            myTitle2$ := " - Spatial Freq = ";
-			WindowTitle$("Spatial Frequency Tuning - " + s$);
-			XUnits$("Spatial Frequency");
-			ChanTitle$(1, "Chan 1");
-			XRange(tunSpatialMinSF, tunSpatialMaxSF);
-	
-		case tunType$ = tunTypeTemporal$ then
+        myTitle$ := s$ + " - Two Way Contrast = ";
+        myTitle2$ := " - Two Way Contrast = ";
+        WindowTitle$("Two Way Contrast Tuning (over 100 is downwards) - " + s$);
+        XUnits$("Contrast (%)");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunTwoWayContrastMinContrast, tunTwoWayContrastMaxContrast+100);
         
-            myTitle$ := s$ + " - Temporal Freq = ";
-            myTitle2$ := " - Temporal Freq = ";
-			WindowTitle$("Temporal Frequency Tuning - " + s$);
-			XUnits$("Temporal Frequency");
-			ChanTitle$(1, "Chan 1");
-			XRange(tunTemporalMinTF, tunTemporalMaxTF);
-
-		case tunType$ = tunTypeArea$ then
+    case tunType$ = tunTypeOrientation$ then
         
-            myTitle$ := s$ + " - Area = ";
-            myTitle2$ := " - Area = ";
-			WindowTitle$("Aperture Area Tuning - " + s$);
-			XUnits$("Aperture Diameter");
-			ChanTitle$(1, "Chan 1");
-			XRange(tunAreaMinDiam, tunAreaMaxDiam);
+        myTitle$ := s$ + " - Orientation = ";
+        myTitle2$ := " - Orientation = ";
+        WindowTitle$("Orientation Tuning - " + s$);
+        XUnits$("Orientation (degrees)");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunOriMinOrientation, tunOriMaxOrientation);
         
-		case tunType$ = tunTypeID$ then
+    case tunType$ = tunTypeSpatial$ then
         
-            myTitle$ := s$ + " - ID = ";
-            myTitle2$ := " - ID = ";
-			WindowTitle$("Inner Diameter Tuning - " + s$);
-			XUnits$("Inner Diameter");
-			ChanTitle$(1, "Chan 1");
-			XRange(tunIDMinDiam, tunIDMaxDiam);
+        myTitle$ := s$ + " - Spatial Freq = ";
+        myTitle2$ := " - Spatial Freq = ";
+        WindowTitle$("Spatial Frequency Tuning - " + s$);
+        XUnits$("Spatial Frequency");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunSpatialMinSF, tunSpatialMaxSF);
         
-        case tunType$ = tunTypeDriftingBar$ then
+    case tunType$ = tunTypeTemporal$ then
         
-            myTitle$ := s$ + " - Bar Orientation = ";
-            myTitle2$ := " - Bar Orientation = ";
-			WindowTitle$("Drifting Bar Orientation Tuning - " + s$);
-			XUnits$("Orientation (degrees)");
-			ChanTitle$(1, "Chan 1");
-            XRange(tunBarMinOrientation, tunBarMaxOrientation);
+        myTitle$ := s$ + " - Temporal Freq = ";
+        myTitle2$ := " - Temporal Freq = ";
+        WindowTitle$("Temporal Frequency Tuning - " + s$);
+        XUnits$("Temporal Frequency");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunTemporalMinTF, tunTemporalMaxTF);
         
-        case tunType$ = tunTypeNullTest$ then
+    case tunType$ = tunTypeArea$ then
         
-            myTitle$ := s$ + " - Phase = ";
-            myTitle2$ := " - Phase = ";
-			WindowTitle$("Null Test Counterphase Tuning - " + s$);
-			XUnits$("Phase (degrees)");
-			ChanTitle$(1, "Chan 1");
-            XRange(tunNullTestMinPhase, tunNullTestMaxPhase);
+        myTitle$ := s$ + " - Area = ";
+        myTitle2$ := " - Area = ";
+        WindowTitle$("Aperture Area Tuning - " + s$);
+        XUnits$("Aperture Diameter");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunAreaMinDiam, tunAreaMaxDiam);
         
-        case tunType$ = tunTypeCRG$ then
+    case tunType$ = tunTypeID$ then
         
-            myTitle$ := s$ + " - Contrast = ";
-            myTitle2$ := " - Contrast = ";
-			WindowTitle$("CRG Contrast Tuning - " + s$);
-			XUnits$("Contrast (%)");
-			ChanTitle$(1, "Chan 1");
-            XRange(tunCRGMMinContrast, tunCRGMMaxContrast);
-		else
-
-			Message("TuningCurveLabels Error - unknown value for tunType$: " + tunType$);
-
+        myTitle$ := s$ + " - ID = ";
+        myTitle2$ := " - ID = ";
+        WindowTitle$("Inner Diameter Tuning - " + s$);
+        XUnits$("Inner Diameter");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunIDMinDiam, tunIDMaxDiam);
+        
+    case tunType$ = tunTypeDriftingBar$ then
+        
+        myTitle$ := s$ + " - Bar Orientation = ";
+        myTitle2$ := " - Bar Orientation = ";
+        WindowTitle$("Drifting Bar Orientation Tuning - " + s$);
+        XUnits$("Orientation (degrees)");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunBarMinOrientation, tunBarMaxOrientation);
+        
+    case tunType$ = tunTypeNullTest$ then
+        
+        myTitle$ := s$ + " - Phase = ";
+        myTitle2$ := " - Phase = ";
+        WindowTitle$("Null Test Counterphase Tuning - " + s$);
+        XUnits$("Phase (degrees)");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunNullTestMinPhase, tunNullTestMaxPhase);
+        
+    case tunType$ = tunTypeCRG$ then
+        
+        myTitle$ := s$ + " - Contrast = ";
+        myTitle2$ := " - Contrast = ";
+        WindowTitle$("CRG Contrast Tuning - " + s$);
+        XUnits$("Contrast (%)");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunCRGMMinContrast, tunCRGMMaxContrast);
+        
+    case tunType$ = tunTypeCSD$ then
+        'For this, I don't think we actually care, we just want to not throw a warning
+        myTitle$ := s$ + " - CSD = ";
+        myTitle2$ := " - CSD = ";
+        WindowTitle$("Current Source Density - " + s$);
+        XUnits$("Not Meaningful (%)");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunCRGMMinContrast, tunCRGMMaxContrast);  'yeah, whatever
+        
+    case tunType$ = tunTypeStimTrigPSTH$ then
+        'For this, I don't think we actually care, we just want to not throw a warning
+        myTitle$ := s$ + " - STP = ";
+        myTitle2$ := " - STP = ";
+        WindowTitle$("Stim Triggered PSTH - " + s$);
+        XUnits$("Not Meaningful (%)");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunCRGMMinContrast, tunCRGMMaxContrast);  'yeah, whatever
+        
+    case tunType$ = tunTypeDanish$ then
+        
+        WindowTitle$("Danish Area Tuning - " + s$);
+        XUnits$("Contrast (%)");
+        XRange(tunDanishMinOuterDiameter, tunDanishMaxOuterDiameter);
+        ChanTitle$(1, "Chan 1");    
+        
+        
+    else
+        
+        Message("TuningCurveLabels Error - unknown value for tunType$: " + tunType$);
+        
 	endcase;
 
 end;
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 proc CreateSampleConfiguration()
 	var i%;
+    var j%;
+    var tunOptoRepeats%;
 
 	SampleClear(); 'Set standard sampling state
     SampleChannels(64);  '32 does not work, we need more!
 '	SampleAutoFile(0); 'Enable automatic file naming
 	SampleAutoComment(0); 'Prompt for comment after sampling
 	SampleAutoCommit(60); 'Seconds between each file commit
+    if tunDoNeuropixel% = 1 then
+        SampleBigFile(0);  'Create an .smr file INSTEAD of .smrx so that Scottie's analysis suite can read it, max file size is 2GB
+        'SampleBigFile(1);  'Create a "big" .smr file, max file size 1 TB.  It is not known if Scottie's analysis suite can read these.
+    endif;
+    
     
     ' Set path for new data files, and for those saved automatically
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
@@ -1145,12 +1379,20 @@ proc CreateSampleConfiguration()
         FileClose();  'close the file
     endif
     
+    'Calculate number of repeats to do.  If Opto is always on, don't double the repeats
+    if tunOptoStartState% = 3 then 
+        tunOptoRepeats% := 1
+    else
+        tunOptoRepeats% := 1 + tunDoOpto%;
+    endif;
+    
     
     docase
         
     case tunType$ = tunTypeContrast$ then 
         SampleAutoName$(dataCellName$ + "_con_000");
-        tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunContrastNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunContrastProgression%);
@@ -1166,9 +1408,45 @@ proc CreateSampleConfiguration()
         'tunNValues% := (tunContrastNSteps%+1)*tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  'shorter, should work the same as above commented line, keeping old line for contrast only just in case...
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+    case tunType$ = tunTypeTwoWayContrast$ then 'This function needs to make something like 10 20 40 80 180 140 120 110... for tunValues using GRPP or the like
+        SampleAutoName$(dataCellName$ + "_twc_000");
+        'tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunTwoWayContrastNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        if tunUseFile% = 1 then
+            tunNAdvances% := tunFileLen%-1;
+            ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],0);  'force progression to 0 here, can't be random
+        else
+            tunNAdvances% := 2*tunTwoWayContrastNSteps%+1;
+            if tunNAdvances% > 1 then
+                'no option for randomization in GRPPTWC, would not make sense, note that we are hardcoding iLog% to 1, I checked and linear contrast WOULD work
+                GetRepeatedParameterProgressionTwoWayContrast%(tunTwoWayContrastNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunTwoWayContrastMinContrast, tunTwoWayContrastMaxContrast, 1);  
+            else  'cannot run GRPP on a value of 0 steps, simply use minimum value
+                tunValues[0] := tunTwoWayContrastMinContrast;
+                tunValuesIndices%[0] := 0;
+            endif;
+        endif;
+        tunNValues% := (tunNAdvances%+1)*tunNRepeats%; 
+        
+        'here assign tunTwoWayContrastValues[] to have literal contrast value (e.g. 10 20 40 80 80 40 20 10) based on tunValues (e.g. 10 20 40 80 180 140 120 110)
+        'this COULD have been done in GRPPTWC about 9 lines above, but would then not adjust the values from an input file, this way we fix either
+        for j% := 0 to tunMaxTrials%-1 do
+            if tunValues[j%] <= 100 then
+                tunTwoWayContrastValues[j%] := tunValues[j%];
+            else
+                tunTwoWayContrastValues[j%] := tunValues[j%]-100;
+            endif;
+        next
+
+        tunValuesStringified$ := StringifyProgression$(tunNValues%, tunTwoWayContrastValues, tunValuesIndices%); 'note we don't use tunValues
+        'Sanity check, the values created are correct
+        'printlog("TunValues is %f\n",tunValues[0:2*(tunTwoWayContrastNSteps%+1)]);
+        'printlog("TunTwoWayContrastValues is %f\n",tunTwoWayContrastValues[0:2*(tunTwoWayContrastNSteps%+1)]);
+        'printlog("tunValuesStringified$ is %s\n",tunValuesStringified$);
+        'halt;
     case tunType$ = tunTypeOrientation$ then 
         SampleAutoName$(dataCellName$ + "_ori_000");
-        tunNRepeats% := tunOriNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunOriNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunOriNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunOriProgression%);
@@ -1185,7 +1463,8 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeSpatial$ then 
         SampleAutoName$(dataCellName$ + "_spa_000");
-        tunNRepeats% := tunSpatialNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunSpatialNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunSpatialNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunSpatialProgression%);
@@ -1202,7 +1481,8 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeTemporal$ then 
         SampleAutoName$(dataCellName$ + "_tem_000");
-        tunNRepeats% := tunTemporalNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunTemporalNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunTemporalNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunTemporalProgression%);
@@ -1219,7 +1499,8 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeArea$ then 
         SampleAutoName$(dataCellName$ + "_area_000");
-        tunNRepeats% := tunAreaNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunAreaNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunAreaNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunAreaProgression%);
@@ -1236,7 +1517,8 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeID$ then 
         SampleAutoName$(dataCellName$ + "_id_000");
-        tunNRepeats% := tunIDNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunIDNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunIDNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunIDProgression%);
@@ -1270,20 +1552,22 @@ proc CreateSampleConfiguration()
     case tunType$ = tunTypeDriftingBar$ then 
         SampleAutoName$(dataCellName$ + "_bar_000");
         tunNAdvances% := tunBarNSteps%;
-        tunNRepeats% := tunBarNRepeats%*(1+tunDoOpto%);
+        'tunNRepeats% := tunBarNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunBarNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         GetRepeatedParameterProgression%(tunBarNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunBarMinOrientation, tunBarMaxOrientation, 0, tunBarProgression%);
         tunNValues% := (tunBarNSteps%+1)*tunBarNRepeats%*(1+tunDoOpto%);
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeNullTest$ then 
         SampleAutoName$(dataCellName$ + "_nulltest_000");
-        tunNRepeats% := tunNullTestNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        'tunNRepeats% := tunNullTestNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunNullTestNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunNullTestProgression%);
         else
             tunNAdvances% := tunNullTestNSteps%;
             if tunNAdvances% > 0 then
-                GetRepeatedParameterProgression%(tunNullTestNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunNullTestMinPhase, tunNullTestMaxPhase, 1, tunNullTestProgression%);
+                GetRepeatedParameterProgression%(tunNullTestNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunNullTestMinPhase, tunNullTestMaxPhase, 0, tunNullTestProgression%);
             else  'cannot run GRPP on a value of 0 steps, simply use minimum value
                 tunValues[0] := tunNullTestMinPhase;
                 tunValuesIndices%[0] := 0;
@@ -1294,10 +1578,43 @@ proc CreateSampleConfiguration()
     case tunType$ = tunTypeCRG$ then 
         SampleAutoName$(dataCellName$ + "_crg_000");
         tunNAdvances% := tunCRGMNSteps%;
-        tunNRepeats% := tunCRGMNRepeats%*(1+tunDoOpto%);
+        'tunNRepeats% := tunCRGMNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunCRGMNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
         GetRepeatedParameterProgression%(tunCRGMNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunCRGMMinContrast, tunCRGMMaxContrast, 1, tunCRGMProgression%);
         tunNValues% := (tunCRGMNSteps%+1)*tunCRGMNRepeats%*(1+tunDoOpto%);
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+    case tunType$ = tunTypeStimTrigPSTH$ then
+        SampleAutoName$(dataCellName$ + "_stp_000");
+        tunNRepeats% := 1;
+        tunNAdvances% := tunSTPNStims%-1;
+        if tunNAdvances% > 0 then
+            'GetRepeatedParameterProgression%(tunSTPNStims%, tunNRepeats%, tunValues[], tunValuesIndices%[], 0, 0, 1, tunContrastProgression%);
+            GetRepeatedParameterProgression%(tunSTPNStims%, tunNRepeats%, tunValues[], tunValuesIndices%[], 100, 100, 1, tunContrastProgression%);
+        else  'cannot run GRPP on a value of 0 steps, simply use minimum value
+            tunValues[0] := 0;
+            tunValuesIndices%[0] := 0;
+        endif;
+        tunNValues% := (tunSTPNStims%)*tunNRepeats%;
+        tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+    case tunType$ = tunTypeCSD$ then
+        SampleAutoName$(dataCellName$ + "_csd_000");
+        tunNValues% := tunCSDNStims%;  'I don't think this does anything, in too much of a hurry to check
+        tunNAdvances% := tunCSDNStims%-1;
+        tunNRepeats% := 1;
+    case tunType$ = tunTypeDanish$ then 
+        SampleAutoName$(dataCellName$ + "_dan_000");
+        tunNAdvances% := tunDanishNSteps%;
+        'tunNRepeats% := tunDanishNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunDanishNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        if tunDanishIncludeBlank% = 0 then
+            GetRepeatedParameterProgression%(tunDanishNSteps%+1, tunDanishNRepeats%, tunValues[], tunValuesIndices%[], tunDanishMinOuterDiameter, tunDanishMaxOuterDiameter, 1, tunDanishProgression%); 
+            tunNValues% := (tunDanishNSteps%+1)*tunDanishNRepeats%;
+        else  'include blank, include one blank of "0" per tuning cycle, 0 will result in no donut being drawn
+            GetRepeatedParameterProgressionWithConstant%(tunDanishNSteps%+1, 1, 0, tunDanishNRepeats%, tunValues[], tunValuesIndices%[], tunDanishMinOuterDiameter, tunDanishMaxOuterDiameter, 1, tunDanishProgression%); 
+            tunNValues% := (tunDanishNSteps%+2)*tunDanishNRepeats%;
+        endif        
+        
+        tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%); 
     else
         SampleAutoName$(dataCellName$ + "_tun_000");
     endcase;
@@ -1396,6 +1713,7 @@ end;
 func Stop%()
     var i%, j%, m%, mylen%;
     var fn$;
+    var serialStatus%;
     var chanToExport%[30];
     
 	' Disable idle process func
@@ -1416,7 +1734,18 @@ func Stop%()
     else
         Yield(0.1);
     endif
-
+    
+    docase
+    case tunDoNeuropixel% = 1 and neuropixelStatus% = 1 then 
+        serialStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "STOP", "\n");
+        SerialClose(serialCOMPort%);
+        if serialStatus% = 0 then
+            message("Warning! SpikeGLX recording may not have stopped!\nPlease manually stop SpikeGLX!");
+        endif;
+    case tunDoNeuropixel% = 1 and neuropixelStatus% = 0 then 'On failure to start recording, neuropixelStatus% will be 0, don't try stopping recording that didn't start
+        SerialClose(serialCOMPort%);
+    endcase;
+    
 	SampleStop();
 
 	ProgKill(StimHandle%);
@@ -1467,6 +1796,20 @@ func Stop%()
             m% := Max(tunF1Sum[i%][]);
             LogStatus("F1 Max", "Channel " + str$(i%+1) + " Port " + str$(tunWavemarkPorts%[i%]) + " max F1 at x=" + str$(tunValues[m%]));
         next
+        for i% := 0 to tunNWavemarks%-1 do
+            m% := Max(tunF2Sum[i%][]);
+            LogStatus("F2 Max", "Channel " + str$(i%+1) + " Port " + str$(tunWavemarkPorts%[i%]) + " max F2 at x=" + str$(tunValues[m%]));
+        next
+        if tunType$ = tunTypeTwoWayContrast$ then
+            for i% := 0 to tunNWavemarks%-1 do
+                m% := Max(tunF1SumDesc[i%][]);
+                LogStatus("F1 Max, Descending", "Channel " + str$(i%+1) + " Port " + str$(tunWavemarkPorts%[i%]) + " max F1 at x=" + str$(tunValues[m%]));
+            next
+            for i% := 0 to tunNWavemarks%-1 do
+                m% := Max(tunF2SumDesc[i%][]);
+                LogStatus("F2 Max, Descending", "Channel " + str$(i%+1) + " Port " + str$(tunWavemarkPorts%[i%]) + " max F2 at x=" + str$(tunValues[m%]));
+            next
+        endif;
     endif    
     
     ' Plot rasters for each individual stimulus, for each electrode
@@ -1559,7 +1902,30 @@ proc WriteParameterFile()
 	Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
 	Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
 	Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
-
+    
+    
+    if tunType$ = tunTypeDanish$ then  'Do donut grating only if we're using it
+        Print("\Donut Stimulus\n");  'Donut grating
+        Print("-------------------\n\n");
+        Tstimstr$ := GetGratingParameters$("Distractor1");
+        ReadSetup(",",",",",",",",",");
+        i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstiminnerw$, Tstiminnerh$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
+        Print("Position (x, degrees)           : %s\n", Tstimx$);
+        Print("Position (y, degrees)           : %s\n", Tstimy$);
+        Print("Width (degrees)                 : %s\n", Tstimw$);
+        Print("Height (degrees)                : %s\n", Tstimh$);
+        Print("Inner Width (degrees)           : %s\n", Tstiminnerw$);
+        Print("Inner Height (degrees)          : %s\n", Tstiminnerh$);
+        Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", Tstimcv$);
+        Print("Temporal frequency              : %s\n", Tstimtf$);
+        Print("Spatial frequency               : %s\n", Tstimsf$);
+        Print("Orientation (degrees)           : %s\n", Tstimorientation$);
+        Print("Initial Phase (degrees)         : %f\n", Tstimphase$);
+        Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
+        Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
+        Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);  
+    endif;
+    
 
 	Print("\nExperimental parameters\n");
 	Print("-------------------------\n\n");
@@ -1568,75 +1934,100 @@ proc WriteParameterFile()
 	Print("\nTuning parameters\n");
 	Print("-------------------\n\n");
 	docase 
-		case tunType$ = tunTypeContrast$ then
-
-			Print("Type:                  : Contrast\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunContrastMinContrast, tunContrastMaxContrast, tunContrastNSteps%, tunContrastNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-			Print("\n");
-
-
-		case tunType$ = tunTypeOrientation$ then
-
-			Print("Type:                  : Orientation\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunOriMinOrientation, tunOriMaxOrientation, tunOriNSteps%, tunOriNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-			Print("\n");
-
-		case tunType$ = tunTypeSpatial$ then
-
-			Print("Type:                  : Spatial Frequency\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunSpatialMinSF, tunSpatialMaxSF, tunSpatialNSteps%, tunSpatialNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-			Print("\n");
-	
-		case tunType$ = tunTypeTemporal$ then
-
-			Print("Type:                  : Temporal Frequency\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunTemporalMinTF, tunTemporalMaxTF, tunTemporalNSteps%, tunTemporalNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-			Print("\n");
-
-		case tunType$ = tunTypeArea$ then
-
-			Print("Type:                  : Aperture Area\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-            Print("\n");
+    case tunType$ = tunTypeContrast$ then
         
-		case tunType$ = tunTypeID$ then
-
-			Print("Type:                  : Inner Diameter\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunIDMinDiam, tunIDMaxDiam, tunIDNSteps%, tunIDNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-            Print("\n");
+        Print("Type:                  : Contrast\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunContrastMinContrast, tunContrastMaxContrast, tunContrastNSteps%, tunContrastNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
         
-        case tunType$ = tunTypeDriftingBar$ then
-
-			Print("Type:                  : DriftingBar\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunBarMinOrientation, tunBarMaxOrientation, tunBarNSteps%, tunBarNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-			Print("\n");
+    case tunType$ = tunTypeTwoWayContrast$ then
         
-        case tunType$ = tunTypeNullTest$ then
-
-			Print("Type:                  : Null Test Counterphase Gratings\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunNullTestMinPhase, tunNullTestMaxPhase, tunNullTestNSteps%, tunNullTestNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-            Print("\n");
+        Print("Type:                  : Two Way Contrast\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunTwoWayContrastMinContrast, tunTwoWayContrastMaxContrast, tunTwoWayContrastNSteps%, tunTwoWayContrastNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");        
         
-        case tunType$ = tunTypeCRG$ then
-
-            Print("Type:                           : CRG\n");
-            Print("FramesPerTerm,MSeqStart,Balanced: %d,%d,%d\n", tunCRGMFramesPerTurn%, tunCRGMFirstTerm%, tunCRGMBalanced%);
-			Print("Min,Max,#Steps,#Repeats         : %f,%f,%d,%d\n", tunCRGMMinContrast, tunCRGMMaxContrast, tunCRGMNSteps%, tunCRGMNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-            Print("\n");
+    case tunType$ = tunTypeOrientation$ then
         
-		else
-
-			Print("TuningCurve Error - unknown value for tunType$: %s\n", tunType$);
-
+        Print("Type:                  : Orientation\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunOriMinOrientation, tunOriMaxOrientation, tunOriNSteps%, tunOriNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeSpatial$ then
+        
+        Print("Type:                  : Spatial Frequency\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunSpatialMinSF, tunSpatialMaxSF, tunSpatialNSteps%, tunSpatialNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeTemporal$ then
+        
+        Print("Type:                  : Temporal Frequency\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunTemporalMinTF, tunTemporalMaxTF, tunTemporalNSteps%, tunTemporalNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeArea$ then
+        
+        Print("Type:                  : Aperture Area\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeID$ then
+        
+        Print("Type:                  : Inner Diameter\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunIDMinDiam, tunIDMaxDiam, tunIDNSteps%, tunIDNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeDriftingBar$ then
+        
+        Print("Type:                  : DriftingBar\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunBarMinOrientation, tunBarMaxOrientation, tunBarNSteps%, tunBarNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeNullTest$ then
+        
+        Print("Type:                  : Null Test Counterphase Gratings\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunNullTestMinPhase, tunNullTestMaxPhase, tunNullTestNSteps%, tunNullTestNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeCRG$ then
+        
+        Print("Type:                           : CRG\n");
+        Print("FramesPerTerm,MSeqStart,Balanced: %d,%d,%d\n", tunCRGMFramesPerTurn%, tunCRGMFirstTerm%, tunCRGMBalanced%);
+        Print("Min,Max,#Steps,#Repeats         : %f,%f,%d,%d\n", tunCRGMMinContrast, tunCRGMMaxContrast, tunCRGMNSteps%, tunCRGMNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeStimTrigPSTH$ then
+        
+        Print("Type:                  : Stimulus Triggered PSTH\n");
+        Print("NStims,StimISI: %d,%f\n", tunSTPNStims%, tunSTPISI);
+        Print("\n");
+        
+    case tunType$ = tunTypeCSD$ then        
+        
+        Print("Type:                  : Current Source Density\n");
+        Print("NStims,NFlips,FlipISI,InitPhase: %d,%d,%f,180\n", tunCSDNStims%, tunCSDNFlips%*2, tunCSDISI);  'Hard coded 180 phase means Black first, which is hard coded in the CreateFFFlashString$ function
+        Print("\n");
+        
+    case tunType$ = tunTypeDanish$ then
+        
+        Print("Type:                  : Danish\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunDanishMinOuterDiameter, tunDanishMaxOuterDiameter, tunDanishNSteps%, tunDanishNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    else
+        
+        Print("TuningCurve Error - unknown value for tunType$: %s\n", tunType$);
+        
 	endcase;
     
     if tunDoOpto% = 1 then
@@ -1654,7 +2045,9 @@ proc WriteParameterFile()
         Print("Order of blocks : %s\n", label$[tunOptoStartState%]);
         if tunOptoUsePulse% = 1 then
             Print("Pulsing Opto selected\n");
-            Print("Opto#Pulses,OptoPeriodOnset,OptoPulseWidth,OptoInterpulseInterval: %d,%f,%f,%f\n",tunOptoNPulses%,tunPulsedOptoOnset,tunPulsedOptoWidth,tunPulsedOptoIPI);
+            'Print("Opto#Pulses,OptoPeriodOnset,OptoPulseWidth,OptoInterpulseInterval: %d,%f,%f,%f\n",tunOptoNPulses%,tunPulsedOptoOnset,tunPulsedOptoWidth,tunPulsedOptoIPI);
+            Print("Opto#Pulses,OptoPeriodOnsetMin,OptoPulseOnsetMax,OptoPulseWidth,OptoInterpulseIntervalMin,OptoInterpulseIntervalMax: ");
+            Print("%d,%f,%f,%f,%f,%f\n",tunOptoNPulses%,tunPulsedOptoOnsetMin,tunPulsedOptoOnsetMax,tunPulsedOptoWidth,tunPulsedOptoIPImin,tunPulsedOptoIPImax);
         else
             Print("Wraparound Opto selected\n");
             Print("PreStimulusOptoOn,PostStimulusOptoOn,KeepOptoOnBetweenStims: %f,%f,%d\n",tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%);
@@ -1718,6 +2111,8 @@ func Start%()
     var tempSeqVarValue;
     var tempSeqVarValue%;
     var tempBinDir$;
+    var DGrat$;
+    var DGratParam$;
     
     if renderIsBroken% = 1 then
         message("Variable renderIsBroken has been set!  \nWe are FLYING BLIND, IGNORING ALL INCOMING PULSES!");
@@ -1727,7 +2122,12 @@ func Start%()
     if tunCameraMode% = cameraModeTrigger% then
         SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
         SendSerialMsg(serialCOMPort%, GetParameterString$(), "\n");
-    endif
+    endif;
+    
+    'For serial communications with Neuropixel, use the same values (I think??) but do not send initial message
+    if tunDoNeuropixel% =  1 then
+        SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
+    endif;
     
 '    var XHairArg$;
 	
@@ -1754,9 +2154,9 @@ func Start%()
         'parameters, we need to check the parameters again (even though the opto dialog box did it already)
         if tunOptoUsePulse% = 1 then
             
-            'Set random IPI
+            'Set random IPI, Onset
             tunPulsedOptoIPI := Rand(tunPulsedOptoIPImax-tunPulsedOptoIPImin,tunPulsedOptoIPImin);  'this will work if max=min or even if max<min.  Simple.  Nice.
-            
+            tunPulsedOptoOnset := Rand(tunPulsedOptoOnsetMax-tunPulsedOptoOnsetMin,tunPulsedOptoOnsetMin);  'this will work if max=min or even if max<min.  Simple.  Nice.
             SetPulsedOptoSequencerVariables();  'this replaces a lot of code here, will be used again on each trial if necessary
             
         endif;
@@ -1810,7 +2210,7 @@ func Start%()
     endif
     
 	docase 
-    case tunType$ = tunTypeContrast$ then
+    case tunType$ = tunTypeContrast$ or tunType$ = tunTypeTwoWayContrast$ then  'The call to the VSG is the same for both, Values$ will change of course
         
         'Tune$ := Dual$ + " -C " + Values$;
         Tune$ := " -C " + Values$;
@@ -1880,6 +2280,24 @@ func Start%()
         
         Tune$ := " -F " + tunMSeqLocation$ + tunCRGBal$ + Str$(tunCRGMFramesPerTurn%) + "," + Str$(tunCRGMFirstTerm%) + "," + Str$(tunCRGNumTerms%) + "," + Values$;  'Values$ indicates the contrasts
         
+    case tunType$ = tunTypeStimTrigPSTH$ then
+        'Just do a contrast tuning curve with values of 0
+        Tune$ := " -C " + Values$;
+        tunStimulusDuration := tunSTPISI;  'redefine stimulus duration
+        
+    case tunType$ = tunTypeCSD$ then        
+
+        Tune$ := CreateFFFlashString$(tunCSDNFlips%,tunCSDISI);
+        tunStimulusDuration := tunCSDISI*tunCSDNFlips%*2;  'redefine stimulus duration
+        Stim$ := "";  'We do not want any stim value set
+        
+    case tunType$ = tunTypeDanish$ then
+        Tune$ := " -H " + Values$;
+        'Only set DGrat/DGratParam if we're using them
+        DGrat$ := " -s ";
+        DGratParam$ := GetGratingParameters$("Distractor1");  'the donut - this goes FIRST 
+        Stim$ := DGrat$ + DGratParam$ + Stim$;  'Adjust stim for Danish syntax
+    
     else
 
         Message("Error - unknown value for tunType$: " + tunType$);
@@ -2218,3 +2636,28 @@ func BurstCount(nSpikes%,times[],startInd%)
     return nBurstsFound%;
     
 end
+
+
+
+
+'--------- CreateFFFlashString$ -----------
+func CreateFFFlashString$(NFlips%,ISI);
+    var outString$;
+    var framesPerTermLocal%;
+    var ValuesLocal$;
+    var i%;
+    
+    'Make a long string of black followed by white flashes
+    for i% := 1 to NFlips% do
+        ValuesLocal$ := ValuesLocal$ + "01";  'Hardcoded Black first and WE WILL NEVER DO ANYTHING ELSE SO HELP ME GOD
+    next
+    
+    
+    'Get number of frames per flash
+    framesPerTermLocal% := dataScreenHz*ISI;  
+    
+    outString$ := " -e " + ValuesLocal$ + " -L " + Str$(framesPerTermLocal%) + " ";
+    
+    return outString$;
+end
+

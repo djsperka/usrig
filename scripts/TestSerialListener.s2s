@@ -1,0 +1,75 @@
+
+' ============================================================================ '
+' Serial Port constants
+' ============================================================================ '
+const serialCOMPort% := 8; 
+const serialBaudRate% := 115200;
+const serialDataBits% := 8;
+const serialParity% := 0;
+const serialStopBits% := 1;
+const serialFlowCtrl% := 0;
+
+var neuropixelStatus%;
+var serialStatus%;
+var autoNameStr$;
+autoNameStr$ := "fakeFolder_004";
+
+
+'''Open Serial Port
+var ret;
+ret := SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
+printlog("SerialOpen return %d\n", ret);
+
+'''Send START signal to listener
+neuropixelStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "START " + autoNameStr$, "\n");
+
+'''If listener fails to acknowledge start of recording, inform user, close serial port, quit
+if neuropixelStatus% = 0 then
+    message("SpikeGLX recording did not successfully start!  Quitting!"); 
+    SerialClose(serialCOMPort%);
+    Halt;
+endif;
+
+'''If recording is started, allow recording to continue until user decides to stop it
+message("Waiting...close serial connection by pressing OK");
+
+'''Send STOP signal to listener
+serialStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "STOP", "\n");
+
+'''Close serial port regardless of outcome
+SerialClose(serialCOMPort%);
+
+'''If listener does not report recording stopped, inform user
+if serialStatus% = 0 then
+    message("Warning! SpikeGLX recording may not have stopped!\nPlease manually stop SpikeGLX!");
+endif;
+
+'''End of testing script
+
+
+
+'---- Subfunction SendSerialMsgNeuropixel----
+func SendSerialMsgNeuropixel(port%, msg$, term$)
+var buffer$;
+var count% := 60;
+var status% := 0;
+SerialWrite(port%, msg$, term$);
+while count% > 0 and status% < 1 do
+    count% := count% - 1;
+    status% := SerialRead(port%, buffer$, term$);
+    printlog("read status %d buffer %s\n", status%, buffer$);
+    if status% > 0 then
+        if not (buffer$ = "ACK") then
+            PrintLog("[ERROR]: Failed to receive ACK from imaging acq machine\n");
+            message("Received error from Neuropixel listener!  Error is\n" + buffer$);
+            status% := 0;
+            break;
+        endif
+    endif
+wend;
+if status% > 0 then
+    return 1;
+else
+    return 0;
+endif    
+end;

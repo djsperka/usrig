@@ -25,6 +25,9 @@ var tunHistogramBursts%;
 
 'var tunWaitForCameraTrigger%;
 var tunCameraMode%;
+var tunDoNeuropixel%;
+var tunDoEStim%;
+
 
 ' These will be set by the tuning curve choice
 var tunNAdvances%;		' Number of times stim will advance during one repeat
@@ -45,6 +48,10 @@ const tundlgCRGMButton% := 17;
 const tundlgOptogeneticsButton% := 18;
 const tundlgIDButton% := 19;
 const tundlgSelectTuningFileButton% := 20;
+const tundlgStimPSTHButton% := 21;
+const tundlgCSDButton% := 22;
+const tundlgDanishButton% := 23;
+const tundlgTwoWayContrastButton% := 24;
 
 
 const tunTypeNone$ := "None";
@@ -59,6 +66,10 @@ const tunTypeCRG$ := "R"; 'cRg, I guess
 const tunTypeID$ := "I";    ' inner diameter tuning
 'const tunTypeDonut$ := "H";
 'const tunTypeBerliner$ := "B";
+const tunTypeStimTrigPSTH$ := "X";
+const tunTypeCSD$ := "CSD";
+const tunTypeDanish$ := "DN";
+const tunTypeTwoWayContrast$ := "TWC";
 var tunType$:=tunTypeNone$;
 
 const tunContextDAQ$ := "DAQ";
@@ -87,6 +98,15 @@ var tunContrastMaxContrast;		' max contrast
 var tunContrastProgression%;
 var tunContrastUseFile%;
 var tunContrastTuningFile$;
+
+'Two Way Contrast next
+var tunTwoWayContrastNSteps%;			' # steps between max and min in two way contrast tuning curve, there will be 2x this number of stims in one repeat
+var tunTwoWayContrastNRepeats%;		    ' # repeats in contrast tuning curve
+var tunTwoWayContrastMinContrast;		' min contrast
+var tunTwoWayContrastMaxContrast;		' max contrast
+var tunTwoWayContrastUseFile%;
+var tunTwoWayContrastTuningFile$;
+
 
 ' Spatial next
 var tunSpatialNSteps%;			' # steps in spatial freq tuning curve
@@ -158,6 +178,24 @@ var tunCRGMFirstTerm%;      ' what term to start with?
 const tunCRGMNumTerms% := 32767;  'this is correct
 var tunCRGMBalanced%;       ' if 1, balance presentation
 
+'Stimulus-triggered PSTH variables
+var tunSTPNStims%;
+var tunSTPISI;
+
+'Current Source Density variables
+var tunCSDNFlips%;
+var tunCSDISI;
+var tunCSDNStims%;
+
+
+' Danishes
+var tunDanishNSteps%;           ' # steps in outer diameter tuning curve
+var tunDanishNRepeats%;         ' # repeats in outer diameter tuning curve
+var tunDanishMinOuterDiameter;  ' min outer diameter
+var tunDanishMaxOuterDiameter;  ' max outer diameter
+var tunDanishProgression%;      ' if 1, progression is random
+var tunDanishIncludeBlank%;     ' if 1, include "blank" (that is, zero-size donut) in tuning curve
+
 
 ' Optogenetics variables
 var tunPreStimOptoTime;
@@ -170,20 +208,21 @@ var dontToggleOpto% := 0;  'by default, toggle opto on every block
 'var tunRecOptoBox% := 0;      'record the output from the opto box?
 'var tunRecStimulator% := 0;   'record the stimulator?
 var tunOptoNPulses%;
+var optoDialogRun%;
 var tunPulsedOptoOnset;
+var tunPulsedOptoOnsetMin;
+var tunPulsedOptoOnsetMax;
 var tunPulsedOptoWidth;
 var tunPulsedOptoIPI;
 var tunPulsedOptoIPImin;
 var tunPulsedOptoIPImax;
-var tunPulsedOptoOnsetClockSteps%;
-var tunPulsedOptoOffsetClockSteps%;
-var tunPulsedOptoWidthClockSteps%;
-var tunPulsedOptoIPIClockSteps%;
+'var tunPulsedOptoOnsetClockSteps%;  'These variables are completely unused
+'var tunPulsedOptoOffsetClockSteps%;
+'var tunPulsedOptoWidthClockSteps%;
+'var tunPulsedOptoIPIClockSteps%;
 
 ' Strings that hold grating parameters
 var tunGratingParams$;
-
-
 
 
 
@@ -204,7 +243,9 @@ proc GetTuningCurveScriptParameters()
     tunHistogramBursts% := GetIntRegistryValue%(key$, "HistogramBursts", tunHistogramBursts%);
     
     'tunWaitForCameraTrigger% := GetIntRegistryValue%(key$, "WaitForCameraTrigger", tunWaitForCameraTrigger%);
-    tunCameraMode% := GetIntRegistryValue%(key$, "CameraMode", tunCameraMode%);    
+    tunCameraMode% := GetIntRegistryValue%(key$, "CameraMode", tunCameraMode%);  
+    tunDoNeuropixel% := GetIntRegistryValue%(key$, "DoNeuropixel", tunDoNeuropixel%); 
+    
 end;
 
 proc SaveTuningCurveScriptParameters()
@@ -224,6 +265,7 @@ proc SaveTuningCurveScriptParameters()
     
     'SetIntRegistryValue(key$, "WaitForCameraTrigger", tunWaitForCameraTrigger%);
     SetIntRegistryValue(key$, "CameraMode", tunCameraMode%);
+    SetIntRegistryValue(key$, "DoNeuropixel", tunDoNeuropixel%);
 end;
 
 
@@ -270,7 +312,7 @@ func TuningCurveScriptDialog%()
 	DlgCreate("Tuning Curve Parameters", 50, 10, dlgwid%);
     DlgButton(0,"         Quit         ");
     DlgButton(1,"     Select Expt.     ");        
-	DlgGroup("Common Parameters", 1, 1, dlgwid%-2, 9);
+	DlgGroup("Common Parameters", 1, 1, dlgwid%-2, 10);
 	DlgReal(1, "Stimulus Duration(s):", .1, 100, 0, 2);  'new, allow really long stimuli
     DlgReal(2, "InterTrial Time(s):", .1, 100, 0, 3);  'new, allow really long stimuli
 	DlgReal(3, "InterBlock Time(s):", 0, 100, 0, 4);  'new, allow really long stimuli
@@ -284,27 +326,33 @@ func TuningCurveScriptDialog%()
     DlgText("Camera mode: ", 2, 8);
     DlgList(7, 12, "None|Wait|Trigger", 3, 31.2, 8);
     DlgReal(8, "Camera Baseline Period(s):", 0, 1000, 0, 9);  'new, allow really long stimuli
+    DlgCheck(9,"Do Neuropixel Recording",2,10);
     
-    DlgGroup("Grating Parameters", 1, 10, dlgwid%-2, 2);
-    DlgButton(tundlgGratingParametersButton%, "Grating Parameters", TunDlgGratingMaster%, 2, 11);
+    DlgGroup("Grating Parameters", 1, 11, dlgwid%-2, 2);
+    DlgButton(tundlgGratingParametersButton%, "Grating Parameters", TunDlgGratingMaster%, 2, 12);
     
-    DlgGroup("Optogenetics", 1, 12, dlgwid%-2, 3);
-    DlgCheck(9,"Opto On",2,13);
-    DlgButton(tundlgOptogeneticsButton%, "Optogenetics Parameters", TunOptoDialog%, 2, 14);
+    DlgGroup("Optogenetics/E-Stim", 1, 13, dlgwid%-2, 3);
+    DlgCheck(10,"Opto/E-Stim On",2,14);
+    DlgButton(tundlgOptogeneticsButton%, "Opto/E-Stim Parameters", TunOptoDialog%, 2, 15);
     
-    DlgGroup("Individual Tuning Curve Types", 1, 15, dlgwid%-2, 8);
-	DlgButton(tundlgOrientationButton%, "Orientation", TuningCurveOrientationDialog%, 2, 16);
-	DlgButton(tundlgContrastButton%, "Contrast", TuningCurveContrastDialog%, 2, 17);
-	DlgButton(tundlgSpatialButton%, "Spatial Freq", TuningCurveSpatialDialog%, 2, 18);
-	DlgButton(tundlgTemporalButton%, "Temporal Freq", TuningCurveTemporalDialog%, 2, 19);
-	DlgButton(tundlgAreaButton%, "Area", TuningCurveAreaDialog%, 2, 20);
-    DlgButton(tundlgNullTestButton%, "Null Test", TuningCurveNullTestDialog%, 2, 21);
-	DlgButton(tundlgIDButton%, "InnerDiam", TuningCurveIDDialog%, 2, 22);
+    DlgGroup("Individual Tuning Curve Types", 1, 16, dlgwid%-2, 6);
+	DlgButton(tundlgOrientationButton%, "Orientation", TuningCurveOrientationDialog%, 2, 17);
+	DlgButton(tundlgContrastButton%, "Contrast", TuningCurveContrastDialog%, 2, 18);
+	DlgButton(tundlgSpatialButton%, "Spatial Freq", TuningCurveSpatialDialog%, 2, 19);
+	DlgButton(tundlgTemporalButton%, "Temporal Freq", TuningCurveTemporalDialog%, 2, 20);
+    DlgButton(tundlgTwoWayContrastButton%, "Two Way Contrast", TuningCurveTwoWayContrastDialog%, 2, 21);
+	DlgButton(tundlgAreaButton%, "Area", TuningCurveAreaDialog%, 30, 17);
+    DlgButton(tundlgNullTestButton%, "Null Test", TuningCurveNullTestDialog%, 30, 18);
+	DlgButton(tundlgIDButton%, "InnerDiam", TuningCurveIDDialog%, 30, 19);
+    DlgButton(tundlgDanishButton%, "Danishes", TuningCurveDanishDialog%, 30, 20);
     
+    DlgGroup("Non-Grating Stimuli", 1, 22, dlgwid%-2, 2);
+    DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 23);
+    DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 30, 23);
     
-    DlgGroup("Non-Grating Stimuli", 1, 23, dlgwid%-2, 3);
-    DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 24);
-    DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 2, 25);
+    DlgGroup("Neuropixel JIT Stimuli", 1, 24, dlgwid%-2, 2);
+    DlgButton(tundlgStimPSTHButton%, "E-Stim PSTH", StimTrigPSTHDialog%, 2, 25);
+    DlgButton(tundlgCSDButton%, "Current Source Density", CurrentSourceDensityDialog%, 21, 25);
     
     DlgAllow(0xffff, 0, TuningCurveScriptDialogChanged%);
     
@@ -313,7 +361,7 @@ func TuningCurveScriptDialog%()
     'i%:=DlgShow(tunStimulusDuration, tunInterTrialTime, tunInterBlockTime, tunBackgroundGrayLevel%, tunRecStimulator%, tunDoOpto%);  'now using background gray level
     'replaces tunRecStimulator with tunUseTemperature, probably will only be used for a short period of time
     i%:=DlgShow(tunStimulusDuration, tunInterTrialTime, tunInterBlockTime, tunBackgroundGrayLevel%, 
-    tunUseTemperature%, tunHistogramBursts%, tunCameraMode%, tunCameraBaselinePeriod, tunDoOpto%);  'now using background gray level
+    tunUseTemperature%, tunHistogramBursts%, tunCameraMode%, tunCameraBaselinePeriod, tunDoNeuropixel%, tunDoOpto%);  'now using background gray level
     
     ' djs 4-1-09
     ' Spike2 v6 change. DlgShow will return the button number when a button on the dialog is hit and the corresponding
@@ -337,6 +385,16 @@ func TuningCurveScriptDialog%()
         
         if tunDoOpto% = 0 then  'it will be useful to make sure that tunOptoState% is 0 if we're not at all doin Opto
             tunOptoState% := 0;
+        else  'If we ARE doing opto, set opto start state here, rather than in Opto dialog, allows us to not open dialog (we got parameters up top)
+            docase
+            case tunOptoStartState% = 3 then
+                dontToggleOpto% := 1;
+                tunOptoState% := 1;
+            case tunOptoStartState% = 2 then
+                tunOptoState% := round(Rand());
+            else
+                tunOptoState% := tunOptoStartState%;
+            endcase;
         endif;
         
         if tunCRGMFirstTerm% > tunCRGMNumTerms% - 100 - (tunStimulusDuration*dataScreenHz) then
@@ -377,11 +435,14 @@ func TuningCurveScriptDialogChanged%(item%)
     'DlgEnable(DlgValue(7) > 0,7);
     
     'This disables the "OK" button (though it will have different labels) until an experiment is selected
-    if TuningCurveScriptDialogAllowOK% = 1 then
+    docase
+    'case DlgValue(10) = 1 and optoDialogRun% = 0 then  'we may not use this after all
+    '    DlgEnable(0,-1);  'disable "OK" is opto is checked but dialog is not run
+    case TuningCurveScriptDialogAllowOK% = 1 then
         DlgEnable(1,-1);  'enable "OK" 
     else
         DlgEnable(0,-1);  'Otherwise disable "OK"
-    endif;
+    endcase;
     
     return 1;
 end
@@ -441,6 +502,31 @@ proc SaveTuningCurveContrastParameters()
     SetFloatRegistryValue(key$, "MaxContrast", tunContrastMaxContrast);
     SetIntRegistryValue(key$, "UseFile", tunContrastUseFile%);
     SetStringRegistryValue(key$, "TuningFile", tunContrastTuningFile$);
+end;
+
+
+proc GetTuningCurveTwoWayContrastParameters()
+	var stmp$;
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\TwoWayContrast";
+    
+    tunTwoWayContrastNSteps% := GetIntRegistryValue%(key$, "NSteps", tunTwoWayContrastNSteps%);
+    tunTwoWayContrastNRepeats% := GetIntRegistryValue%(key$, "NRepeats", tunTwoWayContrastNRepeats%);
+    tunTwoWayContrastMinContrast := GetFloatRegistryValue(key$, "MinContrast", tunTwoWayContrastMinContrast);
+    tunTwoWayContrastMaxContrast := GetFloatRegistryValue(key$, "MaxContrast", tunTwoWayContrastMaxContrast);
+    tunTwoWayContrastUseFile% := GetIntRegistryValue%(key$, "UseFile", tunTwoWayContrastUseFile%);
+    tunTwoWayContrastTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunTwoWayContrastTuningFile$);
+end;
+
+proc SaveTuningCurveTwoWayContrastParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\TwoWayContrast";
+    SetIntRegistryValue(key$, "NSteps", tunTwoWayContrastNSteps%);
+    SetIntRegistryValue(key$, "NRepeats", tunTwoWayContrastNRepeats%);
+    SetFloatRegistryValue(key$, "MinContrast", tunTwoWayContrastMinContrast);
+    SetFloatRegistryValue(key$, "MaxContrast", tunTwoWayContrastMaxContrast);
+    SetIntRegistryValue(key$, "UseFile", tunTwoWayContrastUseFile%);
+    SetStringRegistryValue(key$, "TuningFile", tunTwoWayContrastTuningFile$);
 end;
 
 proc GetTuningCurveSpatialParameters()
@@ -640,6 +726,67 @@ proc SaveTuningCurveCRGMParameters()
     SetIntRegistryValue(key$, "Balanced", tunCRGMBalanced%);
 end;
 
+
+proc GetStimTrigPSTHParameters()
+	var stmp$;
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\STP";
+    tunSTPNStims% := GetIntRegistryValue%(key$, "STPNStims", tunSTPNStims%);
+    tunSTPISI := GetFloatRegistryValue(key$, "STPISI", tunSTPISI);
+end;
+
+proc SaveStimTrigPSTHParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\STP";
+    SetIntRegistryValue(key$, "STPNStims", tunSTPNStims%);
+    SetFloatRegistryValue(key$, "STPISI", tunSTPISI);
+end;
+
+
+proc GetCurrentSourceDensityParameters()
+	var stmp$;
+	var key$;
+    key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\CRGM"; 
+    tunCSDNStims% := GetIntRegistryValue%(key$, "CSDNStims", tunCSDNStims%);
+    tunCSDNFlips% := GetIntRegistryValue%(key$, "CSDNFlips", tunCSDNFlips%);
+    tunCSDISI := GetFloatRegistryValue(key$, "CSDISI", tunCSDISI);
+end;
+
+proc SaveCurrentSourceDensityParameters()
+	var key$;
+    key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\CRGM";
+    SetIntRegistryValue(key$, "CSDNStims", tunCSDNStims%);
+    SetIntRegistryValue(key$, "CSDNFlips", tunCSDNFlips%);
+    SetFloatRegistryValue(key$, "CSDISI", tunCSDISI);
+end;
+
+
+proc GetTuningCurveDanishParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\Danish";
+    tunDanishNSteps% := GetIntRegistryValue%(key$, "DanishNSteps", tunDanishNSteps%);
+    tunDanishNRepeats% := GetIntRegistryValue%(key$, "DanishNRepeats", tunDanishNRepeats%);
+    tunDanishMinOuterDiameter := GetFloatRegistryValue(key$, "DanishMinOuterDiameter", tunDanishMinOuterDiameter);
+    tunDanishMaxOuterDiameter := GetFloatRegistryValue(key$, "DanishMaxOuterDiameter", tunDanishMaxOuterDiameter);
+    tunDanishProgression% := GetIntRegistryValue%(key$, "DanishProgression", tunDanishProgression%);
+    tunDanishIncludeBlank% := GetIntRegistryValue%(key$, "DanishIncludeBlank", tunDanishIncludeBlank%);
+end;
+
+
+proc SaveTuningCurveDanishParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\Danish";
+    SetIntRegistryValue(key$, "DanishNSteps", tunDanishNSteps%);
+    SetIntRegistryValue(key$, "DanishNRepeats", tunDanishNRepeats%);
+    SetFloatRegistryValue(key$, "DanishMinOuterDiameter", tunDanishMinOuterDiameter);
+    SetFloatRegistryValue(key$, "DanishMaxOuterDiameter", tunDanishMaxOuterDiameter);
+    SetIntRegistryValue(key$, "DanishProgression", tunDanishProgression%);
+    SetIntRegistryValue(key$, "DanishIncludeBlank", tunDanishIncludeBlank%);
+end;
+
+
+
+
 proc GetTunOptoParameters()
 	var stmp$;
 	var key$;
@@ -654,6 +801,8 @@ proc GetTunOptoParameters()
     tunLaserDiode% := GetIntRegistryValue%(key$, "LaserDiode", tunLaserDiode%);
     tunOptoNPulses% := GetIntRegistryValue%(key$, "OptoNPulses", tunOptoNPulses%);
     tunPulsedOptoOnset := GetFloatRegistryValue(key$, "PulsedOptoOnset", tunPulsedOptoOnset);
+    tunPulsedOptoOnsetMin := GetFloatRegistryValue(key$, "PulsedOptoOnsetMin", tunPulsedOptoOnsetMin);
+    tunPulsedOptoOnsetMax := GetFloatRegistryValue(key$, "PulsedOptoOnsetMax", tunPulsedOptoOnsetMax);
     tunPulsedOptoWidth := GetFloatRegistryValue(key$, "PulsedOptoWidth", tunPulsedOptoWidth);
     tunPulsedOptoIPI := GetFloatRegistryValue(key$, "PulsedOptoIPI", tunPulsedOptoIPI);
     tunPulsedOptoIPImin := GetFloatRegistryValue(key$, "PulsedOptoIPImin", tunPulsedOptoIPImin);
@@ -677,6 +826,8 @@ proc SaveTunOptoParameters()
     SetIntRegistryValue(key$, "LaserDiode", tunLaserDiode%);
     SetIntRegistryValue(key$, "OptoNPulses", tunOptoNPulses%);
     SetFloatRegistryValue(key$, "PulsedOptoOnset", tunPulsedOptoOnset);
+    SetFloatRegistryValue(key$, "PulsedOptoOnsetMin", tunPulsedOptoOnsetMin);
+    SetFloatRegistryValue(key$, "PulsedOptoOnsetMax", tunPulsedOptoOnsetMax);
     SetFloatRegistryValue(key$, "PulsedOptoWidth", tunPulsedOptoWidth);
     SetFloatRegistryValue(key$, "PulsedOptoIPI", tunPulsedOptoIPI);
     SetFloatRegistryValue(key$, "PulsedOptoIPImin", tunPulsedOptoIPImin);
@@ -702,12 +853,15 @@ func TuningCurveOrientationDialog%()
     DlgString(7,40,255,"",3);  'for visual confirmation of selected seq file
     DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
     
-    DlgCheck(8, "Use plaids [grating orientation determines angle]", 0, 9);
+    'DlgCheck(8, "Use plaids [grating orientation determines angle]", 0, 9);
     
     DlgAllow(0xffff, 0, TuningCurveGenericDialogChanged%);
     
-	i% := DlgShow(tunOriNSteps%, tunOriNRepeats%, tunOriMinOrientation, tunOriMaxOrientation, tunOriProgression%, tunOriUseFile%, tunOriTuningFile$, tunOriUsePlaid%);
-
+    'Removing plaid option as it doesn't work without REX
+	'i% := DlgShow(tunOriNSteps%, tunOriNRepeats%, tunOriMinOrientation, tunOriMaxOrientation, tunOriProgression%, tunOriUseFile%, tunOriTuningFile$, tunOriUsePlaid%);
+    i% := DlgShow(tunOriNSteps%, tunOriNRepeats%, tunOriMinOrientation, tunOriMaxOrientation, tunOriProgression%, tunOriUseFile%, tunOriTuningFile$);
+    tunOriUsePlaid% := 0;  'Just hard code this, makes it easier to put this back in if it is ever a thing.
+    
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
     ' djs 2/4/2011
@@ -817,6 +971,75 @@ func TuningCurveContrastDialog%()
 
 	return iReturn%;
 end;
+
+
+
+
+func TuningCurveTwoWayContrastDialog%()
+	var iReturn% := 0;
+	var i%;
+	GetTuningCurveTwoWayContrastParameters();
+	DlgCreate("Two Way Contrast Tuning Curve Parameters");
+	DlgInteger(1, "Number of Steps", 0, 99);
+	DlgInteger(2, "Number of Repeats", 1, 500);
+	DlgReal(3, "Min Contrast (%)", 0.1, 100);
+	DlgReal(4, "Max Contrast (%)", 0.1, 100);
+    DlgCheck(5, "Use File For Tuning Values, 101-200 are downwards!");
+    DlgString(6,40,255,"",3);  'for visual confirmation of selected seq file
+    DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
+    DlgAllow(0xffff, 0, TuningCurveGenericDialogChanged%);
+    
+	i% := DlgShow(tunTwoWayContrastNSteps%, tunTwoWayContrastNRepeats%, tunTwoWayContrastMinContrast, tunTwoWayContrastMaxContrast, tunTwoWayContrastUseFile%, tunTwoWayContrastTuningFile$);
+	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
+    ' djs 2/4/2011
+    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+    ' before things proceed. 
+	if i% = 1 then
+		SaveTuningCurveTwoWayContrastParameters();
+'		PrintLog("TuningCurveTwoWayContrastDialog - user hit OK\n");
+		tunType$ := tunTypeTwoWayContrast$;
+        tunUseFile% := tunTwoWayContrastUseFile%;
+        tunTuningFile$ := tunTwoWayContrastTuningFile$;
+        
+        'Reset dialog OK button text on Select dialog, and note which experiment to run
+        DlgValue$(-1,"Run 2Way Contrast");
+        TuningCurveScriptDialogAllowOK% := 1;  'Prepare to enable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
+        
+		if tunContext$ = tunContextDAQ$ then
+            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+            iReturn% := 1;
+		else
+			iReturn% := 1;
+		endif;
+	endif;
+	if i% = 0 then
+'		PrintLog("TuningCurveContrastDialog - user hit Cancel\n");
+		tunType$ := tunTypeNone$;
+		if tunContext$ = tunContextDAQ$ then
+			iReturn% := 1;
+		else
+			iReturn% := 2;
+		endif;
+        'Reset dialog OK button text on Select dialog, and note we need to pick an expt.
+        DlgValue$(-1,"Select Expt.");
+        TuningCurveScriptDialogAllowOK% := 0;  'Prepare to disable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Disables "OK" button, -1 is sham input
+	endif;
+
+	return iReturn%;
+end;
+
+
+
+
+
 
 func TuningCurveSpatialDialog%()
 	var iReturn% := 0;
@@ -1273,6 +1496,195 @@ func TuningCurveCRGMDialog%()
 	return iReturn%;
 end;
 
+
+
+func StimTrigPSTHDialog%()
+	var iReturn%;
+	var i%;
+	GetStimTrigPSTHParameters();
+	DlgCreate("Run Stimulus Triggered PSTH");
+    DlgInteger(1, "Number of E-Stims", 0, 10000);
+	DlgReal(2, "E-Stim ISI (s)", 0.001, 360);
+    
+	i% := DlgShow(tunSTPNStims%, tunSTPISI);
+
+	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
+    ' djs 2/4/2011
+    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+    ' before things proceed. 
+	if i% = 1 then
+		SaveStimTrigPSTHParameters();
+		PrintLog("StimTrigPSTHDialog - user hit OK\n");
+		tunType$ := tunTypeStimTrigPSTH$;
+        
+        'Reset dialog OK button text on Select dialog, and note which experiment to run
+        DlgValue$(-1,"Run StimTrigPSTH");
+        TuningCurveScriptDialogAllowOK% := 1;  'Prepare to enable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
+        
+		if tunContext$ = tunContextDAQ$ then
+            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+            iReturn% := 1;
+		else
+			iReturn% := 1;
+		endif;
+	endif;
+	if i% = 0 then
+		PrintLog("StimTrigPSTHDialog - user hit Cancel\n");
+		tunType$ := tunTypeNone$;
+		if tunContext$ = tunContextDAQ$ then
+			iReturn% := 1;
+		else
+			iReturn% := 2;
+		endif;
+        'Reset dialog OK button text on Select dialog, and note we need to pick an expt.
+        DlgValue$(-1,"Select Expt.");
+        TuningCurveScriptDialogAllowOK% := 0;  'Prepare to disable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Disables "OK" button, -1 is sham input
+	endif;
+    PrintLog("Return value is %d\n", iReturn%);
+	return iReturn%;
+end;
+
+
+func CurrentSourceDensityDialog%()
+	var iReturn%;
+	var i%;
+	GetCurrentSourceDensityParameters();
+    DlgCreate("Run Current Source Density");
+    DlgInteger(1, "Number of Stimuli", 0, 10000);
+	DlgInteger(2, "Number of Screen Flips per stim", 0, 10000);
+	DlgReal(3, "Inter-flip Interval (s)", 0.001, 360);
+
+	i% := DlgShow(tunCSDNStims%, tunCSDNFlips%, tunCSDISI);
+
+	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
+    ' djs 2/4/2011
+    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+    ' before things proceed. 
+	if i% = 1 then
+		SaveCurrentSourceDensityParameters();
+		PrintLog("CurrentSourceDensityDialog - user hit OK\n");
+		tunType$ := tunTypeCSD$;
+        
+        'Reset dialog OK button text on Select dialog, and note which experiment to run
+        DlgValue$(-1,"Run CSD");
+        TuningCurveScriptDialogAllowOK% := 1;  'Prepare to enable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
+        
+		if tunContext$ = tunContextDAQ$ then
+            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+            iReturn% := 1;
+		else
+			iReturn% := 1;
+		endif;
+	endif;
+	if i% = 0 then
+		PrintLog("CurrentSourceDensityDialog - user hit Cancel\n");
+		tunType$ := tunTypeNone$;
+		if tunContext$ = tunContextDAQ$ then
+			iReturn% := 1;
+		else
+			iReturn% := 2;
+		endif;
+        'Reset dialog OK button text on Select dialog, and note we need to pick an expt.
+        DlgValue$(-1,"Select Expt.");
+        TuningCurveScriptDialogAllowOK% := 0;  'Prepare to disable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Disables "OK" button, -1 is sham input
+	endif;
+    PrintLog("Return value is %d\n", iReturn%);
+	return iReturn%;
+end;
+
+
+
+
+func TuningCurveDanishDialog%()
+	var iReturn% := 0;
+	var i%;
+    var sValues$;
+    var iValue%:=0;
+    var result[1000];
+    var indices%[1000];
+    
+	GetTuningCurveDanishParameters();
+    
+    
+	DlgCreate("Danish Tuning Curve Parameters");
+	DlgInteger(1, "Number of Steps", 2, 100);
+    'DlgInteger(1, "Number of Stimuli", 1, 100);
+	DlgInteger(2, "Number of Repeats", 1, 1000);
+	DlgReal(3, "Min Outer Diameter", 0.1, 100);
+	DlgReal(4, "Max Outer Diameter", 0.1, 100);
+	DlgCheck(5, "Random Progression");
+    DlgCheck(6, "Include Blank");
+    DlgButton(151, "Core Grating", TunDlgGratingCore%);
+    DlgButton(152, "Donut Grating", TunDlgGratingDonut%);
+    DlgButton(153, "Core Vals -> Donut", TunCoreValsToDonut%);
+    DlgButton(154, "Donut Vals -> Core", TunDonutValsToCore%);
+    'DlgAllow(0xffff, 0, TuningCurveDanishDialogChanged%);
+	
+    i% := DlgShow(tunDanishNSteps%, tunDanishNRepeats%, tunDanishMinOuterDiameter, tunDanishMaxOuterDiameter, tunDanishProgression%, tunDanishIncludeBlank%);
+    
+    'for now, no dummy-proofing
+
+
+	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
+    ' 
+    ' djs 2/4/2011
+    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+    ' before things proceed. 
+	if i% = 1 then
+		SaveTuningCurveDanishParameters();
+		tunType$ := tunTypeDanish$;
+        
+        'Reset dialog OK button text on Select dialog, and note which experiment to run
+        DlgValue$(-1,"Run Danishes");
+        TuningCurveScriptDialogAllowOK% := 1;  'Prepare to enable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
+        
+		if tunContext$ = tunContextDAQ$ then
+            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+            iReturn% := 1;
+		else
+			iReturn% := 1;
+		endif;
+	endif;
+	if i% = 0 then
+		tunType$ := tunTypeNone$;
+		if tunContext$ = tunContextDAQ$ then
+			iReturn% := 1;
+		else
+			iReturn% := 2;
+		endif;
+	endif;
+    
+	return iReturn%;
+end;
+
+
+
+
+
+
 func TunDlgGratingMaster%()
     
     var x, y, w, h, iw, ih, sf, tf, ori, phase;
@@ -1323,28 +1735,32 @@ func TunOptoDialog%()
     var tempCount%;
     stimdur := dlgvalue(1);  'get stimulus duration value from calling (main) dialog, limit opto period based on this
     
-    labels$[0] := "Opto Off First";
-    labels$[1] := "Opto On First";
+    labels$[0] := "Opto/E-Stim Off First";
+    labels$[1] := "Opto/E-Stim On First";
     labels$[2] := "Random First";
-    labels$[3] := "Opto On All Blocks";
+    labels$[3] := "Opto/E-Stim On All Blocks";
 	GetTunOptoParameters();
-	DlgCreate("Optogenetics Parameters");
-    DlgGroup("Common Parameters", 1, 1, 38, 5);
-    DlgReal(1, "Opto Voltage Out (V)",0.0002,5,20,2); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
-    DlgList(2, "Order of blocks",labels$,4,20,3);
-    DlgCheck(3, "Use pulsing opto",2,4);
+	DlgCreate("Optogenetics/E-Stim Parameters",0,0,45);
+    DlgGroup("Common Parameters", 1, 1, 43, 5);
+    DlgReal(1, "Voltage Out (V)",0.0002,5,30,2); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+    'DlgList(2, "Order of blocks",labels$,4,25,3);  'We need to make the listbox wider, so the syntax changes and we have to DlgText the label
+    DlgText("Order of blocks",2,3);
+    DlgList(2, 23,labels$,4,20,3);
+    DlgCheck(3, "Use E-Stim/Use pulsing opto",2,4);
     DlgCheck(4, "Record Laser Diode",2,5);
-    DlgGroup("Wrap-Around Opto", 1, 6, 38, 4);
-    DlgReal(5, "PreStimulus Opto On (s)",0,10,20,7);
-    DlgReal(6, "PostStimulus Opto On (s)",0,10,20,8);
+    DlgGroup("Wrap-Around Opto", 1, 6, 43, 4);
+    DlgReal(5, "PreStimulus Opto On (s)",0,10,30,7);
+    DlgReal(6, "PostStimulus Opto On (s)",0,10,30,8);
     DlgCheck(7, "Keep Opto on between stims",2,9);
-    DlgGroup("Pulsing Opto", 1, 10, 38, 6);
-    DlgInteger(8, "Opto # Pulses ",0,1000,20,11);
-    DlgReal(9, "Opto Period Onset (s)",0,stimdur,20,12);
-    DlgReal(10, "Opto Pulse Width (s)",0,stimdur,20,13);
-    'DlgReal(11, "Opto Interpulse Interval (s)",0,100,20,14);
-    DlgReal(11, "Min Opto Interpulse Interval (s)",0,100,20,14);
-    DlgReal(12, "Max Opto Interpulse Interval (s)",0,100,20,15);
+    DlgGroup("E-Stim/Pulsing Opto", 1, 10, 43, 6);
+    DlgInteger(8, "# Pulses ",0,1000,30,11);
+    'DlgReal(9, "Period Onset (s)",0,stimdur,30,12);
+    DlgReal(9, "Min 1st Pulse Onset (s)",0,stimdur,30,12);
+    DlgReal(10, "Max 1st Pulse Onset (s)",0,stimdur,30,13);
+    DlgReal(11, "Pulse Width (s)",0,stimdur,30,14);
+    'DlgReal(11, "Interpulse Interval (s)",0,100,30,14);
+    DlgReal(12, "Min Interpulse Interval (s)",0,100,30,15);
+    DlgReal(13, "Max Interpulse Interval (s)",0,100,30,16);
     
     'DlgCheck(6, "Record control box voltage");
     'DlgCheck(7, "Record stimulator");
@@ -1353,7 +1769,8 @@ func TunOptoDialog%()
     
 	'i% := DlgShow(tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoVoltageOut,tunOptoStartState%);',tunRecOptoBox%,tunRecStimulator%);
 	'changing order with bigger dialog - note that with addition of the dialogChanged function the above will not be terribly relevant ever again
-    i% := DlgShow(tunOptoVoltageOut,tunOptoStartState%,tunOptoUsePulse%,tunLaserDiode%,tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoNPulses%,tunPulsedOptoOnset,tunPulsedOptoWidth,tunPulsedOptoIPImin,tunPulsedOptoIPImax);
+    i% := DlgShow(tunOptoVoltageOut,tunOptoStartState%,tunOptoUsePulse%,tunLaserDiode%,tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoNPulses%,
+    tunPulsedOptoOnsetMin,tunPulsedOptoOnsetMax,tunPulsedOptoWidth,tunPulsedOptoIPImin,tunPulsedOptoIPImax);
     ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
     ' 
@@ -1367,23 +1784,26 @@ func TunOptoDialog%()
     ' before things proceed. 
     'tunMaximalDiam := tunAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
 	if i% = 1 then
-		SaveTunOptoParameters();
-        docase
-        case tunOptoStartState% = 3 then
-            dontToggleOpto% := 1;
-            tunOptoState% := 1;
-        case tunOptoStartState% = 2 then
-            tunOptoState% := round(Rand());
-        else
-            tunOptoState% := tunOptoStartState%;
-        endcase;
+        SaveTunOptoParameters();
+        'optoDialogRun% := 1;  'Force dialog to be run if using opto, may not use this after all
+    
+        'This is now done in the main dialog if Opto is selected, allows user to NOT open subdialog every time
+        'docase
+        'case tunOptoStartState% = 3 then
+        '    dontToggleOpto% := 1;
+        '    tunOptoState% := 1;
+        'case tunOptoStartState% = 2 then
+        '    tunOptoState% := round(Rand());
+        'else
+        '    tunOptoState% := tunOptoStartState%;
+        'endcase;
         'printlog("Opto start state is %d\n",tunOptoState%);  'yep, works
         
         'do temporary calculation to make sure all pulses will occur during the stimulus
         'unfortunately we will have to do this AGAIN once the script starts because the user could change the stimulus duration after the opto parameters
         'fortunately, the calculation is the same and it all worked on the first try
         if tunOptoUsePulse% = 1 then
-            stimdur := stimdur - tunPulsedOptoOnset;  'duration of stimulus after onset delay
+            stimdur := stimdur - tunPulsedOptoOnsetMax;  'duration of stimulus after maximum onset delay
             stimdur := stimdur - tunPulsedOptoWidth;  'duration of stimulus after first opto pulse
             if stimdur < 0 then  'if first pulse will extend beyond stimulus duration
                 tunOptoNPulses% := 0;  'turn off opto by using no pulses
@@ -1603,6 +2023,283 @@ func TuningCurveNullTestDialogChanged%(item%)
         DlgEnable(0,3);
         DlgEnable(0,4);
     endif;
+    return 1;
+end
+
+
+func TunDlgGratingCore%()
+    
+    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var contrast%;
+    var param$, cv$, pattern$, aperture$;
+    var label$;
+    var i%;
+    var tunGratingParamsStat$;
+    
+    tunGratingParams$ := GetGratingParameters$("Stimulus");
+    i% := GratingParametersDialogCore%(label$, tunGratingParams$, tunGratingParamsStat$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    if i% = 1 then
+        SaveGratingParameters("Stimulus", tunGratingParams$);
+        'SaveGratingParameters("StatStimulus", tunGratingParamsStat$);
+    endif
+    
+    return 1;
+end
+
+func TunDlgGratingDonut%()
+    
+    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var contrast%;
+    var param$, cv$, pattern$, aperture$;
+    var label$;
+    var i%;
+    var tunGratingParamsStat$;
+    
+    tunGratingParams$ := GetGratingParameters$("Distractor1");
+    i% := GratingParametersDialogDonut%(label$, tunGratingParams$, tunGratingParamsStat$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    if i% = 1 then
+        SaveGratingParameters("Distractor1", tunGratingParams$);
+        'SaveGratingParameters("StatStimulus", tunGratingParamsStat$);
+    endif
+    
+    return 1;
+end
+
+
+func TunCoreValsToDonut%()
+    
+    var x, y, w, h, iw, ih;
+    var contrast%;
+    var sf, tf, ori, phase;
+    var cv$, pattern$, aperture$;
+    
+    var tempParams$;
+    
+    tempParams$ := GetGratingParameters$("Stimulus");
+    ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    iw := w;  'set grating width to make a donut that surrounds the core, of arbitrary width
+    ih := h;
+    w := iw+1;
+    h := ih+1;
+    tempParams$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    SaveGratingParameters("Distractor1", tempParams$);
+    
+    return 1;
+end
+
+
+func TunDonutValsToCore%()
+    
+    var x, y, w, h, iw, ih;
+    var contrast%;
+    var sf, tf, ori, phase;
+    var cv$, pattern$, aperture$;
+    
+    var tempParams$;
+    
+    tempParams$ := GetGratingParameters$("Distractor1");
+    ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    w := iw;  'set grating width to make a core that fits inside the donut, of zero inner diameter
+    h := ih;
+    iw := 0;
+    ih := 0;
+    tempParams$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    SaveGratingParameters("Stimulus", tempParams$);
+    
+    return 1;
+end
+
+
+func GratingParametersDialogCore%(label$, &param$, &statparam$, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$)
+    
+	var i% := 15;  'That's right, 15, which is the button that we want to use for copying parameters over
+    
+	var ColorVectorList$[5];
+	var cvl$[5];
+	var icvl% := 0;
+    var icvlS% := 0;
+	ColorVectorList$[0]:="Black/White";	cvl$[0]:="b";
+	ColorVectorList$[1]:="L cone";		cvl$[1]:="l";
+	ColorVectorList$[2]:="M cone";		cvl$[2]:="m";
+	ColorVectorList$[3]:="S cone";		cvl$[3]:="s";
+	ColorVectorList$[4]:="Custom";		cvl$[4]:="custom";
+    
+	var PatternList$[2];
+	var pl$[2];
+	var ipl% := 0;
+    var iplS% := 0;
+	PatternList$[0]:="Sine";	pl$[0]:="s";
+	PatternList$[1]:="Square";	pl$[1]:="q";
+    
+	var ApertureList$[2];
+	var al$[2];
+	var ial% := 0;
+    var ialS% := 0;
+	ApertureList$[0]:="Ellipse";	al$[0]:="e";
+	ApertureList$[1]:="Rectangle";	al$[1]:="r";
+    
+    while i% = 15 do
+        
+        ' If the passed param$ is non-empty, then parse it before opening the dialog. 
+        if Len(param$)>0 then
+            if ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$) = 0 then
+                icvl% := FindMatchedStringIndex%(cv$, cvl$[], 2, 0);
+                ipl% := FindMatchedStringIndex%(pattern$, pl$[], 2, 0);
+                ial% := FindMatchedStringIndex%(aperture$, al$, 3, 0);
+            endif
+        endif
+        
+        DlgCreate("Grating parameters: " + label$, 25, 11);
+        '    DlgAllow(0, 0, GratingParametersDialogDoubleCheck%);
+        DlgReal(1, "X:", -40, 40);
+        DlgReal(2, "Y:", -40, 40);
+        DlgReal(3, "Outer Width:", .1, 30);
+        DlgReal(4, "Outer Height:", .1, 30);
+        DlgReal(5, "Inner Width:", 0, 30);
+        DlgReal(6, "Inner Height:", 0, 30);
+        DlgInteger(7, "Contrast(%):", -100, 100);
+        DlgReal(8, "Spatial Freq:", .01, 10);
+        DlgReal(9, "Temporal Freq:", 0, 10);
+        DlgReal(10, "Orientation (degrees):", -360, 360);
+        DlgReal(11, "Initial Phase (deg, 0 = white at center)", 0, 360);
+        DlgList(12, "Color:", ColorVectorList$[]);
+        DlgList(13, "Pattern:", PatternList$[]);
+        DlgList(14, "Aperture:", ApertureList$[]);
+        DlgButton(15, "Copy from Donut!", TunCopyDonutVals%(param$));
+        
+        i% := DlgShow(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, icvl%, ipl%, ial%);
+        Convert180(phase);
+        
+    wend;
+      
+	if i%=1 then
+		cv$ := cvl$[icvl%];
+		pattern$ := pl$[ipl%];
+		aperture$ := al$[ial%];
+        if w > iw and h > ih then  'don't let inner dimensions of donut be larger than outer
+            ' save parameters, not using static but easier to just leave it in
+            param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+            statparam$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$);  'hardcoded zero TF
+        else
+            message("Inner diameters cannot be greater than outer diameters!  Try Again!");
+        endif;
+    endif
+    return i%;
+end;
+
+
+
+func GratingParametersDialogDonut%(label$, &param$, &statparam$, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$)
+    
+	var i% := 15;  'That's right, 15, which is the button that we want to use for copying parameters over
+    
+	var ColorVectorList$[5];
+	var cvl$[5];
+	var icvl% := 0;
+    var icvlS% := 0;
+	ColorVectorList$[0]:="Black/White";	cvl$[0]:="b";
+	ColorVectorList$[1]:="L cone";		cvl$[1]:="l";
+	ColorVectorList$[2]:="M cone";		cvl$[2]:="m";
+	ColorVectorList$[3]:="S cone";		cvl$[3]:="s";
+	ColorVectorList$[4]:="Custom";		cvl$[4]:="custom";
+    
+	var PatternList$[2];
+	var pl$[2];
+	var ipl% := 0;
+    var iplS% := 0;
+	PatternList$[0]:="Sine";	pl$[0]:="s";
+	PatternList$[1]:="Square";	pl$[1]:="q";
+    
+	var ApertureList$[2];
+	var al$[2];
+	var ial% := 0;
+    var ialS% := 0;
+	ApertureList$[0]:="Ellipse";	al$[0]:="e";
+	ApertureList$[1]:="Rectangle";	al$[1]:="r";
+    
+    while i% = 15 do
+        
+        ' If the passed param$ is non-empty, then parse it before opening the dialog. 
+        if Len(param$)>0 then
+            if ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$) = 0 then
+                icvl% := FindMatchedStringIndex%(cv$, cvl$[], 2, 0);
+                ipl% := FindMatchedStringIndex%(pattern$, pl$[], 2, 0);
+                ial% := FindMatchedStringIndex%(aperture$, al$, 3, 0);
+            endif
+        endif
+        
+        DlgCreate("Grating parameters: " + label$, 25, 11);
+        '    DlgAllow(0, 0, GratingParametersDialogDoubleCheck%);
+        DlgReal(1, "X:", -40, 40);
+        DlgReal(2, "Y:", -40, 40);
+        DlgReal(3, "Outer Width:", .1, 30);
+        DlgReal(4, "Outer Height:", .1, 30);
+        DlgReal(5, "Inner Width:", 0, 30);
+        DlgReal(6, "Inner Height:", 0, 30);
+        DlgInteger(7, "Contrast(%):", -100, 100);
+        DlgReal(8, "Spatial Freq:", .01, 10);
+        DlgReal(9, "Temporal Freq:", 0, 10);
+        DlgReal(10, "Orientation (degrees):", -360, 360);
+        DlgReal(11, "Initial Phase (deg, 0 = white at center)", 0, 360);
+        DlgList(12, "Color:", ColorVectorList$[]);
+        DlgList(13, "Pattern:", PatternList$[]);
+        DlgList(14, "Aperture:", ApertureList$[]);
+        DlgButton(15, "Copy From Core", TunCopyCoreVals%(param$));
+        
+        i% := DlgShow(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, icvl%, ipl%, ial%);
+        Convert180(phase);
+        
+    wend;
+    
+	if i%=1 then
+		cv$ := cvl$[icvl%];
+		pattern$ := pl$[ipl%];
+		aperture$ := al$[ial%];
+        if w > iw and h > ih then  'don't let inner dimensions of donut be larger than outer
+            ' save parameters, not using static but easier to just leave it in
+            param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+            statparam$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$);  'hardcoded zero TF
+        else
+            message("Inner diameters cannot be greater than outer diameters!  Try Again!");
+        endif;
+    endif;
+    return i%;
+end;
+
+
+func TunCopyDonutVals%(&param$)
+    var x, y, w, h, iw, ih;
+    var contrast%;
+    var sf, tf, ori, phase;
+    var cv$, pattern$, aperture$;
+    'Simply using "Distractor1" rather than making a separate "Donut" grating, can change if it's a problem
+    param$ := GetGratingParameters$("Distractor1");
+    ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    w := iw;  'set grating width to make a core that fits inside the donut, of zero inner diameter
+    h := ih;
+    iw := 0;
+    ih := 0;
+    param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+
+
+    return 1;
+end
+
+func TunCopyCoreVals%(&param$)
+    
+    var x, y, w, h, iw, ih;
+    var contrast%;
+    var sf, tf, ori, phase;
+    var cv$, pattern$, aperture$;    
+    
+    param$ := GetGratingParameters$("Stimulus");
+    ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    iw := w;  'set grating width to make a donut that surrounds the core, of arbitrary width
+    ih := h;
+    w := iw+1;
+    h := ih+1;
+    param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+
     return 1;
 end
 
