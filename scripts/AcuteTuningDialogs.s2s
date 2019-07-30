@@ -106,6 +106,7 @@ var tunTwoWayContrastMinContrast;		' min contrast
 var tunTwoWayContrastMaxContrast;		' max contrast
 var tunTwoWayContrastUseFile%;
 var tunTwoWayContrastTuningFile$;
+var tunTwoWayContrastReverseDelay;      ' in seconds, how long do we wait between reverses?
 
 
 ' Spatial next
@@ -516,6 +517,7 @@ proc GetTuningCurveTwoWayContrastParameters()
     tunTwoWayContrastMaxContrast := GetFloatRegistryValue(key$, "MaxContrast", tunTwoWayContrastMaxContrast);
     tunTwoWayContrastUseFile% := GetIntRegistryValue%(key$, "UseFile", tunTwoWayContrastUseFile%);
     tunTwoWayContrastTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunTwoWayContrastTuningFile$);
+    tunTwoWayContrastReverseDelay := GetFloatRegistryValue(key$, "ContrastReverseDelay", tunTwoWayContrastReverseDelay);
 end;
 
 proc SaveTuningCurveTwoWayContrastParameters()
@@ -527,6 +529,7 @@ proc SaveTuningCurveTwoWayContrastParameters()
     SetFloatRegistryValue(key$, "MaxContrast", tunTwoWayContrastMaxContrast);
     SetIntRegistryValue(key$, "UseFile", tunTwoWayContrastUseFile%);
     SetStringRegistryValue(key$, "TuningFile", tunTwoWayContrastTuningFile$);
+    SetFloatRegistryValue(key$, "ContrastReverseDelay", tunTwoWayContrastReverseDelay);
 end;
 
 proc GetTuningCurveSpatialParameters()
@@ -982,14 +985,15 @@ func TuningCurveTwoWayContrastDialog%()
 	DlgCreate("Two Way Contrast Tuning Curve Parameters");
 	DlgInteger(1, "Number of Steps", 0, 99);
 	DlgInteger(2, "Number of Repeats", 1, 500);
-	DlgReal(3, "Min Contrast (%)", 0.1, 100);
-	DlgReal(4, "Max Contrast (%)", 0.1, 100);
-    DlgCheck(5, "Use File For Tuning Values, 101-200 are downwards!");
-    DlgString(6,40,255,"",3);  'for visual confirmation of selected seq file
+    DlgReal(3, "ITI Delay at Reverse (s)", 0.01, 100);
+	DlgReal(4, "Min Contrast (%)", 0.1, 100);
+	DlgReal(5, "Max Contrast (%)", 0.1, 100);
+    DlgCheck(6, "Use File For Tuning Values, 101-200 are downwards!");
+    DlgString(7,40,255,"",3);  'for visual confirmation of selected seq file
     DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
     DlgAllow(0xffff, 0, TuningCurveGenericDialogChanged%);
     
-	i% := DlgShow(tunTwoWayContrastNSteps%, tunTwoWayContrastNRepeats%, tunTwoWayContrastMinContrast, tunTwoWayContrastMaxContrast, tunTwoWayContrastUseFile%, tunTwoWayContrastTuningFile$);
+	i% := DlgShow(tunTwoWayContrastNSteps%, tunTwoWayContrastNRepeats%, tunTwoWayContrastReverseDelay, tunTwoWayContrastMinContrast, tunTwoWayContrastMaxContrast, tunTwoWayContrastUseFile%, tunTwoWayContrastTuningFile$);
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
     ' djs 2/4/2011

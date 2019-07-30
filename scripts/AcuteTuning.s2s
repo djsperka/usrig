@@ -755,6 +755,13 @@ func IdleProcessing%()
 '        ' Process spikes
 '        PlotSpikes(tStimOn, tNow, tunOptoState%+1, nTrialsCompleted%);
         
+        'if we are doing two-way contrast, check to see if it is the gap between the stimuli
+        var isDescending1%;
+        var isDescending2%;
+        if tunType$ = tunTypeTwoWayContrast$ and nTrialsCompleted% > 0 then
+            GetPlotXCoordTWC(nTrialsCompleted%-1,isDescending1%);
+            GetPlotXCoordTWC(nTrialsCompleted%,isDescending2%);
+        endif;
         
         docase
         case nTrialsCompleted% = (tunNAdvances%+1)*tunNRepeats% then
@@ -767,6 +774,9 @@ func IdleProcessing%()
                 tunOptoState% := 1-tunOptoState%;  'but only toggle if we're actually doing opto, and we haven't been told to not toggle opto
             endif;
             tInterTrialTime := tunInterTrialTime + tunInterBlockTime;
+            ChangeStateTo(stateInterTrialInterval%, tNow);
+        case tunType$ = tunTypeTwoWayContrast$ and isDescending1% <> isDescending2% then
+            tInterTrialTime := tunTwoWayContrastReverseDelay;
             ChangeStateTo(stateInterTrialInterval%, tNow);
         else
             tInterTrialTime := tunInterTrialTime;
