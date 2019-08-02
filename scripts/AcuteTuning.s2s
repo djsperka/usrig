@@ -48,11 +48,14 @@ const tunMaxTrials% := 1000;
 var tunValues[tunMaxTrials%];
 var tunValuesIndices%[tunMaxTrials%]; 
 var tunTwoWayContrastValues[tunMaxTrials%];
+var tunConditionedContrastValues[tunMaxTrials%];
 var tunNValues%;
 var tunValuesStringified$;
+var tunDurValuesStringified$;
 var nTriggersExpected%;     'only for tunTypeCRG$
 var triggerCount%;
-
+var isConditioningStimulus%;  'really only useful for Conditioned Contrast
+var tunThisStimulusDuration;  'again, only useful for Conditioned Contrast, though we will need to fill it no matter what
 
 
 
@@ -408,6 +411,9 @@ func IdleProcessing%()
         case tunDoOpto% = 0 then 'if this is not an opto trial, just start it
             ChangeStateTo(stateStartTrial%, tNow);
             printlog("Not an opto trial, doOpto = %d, optoState = %d, time = %f\n",tunDoOpto%,tunOptoState%,tNow);
+        case isConditioningStimulus% = 1 then 'well, it could potentially be an opto trial, but we won't stimulate during the conditioning stimuli
+            ChangeStateTo(stateStartTrial%, tNow);
+            printlog("Conditioning stimulus, not an opto trial, doOpto = %d, optoState = %d, time = %f\n",tunDoOpto%,tunOptoState%,tNow);
         case tunOptoUsePulse% = 1 and tunOptoState% = 0 then 'if this is a pulsed opto scenario, but not an opto trial, just start it
             'This is the same as the above step, separated to make the logic of the case statement easier
             ChangeStateTo(stateStartTrial%, tNow);
@@ -502,10 +508,22 @@ func IdleProcessing%()
         
         ' Start trial. Put up stimulus.
         LogStatus("StartTrial", "Request stimulus");
-        if tunType$ = tunTypeTwoWayContrast$ then  'We need to write a distinct SampleText for two-way contrast to indicate ascending, descending stimuli
+        docase
+        case tunType$ = tunTypeTwoWayContrast$ then  'We need to write a distinct SampleText for two-way contrast to indicate ascending, descending stimuli
             SampleText("T," + GetPlotXCoordTWC$(nTrialsCompleted%));
+        case tunType$ = tunTypeConditionedContrast$ and isConditioningStimulus% = 1 then
+            SampleText("Conditioning Stimulus," + str$(GetPlotXCoord(nTrialsCompleted%)));  'straight GetPlotXCoord should work here, nothing fancy
+        case tunType$ = tunTypeConditionedContrast$ and isConditioningStimulus% = 0 then
+            SampleText("T," + GetPlotXCoordCC$(nTrialsCompleted%));
         else
             SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
+        endcase;
+        
+        'Update stimulus duration based on whether this is a Conditioning stimulus, so we know when to send the "X"
+        if isConditioningStimulus% = 1 then
+            tunThisStimulusDuration := tunConditionedContrastDuration;
+        else
+            tunThisStimulusDuration := tunStimulusDuration;
         endif;
         
         SafeSampleKey("S");
@@ -558,7 +576,7 @@ func IdleProcessing%()
         
     case iState% = stateStimulusPlaying% then
 
-        if tNow - tStateStart > tunStimulusDuration then
+        if tNow - tStateStart > tunThisStimulusDuration then  'was tunStimulusDuration, but this will now allow stimulus duration to be variable
             
             ' turn off stimulus and advance it
             SampleText("+");
@@ -579,8 +597,11 @@ func IdleProcessing%()
             
             view(DataWindow%).MemSetItem(memChanBetterTextMark%,0,tStimOn,stimCodes%[],Str$(tunValues[tunValuesIndices%[nTrialsCompleted%]]));
             
-            ' Process spikes
-            PlotSpikes(tStimOn, tNow, tunOptoState%+1, nTrialsCompleted%);
+            ' Process spikes, do not do this on conditioning stimuli
+            if isConditioningStimulus% = 0 then
+                PlotSpikes(tStimOn, tNow, tunOptoState%+1, nTrialsCompleted%);
+            endif;
+            
             
             ' Now wait until stim is off
             ChangeStateTo(stateWaitForStimOff%, tNow);
@@ -755,6 +776,11 @@ func IdleProcessing%()
 '        ' Process spikes
 '        PlotSpikes(tStimOn, tNow, tunOptoState%+1, nTrialsCompleted%);
         
+        'if we are doing conditioned contrast, update variable tracking whether this is a conditioning stimulus
+        if tunType$ = tunTypeConditionedContrast$ then
+            isConditioningStimulus% := 1-isConditioningStimulus%;
+        endif;
+        
         'if we are doing two-way contrast, check to see if it is the gap between the stimuli
         var isDescending1%;
         var isDescending2%;
@@ -762,6 +788,8 @@ func IdleProcessing%()
             GetPlotXCoordTWC(nTrialsCompleted%-1,isDescending1%);
             GetPlotXCoordTWC(nTrialsCompleted%,isDescending2%);
         endif;
+        
+        
         
         docase
         case nTrialsCompleted% = (tunNAdvances%+1)*tunNRepeats% then
@@ -890,6 +918,19 @@ func GetPlotXCoordTWC$(nTrials%)
 end;
 
 
+func GetPlotXCoordCC$(nTrials%)
+    var temp;
+    var tempC;
+    temp := tunValues[tunValuesIndices%[nTrials%]];
+    tempC := tunValues[tunValuesIndices%[nTrials%-1]];
+    if temp <= 100 then
+        return Str$(temp) + ", conditioning contrast " + Str$(tempC);
+    else
+        return Str$(temp-100) + ", conditioning contrast " + Str$(tempC);
+    endif;
+end;
+
+
 func GetPlotXIndex%(nTrials%)
     return tunValuesIndices%[nTrials%];
 end;
@@ -915,7 +956,7 @@ proc PlotSpikes(t1, t2, whichPlot%, index%)
     'whichPlot% is a switch that allows us to plot (in this case) opto-on and opto-off with different colors
     
     
-    if tunType$ = tunTypeTwoWayContrast$ then
+    if tunType$ = tunTypeTwoWayContrast$ or tunType$ = tunTypeConditionedContrast$ then
         x := GetPlotXCoordTWC(index%,isDescending%);  'Will get correct x-value, fill isDescending
     else
         x := GetPlotXCoord(index%);  'Getting correct x-value is trivial
@@ -1405,8 +1446,7 @@ proc CreateSampleConfiguration()
         
     case tunType$ = tunTypeContrast$ then 
         SampleAutoName$(dataCellName$ + "_con_000");
-        'tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNRepeats% := tunContrastNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunContrastNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunContrastProgression%);
@@ -1419,13 +1459,11 @@ proc CreateSampleConfiguration()
                 tunValuesIndices%[0] := 0;
             endif;
         endif;
-        'tunNValues% := (tunContrastNSteps%+1)*tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  'shorter, should work the same as above commented line, keeping old line for contrast only just in case...
+        tunNValues% := (tunNAdvances%+1)*tunNRepeats%; 
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeTwoWayContrast$ then 'This function needs to make something like 10 20 40 80 180 140 120 110... for tunValues using GRPP or the like
         SampleAutoName$(dataCellName$ + "_twc_000");
-        'tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNRepeats% := tunTwoWayContrastNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunTwoWayContrastNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],0);  'force progression to 0 here, can't be random
@@ -1457,10 +1495,105 @@ proc CreateSampleConfiguration()
         'printlog("TunTwoWayContrastValues is %f\n",tunTwoWayContrastValues[0:2*(tunTwoWayContrastNSteps%+1)]);
         'printlog("tunValuesStringified$ is %s\n",tunValuesStringified$);
         'halt;
+        
+    case tunType$ = tunTypeConditionedContrast$ then
+        var tunValuesIndicesTemp%[tunMaxTrials%];  'That's actually too big, but we should be OK
+        var tunDurValuesIndices%[tunMaxTrials%];
+        SampleAutoName$(dataCellName$ + "_cc_000");
+        
+        'double number of blocks automatically because we are using two different conditioning contrasts
+        tunNRepeats% := tunConditionedContrastNRepeats%*2*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
+        
+        if tunUseFile% = 1 then
+            tunNAdvances% := tunFileLen%-1;
+            ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndicesTemp%[],tunConditionedContrastProgression%);
+        else
+            tunNAdvances% := tunConditionedContrastNSteps%;
+            if tunNAdvances% > 1 then
+                GetRepeatedParameterProgression%(tunConditionedContrastNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndicesTemp%[], tunConditionedContrastMinContrast, tunConditionedContrastMaxContrast, 1, tunConditionedContrastProgression%); 
+            else  'cannot run GRPP on a value of 0 steps, simply use minimum value
+                tunValues[0] := tunConditionedContrastMinContrast;
+                tunValuesIndicesTemp%[0] := 0;
+            endif;
+        endif;
+        tunNValues% := (tunNAdvances%+1)*tunNRepeats%; 'This does NOT include the conditioning stimuli, will be used then updated below
+        
+        'TODO so I have to:
+        '1) Expand tunValues to include a second +100 set of values, then add in the conditioning stimuli 1 and 2 at the end
+        '    e.g. [10 20 40 80] -> [10 20 40 80 110 120 140 180 0 100]
+        '2) Make a parallel tunConditionedContrastValues for StringifyProgression that is the same, but without the +100
+        '    e.g. [10 20 40 80] -> [10 20 40 80 10 20 40 80 0 100]
+        for j% := 0 to tunNAdvances% do
+            tunValues[j%+tunNAdvances%+1] := tunValues[j%]+100;
+            tunConditionedContrastValues[j%] := tunValues[j%];
+            tunConditionedContrastValues[j%+tunNAdvances%+1] := tunValues[j%];
+        next;
+        var C1index%;
+        var C2index%;
+        C1index% := (2*tunNAdvances%)+2;
+        C2index% := (2*tunNAdvances%)+3;
+        tunValues[C1index%] := tunConditionedContrastC1;
+        tunValues[C2index%] := tunConditionedContrastC2;
+        tunConditionedContrastValues[C1index%] := tunConditionedContrastC1;
+        tunConditionedContrastValues[C2index%] := tunConditionedContrastC2;
+        
+        '3) Update/expand/interleave TunValuesIndices%[] to present both conditioning and test stimuli
+        '    e.g. for above example tunValues[], [9 1 9 2 9 3 9 4 10 5 10 6 10 7 10 8]
+        '    This will probably require an intermediate variable, and we have to count to know if we are in conditioning block 1 or 2, this will be a bit of a pain
+        var advanceCount% := 0;
+        var isC1% := 1;
+        for j% := 0 to tunNValues%-1 do
+            'Populate tunValuesIndices%[]
+            if isC1% = 1 then
+                tunValuesIndices%[2*j%] := C1index%;  'put in C1
+                tunDurValuesIndices%[2*j%] := 0;
+                tunValuesIndices%[(2*j%)+1] := tunValuesIndicesTemp%[j%];  'put in actual calculated index
+                tunDurValuesIndices%[(2*j%)+1] := 1;
+                advanceCount% += 1;
+            else
+                tunValuesIndices%[2*j%] := C2index%;  'put in C2
+                tunDurValuesIndices%[2*j%] := 0;
+                tunValuesIndices%[(2*j%)+1] := tunValuesIndicesTemp%[j%]+tunNAdvances%+1;  'put in adjusted index
+                tunDurValuesIndices%[(2*j%)+1] := 1;
+                advanceCount% += 1;
+            endif;
+            'Reset advanceCount% and update isC1% as necessary
+            if advanceCount% > tunNAdvances% then
+                advanceCount% := 0;
+                isC1% := 1-isC1%;
+            endif;
+        next
+        
+        'set up durValues
+        var durValues[tunMaxTrials%];
+        durValues[0] := tunConditionedContrastDuration;
+        durValues[1] := tunStimulusDuration;
+        
+        'This is the actual tunNValues% after adding in the conditioning stimuli
+        tunNValues% := 2*(tunNAdvances%+1)*tunNRepeats%;
+        'This is a faked number of advances which will allow us to have blocks behave normally in the idle loop
+        tunNAdvances% := (4*(tunNAdvances%+1))-1;  '4x number of advances (2x for cond1/cond2, 2x to add the conditioners)
+        tunNRepeats% := tunConditionedContrastNRepeats%*(tunOptoRepeats%);  'Reduce NRepeats by factor of 2, cond1/cond2 factor has been pushed into tunNAdvances%
+        
+        tunValuesStringified$ := StringifyProgression$(tunNValues%, tunConditionedContrastValues, tunValuesIndices%); 'note we don't use tunValues
+        tunDurValuesStringified$ := StringifyProgression$(tunNValues%, durValues, tunDurValuesIndices%);
+        
+        
+        'Sanity check, the values created are correct
+        'printlog("TunValues is %f\n",tunValues[0:2*(tunConditionedContrastNSteps%+1)+2]);
+        'printlog("TunConditionedContrastValues is %f\n",tunConditionedContrastValues[0:2*(tunConditionedContrastNSteps%+1)+2]);
+        'printlog("tunValuesStringified$ is %s\n",tunValuesStringified$);
+        'printlog("tunDurValuesStringified$ is %s\n",tunDurValuesStringified$);
+        'halt;
+        
+        isConditioningStimulus% := 1;  'We start on a conditioning stimulus, of course
+        
+        'TODO Not sure this is right, and fading.  Check logic again in idle loop tomorrow TODO
+        tunNAdvances% := (2*tunNAdvances%)+1;  'update tunNAdvances% to keep blocks straight (i.e. when the interblock time is used) in idle loop
+        
     case tunType$ = tunTypeOrientation$ then 
         SampleAutoName$(dataCellName$ + "_ori_000");
-        'tunNRepeats% := tunOriNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNRepeats% := tunOriNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunOriNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunOriProgression%);
@@ -1477,8 +1610,7 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeSpatial$ then 
         SampleAutoName$(dataCellName$ + "_spa_000");
-        'tunNRepeats% := tunSpatialNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNRepeats% := tunSpatialNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunSpatialNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunSpatialProgression%);
@@ -1495,8 +1627,7 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeTemporal$ then 
         SampleAutoName$(dataCellName$ + "_tem_000");
-        'tunNRepeats% := tunTemporalNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNRepeats% := tunTemporalNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunTemporalNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunTemporalProgression%);
@@ -1513,8 +1644,7 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeArea$ then 
         SampleAutoName$(dataCellName$ + "_area_000");
-        'tunNRepeats% := tunAreaNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNRepeats% := tunAreaNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunAreaNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunAreaProgression%);
@@ -1531,8 +1661,7 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeID$ then 
         SampleAutoName$(dataCellName$ + "_id_000");
-        'tunNRepeats% := tunIDNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNRepeats% := tunIDNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunIDNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunIDProgression%);
@@ -1566,15 +1695,13 @@ proc CreateSampleConfiguration()
     case tunType$ = tunTypeDriftingBar$ then 
         SampleAutoName$(dataCellName$ + "_bar_000");
         tunNAdvances% := tunBarNSteps%;
-        'tunNRepeats% := tunBarNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNRepeats% := tunBarNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunBarNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
         GetRepeatedParameterProgression%(tunBarNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunBarMinOrientation, tunBarMaxOrientation, 0, tunBarProgression%);
         tunNValues% := (tunBarNSteps%+1)*tunBarNRepeats%*(1+tunDoOpto%);
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeNullTest$ then 
         SampleAutoName$(dataCellName$ + "_nulltest_000");
-        'tunNRepeats% := tunNullTestNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNRepeats% := tunNullTestNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunNullTestNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
         if tunUseFile% = 1 then
             tunNAdvances% := tunFileLen%-1;
             ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunNullTestProgression%);
@@ -1592,8 +1719,7 @@ proc CreateSampleConfiguration()
     case tunType$ = tunTypeCRG$ then 
         SampleAutoName$(dataCellName$ + "_crg_000");
         tunNAdvances% := tunCRGMNSteps%;
-        'tunNRepeats% := tunCRGMNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNRepeats% := tunCRGMNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunCRGMNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
         GetRepeatedParameterProgression%(tunCRGMNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunCRGMMinContrast, tunCRGMMaxContrast, 1, tunCRGMProgression%);
         tunNValues% := (tunCRGMNSteps%+1)*tunCRGMNRepeats%*(1+tunDoOpto%);
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
@@ -1618,8 +1744,7 @@ proc CreateSampleConfiguration()
     case tunType$ = tunTypeDanish$ then 
         SampleAutoName$(dataCellName$ + "_dan_000");
         tunNAdvances% := tunDanishNSteps%;
-        'tunNRepeats% := tunDanishNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunNRepeats% := tunDanishNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing optogenetics
+        tunNRepeats% := tunDanishNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
         if tunDanishIncludeBlank% = 0 then
             GetRepeatedParameterProgression%(tunDanishNSteps%+1, tunDanishNRepeats%, tunValues[], tunValuesIndices%[], tunDanishMinOuterDiameter, tunDanishMaxOuterDiameter, 1, tunDanishProgression%); 
             tunNValues% := (tunDanishNSteps%+1)*tunDanishNRepeats%;
@@ -1962,6 +2087,20 @@ proc WriteParameterFile()
         Print("Values: " + tunValuesStringified$ + "\n");
         Print("\n");        
         
+        
+    case tunType$ = tunTypeConditionedContrast$ then
+        
+        Print("Type:                  : Conditioned Contrast\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunConditionedContrastMinContrast, tunConditionedContrastMaxContrast, tunConditionedContrastNSteps%, tunConditionedContrastNRepeats%);
+        Print("Cond1,Cond2,CondDur: %f,%f,%f\n", tunConditionedContrastC1, tunConditionedContrastC2, tunConditionedContrastDuration);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("Durations: " + tunDurValuesStringified$ + "\n");
+        Print("\n");      
+        
+        
+       
+        
+        
     case tunType$ = tunTypeOrientation$ then
         
         Print("Type:                  : Orientation\n");
@@ -2106,6 +2245,7 @@ func Start%()
 	var Stim$:="";
 '	var SlaveStim$:="";
 	var Values$;
+    var durValues$;
 '    var Dual$;
     var key$;
     var offsetFilename$;
@@ -2182,6 +2322,7 @@ func Start%()
     
     Stim$ := " -s " + GetGratingParameters$("Stimulus");    
 	Values$ := tunValuesStringified$;
+    durValues$ := tunDurValuesStringified$;
     'Extras$ := " -b " + tunBackgroundColor$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 2 -v";
     'Extras$ := " -b " + tunBGStr$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 2 -v";
     Extras$ := " -b " + tunBGStr$ + " -d " + GetAcuteDistanceToScreenMM$();
@@ -2228,6 +2369,10 @@ func Start%()
         
         'Tune$ := Dual$ + " -C " + Values$;
         Tune$ := " -C " + Values$;
+        
+        
+    case tunType$ = tunTypeConditionedContrast$ then
+        Tune$ := " -C " + Values$ + " -t" + durValues$;
 
     case tunType$ = tunTypeOrientation$ then
         ' ==================================================================== '
@@ -2413,6 +2558,7 @@ Func StringifyProgression$(n%, vec[], ind%[])
 	next
 	return s$;
 end;
+
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
