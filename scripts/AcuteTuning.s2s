@@ -1293,7 +1293,16 @@ proc TuningCurveLabels(iport%)
         XUnits$("Contrast (%)");
         ChanTitle$(1, "Chan 1");
         XRange(tunTwoWayContrastMinContrast, tunTwoWayContrastMaxContrast+100);
+    
+    case tunType$ = tunTypeConditionedContrast$ then
         
+        myTitle$ := s$ + " - Conditioned Contrast = ";
+        myTitle2$ := " - Conditioned Contrast = ";
+        WindowTitle$("Conditioned Contrast Tuning (over 100 is downwards) - " + s$);
+        XUnits$("Contrast (%)");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunConditionedContrastMinContrast, tunConditionedContrastMaxContrast);
+    
     case tunType$ = tunTypeOrientation$ then
         
         myTitle$ := s$ + " - Orientation = ";
@@ -1572,7 +1581,7 @@ proc CreateSampleConfiguration()
         'This is the actual tunNValues% after adding in the conditioning stimuli
         tunNValues% := 2*(tunNAdvances%+1)*tunNRepeats%;
         'This is a faked number of advances which will allow us to have blocks behave normally in the idle loop
-        tunNAdvances% := (4*(tunNAdvances%+1))-1;  '4x number of advances (2x for cond1/cond2, 2x to add the conditioners)
+        tunNAdvances% := (2*(tunNAdvances%+1))-1;  
         tunNRepeats% := tunConditionedContrastNRepeats%*(tunOptoRepeats%);  'Reduce NRepeats by factor of 2, cond1/cond2 factor has been pushed into tunNAdvances%
         
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunConditionedContrastValues, tunValuesIndices%); 'note we don't use tunValues
