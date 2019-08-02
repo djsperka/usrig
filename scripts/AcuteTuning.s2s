@@ -773,7 +773,11 @@ func IdleProcessing%()
             if tunDoOpto% = 1 and dontToggleOpto% = 0 then
                 tunOptoState% := 1-tunOptoState%;  'but only toggle if we're actually doing opto, and we haven't been told to not toggle opto
             endif;
-            tInterTrialTime := tunInterTrialTime + tunInterBlockTime;
+            if tunType$ = tunTypeTwoWayContrast$ then
+                tInterTrialTime := tunTwoWayContrastReverseDelay;  'On block change for Two-Way Contrast, respect the specified reversal delay, not the interblock time
+            else
+                tInterTrialTime := tunInterTrialTime + tunInterBlockTime;
+            endif;
             ChangeStateTo(stateInterTrialInterval%, tNow);
         case tunType$ = tunTypeTwoWayContrast$ and isDescending1% <> isDescending2% then
             tInterTrialTime := tunTwoWayContrastReverseDelay;
@@ -1102,7 +1106,7 @@ proc InitializeWindows()
     tunTF := GetStimulusTF();
     
     ' Make spike2 use allof monitor 1
-    View(App()).Window(0, 0, 100, 100, 1);
+    View(App()).Window(5, 5, 95, 95, 2);
     
 	'Open the data sampling window
 	DataWindow% := FileNew(0,4);
