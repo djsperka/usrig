@@ -52,6 +52,7 @@ const tundlgStimPSTHButton% := 21;
 const tundlgCSDButton% := 22;
 const tundlgDanishButton% := 23;
 const tundlgTwoWayContrastButton% := 24;
+const tundlgConditionedContrastButton% := 25;
 
 
 const tunTypeNone$ := "None";
@@ -70,6 +71,7 @@ const tunTypeStimTrigPSTH$ := "X";
 const tunTypeCSD$ := "CSD";
 const tunTypeDanish$ := "DN";
 const tunTypeTwoWayContrast$ := "TWC";
+const tunTypeConditionedContrast$ := "CC";
 var tunType$:=tunTypeNone$;
 
 const tunContextDAQ$ := "DAQ";
@@ -107,6 +109,19 @@ var tunTwoWayContrastMaxContrast;		' max contrast
 var tunTwoWayContrastUseFile%;
 var tunTwoWayContrastTuningFile$;
 var tunTwoWayContrastReverseDelay;      ' in seconds, how long do we wait between reverses?
+
+'Conditioned Contrast next
+var tunConditionedContrastNSteps%;			' # steps between max and min in two way contrast tuning curve, there will be 2x this number of stims in one repeat
+var tunConditionedContrastNRepeats%;		    ' # repeats in contrast tuning curve
+var tunConditionedContrastMinContrast;		' min contrast for tuning curve
+var tunConditionedContrastMaxContrast;		' max contrast for tuning curve
+var tunConditionedContrastDuration;         ' duration of conditioning stimulus
+var tunConditionedContrastC1;               ' contrast of first conditioning stimulus
+var tunConditionedContrastC2;               ' contrast of second conditioning stimulus
+var tunConditionedContrastUseFile%;
+var tunConditionedContrastTuningFile$;
+var tunConditionedContrastProgression%;
+
 
 
 ' Spatial next
@@ -342,14 +357,15 @@ func TuningCurveScriptDialog%()
 	DlgButton(tundlgSpatialButton%, "Spatial Freq", TuningCurveSpatialDialog%, 2, 19);
 	DlgButton(tundlgTemporalButton%, "Temporal Freq", TuningCurveTemporalDialog%, 2, 20);
     DlgButton(tundlgTwoWayContrastButton%, "Two Way Contrast", TuningCurveTwoWayContrastDialog%, 2, 21);
-	DlgButton(tundlgAreaButton%, "Area", TuningCurveAreaDialog%, 30, 17);
-    DlgButton(tundlgNullTestButton%, "Null Test", TuningCurveNullTestDialog%, 30, 18);
-	DlgButton(tundlgIDButton%, "InnerDiam", TuningCurveIDDialog%, 30, 19);
-    DlgButton(tundlgDanishButton%, "Danishes", TuningCurveDanishDialog%, 30, 20);
+	DlgButton(tundlgAreaButton%, "Area", TuningCurveAreaDialog%, 23, 17);
+    DlgButton(tundlgNullTestButton%, "Null Test", TuningCurveNullTestDialog%, 23, 18);
+	DlgButton(tundlgIDButton%, "InnerDiam", TuningCurveIDDialog%, 23, 19);
+    DlgButton(tundlgDanishButton%, "Danishes", TuningCurveDanishDialog%, 23, 20);
+    DlgButton(tundlgConditionedContrastButton%, "Conditioned Contrast", TuningCurveCOnditionedContrastDialog%, 23, 21);
     
     DlgGroup("Non-Grating Stimuli", 1, 22, dlgwid%-2, 2);
     DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 23);
-    DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 30, 23);
+    DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 23, 23);
     
     DlgGroup("Neuropixel JIT Stimuli", 1, 24, dlgwid%-2, 2);
     DlgButton(tundlgStimPSTHButton%, "E-Stim PSTH", StimTrigPSTHDialog%, 2, 25);
@@ -531,6 +547,42 @@ proc SaveTuningCurveTwoWayContrastParameters()
     SetStringRegistryValue(key$, "TuningFile", tunTwoWayContrastTuningFile$);
     SetFloatRegistryValue(key$, "ContrastReverseDelay", tunTwoWayContrastReverseDelay);
 end;
+
+
+proc GetTuningCurveConditionedContrastParameters()
+	var stmp$;
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\ConditionedContrast";
+    
+    tunConditionedContrastNSteps% := GetIntRegistryValue%(key$, "NSteps", tunConditionedContrastNSteps%);
+    tunConditionedContrastNRepeats% := GetIntRegistryValue%(key$, "NRepeats", tunConditionedContrastNRepeats%);
+    tunConditionedContrastMinContrast := GetFloatRegistryValue(key$, "MinContrast", tunConditionedContrastMinContrast);
+    tunConditionedContrastMaxContrast := GetFloatRegistryValue(key$, "MaxContrast", tunConditionedContrastMaxContrast);
+    tunConditionedContrastUseFile% := GetIntRegistryValue%(key$, "UseFile", tunConditionedContrastUseFile%);
+    tunConditionedContrastTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunConditionedContrastTuningFile$);
+    tunConditionedContrastDuration := GetFloatRegistryValue(key$, "ConditionerDuration", tunConditionedContrastDuration);
+    tunConditionedContrastC1 := GetFloatRegistryValue(key$, "ConditionerContrast1", tunConditionedContrastC1);
+    tunConditionedContrastC2 := GetFloatRegistryValue(key$, "ConditionerContrast2", tunConditionedContrastC2);
+    tunConditionedContrastProgression% := GetIntRegistryValue%(key$, "Progression", tunConditionedContrastProgression%);
+    
+end;
+
+proc SaveTuningCurveConditionedContrastParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\ConditionedContrast";
+    SetIntRegistryValue(key$, "NSteps", tunConditionedContrastNSteps%);
+    SetIntRegistryValue(key$, "NRepeats", tunConditionedContrastNRepeats%);
+    SetFloatRegistryValue(key$, "MinContrast", tunConditionedContrastMinContrast);
+    SetFloatRegistryValue(key$, "MaxContrast", tunConditionedContrastMaxContrast);
+    SetIntRegistryValue(key$, "UseFile", tunConditionedContrastUseFile%);
+    SetStringRegistryValue(key$, "TuningFile", tunConditionedContrastTuningFile$);
+    SetFloatRegistryValue(key$, "ConditionerDuration", tunConditionedContrastDuration);
+    SetFloatRegistryValue(key$, "ConditionerContrast1", tunConditionedContrastC1);
+    SetFloatRegistryValue(key$, "ConditionerContrast2", tunConditionedContrastC2);
+    SetIntRegistryValue(key$, "Progression", tunConditionedContrastProgression%);
+end;
+
+
 
 proc GetTuningCurveSpatialParameters()
 	var stmp$;
@@ -1041,6 +1093,72 @@ func TuningCurveTwoWayContrastDialog%()
 end;
 
 
+
+func TuningCurveConditionedContrastDialog%()
+	var iReturn% := 0;
+	var i%;
+	GetTuningCurveConditionedContrastParameters();
+	DlgCreate("Conditioned Contrast Tuning Curve Parameters");
+	DlgInteger(1, "Number of Steps", 0, 99);
+	DlgInteger(2, "Number of Repeats", 1, 500);
+	DlgReal(3, "Min Contrast (%)", 0.1, 100);
+	DlgReal(4, "Max Contrast (%)", 0.1, 100);
+    DlgCheck(5, "Random Progression");
+    DlgReal(6, "Conditioning Stimulus Duration (s)", 0.01, 100);
+    DlgReal(7, "Conditioning Stimulus 1 Contrast (%)", 0, 100);  'Allow zero because we are not doing a tuning curve on these
+	DlgReal(8, "Conditioning Stimulus 2 Contrast (%)", 0, 100);
+    DlgCheck(9, "Use File For Tuning Values");
+    DlgString(10,40,255,"",3);  'for visual confirmation of selected seq file
+    DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 11);
+    DlgAllow(0xffff, 0, TuningCurveCOnditionedContrastDialogChanged%);
+
+	i% := DlgShow(tunConditionedContrastNSteps%, tunConditionedContrastNRepeats%, tunConditionedContrastMinContrast, tunConditionedContrastMaxContrast, tunConditionedContrastProgression%, 
+                  tunConditionedContrastDuration, tunConditionedContrastC1, tunConditionedContrastC2, tunConditionedContrastUseFile%, tunConditionedContrastTuningFile$);
+	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
+    ' djs 2/4/2011
+    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+    ' before things proceed. 
+	if i% = 1 then
+		SaveTuningCurveConditionedContrastParameters();
+'		PrintLog("TuningCurveTwoWayContrastDialog - user hit OK\n");
+		tunType$ := tunTypeConditionedContrast$;
+        tunUseFile% := tunConditionedContrastUseFile%;
+        tunTuningFile$ := tunConditionedContrastTuningFile$;
+        
+        'Reset dialog OK button text on Select dialog, and note which experiment to run
+        DlgValue$(-1,"Run Cond. Contrast");
+        TuningCurveScriptDialogAllowOK% := 1;  'Prepare to enable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
+        
+		if tunContext$ = tunContextDAQ$ then
+            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+            iReturn% := 1;
+		else
+			iReturn% := 1;
+		endif;
+	endif;
+	if i% = 0 then
+'		PrintLog("TuningCurveContrastDialog - user hit Cancel\n");
+		tunType$ := tunTypeNone$;
+		if tunContext$ = tunContextDAQ$ then
+			iReturn% := 1;
+		else
+			iReturn% := 2;
+		endif;
+        'Reset dialog OK button text on Select dialog, and note we need to pick an expt.
+        DlgValue$(-1,"Select Expt.");
+        TuningCurveScriptDialogAllowOK% := 0;  'Prepare to disable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Disables "OK" button, -1 is sham input
+	endif;
+
+	return iReturn%;
+end;
 
 
 
@@ -1756,7 +1874,7 @@ func TunOptoDialog%()
     DlgReal(5, "PreStimulus Opto On (s)",0,10,30,7);
     DlgReal(6, "PostStimulus Opto On (s)",0,10,30,8);
     DlgCheck(7, "Keep Opto on between stims",2,9);
-    DlgGroup("E-Stim/Pulsing Opto", 1, 10, 43, 6);
+    DlgGroup("E-Stim/Pulsing Opto", 1, 10, 43, 7);
     DlgInteger(8, "# Pulses ",0,1000,30,11);
     'DlgReal(9, "Period Onset (s)",0,stimdur,30,12);
     DlgReal(9, "Min 1st Pulse Onset (s)",0,stimdur,30,12);
@@ -2005,6 +2123,25 @@ func TuningCurveGenericDialogChanged%(item%)
     endif;
     if DlgValue(6) = 1 then
         DlgEnable(1,7);  'enable the string box with the text file name
+        DlgEnable(0,1);  'disable nSteps, min, and max
+        DlgEnable(0,3);
+        DlgEnable(0,4);
+    endif;
+    return 1;
+end
+
+
+func TuningCurveConditionedContrastDialogChanged%(item%)
+    'This single dialog changed function can be used for almost ALL the acute tuning dialogs that allow file-based tuning curves
+    '(at least currently) because they all have the same structure and therefore the same dialog positions to allow/disallow
+    if DlgValue(9) = 0 then  'If we are not using a tuning file
+        DlgEnable(0,10);  'disable the string box with the text file name (button still works)
+        DlgEnable(1,1);  'enable nSteps, min, and max
+        DlgEnable(1,3);
+        DlgEnable(1,4);
+    endif;
+    if DlgValue(9) = 1 then
+        DlgEnable(1,10);  'enable the string box with the text file name
         DlgEnable(0,1);  'disable nSteps, min, and max
         DlgEnable(0,3);
         DlgEnable(0,4);
