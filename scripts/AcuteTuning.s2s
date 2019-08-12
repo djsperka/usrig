@@ -2038,7 +2038,10 @@ proc WriteParameterFile()
 	ReadSetup(",",",",",",",",",");
     i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstiminnerw$, Tstiminnerh$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
 	'i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
-	Print("Position (x, degrees)           : %s\n", Tstimx$);
+    if tunType$ = tunTypeStimTrigPSTH$ then  'if we are using the stimulus-triggered PSTH, contrast is defined as 0
+        Tstimcontrast$ := "0";
+    endif;
+    Print("Position (x, degrees)           : %s\n", Tstimx$);
 	Print("Position (y, degrees)           : %s\n", Tstimy$);
 	Print("Width (degrees)                 : %s\n", Tstimw$);
 	Print("Height (degrees)                : %s\n", Tstimh$);
@@ -2451,7 +2454,7 @@ func Start%()
     case tunType$ = tunTypeStimTrigPSTH$ then
         'Just do a contrast tuning curve with values of 0
         Tune$ := " -C " + Values$;
-        tunStimulusDuration := tunSTPISI;  'redefine stimulus duration
+        tunInterTrialTime := tunSTPISI;  'redefine intertrial time
         
     case tunType$ = tunTypeCSD$ then        
 
@@ -2776,6 +2779,9 @@ proc SetPulsedOptoSequencerVariables()
     
     tempSeqVarValue := tunPulsedOptoOnset*1000/SequencerPeriodMS;  'do math in float
     tempSeqVarValue% := tempSeqVarValue-1;  'now convert to integer, subtract one tick for sequencer instructions
+    if tempSeqVarValue% < 0 then  'If the user specifies 0 offset, we pass -1 to DELAY, which turns out to be crossing-the-streams level of bad.
+        tempSeqVarValue% := 0;
+    endif;
     SampleSeqVar(9,tempSeqVarValue%);  'set pre-pulse stimulus duration in clock ticks
     printlog("Opto onset is %d\n",tempSeqVarValue%);
     
