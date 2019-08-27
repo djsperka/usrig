@@ -1818,14 +1818,15 @@ proc CreateSampleConfiguration()
     
     '----Analog, non-spiking electrode recording conditions
     var tempLabel$;
-    if EEGPort% > -1 then
-        SampleWaveform(EEGChannel%,EEGPort%,5000);
-        tempLabel$ := CustomLabels$[EEGPort%];
-        if tempLabel$ = "" then
-            tempLabel$ := "EEG";
-        endif;
-        SampleTitle$(EEGChannel%, tempLabel$);
-    endif;
+    'DO NOT record EEG with AcuteTuning
+'    if EEGPort% > -1 then
+'        SampleWaveform(EEGChannel%,EEGPort%,5000);
+'        tempLabel$ := CustomLabels$[EEGPort%];
+'        if tempLabel$ = "" then
+'            tempLabel$ := "EEG";
+'        endif;
+'        SampleTitle$(EEGChannel%, tempLabel$);
+'    endif;
     
     if tunDoOpto% = 1 and OptoEffCopyPort% > -1 then
         SampleWaveform(OptoEfferenceChannel%,OptoEffCopyPort%,30000); 
@@ -1836,7 +1837,7 @@ proc CreateSampleConfiguration()
         SampleTitle$(OptoEfferenceChannel%, tempLabel$);
     endif;
     
-    if tunRecStimulator% > 0 and StimEffCopyPort% > -1 then
+    if tunDoOpto% > 0 and StimEffCopyPort% > -1 then
         SampleWaveform(StimulatorChannel%,StimEffCopyPort%,30000); 
         tempLabel$ := CustomLabels$[StimEffCopyPort%];
         if tempLabel$ = "" then
