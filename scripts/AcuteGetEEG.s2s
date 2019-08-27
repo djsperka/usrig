@@ -11,6 +11,8 @@ var hData%;
 var hPower%;
 var iSeconds% := 60;
 var iStatus%;
+var EEGChannel%:=1;
+var UtilityChannel%:=2;
 
 CreateSampleConfiguration();
 InitializeWindows();
@@ -28,7 +30,7 @@ View(hData%);
 proc CreateSampleConfiguration()
     
     'set the port (not channel #) where EEG will be acquired
-    const EEGPORT% := 7;
+    'const EEGPORT% := 7;
     
     var i%;
     
@@ -42,9 +44,24 @@ proc CreateSampleConfiguration()
     SampleAutoName$("EEG_000");
 	SampleAutoFile(1);
     
-    SampleWaveform(1, EEGPORT%, 1000);
+    'SampleWaveform(1, EEGPORT%, 1000);
+    'SampleTitle$(1, "EEG Port2");
     
-    SampleTitle$(1, "EEG Port2");
+    if EEGPort% > -1 then
+        SampleWaveform(EEGChannel%,EEGPort%,1000);  
+        'SampleTitle$(EEGChannel%, "EEG");
+        SampleTitle$(EEGChannel%, CustomLabels$[EEGPort%]);
+    else
+        message("No EEG channel was requested in the Config->DAQ dialog!  Quitting!");
+        halt
+    endif;
+    
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);  
+        SampleTitle$(UtilityChannel%, CustomLabels$[UtilityPort%]);
+    endif;
+
+
     
     SampleOptimise(2, 2, 2, 2, 50);  'Set optimise mode (do this last)
     SampleMode(1); 'Continuous sampling

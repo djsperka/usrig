@@ -38,6 +38,7 @@ var starMSPerRewardHit% := 25;
 var starUseDefaultTargetSize% := 1;
 var starTargetDiameter := 1.0;
 var starTargetIsGrating%;
+var UtilityChannel%;
 
 ' keep fixpt on stuff
 var starKeepFixptOn% := 1;
@@ -597,6 +598,7 @@ ReadyChannel% := 23;
 FixationChannel% := 24;
 StimChannel% := 25;
 ChangeChannel% := 26;
+UtilityChannel% := 27;
 
 ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 31;  'Keyboard (default) is highest non-electrode channel used by this function
@@ -1077,7 +1079,7 @@ proc CreateSampleConfiguration()
     ' Text marks make extraction easier
     SampleTextMark(200);
     
-	'Channel recording definitions
+	'----Event Channel recording definitions----
 	SampleEvent(FixationChannel%, 2, 2, 3600);
 	SampleComment$(FixationChannel%, "FixPt");
 	SampleTitle$(FixationChannel%, "FixPt");
@@ -1097,24 +1099,26 @@ proc CreateSampleConfiguration()
 	SampleTitle$(ReadyChannel%,"Ready");
     
     
-    ' Electrode config
-'    for i% := 0 to starNWavemarks%-1 do
-'		SampleWaveMark(i% + 1, starWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
-'		SampleTitle$(i% + 1, "WMrk " + str$(starWavemarkPorts%[i%])); 
-'	next
-'    for i% := 0 to starNContinuous%-1 do
-'        SampleWaveform(starNContinuous% + i% + 1, starContinuousPorts%[i%], 20000);
-'        SampleTitle$(starNContinuous% + i% + 1, "Cont " + str$(starContinuousPorts%[i%]));
-'    next
-    'CreateElectrodeSamplingConfiguration(1, starNWavemarks%);  'Use new system, this will also use electrode names
-    CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
-
-
-	'EYE COIL CHANNELS. Last # is sampling freq in Hz. 
+    '----Analog, non-spiking electrode recording conditions
+    'EYE COIL CHANNELS. Last # is sampling freq in Hz. 
 	SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
 	SampleTitle$(XChannel%,"Eye X");
 	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
 	SampleTitle$(YChannel%, "Eye Y");
+    
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);  
+        SampleTitle$(UtilityChannel%, CustomLabels$[UtilityPort%]);
+    endif;
+
+    
+    
+    
+    '----Set up "spiking" Electrode Channels----
+    CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
+
+
+	
 
 	SampleSequencer(script$ + "Tuning.pls");
 	SampleOptimise(2, 2, Get1401Type%(), 2, 50);  'Set optimise mode (do this last)

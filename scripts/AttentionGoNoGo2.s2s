@@ -325,6 +325,9 @@ var attLaserDiode% := 0;  'Are we recording the output of the laser using a phot
 var attInterBlockTime := 0;        ' New, time between blocks, important for opto  **disabled**
 var SequencerPeriodMS;
 var OptoCopyChannel%;
+var PhotodiodeChannel%;
+var UtilityChannel%;
+
 
 ' Overall script control vars
 var Pause% := 0;
@@ -451,7 +454,11 @@ StimChannel% := 27;
 StimChangeChannel% := 28;
 ReadyChannel% := 29;
 SynchChannel% := 32;  'note - this should be default be 32
+PhotodiodeChannel% := 33;
+UtilityChannel% := 34;
 OptoCopyChannel% := 49;
+
+
 
 ExcludedChans%[0] := 23;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel is highest non-electrode channel used by this function
@@ -717,7 +724,7 @@ proc CreateSampleConfiguration()
 	SampleAutoComment(0); 'Prompt for comment after sampling
 	SampleAutoCommit(60); 'Seconds between each file commit
     
-	'Channel recording definitions
+	'----Event Channel recording definitions----
 	SampleEvent(FrameTriggerChannel%,0,2,3600); 'Trigger channel, level
 	SampleComment$(FrameTriggerChannel%,"Frame");
 	SampleTitle$(FrameTriggerChannel%,"Frame");
@@ -744,26 +751,32 @@ proc CreateSampleConfiguration()
 	SampleComment$(ReadyChannel%,"VSG Ready");
 	SampleTitle$(ReadyChannel%,"VSG Ready");
     
-    ' Set up channels for sampling electrodes.
-    docase
-    case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
-        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
-    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
-        CreateElectrodeSamplingConfiguration7WM15CN();
-    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
-        CreateElectrodeSamplingConfiguration15WF15WF2k();
-    case UsePlexon24WF% = 1 then
-        CreateElectrodeSamplingConfiguration24WF();
-    else  'just set up the channels as expected
-        'CreateElectrodeSamplingConfiguration(1, 11);
-        CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
-    endcase;
+   
 	
-    ' Set up eye channels whether using Plexon or not
+    '----Analog, non-spiking electrode recording conditions
+    
+    'We will record eye position no matter what, GetEyeX(Y)Port% will note if the port is not defined in Config->DAQ
     SampleWaveform(XChannel%,GetEyeXPort%(),1000);
 	SampleTitle$(XChannel%,"Eye X");
     SampleWaveform(YChannel%,GetEyeYPort%(),1000);
 	SampleTitle$(YChannel%,"Eye Y");
+    
+    'Add a waveform channel for efference copy, only if defined in Config->DAQ
+    if attOptoUsePulse% = 1 and attDoOpto% = 1 and OptoEffCopyPort% > -1 then
+        SampleWaveform(OptoCopyChannel%,OptoEffCopyPort%,5000);  'This is 30000 Hz on the acute, but Henry has been using 5000, so...  
+        SampleTitle$(OptoCopyChannel%,CustomLabels$[OptoEffCopyPort%]);
+    endif;
+    
+    if PhotodiodePort% > -1 then
+        SampleWaveform(PhotodiodeChannel%,PhotodiodePort%,30000);  
+        SampleTitle$(PhotodiodeChannel%, CustomLabels$[PhotodiodePort%]);
+    endif;
+    
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);  
+        SampleTitle$(UtilityChannel%, CustomLabels$[UtilityPort%]);
+    endif;
+
     
     
     'Add a digital marker channel for pulsing optogenetics
@@ -781,13 +794,24 @@ proc CreateSampleConfiguration()
         SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
     endcase
     
-    'Add a waveform channel for efference copy.  This can come from either the 1401 itself or
-    'from the stimulator, it doesn't really matter.
-    'It would be nice to have these as level channels on event inputs, but that does not fly with the VSG box. (Several months later, I do not know how to interpret that comment...jj)
-    if attOptoUsePulse% = 1 and attDoOpto% = 1 then
-        SampleWaveform(OptoCopyChannel%,31,5000);  'on adc31, which is Henry's max, hardcoded for now
-        SampleTitle$(OptoCopyChannel%, "OptoCopy");
-    endif;
+    
+    
+    
+    
+    '----Set up "spiking" Electrode Channels----
+    docase
+    case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
+        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
+    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
+        CreateElectrodeSamplingConfiguration7WM15CN();
+    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
+        CreateElectrodeSamplingConfiguration15WF15WF2k();
+    case UsePlexon24WF% = 1 then
+        CreateElectrodeSamplingConfiguration24WF();
+    else  'just set up the channels as expected
+        'CreateElectrodeSamplingConfiguration(1, 11);
+        CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
+    endcase;
     
     
 	SampleTextMark(200);  'increase number of allowed characters to 200

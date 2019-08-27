@@ -51,6 +51,8 @@ var OptoCopyChannel%;
 var SequencerPeriodMS;
 var ButtonChannel%;
 var ButtonPort%;
+var StimulatorChannel%;
+var UtilityChannel%;
 
 ' xy windows for plotting (TuningWindow) and PSTH. 
 var TuningWindow%[16];	' one for each wavemark channel
@@ -268,6 +270,8 @@ FixationPointSlaveChannel% := 46;
 StimSlaveChannel% := 47;
 'DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
 OptoCopyChannel% := 49;
+StimulatorChannel% := 39;
+UtilityChannel% := 38;
 
 ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
@@ -2344,7 +2348,7 @@ proc CreateSampleConfiguration()
 '    endif
     
 
-	'Channel recording definitions
+	'----Event Channel recording definitions----
     
    	SampleEvent(FrameChannel%, 0, 2, 3600);
 	SampleComment$(FrameChannel%,"Frame");
@@ -2396,37 +2400,64 @@ proc CreateSampleConfiguration()
         SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
     endcase
     
+    
+    
+    
+    '----Analog, non-spiking electrode recording conditions
+    
     'Add a waveform channel for efference copy.  This can come from either the 1401 itself or
     'from the stimulator, it doesn't really matter.
     'It would be nice to have these as level channels on event inputs, but that does not fly with the VSG box. (Several months later, I do not know how to interpret that comment...jj)
-    if tunOptoUsePulse% = 1 and tunDoOpto% = 1 then
-        SampleWaveform(OptoCopyChannel%,31,5000);  'on adc31, which is Henry's max, hardcoded for now
-        SampleTitle$(OptoCopyChannel%, "OptoCopy");
+    if tunOptoUsePulse% = 1 and tunDoOpto% = 1 and OptoEffCopyPort% > -1 then
+        SampleWaveform(OptoCopyChannel%,OptoEffCopyPort%,5000); 
+        SampleTitle$(OptoCopyChannel%, CustomLabels$[OptoEffCopyPort%]);
     endif;
     
-    
-    if tunButtonCollect% = 1 then
+    docase
+    case tunButtonCollect% = 1 and UtilityPort% > -1 then  'use utility port for button
 '        SampleWaveform(ButtonChannel%,ButtonPort%,10000);  'Giving 0.1 ms resolution for now
 '        SampleComment$(ButtonChannel%,"Raw Button");
 '        SampleTitle$(ButtonChannel%,"Raw Button");
-        SampleWaveform(ButtonChannel%, ButtonPort%, 1000);
-        'SampleTitle$(XChannel%,"V");   '??? WTF ???  Would have been overwritten by later command setting up eye channels anyway -jj 9/22/16
+        SampleWaveform(ButtonChannel%, UtilityPort%, 1000);
         SampleTitle$(ButtonChannel%,"Button");  'We ought to title the button channel something, right? -jj 9/22/16
-    endif;    
+    case tunButtonCollect% = 1 and UtilityPort% = -1 then  'if utility port is undefined, this is an error
+        Message("You must set a UtilityPort in Config->DAQ to use the rivalry button!  Quitting!");
+        halt
+    case UtilityPort% > -1 then  'otherwise, utility port is a utility port
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);  
+        SampleTitle$(UtilityChannel%, CustomLabels$[UtilityPort%]);   
+    endcase;    
     
     
     'if we are recording the laser output, turn off any electrode channels
     'this will not happen currently, as the laser diode collection has been disabled at the dialog box
     'If we re-implement this, test to see if it actually works as intended!
-    if tunLaserDiode% = 1 then
+    docase
+    case tunLaserDiode% = 1 and StimEffCopyPort% > -1 then
+        SampleWaveform(StimulatorChannel%,StimEffCopyPort%,50000);  
+        SampleTitle$(StimulatorChannel%, CustomLabels$[StimEffCopyPort%]);
+
         tunNWavemarks% := 0;  'no wavemarks!
         tunNContinuous% := 0;  'no continuous!
-        SampleWaveform(1,0,50000);  'on waveform port 0
-        SampleTitle$(1,"Diode output (laser)");
-    endif;
+        'SampleWaveform(1,0,50000);  'on waveform port 0
+        'SampleTitle$(1,"Diode output (laser)");
+    case tunLaserDiode% = 1 and StimEffCopyPort% = -1 then
+        message("tunLaserDiode is set to 1 but no StimEffCopyPort is set!  Quitting!");
+        halt
+    endcase;
     
     
-    ' Set up channels for sampling electrodes.
+    SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+	SampleTitle$(XChannel%,"Eye X");
+	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+	SampleTitle$(YChannel%,"Eye Y");
+    
+    
+
+    
+    
+    
+    '----Set up "spiking" Electrode Channels----
     docase
     case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
         CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
@@ -2469,10 +2500,7 @@ proc CreateSampleConfiguration()
     endcase;
     
         
-	SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
-	SampleTitle$(XChannel%,"Eye X");
-	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
-	SampleTitle$(YChannel%,"Eye Y");
+	
     
 	SampleSequencer(script$ + "Tuning.pls");
 	docase

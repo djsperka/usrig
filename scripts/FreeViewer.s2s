@@ -37,7 +37,8 @@ var StimSlaveChannel%;
 var DigitalLaserChannel%;
 var OptoCopyChannel%;
 var SequencerPeriodMS;
-
+var StimulatorChannel%;
+var UtilityChannel%;
 
 ' XY window stuff
 var XYWindow%;			' 
@@ -212,9 +213,11 @@ FrameChannel% := 41;
 StimChannel% := 43;
 ReadySlaveChannel% := 44;
 'FrameSlaveChannel% := 45;
+StimulatorChannel% := 46;
 'StimSlaveChannel% := 47;
 DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
 OptoCopyChannel% := 49;
+UtilityChannel% := 39;
 
 ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
@@ -512,7 +515,7 @@ proc CreateSampleConfiguration()
     SampleTextMark(200);  'Channel 30 is textmark channel
     
 
-	'Channel recording definitions
+	'----Event Channel recording definitions----
     
    	SampleEvent(FrameChannel%, 0, 2, 3600);
 	SampleComment$(FrameChannel%,"Frame");
@@ -552,11 +555,13 @@ proc CreateSampleConfiguration()
         SampleTitle$(DigitalLaserChannel%,"Laser On");
     endif
     
+    
+    '----Analog, non-spiking electrode recording conditions
     'Add a waveform channel for efference copy.  This can come from either the 1401 itself or
     'from the stimulator, it doesn't really matter.
-    if fvDoOpto% = 1 then
-        SampleWaveform(OptoCopyChannel%,31,5000);  'on adc31, which is Henry's max, hardcoded for now
-        SampleTitle$(OptoCopyChannel%, "OptoCopy");
+    if fvDoOpto% = 1 and OptoEffCopyPort% > -1 then
+        SampleWaveform(OptoCopyChannel%,OptoEffCopyPort%,5000);  'is 30000 Hz on Acute, but here was defined as 5000 Hz, could change...
+        SampleTitle$(OptoCopyChannel%,CustomLabels$[OptoEffCopyPort%]);
     endif;
        
     
@@ -564,15 +569,35 @@ proc CreateSampleConfiguration()
     'if we are recording the laser output, turn off any electrode channels
     'this will not happen currently, as the laser diode collection has been disabled at the dialog box
     'If we re-implement this, test to see if it actually works as intended!
-    if fvLaserDiode% = 1 then
+    docase
+    case fvLaserDiode% = 1 and StimEffCopyPort% > -1 then
+        SampleWaveform(StimulatorChannel%,StimEffCopyPort%,50000);  
+        SampleTitle$(StimulatorChannel%, CustomLabels$[StimEffCopyPort%]);
+
         fvNWavemarks% := 0;  'no wavemarks!
         fvNContinuous% := 0;  'no continuous!
-        SampleWaveform(1,0,50000);  'on waveform port 0
-        SampleTitle$(1,"Diode output (laser)");
+        'SampleWaveform(1,0,50000);  'on waveform port 0
+        'SampleTitle$(1,"Diode output (laser)");
+    case fvLaserDiode% = 1 and StimEffCopyPort% = -1 then
+        message("fvLaserDiode is set to 1 but no StimEffCopyPort is set!  Quitting!");
+        halt
+    endcase;
+    
+    SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+	SampleTitle$(XChannel%,"Eye X");
+	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+	SampleTitle$(YChannel%,"Eye Y");
+    
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);  
+        SampleTitle$(UtilityChannel%, CustomLabels$[UtilityPort%]);
     endif;
+
     
     
-    ' Set up channels for sampling electrodes.
+    
+    
+    '----Set up "spiking" Electrode Channels----
     docase
     case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
         CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
@@ -592,10 +617,7 @@ proc CreateSampleConfiguration()
     endcase;
     
         
-	SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
-	SampleTitle$(XChannel%,"Eye X");
-	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
-	SampleTitle$(YChannel%,"Eye Y");
+	
     
 	SampleSequencer(script$ + "tuning.pls");
 	docase

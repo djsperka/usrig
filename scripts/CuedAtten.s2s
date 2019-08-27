@@ -188,6 +188,7 @@ var FixationPointChannel%;
 var StimChannel%;
 var StimChangeChannel%;
 var ReadyChannel%;
+var UtilityChannel%;
 
 'Unic channels, ports
 var unicFileChannel%;   'This channel will register a pulse when the unic server notices the unic file has changed
@@ -337,11 +338,12 @@ JoyChannel% := 22;
 unicFileChannel% := 33;
 unicCommandSuccessChannel% := 34;
 unicStimulatingChannel% := 35;
+UtilityChannel% := 36;
 unicFilePort% := 5;
 unicCommandSuccessPort% := 6;
 unicStimulatingPort% := 7;
 ExcludedChans%[0] := 22;  'Joystick is lowest non-electrode channel used by this function
-ExcludedChans%[1] := 35;  'unicStimulationgChannel% is highest non-electrode channel used by this function
+ExcludedChans%[1] := 36;  'UtilityChannel% is highest non-electrode channel used by this function
 
 
 
@@ -1130,7 +1132,7 @@ proc CreateSampleConfiguration()
 	SampleAutoComment(0); 'Prompt for comment after sampling
 	SampleAutoCommit(60); 'Seconds between each file commit
     
-	'Channel recording definitions
+	'----Event Channel recording definitions----
     if caTrainingOptions% > 1 then   'don't create recording channels if just training, VSG not used
         SampleEvent(FrameTriggerChannel%,0,2,3600); 'Trigger channel, level
         SampleComment$(FrameTriggerChannel%,"Frame");
@@ -1154,6 +1156,9 @@ proc CreateSampleConfiguration()
     SampleComment$(StimChannel%,"Stim");
     SampleTitle$(StimChannel%,"Stim");
     
+    
+    '----Analog, non-spiking electrode recording conditions
+    
     'Create joystick channel, but only if the joystick is actually present
     if caRequireSaccadeResponse% = 0 then  
         printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPort%());
@@ -1161,10 +1166,29 @@ proc CreateSampleConfiguration()
         ok%:=SampleWaveform(JoyChannel%, GetJoystickPort%(), 1000);
         SampleTitle$(JoyChannel%, "Joy");
     endif;
+    if ok% < 0 then
+        printlog("Error opening joystick channel: %s\n",Error$(ok%));
+    endif;
     
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);  
+        SampleTitle$(UtilityChannel%, CustomLabels$[UtilityPort%]);
+    endif;
     
     'Create channels for EEG integration with unic server and Nic
     if caRecordEEG% = 1 then
+        docase
+        case UtilityPort% = unicFilePort% then
+            Message("The utility port conflicts with the unicFilePort%, quitting!");
+            halt
+        case UtilityPort% = unicCommandSuccessPort% then
+            Message("The utility port conflicts with the unicCommandSuccessPort%, quitting!");
+            halt
+        case UtilityPort% = unicStimulatingPort% then
+            Message("The utility port conflicts with the unicStimulatingPort%, quitting!");
+            halt
+        endcase
+        
         SampleEvent(unicFileChannel%,unicFilePort%,2,3600); 'Unic file changed channel, level
         SampleComment$(unicFileChannel%,"UnicFile");
         SampleTitle$(unicFileChannel%,"UnicFile");
@@ -1178,32 +1202,8 @@ proc CreateSampleConfiguration()
         SampleTitle$(unicStimulatingChannel%,"EEGStimOn");
     endif
     
+
     
-    
-    
-    if ok% < 0 then
-        printlog("Error opening joystick channel: %s\n",Error$(ok%));
-    endif;
-    
-    
-    '''Note that the default joystick port is port 13
-    'printlog("Joystick port is %d\n",GetJoystickPort%());
-    'halt
-    
-    ' Set up channels for sampling electrodes.
-    'docase
-    'case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
-    '    CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
-    'case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
-    '    CreateElectrodeSamplingConfiguration7WM15CN();
-    'else  'just set up the channels as expected
-    GetElectrodeParameters();
-    'printlog("num wavemark ports = %d and num continuous ports = %d\n",numWavemarkPorts%,numContinuousPorts%); 
-    'CreateElectrodeSamplingConfiguration(1, 11);
-    'CreateElectrodeSamplingConfiguration(1, 1+numWavemarkPorts%);  'updated to have continuous channels start where wavemark channels leave off.
-    CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%[]);  'Allows a lot of channels while preventing accidentally re-defining a channel
-    'endcase;
-	
     if caRequireFixation% <> 0 then  'don't set up eye channels unless we are looking at eye position
         'caRequireFixation% of -1 means watch fixation but don't require Looking%()
         ' Set up eye channels 
@@ -1212,6 +1212,16 @@ proc CreateSampleConfiguration()
         SampleWaveform(YChannel%,GetEyeYPort%(),1000);
         SampleTitle$(YChannel%,"Eye Y");
     endif;
+    
+    
+    
+    
+    '----Set up "spiking" Electrode Channels----
+    GetElectrodeParameters();
+    'printlog("num wavemark ports = %d and num continuous ports = %d\n",numWavemarkPorts%,numContinuousPorts%); 
+    CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%[]);  'Allows a lot of channels while preventing accidentally re-defining a channel
+	
+    
     
     
     

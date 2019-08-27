@@ -140,9 +140,12 @@ var StimChangeChannel%;
 var ReadyChannel%;
 var StimulatorChannel%;
 var OptoEfferenceChannel%;
-var LaserDiodeChannel%;
+var PhotodiodeChannel%;
 var SequencerPeriodMS;
 var CameraTriggerChannel%;
+var TemperatureChannel%;
+var EEGChannel%;
+var UtilityChannel%;
 
 ' xy windows for plotting (TuningWindow) and PSTH. 
 var TuningWindow%[16];	' one for each wavemark channel
@@ -199,9 +202,13 @@ FrameChannel% := 27;
 StimulatorChannel% := 35;
 OptoEfferenceChannel% := 36;
 CameraTriggerChannel% := 37;
+TemperatureChannel% := 38;
+PhotodiodeChannel% := 39;
+EEGChannel% := 40;
+UtilityChannel% := 41;
 
 ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
-ExcludedChans%[1] := 39;  'leaving a bit of room, right now 37 is highest channel used
+ExcludedChans%[1] := 42;  'leaving a bit of room, right now 37 is highest channel used
 
 
 ' Fetch electrode information. 
@@ -1784,7 +1791,8 @@ proc CreateSampleConfiguration()
     endif
     
     
-	'Channel recording definitions
+    
+    '----Event Channel recording definitions----
 	SampleEvent(StimChannel%, STIMCHANNELPORT%, 2, 3600); 'Trigger channel, level
 	SampleComment$(StimChannel%, "Stim");
 	SampleTitle$(StimChannel%, "Stim");
@@ -1805,34 +1813,62 @@ proc CreateSampleConfiguration()
         SampleTitle$(CameraTriggerChannel%, "CamTrg");
     endif
     
-    'The below three channels are used for optogenetics and temperature recording
-    'Unfortunately, it's not terribly simple to get these in and still allow the same system that 
-    'works for the collection of N electrodes.  If these are used, the USER must (for now) make
-    'sure that they do not use more than 6 electrodes.
-    'It would be nice to have these as level channels on event inputs, but that does not fly with the VSG box.
-    'if tunOptoUsePulse% = 1 then
-    docase
-    case tunDoOpto% = 1 then
-        SampleWaveform(7,6,5000);  'on adc7
-        SampleTitle$(7, "OptoCopy");
-    case tunRecStimulator% > 0 then 'Set channel for stimulator efference copy, if needed, as a waveform
-        SampleWaveform(7,6,5000);  'also on adc6, cannot be used at same time as Opto Copy, opto gets precedence
-        SampleTitle$(7, "Stimulator Copy");
-    endcase;'endif;
     
-    if tunUseTemperature% = 1 then
-        SampleWaveform(6,5,5000);  'on adc6
-        SampleTitle$(6, "Temperature");
+   
+    
+    '----Analog, non-spiking electrode recording conditions
+    if EEGPort% > -1 then
+        SampleWaveform(EEGChannel%,EEGPort%,5000);
+        'SampleTitle$(EEGChannel%, "EEG");
+        SampleTitle$(EEGChannel%, CustomLabels$[EEGPort%]);
     endif;
+    
+    if tunDoOpto% = 1 and OptoEffCopyPort% > -1 then
+        SampleWaveform(OptoEfferenceChannel%,OptoEffCopyPort%,30000); 
+        'SampleTitle$(OptoEfferenceChannel%, "OptoCopy");
+        SampleTitle$(OptoEfferenceChannel%, CustomLabels$[OptoEffCopyPort%]);
+    endif;
+    
+    if tunRecStimulator% > 0 and StimEffCopyPort% > -1 then
+        SampleWaveform(StimulatorChannel%,StimEffCopyPort%,30000);  
+        'SampleTitle$(StimulatorChannel%, "Stimulator Copy");
+        SampleTitle$(StimulatorChannel%, CustomLabels$[StimEffCopyPort%]);
+    endif;
+    
+    if tunUseTemperature% = 1 and TemperaturePort% > -1 then
+        SampleWaveform(TemperatureChannel%,TemperaturePort%,5000);  
+        'SampleTitle$(TemperatureChannel%, "Temperature");
+        SampleTitle$(TemperatureChannel%, CustomLabels$[TemperaturePort%]);
+    endif;
+    
+    if PhotodiodePort% > -1 then
+        SampleWaveform(PhotodiodeChannel%,PhotodiodePort%,30000);  
+        'SampleTitle$(PhotodiodeChannel%, "hvDiode");
+        SampleTitle$(PhotodiodeChannel%, CustomLabels$[PhotodiodePort%]);
+    endif;
+    
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);  
+        SampleTitle$(UtilityChannel%, CustomLabels$[UtilityPort%]);
+    endif;
+    
+    'No EyeX, EyeY, Joystick for AcuteTuning, because animal is *not* behaving
+
+    
+   
+    
+    
        
-    'if we are recording the laser output, turn off any electrode channels
-    if tunLaserDiode% = 1 then
-        tunNWavemarks% := 0;  'no wavemarks!
-        tunNContinuous% := 0;  'no continuous!
-        SampleWaveform(1,0,50000);  'on waveform port 0
-        SampleTitle$(1,"Diode output (laser)");
-    endif;
+    'if we are recording the laser output, turn off any electrode channels ----- this seems unnecessary
+'    if tunLaserDiode% = 1 then
+'        tunNWavemarks% := 0;  'no wavemarks!
+'        tunNContinuous% := 0;  'no continuous!
+'        SampleWaveform(1,0,50000);  'on waveform port 0
+'        SampleTitle$(1,"Diode output (laser)");
+'    endif;
     
+    
+    '----Set up "spiking" Electrode Channels----
     CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
     
     'Set channel for Opto box efference copy, if needed - turned off because opto box won't output for the analog input

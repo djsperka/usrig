@@ -29,6 +29,13 @@ var DisplayHardwareIndex% := 0; ' 0 for VSG/ViSaGe, 1 for Render, many scripts w
 var EyeXPort%;                  ' Port horizontal eye signal connected to
 var EyeYPort%;                  ' Port vertical eye signal connected to
 var JoystickPort%;              ' Port joystick is connected to
+var EEGPort%;                   ' Port for EEG (independent of spiking electrode)
+var OptoEffCopyPort%;           ' Port for optogenetic laser efference copy
+var StimEffCopyPort%;           ' Port for stimulator efference copy
+var PhotodiodePort%;            ' Port for a photodiode
+var TemperaturePort%;           ' Port for a thermometer
+var UtilityPort%;               ' Port for arbitrary utility input
+var UtilityPortLabel$;          ' Label for utility port, if used
 var JuicerType%;                ' Type of juicer
 var pReward := 1;               ' Probability of reward
 var this1401Type%;              ' Holds type of 1401
@@ -115,6 +122,31 @@ func GetEyeYPort%()
     endif
     return EyeYPort%;
 end
+
+func GetEEGPort%()
+    return EEGPort%;
+end
+
+func GetOptoEffCopyPort%()
+    return OptoEffCopyPort%;
+end
+
+func GetStimEffCopyPort%()
+    return StimEffCopyPort%;
+end
+
+func GetPhotodiodePort%()
+    return PhotodiodePort%;
+end
+
+func GetTemperaturePort%()
+    return TemperaturePort%;
+end
+
+func GetUtilityPort%()
+    return UtilityPort%;
+end
+
 
 'func GetDistanceToScreenMM$()
 '    return DistanceToScreenMM$;
@@ -293,6 +325,7 @@ func DAQParametersDialog%()
 	var iReturn%;
     var JuicerIndexDecremented%;
     var fiveInts%[5];  'There can be a maximum of 20 arguments fed to DlgShow, we need to make some space
+    var nineInts%[9];  'MOAR SPACE!!!
     
     'This little bit allows us to disallow any values other than legal juicer values
     'without changing the rest of the code
@@ -315,37 +348,95 @@ func DAQParametersDialog%()
     fiveInts%[3] := JuiceRewardMSMax%;
     fiveInts%[4] := JuicerIndexDecremented%;
     
+    'Fill nineInts%
+    nineInts%[0] := EEGPort%;
+    nineInts%[1] := EyeXPort%;
+    nineInts%[2] := EyeYPort%;
+    nineInts%[3] := JoystickPort%;
+    nineInts%[4] := OptoEffCopyPort%;
+    nineInts%[5] := StimEffCopyPort%;
+    nineInts%[6] := PhotodiodePort%;
+    nineInts%[7] := TemperaturePort%;
+    nineInts%[8] := UtilityPort%;
     
-	DlgCreate("DAQ parameters");
-	DlgInteger(1, "Number of Electrodes:", 1, 32, 0, 0, 1);
-	DlgReal(2, "Degrees/Volt (X):", 0, 100);
-	DlgReal(3, "Degrees/Volt (Y):", 0, 100);
-    DlgReal(4, "Calibration offset(deg)", 0.1, 100);
-    DlgInteger(5, "Calibration COM port", 1, 16);
-	DlgInteger(6, "Eye Coil Sampling Freq (Hz):", 1, 20000);
-    DlgReal(7, "Reward Prob (0-1):", 0, 1);
-	DlgInteger(8, "Juice per reward:", 0, 10, 0, 0, 1);
-    DlgInteger(9, "Juice Reward (default) ms:", 0, 1000);
-    DlgInteger(10, "Juice Reward (min) ms:", 0, 1000);
-    DlgInteger(11, "Juice Reward (max) ms:", 0, 1000);
-    DlgList(12, "Juicer Open State:",juicerList2$,2);
-    DlgInteger(13, "Eye X Port", -1, 31);
-    DlgInteger(14, "Eye Y Port", -1, 31);
-    DlgInteger(15, "Joystick Port", -1, 31);
-    DlgCheck(16, "Use Remote Stimulus");
-    DlgString(17, "Remote ip", 21);
-    DlgString(18, "Remote port", 5);
-    DlgString(19, "Slave ip", 21);
-    DlgString(20, "Slave port", 5);
-    DlgList(21, "Display Hardware:",displayHardwareList$,2);
-    DlgCheck(22, "Create Eyetracker Output File");
+    
+'	DlgCreate("DAQ parameters");
+'	DlgInteger(1, "Number of Electrodes:", 1, 32, 0, 0, 1);
+'	DlgReal(2, "Degrees/Volt (X):", 0, 100);
+'	DlgReal(3, "Degrees/Volt (Y):", 0, 100);
+'    DlgReal(4, "Calibration offset(deg)", 0.1, 100);
+'    DlgInteger(5, "Calibration COM port", 1, 16);
+'	DlgInteger(6, "Eye Coil Sampling Freq (Hz):", 1, 20000);
+'    DlgReal(7, "Reward Prob (0-1):", 0, 1);
+'	DlgInteger(8, "Juice per reward:", 0, 10, 0, 0, 1);
+'    DlgInteger(9, "Juice Reward (default) ms:", 0, 1000);
+'    DlgInteger(10, "Juice Reward (min) ms:", 0, 1000);
+'    DlgInteger(11, "Juice Reward (max) ms:", 0, 1000);
+'    DlgList(12, "Juicer Open State:",juicerList2$,2);
+'    DlgInteger(13, "Eye X Port", -1, 31);
+'    DlgInteger(14, "Eye Y Port", -1, 31);
+'    DlgInteger(15, "Joystick Port", -1, 31);
+'    DlgCheck(16, "Use Remote Stimulus");
+'    DlgString(17, "Remote ip", 21);
+'    DlgString(18, "Remote port", 5);
+'    DlgString(19, "Slave ip", 21);
+'    DlgString(20, "Slave port", 5);
+'    DlgList(21, "Display Hardware:",displayHardwareList$,2);
+'    DlgCheck(22, "Create Eyetracker Output File");
+'    DlgAllow(0xffff, 0, DAQParametersDialogChanged%);
+'	iReturn% := DlgShow(NumberOfElectrodes%, DegreesPerVoltX, DegreesPerVoltY, 
+'                        CalibrationOffsetDegrees, CalibrationComPort%,
+'                        EyeCoilSamplingFrequency%, pReward, fiveInts%[],
+'                        EyeXPort%, EyeYPort%, JoystickPort%, 
+'                        UseRemoteStimulus%, RemoteStimulusIP$, RemoteStimulusPort$, SlaveStimulusIP$, 
+'                        SlaveStimulusPort$,DisplayHardwareIndex%,RecordEyeTrackerOutputFile%);
+    
+    DlgCreate("DAQ parameters");
+    DlgList(1, "Display Hardware:",displayHardwareList$,2,22,1);
+    
+    DlgGroup("Used Only For Cool(er)Mouse",1,2,40,2);
+	DlgInteger(2, "Number of Electrodes:",1,32,28,3,1);
+    
+    DlgGroup("Eyetracker",1,4,40,7);
+    DlgReal(3, "Degrees/Volt (X):",0,100,27,5);
+	DlgReal(4, "Degrees/Volt (Y):",0,100,27,6);
+    DlgReal(5, "Calibration offset(deg)",0.1,100,27,7);
+    DlgInteger(6, "Calibration COM port",1,16,28,8);
+    DlgInteger(7, "Eye Coil Sampling Freq (Hz):",1,20000,28,9);
+    DlgCheck(8, "Create Eyetracker Output File",2,10);
+    
+    DlgGroup("Reward",1,11,40,7);
+    DlgReal(9, "Reward Prob (0-1):",0,1,27,12);
+	DlgInteger(10, "Juice per reward:",0,10,28,13,1);
+    DlgInteger(11, "Juice Reward (default) ms:",0,1000,28,14);
+    DlgInteger(12, "Juice Reward (min) ms:",0,1000,28,15);
+    DlgInteger(13, "Juice Reward (max) ms:",0,1000,28,16);
+    DlgList(14, "Juicer Open State:",juicerList2$,2,22,17);
+    
+    DlgGroup("Analog Inputs, will not use if value is -1",42,1,38,11);
+    DlgInteger(15,8,-1,31,71,2);  DlgText("EEG Port",43,2);
+    DlgInteger(16,8,-1,31,71,3);  DlgText("Eye X Port",43,3);
+    DlgInteger(17,8,-1,31,71,4);  DlgText("Eye Y Port",43,4);
+    DlgInteger(18,8,-1,31,71,5);  DlgText("Joystick Port",43,5);
+    DlgInteger(19,8,-1,31,71,6);  DlgText("Opto Eff Copy Port",43,6);
+    DlgInteger(20,8,-1,31,71,7);  DlgText("Stim Eff Copy Port",43,7);
+    DlgInteger(21,8,-1,31,71,8);  DlgText("Photodiode Port",43,8);
+    DlgInteger(22,8,-1,31,71,9);  DlgText("Temperature Port",43,9);
+    DlgInteger(23,8,-1,31,71,10); DlgText("Utility Port",43,10);
+    DlgString(24,10,8,"",69,11);   DlgText("Utility Port Label",43,11);
+    
+    DlgGroup("Remote Stimulus",42,12,38,6);
+    DlgCheck(25, "Use Remote Stimulus",43,13);
+    DlgString(26,21,15,"",58,14);   DlgText("Remote IP",43,14);
+    DlgString(27,6,5,"",73,15);   DlgText("Remote Port",43,15);
+    DlgString(28,21,15,"",58,16);   DlgText("Slave IP",43,16);
+    DlgString(29,6,5,"",73,17);   DlgText("Slave Port",43,17);
+    
     DlgAllow(0xffff, 0, DAQParametersDialogChanged%);
-	iReturn% := DlgShow(NumberOfElectrodes%, DegreesPerVoltX, DegreesPerVoltY, 
-                        CalibrationOffsetDegrees, CalibrationComPort%,
-                        EyeCoilSamplingFrequency%, pReward, fiveInts%[],
-                        EyeXPort%, EyeYPort%, JoystickPort%, 
-                        UseRemoteStimulus%, RemoteStimulusIP$, RemoteStimulusPort$, SlaveStimulusIP$, 
-                        SlaveStimulusPort$,DisplayHardwareIndex%,RecordEyeTrackerOutputFile%);
+    iReturn% := DlgShow(DisplayHardwareIndex%,NumberOfElectrodes%,DegreesPerVoltX,DegreesPerVoltY,CalibrationOffsetDegrees,
+        CalibrationComPort%,EyeCoilSamplingFrequency%,RecordEyeTrackerOutputFile%,pReward,fiveInts%[],nineInts%[],
+        UtilityPortLabel$,UseRemoteStimulus%,RemoteStimulusIP$,RemoteStimulusPort$,SlaveStimulusIP$,SlaveStimulusPort$);
+    
 
 	if iReturn% = 1 then
         'Unpack fiveInts%
@@ -361,9 +452,20 @@ func DAQParametersDialog%()
             JuiceRewardMSMin% := JuiceRewardMSMax%;
         endif;
         
-        
         JuicerIndex% := JuicerIndexDecremented% + 1; 'Correct JuicerIndex%
         SetJuicerSequencerVariable%();  'This allows reset of juicer sequencer variable without restarting the script.  Probably redundant.
+        
+        'Unpack nineInts%
+        EEGPort% := nineInts%[0];
+        EyeXPort% := nineInts%[1];
+        EyeYPort% := nineInts%[2];
+        JoystickPort% := nineInts%[3];
+        OptoEffCopyPort% := nineInts%[4];
+        StimEffCopyPort% := nineInts%[5];
+        PhotodiodePort% := nineInts%[6];
+        TemperaturePort% := nineInts%[7];
+        UtilityPort% := nineInts%[8];
+        
 		SaveDAQParameters();
 	endif
 	return iReturn%;
@@ -372,9 +474,23 @@ end;
 func DAQParametersDialogChanged%(item%)    
     docase 
     case item% = 0 then
-        DlgEnable(UseRemoteStimulus%, 17, 18, 19, 20);
-    case item% = 16 then
-        DlgEnable(DlgValue(16), 17, 18, 19, 20);
+        DlgEnable(UseRemoteStimulus%, 26, 27, 28, 29);
+        if UtilityPort% = -1 then
+            DlgEnable(0,24);
+        else
+            DlgEnable(1,24);
+        endif;
+        
+    case item% = 25 then
+        DlgEnable(DlgValue(25), 26, 27, 28, 29);
+        
+    case item% = 23 then 
+        if DlgValue(23) = -1 then
+            DlgEnable(0,24);
+        else
+            DlgEnable(1,24);
+        endif;
+        
     endcase
     return 1;
 end
@@ -407,6 +523,14 @@ proc GetDAQParameters()
     SlaveStimulusPort$ := GetStringRegistryValue$(key$, "SlaveStimulusPort", "7000");
     DisplayHardwareIndex% := GetIntRegistryValue%(key$, "DisplayHardwareIndex", DisplayHardwareIndex%);
     RecordEyeTrackerOutputFile% := GetIntRegistryValue%(key$, "RecordEyeTrackerOutputFile", 0);
+    EEGPort% := GetIntRegistryValue%(key$, "EEGPort", -1);
+    OptoEffCopyPort% := GetIntRegistryValue%(key$, "OptoEffCopyPort", -1);
+    StimEffCopyPort% := GetIntRegistryValue%(key$, "StimEffCopyPort", -1);
+    PhotodiodePort% := GetIntRegistryValue%(key$, "PhotodiodePort", -1);
+    TemperaturePort% := GetIntRegistryValue%(key$, "TemperaturePort", -1);
+    UtilityPort% := GetIntRegistryValue%(key$, "UtilityPort", -1);
+    UtilityPortLabel$ := GetStringRegistryValue$(key$, "UtilityPortLabel", "");
+    
     GetElectrodeParameters();
 end;
 
@@ -439,6 +563,14 @@ proc SaveDAQParameters()
     SetStringRegistryValue(key$, "SlaveStimulusPort", SlaveStimulusPort$);
     SetIntRegistryValue(key$, "DisplayHardwareIndex", DisplayHardwareIndex%);
     SetIntRegistryValue(key$, "RecordEyeTrackerOutputFile", RecordEyeTrackerOutputFile%);
+    SetIntRegistryValue(key$, "EEGPort", EEGPort%);
+    SetIntRegistryValue(key$, "OptoEffCopyPort", OptoEffCopyPort%);
+    SetIntRegistryValue(key$, "StimEffCopyPort", StimEffCopyPort%);
+    SetIntRegistryValue(key$, "PhotodiodePort", PhotodiodePort%);
+    SetIntRegistryValue(key$, "TemperaturePort", TemperaturePort%);
+    SetIntRegistryValue(key$, "UtilityPort", UtilityPort%);
+    SetStringRegistryValue(key$, "UtilityPortLabel", UtilityPortLabel$);
+    
     SaveElectrodeParameters();
 end;
 
