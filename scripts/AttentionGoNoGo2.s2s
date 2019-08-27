@@ -762,19 +762,32 @@ proc CreateSampleConfiguration()
 	SampleTitle$(YChannel%,"Eye Y");
     
     'Add a waveform channel for efference copy, only if defined in Config->DAQ
+    var tempLabel$;
     if attOptoUsePulse% = 1 and attDoOpto% = 1 and OptoEffCopyPort% > -1 then
-        SampleWaveform(OptoCopyChannel%,OptoEffCopyPort%,5000);  'This is 30000 Hz on the acute, but Henry has been using 5000, so...  
-        SampleTitle$(OptoCopyChannel%,CustomLabels$[OptoEffCopyPort%]);
+        SampleWaveform(OptoCopyChannel%,OptoEffCopyPort%,5000);  'This is 30000 Hz on the acute, but Henry has been using 5000, so...
+        tempLabel$ := CustomLabels$[OptoEffCopyPort%];
+        if tempLabel$ = "" then
+            tempLabel$ := "OptoCopy";
+        endif;
+        SampleTitle$(OptoCopyChannel%,tempLabel$);
     endif;
     
     if PhotodiodePort% > -1 then
-        SampleWaveform(PhotodiodeChannel%,PhotodiodePort%,30000);  
-        SampleTitle$(PhotodiodeChannel%, CustomLabels$[PhotodiodePort%]);
+        SampleWaveform(PhotodiodeChannel%,PhotodiodePort%,30000);
+        tempLabel$ := CustomLabels$[PhotodiodePort%];
+        if tempLabel$ = "" then
+            tempLabel$ := "Photodiode";
+        endif;
+        SampleTitle$(PhotodiodeChannel%, tempLabel$);
     endif;
     
     if UtilityPort% > -1 then
         SampleWaveform(UtilityChannel%,UtilityPort%,30000);  
-        SampleTitle$(UtilityChannel%, CustomLabels$[UtilityPort%]);
+        tempLabel$ := CustomLabels$[UtilityPort%];
+        if tempLabel$ = "" then
+            tempLabel$ := "Utility Port";
+        endif;
+        SampleTitle$(UtilityChannel%, tempLabel$);
     endif;
 
     

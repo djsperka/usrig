@@ -1817,39 +1817,59 @@ proc CreateSampleConfiguration()
    
     
     '----Analog, non-spiking electrode recording conditions
+    var tempLabel$;
     if EEGPort% > -1 then
         SampleWaveform(EEGChannel%,EEGPort%,5000);
-        'SampleTitle$(EEGChannel%, "EEG");
-        SampleTitle$(EEGChannel%, CustomLabels$[EEGPort%]);
+        tempLabel$ := CustomLabels$[EEGPort%];
+        if tempLabel$ = "" then
+            tempLabel$ := "EEG";
+        endif;
+        SampleTitle$(EEGChannel%, tempLabel$);
     endif;
     
     if tunDoOpto% = 1 and OptoEffCopyPort% > -1 then
         SampleWaveform(OptoEfferenceChannel%,OptoEffCopyPort%,30000); 
-        'SampleTitle$(OptoEfferenceChannel%, "OptoCopy");
-        SampleTitle$(OptoEfferenceChannel%, CustomLabels$[OptoEffCopyPort%]);
+        tempLabel$ := CustomLabels$[OptoEffCopyPort%];
+        if tempLabel$ = "" then
+            tempLabel$ := "OptoCopy";
+        endif;
+        SampleTitle$(OptoEfferenceChannel%, tempLabel$);
     endif;
     
     if tunRecStimulator% > 0 and StimEffCopyPort% > -1 then
-        SampleWaveform(StimulatorChannel%,StimEffCopyPort%,30000);  
-        'SampleTitle$(StimulatorChannel%, "Stimulator Copy");
-        SampleTitle$(StimulatorChannel%, CustomLabels$[StimEffCopyPort%]);
+        SampleWaveform(StimulatorChannel%,StimEffCopyPort%,30000); 
+        tempLabel$ := CustomLabels$[StimEffCopyPort%];
+        if tempLabel$ = "" then
+            tempLabel$ := "Stimulator Copy";
+        endif;
+        SampleTitle$(StimulatorChannel%, tempLabel$);
     endif;
     
     if tunUseTemperature% = 1 and TemperaturePort% > -1 then
-        SampleWaveform(TemperatureChannel%,TemperaturePort%,5000);  
-        'SampleTitle$(TemperatureChannel%, "Temperature");
-        SampleTitle$(TemperatureChannel%, CustomLabels$[TemperaturePort%]);
+        SampleWaveform(TemperatureChannel%,TemperaturePort%,5000); 
+        tempLabel$ := CustomLabels$[TemperaturePort%];
+        if tempLabel$ = "" then
+            tempLabel$ := "Temperature";
+        endif;        
+        SampleTitle$(TemperatureChannel%, tempLabel$);
     endif;
     
     if PhotodiodePort% > -1 then
         SampleWaveform(PhotodiodeChannel%,PhotodiodePort%,30000);  
-        'SampleTitle$(PhotodiodeChannel%, "hvDiode");
-        SampleTitle$(PhotodiodeChannel%, CustomLabels$[PhotodiodePort%]);
+        tempLabel$ := CustomLabels$[PhotodiodePort%];
+        if tempLabel$ = "" then
+            tempLabel$ := "Photodiode";
+        endif;
+        SampleTitle$(PhotodiodeChannel%, tempLabel$);
     endif;
     
     if UtilityPort% > -1 then
         SampleWaveform(UtilityChannel%,UtilityPort%,30000);  
-        SampleTitle$(UtilityChannel%, CustomLabels$[UtilityPort%]);
+        tempLabel$ := CustomLabels$[UtilityPort%];
+        if tempLabel$ = "" then
+            tempLabel$ := "Utility Port";
+        endif;
+        SampleTitle$(UtilityChannel%, tempLabel$);
     endif;
     
     'No EyeX, EyeY, Joystick for AcuteTuning, because animal is *not* behaving

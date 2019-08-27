@@ -405,6 +405,7 @@ proc CreateSampleConfiguration()
     
     
     '----Analog, non-spiking electrode recording conditions
+    var tempLabel$;
     ' Set up eye channels whether using Plexon or not, but do not set up eye channels if we are not checking fixation
     if alwaysLooking% = 0 then
         SampleWaveform(XChannel%,GetEyeXPort%(),1000);
@@ -415,7 +416,11 @@ proc CreateSampleConfiguration()
     
     if UtilityPort% > -1 then
         SampleWaveform(UtilityChannel%,UtilityPort%,30000);  
-        SampleTitle$(UtilityChannel%, CustomLabels$[UtilityPort%]);
+        tempLabel$ := CustomLabels$[UtilityPort%];
+        if tempLabel$ = "" then
+            tempLabel$ := "Utility Port";
+        endif;
+        SampleTitle$(UtilityChannel%, tempLabel$);
     endif;
 
     

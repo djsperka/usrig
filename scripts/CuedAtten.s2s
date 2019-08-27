@@ -1170,9 +1170,14 @@ proc CreateSampleConfiguration()
         printlog("Error opening joystick channel: %s\n",Error$(ok%));
     endif;
     
+    var tempLabel$;
     if UtilityPort% > -1 then
-        SampleWaveform(UtilityChannel%,UtilityPort%,30000);  
-        SampleTitle$(UtilityChannel%, CustomLabels$[UtilityPort%]);
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);
+        tempLabel$ := CustomLabels$[UtilityPort%];
+        if tempLabel$ = "" then
+            tempLabel$ := "Utility Port";
+        endif;        
+        SampleTitle$(UtilityChannel%, tempLabel$);
     endif;
     
     'Create channels for EEG integration with unic server and Nic
