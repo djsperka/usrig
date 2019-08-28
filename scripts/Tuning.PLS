@@ -11,7 +11,6 @@
                                        ;V8 is the interpulse interval, for pulsed optogenetics
                                        ;V9 is the pre-pulse stimulus duration, for pulsed opto
                                        ;V10 is the post-pulse stimulus duration, for pulsed opto
-                                       ;V11 is a timeout variable
 
 ; zero out all trigger lines, close juicer
 0000 ZERO:  '0  MOVI   V2,1            ;Log that sequencer is in use
@@ -137,42 +136,39 @@
 
 ; Complicated optogenetics, pulsing
 0094 PULSOPTO: 'P MOVI V2,1            ;Log that sequencer is in use
-0095            MOVI   V11,s(0.5)      ;Creates a 1-second timeout in V11 (2 ops per check)
-0096            DIGOUT [.....1..]      ;Send stimulus on signal to VSG
-0097 VSGWAIT:   DIBEQ  [.....1..],PDELAY ;branch to PDELAY when stim channel high
-0098            DBNZ   V11,VSGWAIT     ;Wait for VSG, but timeout after V11 tries
-0099 PDELAY:    DELAY  V9              ;Wait until first pulse on, subtract 1 tick
-0100 PULSEON:   DAC    0,V4            ;Set DAC0 to the value in V4
-0101            MARK   1               ;Mark onset of laser on digital marker channel
-0102            DELAY  V7              ;Wait until pulse off time, subtract 2 ticks
-0103            DAC    0,0             ;Set DAC0 to 0
-0104            MARK   0               ;Mark offset of laser on digital marker channel
-0105            DBNZ   V6,PULSEIPI     ;Decrement #pulses, go to IPI if more
-0106            JUMP   PULSEXIT        ;Jump to wait/exit from pulse/stim
-0107 PULSEIPI:  DELAY  V8              ;Wait through IPI, subtract 3 ticks
-0108            JUMP   PULSEON         ;Start next pulse
-0109 PULSEXIT:  DELAY  V10             ;Wait until stim should go off, subtract 3 ticks
-0110            DIGOUT [.....0..]      ;Signals the stimuli off
-0111            MOVI   V2,0            ;Log that sequencer is not in use
-0112            HALT                   ;End of this sequence section
+0095            DIGOUT [.....1..]      ;Send stimulus on signal to VSG
+0096 PDELAY:    DELAY  V9              ;Wait until first pulse on, subtract 1 tick
+0097 PULSEON:   DAC    0,V4            ;Set DAC0 to the value in V4
+0098            MARK   1               ;Mark onset of laser on digital marker channel
+0099            DELAY  V7              ;Wait until pulse off time, subtract 2 ticks
+0100            DAC    0,0             ;Set DAC0 to 0
+0101            MARK   0               ;Mark offset of laser on digital marker channel
+0102            DBNZ   V6,PULSEIPI     ;Decrement #pulses, go to IPI if more
+0103            JUMP   PULSEXIT        ;Jump to wait/exit from pulse/stim
+0104 PULSEIPI:  DELAY  V8              ;Wait through IPI, subtract 3 ticks
+0105            JUMP   PULSEON         ;Start next pulse
+0106 PULSEXIT:  DELAY  V10             ;Wait until stim should go off, subtract 3 ticks
+0107            DIGOUT [.....0..]      ;Signals the stimuli off
+0108            MOVI   V2,0            ;Log that sequencer is not in use
+0109            HALT                   ;End of this sequence section
 
 ; Simpler opto/e-stim, gives one pulse
-0113 ONEPING: 'p MOVI  V2,1            ;Log that sequencer is in use
-0114            DAC    0,V4            ;Set DAC0 to the value in V4
-0115            MARK   1               ;Mark onset of laser on digital marker channel
-0116            DELAY  V7              ;Wait until pulse off time, subtract 2 ticks
-0117            DAC    0,0             ;Set DAC0 to 0
-0118            MARK   0               ;Mark offset of laser on digital marker channel
-0119            MOVI   V2,0            ;Log that sequencer is not in use
-0120            HALT                   ;End of this sequence section
+0110 ONEPING: 'p MOVI  V2,1            ;Log that sequencer is in use
+0111            DAC    0,V4            ;Set DAC0 to the value in V4
+0112            MARK   1               ;Mark onset of laser on digital marker channel
+0113            DELAY  V7              ;Wait until pulse off time, subtract 2 ticks
+0114            DAC    0,0             ;Set DAC0 to 0
+0115            MARK   0               ;Mark offset of laser on digital marker channel
+0116            MOVI   V2,0            ;Log that sequencer is not in use
+0117            HALT                   ;End of this sequence section
 
 
 ; Abort for pulsing optgenetics, cannot use SafeSampleKey to call this
-0121 PULSABRT: 'B DAC  0,0             ;Set DAC0 to 0
-0122            MARK   0               ;Mark offset of laser on digital marker channel
-0123            DIGOUT [.....0..]      ;Signals the stimuli off
-0124            MOVI   V2,0            ;Log that sequencer is not in use
-0125            HALT                   ;End of this sequence section
+0118 PULSABRT: 'B DAC  0,0             ;Set DAC0 to 0
+0119            MARK   0               ;Mark offset of laser on digital marker channel
+0120            DIGOUT [.....0..]      ;Signals the stimuli off
+0121            MOVI   V2,0            ;Log that sequencer is not in use
+0122            HALT                   ;End of this sequence section
 
 ; LED commands for fixation LED - these were for Ben, DIGLOWS now for ASL file 
 ;     LEDON:  'L MOVI   V2,1            ;Log that sequencer is in use
@@ -185,58 +181,58 @@
 
 
 ; zero out all DIGLOW lines
-0126 ZEROLOW: 'Z MOVI  V2,1            ;Log that sequencer is in use
-0127            DIGLOW [00000000]
-0128            MOVI   V2,0            ;Log that sequencer is not in use
-0129            HALT   
+0123 ZEROLOW: 'Z MOVI  V2,1            ;Log that sequencer is in use
+0124            DIGLOW [00000000]
+0125            MOVI   V2,0            ;Log that sequencer is not in use
+0126            HALT   
 
 ; give heartbeat 1 pulse
-0130 HB1:   '1  MOVI   V2,1            ;Log that sequencer is in use
-0131            DIGLOW [.......1]
-0132            MARK   101             ;Mark heartbeat on digital marker channel
-0133            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
-0134            DIGLOW [.......0]
-0135            MOVI   V2,0            ;Log that sequencer is not in use
-0136            HALT   
+0127 HB1:   '1  MOVI   V2,1            ;Log that sequencer is in use
+0128            DIGLOW [.......1]
+0129            MARK   101             ;Mark heartbeat on digital marker channel
+0130            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+0131            DIGLOW [.......0]
+0132            MOVI   V2,0            ;Log that sequencer is not in use
+0133            HALT   
 
 ; give heartbeat 2 pulse
-0137 HB2:   '2  MOVI   V2,1            ;Log that sequencer is in use
-0138            DIGLOW [......1.]
-0139            MARK   102             ;Mark heartbeat on digital marker channel
-0140            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
-0141            DIGLOW [......0.]
-0142            MOVI   V2,0            ;Log that sequencer is not in use
-0143            HALT   
+0134 HB2:   '2  MOVI   V2,1            ;Log that sequencer is in use
+0135            DIGLOW [......1.]
+0136            MARK   102             ;Mark heartbeat on digital marker channel
+0137            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+0138            DIGLOW [......0.]
+0139            MOVI   V2,0            ;Log that sequencer is not in use
+0140            HALT   
 
 ; give heartbeat 3 pulse
-0144 HB3:   '3  MOVI   V2,1            ;Log that sequencer is in use
-0145            DIGLOW [.....1..]
-0146            MARK   103             ;Mark heartbeat on digital marker channel
-0147            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
-0148            DIGLOW [.....0..]
-0149            MOVI   V2,0            ;Log that sequencer is not in use
-0150            HALT   
+0141 HB3:   '3  MOVI   V2,1            ;Log that sequencer is in use
+0142            DIGLOW [.....1..]
+0143            MARK   103             ;Mark heartbeat on digital marker channel
+0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+0145            DIGLOW [.....0..]
+0146            MOVI   V2,0            ;Log that sequencer is not in use
+0147            HALT   
 
 ; Tell ASL to open file for output 
-0151 ASLOPEN: 'I MOVI  V2,1            ;Log that sequencer is in use
-0152            DIGLOW [.1......]      ;open file, XDAT bit 6
-0153            MOVI   V2,0            ;Log that sequencer is not in use
-0154            HALT   
+0148 ASLOPEN: 'I MOVI  V2,1            ;Log that sequencer is in use
+0149            DIGLOW [.1......]      ;open file, XDAT bit 6
+0150            MOVI   V2,0            ;Log that sequencer is not in use
+0151            HALT   
 
 ; Tell ASL to close output file
-0155 ASLCLOSE: 'i MOVI V2,1            ;Log that sequencer is in use
-0156            DIGLOW [.0......]      ;close file
-0157            MOVI   V2,0            ;Log that sequencer is not in use
-0158            HALT   
+0152 ASLCLOSE: 'i MOVI V2,1            ;Log that sequencer is in use
+0153            DIGLOW [.0......]      ;close file
+0154            MOVI   V2,0            ;Log that sequencer is not in use
+0155            HALT   
 
 ; Tell ASL to start recording to open output file
-0159 ASLREC: 'W MOVI   V2,1            ;Log that sequencer is in use
-0160            DIGLOW [..1.....]      ;start recording, XDAT bit 5 (7 no worky)
-0161            MOVI   V2,0            ;Log that sequencer is not in use
-0162            HALT   
+0156 ASLREC: 'W MOVI   V2,1            ;Log that sequencer is in use
+0157            DIGLOW [..1.....]      ;start recording, XDAT bit 5 (7 no worky)
+0158            MOVI   V2,0            ;Log that sequencer is not in use
+0159            HALT   
 
 ; Tell ASL to stop recording; do not close output file
-0163 ASLSTOPR: 'w MOVI V2,1            ;Log that sequencer is in use
-0164            DIGLOW [..0.....]      ;stop recording, XDAT bit 5 (7 no worky)
-0165            MOVI   V2,0            ;Log that sequencer is not in use
-0166            HALT
+0160 ASLSTOPR: 'w MOVI V2,1            ;Log that sequencer is in use
+0161            DIGLOW [..0.....]      ;stop recording, XDAT bit 5 (7 no worky)
+0162            MOVI   V2,0            ;Log that sequencer is not in use
+0163            HALT
