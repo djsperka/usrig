@@ -559,14 +559,9 @@ proc CreateSampleConfiguration()
     '----Analog, non-spiking electrode recording conditions
     'Add a waveform channel for efference copy.  This can come from either the 1401 itself or
     'from the stimulator, it doesn't really matter.
-    var tempLabel$;
     if fvDoOpto% = 1 and OptoEffCopyPort% > -1 then
         SampleWaveform(OptoCopyChannel%,OptoEffCopyPort%,5000);  'is 30000 Hz on Acute, but here was defined as 5000 Hz, could change...
-        tempLabel$ := CustomLabels$[OptoEffCopyPort%];
-        if tempLabel$ = "" then
-            tempLabel$ := "OptoCopy";
-        endif;
-        SampleTitle$(OptoCopyChannel%,tempLabel$);
+        SampleTitle$(OptoCopyChannel%,OptoPortLabel$);
     endif;
        
     
@@ -577,11 +572,7 @@ proc CreateSampleConfiguration()
     docase
     case fvLaserDiode% = 1 and StimEffCopyPort% > -1 then
         SampleWaveform(StimulatorChannel%,StimEffCopyPort%,50000);  
-        tempLabel$ := CustomLabels$[StimEffCopyPort%];
-        if tempLabel$ = "" then
-            tempLabel$ := "Stimulator Copy";
-        endif;
-        SampleTitle$(StimulatorChannel%, tempLabel$);
+        SampleTitle$(StimulatorChannel%,StimPortLabel$);
 
         fvNWavemarks% := 0;  'no wavemarks!
         fvNContinuous% := 0;  'no continuous!
@@ -593,17 +584,13 @@ proc CreateSampleConfiguration()
     endcase;
     
     SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
-	SampleTitle$(XChannel%,"Eye X");
+	SampleTitle$(XChannel%,EyeXPortLabel$);
 	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
-	SampleTitle$(YChannel%,"Eye Y");
+	SampleTitle$(YChannel%,EyeYPortLabel$);
     
     if UtilityPort% > -1 then
-        SampleWaveform(UtilityChannel%,UtilityPort%,30000);
-        tempLabel$ := CustomLabels$[UtilityPort%];
-        if tempLabel$ = "" then
-            tempLabel$ := "Utility Port";
-        endif;        
-        SampleTitle$(UtilityChannel%, tempLabel$);
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);       
+        SampleTitle$(UtilityChannel%,UtilityPortLabel$);
     endif;
 
     

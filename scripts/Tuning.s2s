@@ -2404,17 +2404,12 @@ proc CreateSampleConfiguration()
     
     
     '----Analog, non-spiking electrode recording conditions
-    var tempLabel$;
     'Add a waveform channel for efference copy.  This can come from either the 1401 itself or
     'from the stimulator, it doesn't really matter.
     'It would be nice to have these as level channels on event inputs, but that does not fly with the VSG box. (Several months later, I do not know how to interpret that comment...jj)
     if tunOptoUsePulse% = 1 and tunDoOpto% = 1 and OptoEffCopyPort% > -1 then
         SampleWaveform(OptoCopyChannel%,OptoEffCopyPort%,5000); 
-        tempLabel$ := CustomLabels$[OptoEffCopyPort%];
-        if tempLabel$ = "" then
-            tempLabel$ := "OptoCopy";
-        endif;
-        SampleTitle$(OptoCopyChannel%, tempLabel$);
+        SampleTitle$(OptoCopyChannel%,OptoPortLabel$);
     endif;
     
     docase
@@ -2428,12 +2423,8 @@ proc CreateSampleConfiguration()
         Message("You must set a UtilityPort in Config->DAQ to use the rivalry button!  Quitting!");
         halt
     case UtilityPort% > -1 then  'otherwise, utility port is a utility port
-        SampleWaveform(UtilityChannel%,UtilityPort%,30000); 
-        tempLabel$ := CustomLabels$[UtilityPort%];
-        if tempLabel$ = "" then
-            tempLabel$ := "Utility Port";
-        endif;        
-        SampleTitle$(UtilityChannel%, tempLabel$);   
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);        
+        SampleTitle$(UtilityChannel%,UtilityPortLabel$);   
     endcase;    
     
     
@@ -2442,12 +2433,8 @@ proc CreateSampleConfiguration()
     'If we re-implement this, test to see if it actually works as intended!
     docase
     case tunLaserDiode% = 1 and StimEffCopyPort% > -1 then
-        SampleWaveform(StimulatorChannel%,StimEffCopyPort%,50000);
-        tempLabel$ := CustomLabels$[StimEffCopyPort%];
-        if tempLabel$ = "" then
-            tempLabel$ := "Stimulator Copy";
-        endif;        
-        SampleTitle$(StimulatorChannel%, tempLabel$);
+        SampleWaveform(StimulatorChannel%,StimEffCopyPort%,50000);       
+        SampleTitle$(StimulatorChannel%,StimPortLabel$);
 
         tunNWavemarks% := 0;  'no wavemarks!
         tunNContinuous% := 0;  'no continuous!
@@ -2460,9 +2447,9 @@ proc CreateSampleConfiguration()
     
     
     SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
-	SampleTitle$(XChannel%,"Eye X");
+	SampleTitle$(XChannel%,EyeXPortLabel$);
 	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
-	SampleTitle$(YChannel%,"Eye Y");
+	SampleTitle$(YChannel%,EyeYPortLabel$);
     
     
 
