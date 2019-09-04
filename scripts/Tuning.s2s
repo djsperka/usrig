@@ -3359,21 +3359,33 @@ func Start%()
             
             tempSeqVarValue := tunPulsedOptoWidth*1000/SequencerPeriodMS;  'do math in float
             tempSeqVarValue% := tempSeqVarValue-2;  'now convert to integer, subtract two ticks for sequencer instructions
+            if tempSeqVarValue% < 0 then  'Do not give sequencer variable a negative duration, minimum opto width is 3 ticks
+                tempSeqVarValue% := 0;
+            endif;
             SampleSeqVar(7,tempSeqVarValue%);  'set duration of pulse in clock ticks
             printlog("Opto width is %d\n",tempSeqVarValue%);
             
             tempSeqVarValue := tunPulsedOptoIPI*1000/SequencerPeriodMS;  'do math in float
             tempSeqVarValue% := tempSeqVarValue-3;  'now convert to integer, subtract three ticks for sequencer instructions
+            if tempSeqVarValue% < 0 then  'Do not give sequencer variable a negative duration, minimum IPI width is 4 ticks
+                tempSeqVarValue% := 0;
+            endif;
             SampleSeqVar(8,tempSeqVarValue%);  'set interpulse interval in clock ticks
             printlog("Opto IPI width is %d\n",tempSeqVarValue%);
             
             tempSeqVarValue := tunPulsedOptoOnset*1000/SequencerPeriodMS;  'do math in float
             tempSeqVarValue% := tempSeqVarValue-1;  'now convert to integer, subtract one tick for sequencer instructions
+            if tempSeqVarValue% < 0 then  'Do not give sequencer variable a negative duration, minimum onset delay is 2 ticks
+                tempSeqVarValue% := 0;
+            endif;
             SampleSeqVar(9,tempSeqVarValue%);  'set pre-pulse stimulus duration in clock ticks
             printlog("Opto onset is %d\n",tempSeqVarValue%);
             
             tempSeqVarValue := stimRemaining*1000/SequencerPeriodMS;  'do math in float
             tempSeqVarValue% := tempSeqVarValue-3;  'now convert to integer, subtract three ticks for sequencer instructions
+            if tempSeqVarValue% < 0 then  'Do not give sequencer variable a negative duration, minimum stimulus following pulse offset is 4 ticks
+                tempSeqVarValue% := 0;
+            endif;
             SampleSeqVar(10,tempSeqVarValue%);  'set post-pulse stimulus duration in clock ticks
             printlog("Opto remaining time is %d\n",tempSeqVarValue%);
         endif;
