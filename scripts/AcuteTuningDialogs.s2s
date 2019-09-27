@@ -53,6 +53,7 @@ const tundlgCSDButton% := 22;
 const tundlgDanishButton% := 23;
 const tundlgTwoWayContrastButton% := 24;
 const tundlgConditionedContrastButton% := 25;
+const tundlgBorderOwnershipButton% := 16;
 
 
 const tunTypeNone$ := "None";
@@ -72,6 +73,7 @@ const tunTypeCSD$ := "CSD";
 const tunTypeDanish$ := "DN";
 const tunTypeTwoWayContrast$ := "TWC";
 const tunTypeConditionedContrast$ := "CC";
+const tunTypeBorderOwnership$ := "BO";
 var tunType$:=tunTypeNone$;
 
 const tunContextDAQ$ := "DAQ";
@@ -202,6 +204,13 @@ var tunSTPISI;
 var tunCSDNFlips%;
 var tunCSDISI;
 var tunCSDNStims%;
+
+
+'Border Ownership
+var tunBONRepeats%;
+var tunBOType%;
+var tunBOSize1;
+var tunBOSize2;
 
 
 ' Danishes
@@ -363,13 +372,14 @@ func TuningCurveScriptDialog%()
     DlgButton(tundlgDanishButton%, "Danishes", TuningCurveDanishDialog%, 23, 20);
     DlgButton(tundlgConditionedContrastButton%, "Conditioned Contrast", TuningCurveCOnditionedContrastDialog%, 23, 21);
     
-    DlgGroup("Non-Grating Stimuli", 1, 22, dlgwid%-2, 2);
+    DlgGroup("Non-Grating Stimuli", 1, 22, dlgwid%-2, 3);
     DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 23);
     DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 23, 23);
+    DlgButton(tundlgBorderOwnershipButton%, "Border Ownership", TuningCurveBorderOwnershipDialog%, 2, 24);
     
-    DlgGroup("Neuropixel JIT Stimuli", 1, 24, dlgwid%-2, 2);
-    DlgButton(tundlgStimPSTHButton%, "E-Stim PSTH", StimTrigPSTHDialog%, 2, 25);
-    DlgButton(tundlgCSDButton%, "Current Source Density", CurrentSourceDensityDialog%, 21, 25);
+    DlgGroup("Neuropixel JIT Stimuli", 1, 25, dlgwid%-2, 2);
+    DlgButton(tundlgStimPSTHButton%, "E-Stim PSTH", StimTrigPSTHDialog%, 2, 26);
+    DlgButton(tundlgCSDButton%, "Current Source Density", CurrentSourceDensityDialog%, 21, 26);
     
     DlgAllow(0xffff, 0, TuningCurveScriptDialogChanged%);
     
@@ -781,6 +791,26 @@ proc SaveTuningCurveCRGMParameters()
     SetIntRegistryValue(key$, "Balanced", tunCRGMBalanced%);
 end;
 
+
+proc GetBorderOwnershipParameters()
+	var stmp$;
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\BO";
+    
+    tunBONRepeats% := GetIntRegistryValue%(key$, "NRepeats", tunBONRepeats%);
+    tunBOType% := GetIntRegistryValue%(key$, "Type", tunBOType%);
+    tunBOSize1 := GetFloatRegistryValue(key$, "Size1", tunBOSize1);
+    tunBOSize2 := GetFloatRegistryValue(key$, "Size2", tunBOSize2);
+end;
+
+proc SaveBorderOwnershipParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\BO";
+    SetIntRegistryValue(key$, "NRepeats", tunBONRepeats%);
+    SetIntRegistryValue(key$, "Type", tunBOType%);
+    SetFloatRegistryValue(key$, "Size1", tunBOSize1);
+    SetFloatRegistryValue(key$, "Size2", tunBOSize2);
+end;
 
 proc GetStimTrigPSTHParameters()
 	var stmp$;
@@ -1592,6 +1622,68 @@ func TuningCurveCRGMDialog%()
         
         'Reset dialog OK button text on Select dialog, and note which experiment to run
         DlgValue$(-1,"Run CRGs");
+        TuningCurveScriptDialogAllowOK% := 1;  'Prepare to enable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
+        
+		if tunContext$ = tunContextDAQ$ then
+            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+            iReturn% := 1;
+		else
+			iReturn% := 1;
+		endif;
+	endif;
+	if i% = 0 then
+		tunType$ := tunTypeNone$;
+		if tunContext$ = tunContextDAQ$ then
+			iReturn% := 1;
+		else
+			iReturn% := 2;
+		endif;
+        'Reset dialog OK button text on Select dialog, and note we need to pick an expt.
+        DlgValue$(-1,"Select Expt.");
+        TuningCurveScriptDialogAllowOK% := 0;  'Prepare to disable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Disables "OK" button, -1 is sham input
+	endif;
+
+	return iReturn%;
+end;
+
+
+
+func TuningCurveBorderOwnershipDialog%()
+	var iReturn% := 0;
+	var i%;
+    var labels$[2];
+    
+    labels$[0] := "Randomize All";
+    labels$[1] := "Block By Background";
+    
+    GetBorderOwnershipParameters();
+    
+	DlgCreate("Border Ownership Parameters");
+	DlgInteger(1, "Number of Repeats", 1, 300);
+    DlgReal(2, "Size 1 (deg)",0.1,100);
+    DlgReal(3, "Size 2 (deg)",0.1,100);
+    DlgList(4,23,labels$,2,20,4);
+
+
+	i% := DlgShow(tunBONRepeats%, tunBOSize1, tunBOSize2, tunBOType%);
+	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
+    ' djs 2/4/2011
+    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+    ' before things proceed. 
+	if i% = 1 then
+        SaveBorderOwnershipParameters();
+		tunType$ := tunTypeBorderOwnership$;
+        
+        'Reset dialog OK button text on Select dialog, and note which experiment to run
+        DlgValue$(-1,"Run Border");
         TuningCurveScriptDialogAllowOK% := 1;  'Prepare to enable OK button
         TuningCurveScriptDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
         

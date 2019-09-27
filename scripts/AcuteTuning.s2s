@@ -1382,6 +1382,15 @@ proc TuningCurveLabels(iport%)
         ChanTitle$(1, "Chan 1");
         XRange(tunCRGMMinContrast, tunCRGMMaxContrast);
         
+    case tunType$ = tunTypeBorderOwnership$ then
+        
+        myTitle$ := s$ + " - Border Ownership = ";
+        myTitle2$ := " - Border Ownership = ";
+        WindowTitle$("Border Ownership - " + s$);
+        XUnits$("Stimulus #");
+        ChanTitle$(1, "Chan 1");
+        XRange(1, 32);  'there are 32 stimuli
+        
     case tunType$ = tunTypeCSD$ then
         'For this, I don't think we actually care, we just want to not throw a warning
         myTitle$ := s$ + " - CSD = ";
@@ -1739,6 +1748,50 @@ proc CreateSampleConfiguration()
         GetRepeatedParameterProgression%(tunCRGMNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunCRGMMinContrast, tunCRGMMaxContrast, 1, tunCRGMProgression%);
         tunNValues% := (tunCRGMNSteps%+1)*tunCRGMNRepeats%*(1+tunDoOpto%);
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+    case tunType$ = tunTypeBorderOwnership$ then 
+        SampleAutoName$(dataCellName$ + "_bor_000");
+        tunNAdvances% := 31;  'keep this at 31, blocks are 31 long regardless of the possible "interblocking"
+        tunNRepeats% := tunBONRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
+        if tunBOType% = 0 then
+            'Here we are setting up all 31 border values in order, they will not be "interblocked"
+            for i% := 0 to 31 do
+                tunValues[i%] := i%;
+            next
+            ShuffleAndExpand(32,tunNRepeats%,tunValuesIndices%[],1); 'Always randomize, 
+            tunNValues% := (tunNAdvances%+1)*tunNRepeats%;
+            tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+        else
+            'Here we are setting up tunValues[] so that the first 16 have the same BG color and the last 16 have the same BG color, for "interblocking"
+            for i% := 0 to 7 do
+                tunValues[i%] := i%;
+            next
+            for i% := 8 to 15 do
+                tunValues[i%] := i%+8;
+            next
+            for i% := 16 to 23 do
+                tunValues[i%] := i%-8;
+            next
+            for i% := 24 to 31 do
+                tunValues[i%] := i%;
+            next
+            'Now just explicitly build tunValuesStringified$ rather than make a function to do it
+            for i% := 1 to tunNRepeats% do
+                'Do first half
+                Shuffle%(16, tunValuesIndices%[]);
+                tunValuesStringified$ := tunValuesStringified$ + StringifyProgression$(16, tunValues, tunValuesIndices%[]) + ",";
+                'Do second half
+                Shuffle%(16, tunValuesIndices%[]);
+                for j% := 0 to 15 do  'This time, increment values by 16 to get the other BG
+                    tunValuesIndices%[j%] := tunValuesIndices%[j%] + 16;
+                next
+                tunValuesStringified$ := tunValuesStringified$ + StringifyProgression$(16, tunValues, tunValuesIndices%[]);
+                'Only add final comma if we are not done
+                if i% < tunNRepeats% then
+                    tunValuesStringified$ := tunValuesStringified$ +  ",";
+                endif;
+            next
+        endif;
+        
     case tunType$ = tunTypeStimTrigPSTH$ then
         SampleAutoName$(dataCellName$ + "_stp_000");
         tunNRepeats% := 1;
@@ -2204,6 +2257,20 @@ proc WriteParameterFile()
         Print("Values: " + tunValuesStringified$ + "\n");
         Print("\n");
         
+       
+        
+    case tunType$ = tunTypeBorderOwnership$ then
+        
+        Print("Type:                  : Border Ownership ");
+        if tunBOType% = 0 then
+            Print("(Interleaved)\n");
+        else
+            Print("(Blocked by BG color)\n");
+        endif;
+        Print("NRepeats: %d\n", tunBONRepeats%, tunSTPISI);
+        Print("Size1,Size2: %f,%f\n",tunBOSize1,tunBOSize2);
+        Print("\n");    
+        
     case tunType$ = tunTypeStimTrigPSTH$ then
         
         Print("Type:                  : Stimulus Triggered PSTH\n");
@@ -2484,6 +2551,11 @@ func Start%()
             printlog("number of triggers expected is %d\n",nTriggersExpected%);
         
         Tune$ := " -F " + tunMSeqLocation$ + tunCRGBal$ + Str$(tunCRGMFramesPerTurn%) + "," + Str$(tunCRGMFirstTerm%) + "," + Str$(tunCRGNumTerms%) + "," + Values$;  'Values$ indicates the contrasts
+        
+    case tunType$ = tunTypeBorderOwnership$ then
+        var X,Y,W,H;
+        ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"),X,Y,W,H);
+        Tune$ := " -c " + Str$(X) + "," + Str$(Y) + "," + Str$(tunBOSize1) + "," + Str$(tunBOSize2) + ",white,black," + Values$;
         
     case tunType$ = tunTypeStimTrigPSTH$ then
         'Just do a contrast tuning curve with values of 0

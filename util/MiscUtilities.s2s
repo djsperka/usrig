@@ -1329,3 +1329,34 @@ func ShuffleAndExpand(nVals%,nRepeats%,&indices%[],random%)
     next
     return 1;
 end
+
+
+
+'A function that will take a one-byte value (0-255) and will return the binary representation
+'in the first 8 indices of BINARY%[].  If BYTE is greater than 255 or less than 0, will return 0 
+'and will not fill BINARY%[], otherwise fills the first 8 indices of BINARY% and returns 1.
+func Byte2Binary(byte%,&binary%[])
+    var i%;
+    var j%;
+    
+    docase
+    case byte% > 255 then
+        message("Byte2Binary has been given a value over 255!  Error!");
+        return 0;
+    case byte% < 0 then
+        message("Byte2Binary has been given a value below 0!  Error!");
+        return 0;
+    endcase;
+    
+    for i% := 1 to 8 do
+        j% := pow(2,8-i%);
+        if byte% > j%-1 then
+            binary%[8-i%] := 1;
+            byte% := byte% - j%;
+        else
+            binary%[8-i%] := 0;
+        endif
+    next
+        
+    return 1;
+end
