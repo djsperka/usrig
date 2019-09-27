@@ -522,6 +522,8 @@ func IdleProcessing%()
             SampleText("Conditioning Stimulus," + str$(GetPlotXCoord(nTrialsCompleted%)));  'straight GetPlotXCoord should work here, nothing fancy
         case tunType$ = tunTypeConditionedContrast$ and isConditioningStimulus% = 0 then
             SampleText("T," + GetPlotXCoordCC$(nTrialsCompleted%));
+        case tunType$ = tunTypeBorderOwnership$ then
+            SampleText("T," + BorderOwnershipString$(GetPlotXCoord(nTrialsCompleted%)));
         else
             SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
         endcase;
@@ -2951,3 +2953,42 @@ func CreateFFFlashString$(NFlips%,ISI);
     return outString$;
 end
 
+
+'--------- BorderOwnershipString$ -----------
+func BorderOwnershipString$(byte%);
+    var binary%[8];
+    var outString$;
+    
+    Byte2Binary(byte%,binary%[]);
+    
+    if binary%[3] = 0 then
+        outString$ := "Sq=white,BG=black,";
+    else
+        outString$ := "Sq=black,BG=white,";
+    endif;
+    
+    docase
+    case binary%[0] = 0 and binary%[1] = 0 then
+        outString$ := outString$ + "Ori=0,";
+    case binary%[0] = 1 and binary%[1] = 0 then
+        outString$ := outString$ + "Ori=45,";
+    case binary%[0] = 0 and binary%[1] = 1 then
+        outString$ := outString$ + "Ori=90,";
+    case binary%[0] = 1 and binary%[1] = 1 then
+        outString$ := outString$ + "Ori=135,";
+    endcase
+    
+    if binary%[2] xor binary%[3] then
+        outString$ := outString$ + "LocCont=0,";  'This means that color 0 (white) is on the left/top
+    else
+        outString$ := outString$ + "LocCont=1,";  'This means that color 1 (black) is on the left/top
+    endif
+    
+    if binary%[4] = 0 then 
+        outString$ := outString$ + "Size=" + Str$(tunBOSize1);
+    else
+        outString$ := outString$ + "Size=" + Str$(tunBOSize2);
+    endif
+    
+    return outString$;
+end
