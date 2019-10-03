@@ -101,8 +101,8 @@ var fvdlgTextItem%;
 var fvStimFolder$;
 var fvStimFile$;
 var fvUseFile%;  '1 if use file, 0 if use folder
-var fvDefaultStimPath$ := "F:\\Images\\";  'Set this folder for Henry's computer - how about just F:\Images?
-var fvDefaultStimFile$ := "DefaultStimFile.txt";  'this file will be updated 
+var fvDefaultStimPath$ := "G:\\Experiments\\";  'Set this folder for Nujuj
+var fvDefaultStimFile$ := "AcuteFreeViewerStimFile.txt";  'this file will be updated 
 var fvDialogText$;
 var fvImageList$[2000];  'allow up to 2000 unique images
 var fvImageOrder%[10000];  'allow up to 10000 images to be presented total
@@ -261,7 +261,8 @@ func FreeViewerScriptDialog%()
     endif
     
         
-    DlgCreate("FreeViewer Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
+    DlgCreate("FreeViewer Parameters", 0, 0, 0, 0, -1, 2, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
+                                                               'centering dialog relative to screen 2, because that's where Spike 2 usually lives on Nujuju.
     DlgGroup("Stimulus and Fixation", 1, 1, 50, 6);
     DlgInteger(1, "Number of repeats", 1, 1000, 0, 2);
     DlgCheck(2, "Random Progression?", 0, 3);
@@ -446,7 +447,7 @@ proc InitializeWindows()
     var WindowStep;
     
     ' Make spike2 use all of monitor 1
-    View(App()).Window(0, 0, 100, 100, 1);
+    'View(App()).Window(0, 0, 100, 100, 1);
     
 	'Open the data sampling window
     DataWindow% := FileNew(0,4);
@@ -613,6 +614,7 @@ func Start%()
     'Use GRPP to get a list of indices determining presentation order - this is easier than writing new code, even if it does some extra stuff
     fvNValues% := fvFileLen%*fvNRepeats%;
     GetRepeatedParameterProgression%(fvFileLen%, fvNRepeats%, dummyResult[], fvImageOrder%[], 1, 2, 0, fvRandomProgression%);  'We will ignore dummyResult, which holds values between (1) and (2) that are not logspaced (0)
+    printlog("Creating image list file %s\n",ImageFileLoc$);
     'Create the file to send to the VSG, use order created in line above
     fh% := FileOpen(ImageFileLoc$,8,1);  'Open a new text file for writing, replace current file
     printlog("result of opening text file is %d\n",fh%);
