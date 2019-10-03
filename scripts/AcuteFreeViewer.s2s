@@ -1,0 +1,1183 @@
+' $Id$
+
+const fvCVSID$ := "$Id$";
+
+
+'Include Files
+
+#include "../util/ChannelUtilities.s2s"
+#include "../util/UsreyUtil.s2s"
+#include "../util/LogUtilities.s2s"
+#include "../util/MiscUtilities.s2s"
+#include "UsreyDAQ.s2s"
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' FreeViewer script START
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+' Overall script control vars
+var Pause% := 0;
+var UseTwo1401s% := 0;
+
+' Channel numbers and handles
+var StimHandle%;			' handle for stimulus application
+var DataWindow%;		
+var XChannel%;
+var YChannel%;
+
+var FrameChannel%;
+var StimChannel%;
+var ReadyChannel%;
+var DigitalLaserChannel%;
+var OptoCopyChannel%;
+var SequencerPeriodMS;
+var StimulatorChannel%;
+var UtilityChannel%;
+
+' XY window stuff
+var iMonitorChannel%;	' channel number for monitor position display in xy window
+var iStimWindowChannel%;
+
+' Display stuff
+var fvBackgroundColor$ := "gray";  'for right now, let's not even allow changing this...
+
+' dummy vars
+var iScript%;
+
+
+var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
+var tLast:=-1;		' last time we checked for a trigger. 
+var vTrigger;		' set by NextTime to indicate trigger transition
+var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
+var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
+var tTrigger:=-1;	' temp var for newly discovered trigger times
+var tInterTrialTime := 0;	' Time spent waiting between trials (i.e. after screen is blank, but before image is presented)
+var tRise, tFall; 
+var tImageUp;
+
+' Constants for states (A bunch of these have been deprecated without being removed form the variable list, whatevs
+
+const stateVSGWait%:=0;		           ' Wait for VSG to send ready signal
+const stateWaitForAcquisition%:=1;	   ' Waiting for subject to acquire fixation on screen
+const stateAcquisitionTO%:=2;          ' Wait through acquisition timeout
+const stateWaitForStimOn%:=3;		   ' Wait for stimulus return trigger (on)
+const stateHoldImage%:=4;		       ' Holding fixation on screen while image is up
+const stateWaitForStimOff%:=5;		   ' Wait for stimulus return trigger (off)
+const stateInterStimulusInterval%:=6;  ' Wait until it is time to present the next stimulus
+const stateLookAwayTO%:=7;             ' Wait through timeout for breaking fixation
+const stateTrialCompleted%:=8;		   ' trial has been completed successfully
+const statePrepareOpto%:=9;            ' Set up opto on a trial-by-trial basis
+const stateBeginImagePeriod%:=10;      ' Determine if we will do opto this period, branch
+const stateOptoPeriod%:=11;
+const stateOptoOff%:=12;
+const stateStimulusPlaying%:=13;
+const stateRewardPeriod%:=14;
+const stateWaitReward%:=15;
+const stateSendNeuropixelStart%:=16;
+const stateRequestStim%:= 17;
+
+
+var iState% := stateVSGWait%;	' present state
+var stateBegin% := 1;  'For fun, in this script let's keep track of whether it is the first time through a state, for logging purposes
+
+var nTrialsStarted%:=0;
+var nTrialsCompleted%:=0;
+var nTrialsAborted% :=0;	
+
+var tic;  'Set a tick value equal to the duration of one clock tick in seconds, used to prevent finding
+          'the same "pulse" twice
+var pulseFound%;
+'var pulseFoundSlave%;
+var tOpt;
+
+'variables for reading image files
+var fvFileLen%; 
+var fvdlgFileSelectButton% := 100;
+var fvdlgFolderSelectButton% := 101;
+var fvdlgTextItem%;
+var fvStimFolder$;
+var fvStimFile$;
+var fvUseFile%;  '1 if use file, 0 if use folder
+var fvDefaultStimPath$ := "F:\\Images\\";  'Set this folder for Henry's computer - how about just F:\Images?
+var fvDefaultStimFile$ := "DefaultStimFile.txt";  'this file will be updated 
+var fvDialogText$;
+var fvImageList$[2000];  'allow up to 2000 unique images
+var fvImageOrder%[10000];  'allow up to 10000 images to be presented total
+var dummyResult[10000];  'This just lets me run GRPP to get the index order on fvImageOrder%[] instead of writing new code, just allows return of dummy values
+
+' Wavemarks and continuous ports
+var fvNWavemarks% := 0;
+var fvWavemarkPorts%[16];
+var fvNContinuous% := 0;
+var fvContinuousPorts%[16];
+
+' Dialog box variables
+var fvRandomProgression%;
+var fvNRepeats%;
+var fvTrialISI;
+var fvStimDuration;
+var fvNValues%;
+var fvNAdvances%;
+var fvDoNeuropixel%;
+
+var autoNameStr$;
+var neuropixelStatus%;
+' ============================================================================ '
+' Serial Port constants
+' ============================================================================ '
+const serialCOMPort% := 8; 
+const serialBaudRate% := 115200;
+const serialDataBits% := 8;
+const serialParity% := 0;
+const serialStopBits% := 1;
+const serialFlowCtrl% := 0;
+
+
+GetFreeViewerScriptParameters();  'We will just get these right off the bat, this supports the pre-dialog box
+                                  'that warns about AlwaysLooking - though this pre-dialog is currently disabled
+
+
+' Init logging
+LogInit(1);
+
+
+iScript% := FreeViewerScriptDialog%();
+
+
+'halt;  'this is just so I can test out the dialog box but not go any farther... TODO - COMMENT THIS OUT, DUH
+if iScript% = 1 then
+    LogInfo("Proceed with DAQ.");
+else
+	LogInfo("User cancel - exit gracefully\n");
+	Halt;
+endif;
+
+
+' Assign channel numbers for eye X,Y and trigger. 
+XChannel% := 25;
+YChannel% := 26;
+ReadyChannel% := 40;
+FrameChannel% := 41;
+StimChannel% := 43;
+StimulatorChannel% := 46;
+DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
+OptoCopyChannel% := 49;
+UtilityChannel% := 39;
+
+ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
+
+
+' Fetch electrode information. 
+if UsePlexon% = 1 or JoePlexon1% = 1 or JoePlexon2% = 1 then
+    UseTwo1401s% := 1;
+else
+    UseTwo1401s% := 0;
+endif;
+
+
+docase
+case UsePlexon% = 1 then
+    fvNWavemarks% := 13;  '13 wavemarks on the micro for plexon
+    fvNContinuous% := 0;  'no continuous on the micro for plexon
+    var i%;
+    for i% := 0 to 12 do
+        fvWavemarkPorts%[i%] := i%;
+    next;
+case UsePlexon7WM15CN% = 1 then 
+    fvNWavemarks% := 7;  '7 wavemarks
+    fvNContinuous% := 15;  '15 continuous
+    for i% := 0 to 7 do
+        fvWavemarkPorts%[i%] := i%;
+    next;
+else
+    fvNWavemarks% := GetWavemarkPorts%(fvWavemarkPorts%[]);
+    fvNContinuous% := GetContinuousPorts%(fvContinuousPorts%[]);
+endcase;
+
+
+'If we are not linking the two 1401s together, just use the standard order of operations:
+'1) create sampling configuration, 2) Initialize windows, 3) Initialize/run toolbar.
+'However, if we are linking the 1401s we have to do this in a different order, because we have to open up the second
+'instance of Spike 2 BEFORE setting up the sampling configuration/windows on the first instance.  Doing this in the
+'wrong order results in a non-fatal error in the second Spike2 instance indicating that the file which is preparing
+'to be recorded in the first instance cannot be accessed, despite no explicit attempt to access any such thing.
+'Hence, for the dual-1401 setups, we first initialize the toolbar, which has a specialty button "Start Plexon".  StartPlexon%()
+'launches the second instance and the associated script, and both scripts move forward independently to create their own
+'sampling configuration, initialize their own windows and are ready to have sampling started.  Note well that sampling
+'must be started on the POWER 1401/SLAVE 1401 (the second, non-dominant instance of Spike2) FIRST and on the 
+'MICRO 1401/MASTER 1401 (the first,  dominant instance of Spike 2) SECOND.  Starting sampling on the Micro will run 
+'the VSG program (Fixstim) which gives the sampling trigger and sets the experiment in motion.
+if UseTwo1401s% = 0 then
+    CreateSampleConfiguration();
+
+    ' Get display windows ready
+    InitializeWindows();
+    
+    tic := View(DataWindow%).BinSize(ReadyChannel%);
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+else
+    InitializeToolbar();
+endif;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' FreeViewer script END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+'From here on out, it's just various necessary functions
+
+
+' FreeViewerScriptDialog
+
+func FreeViewerScriptDialog%()
+	var i%;
+	var iReturn%;
+
+    'Since the opto is incorporated into this dialog (for now) we don't have to do a separate parameter grab for opto
+    GetFreeViewerScriptParameters();
+    
+    
+    if fvUseFile% = 0 then
+        if Len(fvStimFile$) > 0 then
+            fvDialogText$ := "Use FILE: " + fvStimFile$;
+        else
+            fvDialogText$ := "No File/Folder Selected";
+        endif
+    else
+        if Len(fvStimFolder$) > 0 then
+            fvDialogText$ := "Use FOLDER: " + fvStimFolder$;
+        else
+            fvDialogText$ := "No File/Folder Selected";
+        endif
+    endif
+    
+        
+    DlgCreate("FreeViewer Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
+    DlgGroup("Stimulus and Fixation", 1, 1, 50, 6);
+    DlgInteger(1, "Number of repeats", 1, 1000, 0, 2);
+    DlgCheck(2, "Random Progression?", 0, 3);
+    DlgReal(3, "Stimulus Duration, s", 0.05, 100, 0, 4);
+    DlgReal(4, "Interstimulus Interval, s", 0.05, 100, 0, 5);
+    DlgCheck(5, "Do NeuroPixel?", 0, 6);
+
+    DlgGroup("Images", 1, 7, 50, 3);
+    fvdlgTextItem% := DlgText(fvDialogText$, 3, 8, 40);
+    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 9);
+    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 23, 9);
+       
+    'Right now we don't seem to need a callback, it's ready directly below if we do 
+'    DlgAllow(0xffff, 0, FreeViewerScriptDialogChanged%);
+
+    i%:=DlgShow(fvNRepeats%, fvRandomProgression%, fvStimDuration, fvTrialISI, fvDoNeuropixel%);
+    
+    if i% = 1 then
+		SaveFreeViewerScriptParameters();
+                
+        iReturn% := 1;  'set return value to success, otherwise we'll just quit.
+        
+	endif;
+
+	return iReturn%;
+end;
+
+'func FreeViewerScriptDialogChanged%(item%)     
+'    return 1;
+'end
+
+
+
+proc GetFreeViewerScriptParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\AcuteFreeViewer";
+    
+    fvRandomProgression% := GetIntRegistryValue%(key$, "RandomProgression", fvRandomProgression%);
+    fvNRepeats% := GetIntRegistryValue%(key$, "NRepeats", fvNRepeats%);
+    fvTrialISI := GetFloatRegistryValue(key$, "TrialISI", fvTrialISI);
+    fvUseFile% := GetIntRegistryValue%(key$, "UseFile", fvUseFile%);
+    fvStimFolder$ := GetStringRegistryValue$(key$, "StimFolder", fvStimFolder$);
+    fvStimFile$ := GetStringRegistryValue$(key$, "StimFile", fvStimFile$);
+    fvStimDuration := GetFloatRegistryValue(key$, "StimDuration", fvStimDuration);
+
+end;
+
+proc SaveFreeViewerScriptParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\AcuteFreeViewer";
+    
+    SetIntRegistryValue(key$, "RandomProgression", fvRandomProgression%);
+    SetIntRegistryValue(key$, "NRepeats", fvNRepeats%);
+    SetFloatRegistryValue(key$, "TrialISI", fvTrialISI);
+    SetIntRegistryValue(key$, "UseFile", fvUseFile%);
+    SetStringRegistryValue(key$, "StimFolder", fvStimFolder$);
+    SetStringRegistryValue(key$, "StimFile", fvStimFile$);
+    SetFloatRegistryValue(key$, "StimDuration", fvStimDuration);
+    
+end;
+
+
+
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc CreateSampleConfiguration()
+	var i%;
+    var temp1$;
+    var temp2$;
+    var od;
+    var key$;
+    var eof% := 1;
+    
+    var masterTxt$;
+    var slaveTxt$;
+    
+
+    docase
+    case UseTwo1401s% = 1 and UsePlexon% = 1 then
+        masterTxt$ := "MICRO";
+        slaveTxt$ := "POWER";
+    case UseTwo1401s% = 1 and UsePlexon% = 0 then  'this would be for any two-1401 scenario for Joe
+        masterTxt$ := "MASTR";
+        slaveTxt$ := "SLAVE";
+    else
+        'do not need to set these variables
+    endcase
+    
+	SampleClear(); 'Set standard sampling state
+    SampleChannels(64);  '32 does not work, we need more!
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    if fvDoNeuropixel% = 1 then
+        SampleBigFile(0);  'Create an .smr file INSTEAD of .smrx so that Scottie's analysis suite can read it, max file size is 2GB
+        'SampleBigFile(1);  'Create a "big" .smr file, max file size 1 TB.  It is not known if Scottie's analysis suite can read these.
+    endif;
+    
+    ' Set path for new data files, and for those saved automatically
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    
+    
+    key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    
+    DoSampleAutoName(key$,"imgs","img",masterTxt$,slaveTxt$);
+       
+    SampleAutoFile(1);  'Enable automatic file naming
+    
+    ' Text marks make extraction easier
+    SampleTextMark(200);  'Channel 30 is textmark channel
+    
+
+	'----Event Channel recording definitions----
+    
+   	SampleEvent(FrameChannel%, 0, 2, 3600);
+	SampleComment$(FrameChannel%,"Frame");
+	SampleTitle$(FrameChannel%,"Frame");
+
+	SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+	SampleComment$(ReadyChannel%,"Ready");
+	SampleTitle$(ReadyChannel%,"Ready");
+	
+	SampleEvent(StimChannel%, 3, 2, 3600); 'Trigger channel, level
+	SampleComment$(StimChannel%,"Stim");
+	SampleTitle$(StimChannel%,"Stim");
+    
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);       
+        SampleTitle$(UtilityChannel%,UtilityPortLabel$);
+    endif;
+
+    
+    
+    
+    
+    '----Set up "spiking" Electrode Channels----
+    docase
+    case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
+        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
+    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
+        CreateElectrodeSamplingConfiguration7WM15CN(); 
+    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
+        CreateElectrodeSamplingConfiguration15WF15WF2k();
+    case UsePlexon24WF% = 1 then
+        CreateElectrodeSamplingConfiguration24WF(); 
+    case JoePlexon1% = 1 then
+        CreateJoePlexon1SamplingConfigurationMaster();
+    case JoePlexon2% = 1 then
+        message("Electrode Configuration JoePlexon2 is not yet implemented!");
+        halt;
+    else
+        CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
+    endcase;
+    
+        
+	
+    
+	SampleSequencer(script$ + "tuning.pls");
+	docase
+    case UsePlexon% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
+        SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
+    case JoePlexon1% = 1 or JoePlexon2% = 1 then
+        SampleOptimise(0,1,4,0,0,0,0);  'copying the micro settings...not necessarily the be-all end-all, just trying to see if anything works
+    case UsePlexon15WF15WF2k% = 1 or UsePlexon24WF% = 1 then 
+        SampleOptimise(2,2,9,1,50,0,1);  'for big-data, need to set for burst mode, Power1401-3 setting is not clear because help does not list it.  9?  8 for micro1401-3?
+    else
+        SampleOptimise(2,2,Get1401Type%(),2,50);  'otherwise: full optimize timing, channels may have different rates, Power1401 (lowest common denominator, so eh), low usPerTime of 2, high usPerTime of 50
+    endcase;
+	SampleMode(1); 'Continuous sampling
+    
+end;
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc InitializeWindows()
+    var i%;
+    var WindowStep;
+    
+    ' Make spike2 use all of monitor 1
+    View(App()).Window(0, 0, 100, 100, 1);
+    
+	'Open the data sampling window
+    DataWindow% := FileNew(0,4);
+    if DataWindow% < 0 then
+        PrintLog("FileNew Error: %s\n", Error$(DataWindow%));
+    endif
+
+	Window(0,48,50,95);
+    XRange(0, 30);
+	View(DataWindow%).WindowVisible(1);
+
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitializeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+    if UseTwo1401s% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
+        ToolbarSet(1,"Sample start",Start%);
+    endif;
+	ToolbarSet(2,"Sample stop", Stop%);
+	ToolbarSet(3,"Pause stimuli",PauseStimuli%);
+	ToolbarSet(4,"Resume stimuli",ResumeStimuli%);
+    ToolbarSet(5,"Select Wavemarks",SelectWavemarkDialog%);
+	ToolbarSet(6,"Quit",Quit%);
+	ToolbarEnable(2,0);
+	ToolbarEnable(3,0);
+	ToolbarEnable(4,0);
+	Toolbar("Go",0x3ff);
+
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func StartPlexon%()
+    
+    
+    'Start the Power1401!  This is a bit cumbersome, and I'm not sure it's transferable, but it's a start, perhaps.
+    var fp$;  'to hold current file path
+    var fp2$;  'to hold destination file path
+    fp$ := FilePath$();  'get current file path
+    printlog("%s\n",fp$);  'and tell the world what it was
+    var fpok%;
+    fpok% := FilePathSet("F:/work/AlertRig/Spike2Scripts");  'change the file path (Henry)
+    if fpok% <> 0 then
+        fpok% := FilePathSet("E:/work/AlertRig/Spike2Scripts");  'change the file path (Joe)
+    endif
+    if fpok% <> 0 then
+        message("Failed to find expected file structure in StartPlexon%()!  Quitting!");
+        halt;
+    endif
+        
+    fp2$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp2$);  'by telling the world about it (hint: it works)
+    
+    'Must run this BEFORE the PROGRUN command, because both this sequence AND SetPlexon...
+    'access the same directory, and this was causing conflicts because they were running
+    'simultaneously.  Here, CreateSampleConfiguration is done accessing the directory before
+    'SetPlexon... is started, and everything is kosher.
+    CreateSampleConfiguration();    
+    
+    docase
+    case UsePlexon% = 1 then
+        progrun("sonview.exe /M /u2 SetPlexonRecording1824OnPower1401.s2s");  'run the program, .s2s file is now on default path by design
+    case JoePlexon1% = 1 then
+        progrun("sonview.exe /M /u2 SetJoePlexon1RecordingOnSlave.s2s");  'run the program, .s2s file is now on default path by design
+    case JoePlexon2% = 1 then
+        message("Program to start slave 1401 not yet written for Joe2!  Quitting!");
+        halt; 
+        'This is what we should call the program, then we can just uncomment this line
+        'progrun("sonview.exe /M /u2 SetPlexonRecording1824OnPower1401.s2s");  'run the program, .s2s file is now on default path by design
+    endcase
+    
+    FilePathSet(fp$);  'change the file path back to what it was
+    fp$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp$); 'and tell the world to verify
+    
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+
+    ' Get display windows ready
+    InitializeWindows();    
+    
+    return 1; 'stay in toolbar
+    
+end
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+	var cmdLine$;
+    var Opener$;
+    var ProgName$;
+    var RemoteArg$:="";     'Extra arg needed if vsg is not on local machine...
+    var BGColor$;
+    var Dist2Screen$;
+    var TriggerPort$;
+    var ImageFileLoc$;  'We can just set this outright
+    ImageFileLoc$ := fvDefaultStimPath$ + fvDefaultStimFile$;
+    var FixationArg$;
+    var ImageArg$;
+    var Verbose$:=" -v ";  'For now, verbose is always on 
+    'vars for opto setup
+    var voltageInteger%;
+    var stimRemaining;
+    var tempNPulses%;
+    var tempCount%;
+    var tempSeqVarValue;
+    var tempSeqVarValue%;
+    var i%;
+    var j%;
+    var returnToPath$;  'this is where we start, we'll move back here after reading the folder
+    var fh%;
+    var readInputFile% := 1;
+    var readTemp$;
+    
+    'For serial communications with Neuropixel, use the same values (I think??) but do not send initial message
+    if fvDoNeuropixel% =  1 then
+        SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
+    endif;
+    
+    
+    'Get list of images, either from folder or from file, and create a randomized order (via list of indices),
+    'write entire randomized trial-by-trial image list to text file for passing to VSG
+    if fvUseFile% = 0 then  'if using folder
+        returnToPath$ := FilePath$();  'keep track of current directory
+        FilePathSet(fvStimFolder$);  'move to selected folder
+        fvFileLen% := FileList(fvImageList$[],-1,"*.bmp");  'return the list of all .bmps and the number in fvFileLen%
+        FilePathSet(returnToPath$);  'return current directory to where it was
+        'and finally, convert fvImageList$[] to full-path
+        for i% := 0 to fvFileLen%-1 do
+            fvImageList$[i%] := fvStimFolder$ + fvImageList$[i%];  'fvStimFolder$ will have the trailing slashie
+        next
+    else 'if using file
+        fvFileLen% := 0;
+        fh% := FileOpen(fvStimFile$,8,0);  'open file for reading only
+        if fh% < 0 then
+            message("File " + fvStimFile$ + " failed to open!!!  Quitting!");
+            halt
+        endif;
+        while readInputFile% do
+            j% := Read(readTemp$);
+            if j% = 1 then
+                fvImageList$[fvFileLen%] := readTemp$;  'by expectation, these will have full paths
+                fvFileLen% += 1;
+            else
+                readInputFile% := 0;
+            endif;
+        wend
+        FileClose(fh%);
+    endif;
+    'Now, regardless of source, fvImageList$ contains a full path to a list of images and fvFileLen% contains the number of images
+    'Use GRPP to get a list of indices determining presentation order - this is easier than writing new code, even if it does some extra stuff
+    fvNValues% := fvFileLen%*fvNRepeats%;
+    GetRepeatedParameterProgression%(fvFileLen%, fvNRepeats%, dummyResult[], fvImageOrder%[], 1, 2, 0, fvRandomProgression%);  'We will ignore dummyResult, which holds values between (1) and (2) that are not logspaced (0)
+    'Create the file to send to the VSG, use order created in line above
+    fh% := FileOpen(ImageFileLoc$,8,1);  'Open a new text file for writing, replace current file
+    printlog("result of opening text file is %d\n",fh%);
+    for j% := 0 to fvNValues% -1 do
+        view(fh%).Print("%s\n",fvImageList$[fvImageOrder%[j%]]);
+    next
+    FileClose(fh%);  'Close the VSG image list file
+	
+    
+	'start sampling
+    if UseTwo1401s% = 1 then
+        SampleStart(1);  'set sampling to start on a trigger
+    else
+    	SampleStart(0); 'Start sampling now
+    endif;
+    
+    'Set sequencer variable 5, this value is appropriate for no rivalry
+    SampleSeqVar(5, 0);
+
+    
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");
+    
+    SequencerPeriodMS := SampleSeqClock(1);  'Get the clock period of the sequencer, in MS, must do this after starting sampling
+    
+
+    'Begin building the command line argument
+    Opener$ := "cmd /k " + bin$;
+    
+    ' Get remote args if needed
+    if GetUseRemoteStimulus%() = 1 then
+        RemoteArg$  := " " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
+    endif;
+        
+    if GetUseRemoteStimulus%() = 1 then
+        ProgName$ := "\\remote.exe "; 'set program name for one VSG
+    else
+        ProgName$ := "\\fixstim.exe "; 'set program name for one VSG
+    endif;
+        
+    
+    'Set background color
+    BGColor$ := " -b " + fvBackgroundColor$;
+    
+    'Set distance to screen
+    Dist2Screen$ := " -d " + GetDistanceToScreenMM$();
+    
+    'Set trigger port
+    TriggerPort$ := " -p 2 ";  'This one's hard-coded for now
+    
+    'Turn on verbose
+    Verbose$ := " -v ";
+    
+    'For now, explicitly no fixation
+    FixationArg$ := "";
+    'FixationArg$ := "-f 0,0,1,red";  'this is a sample, if we want fixation later
+    
+    var x,y,w,h;
+    ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"), x, y, w, h);
+    
+    'Syntax here is "-i file,x,y,dur,nLevels,[loWater],[hiWater] ... apparently for the cache values (lo/hiWater) use 0,1 which forces pre-load
+    ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(x) + "," + Str$(y) + "," + Str$(fvStimDuration) + ",250,0,1 ";
+    
+
+    'Build command line, any values that are unnecessary will be empty, so the build should work no matter what type of command line is required
+    ' ------ Here is a sample command line ------
+    'cmdLine$ := "remote.exe 127.0.0.1 7000 fixstim -v -d 500 -i c:/Users/location/stimulus-images.txt";  'This has no fixation point
+    'cmdLine$ := "remote.exe 127.0.0.1 7000 fixstim -v -d 500 -f 0,0,1,red -i c:/Users/location/stimulus-images.txt";  'This has a fixation point
+    'cmdLine$ := "remote.exe 127.0.0.1 7000 fixstim -v -d 500 -i c:/Users/location/stimulus-images.txt",0,0,0.2,250,0,1;  'This has the new syntax for the -i
+    ' ------ So that looks like this ------
+    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + ImageArg$;  'Not sure about the TriggerPort and BGColor but this might work.
+    
+    
+    ' Initial text marks
+    ' djs Always version 3. NO difference if maintainmode is used or not. 
+    SampleText("AcuteFreeViewer,3," + str$(Len(cmdLine$)));
+    SampleText(fvCVSID$);
+    for i% := 1 to Len(cmdLine$) step 100 do
+        SampleText(Mid$(cmdLine$, i%, 100));
+    next
+
+   
+    
+	'Begin the stimulus program. It will take a few seconds for the VSG to initialize.
+	PrintLog(cmdLine$+"\n");
+    printlog("num advances is %d and num repeats is %d\n",fvNAdvances%,fvNRepeats%);  
+
+    StimHandle% := ProgRun(cmdLine$, 1);
+    if StimHandle% <0 then 
+        Message("Could not start stimulus."); 
+        halt; 
+    endif
+    
+	
+	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);
+	ToolbarEnable(1,0);
+	ToolbarEnable(5,0);
+	ToolbarEnable(6,0);
+	View(DataWindow%);
+	Yield(5);
+return 1;
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+    var serialStatus%;
+    
+	' Disable idle process func
+	ToolbarSet(0,"");
+    
+    ' Tell stim app to shut down.
+	SafeSampleKey("Q");
+    
+    docase
+    case fvDoNeuropixel% = 1 and neuropixelStatus% = 1 then 
+        serialStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "STOP", "\n");
+        SerialClose(serialCOMPort%);
+        if serialStatus% = 0 then
+            message("Warning! SpikeGLX recording may not have stopped!\nPlease manually stop SpikeGLX!");
+        endif;
+    case fvDoNeuropixel% = 1 and neuropixelStatus% = 0 then 'On failure to start recording, neuropixelStatus% will be 0, don't try stopping recording that didn't start
+        SerialClose(serialCOMPort%);
+    endcase;
+    
+    
+	SampleStop();
+    
+    
+    ProgKill(StimHandle%);
+    while ProgStatus(StimHandle%) > 0 do
+        Yield();
+    wend
+
+    
+    
+	' Write parameter file
+	WriteParameterFile();
+
+	' Increment daily totals and save then
+	TotalTrials% += nTrialsStarted%;
+	SaveDailyTotals();
+    
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func PauseStimuli%();
+Pause% :=1;
+ToolbarEnable(3,0);
+ToolbarEnable(4,1);
+return 1;
+end
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func ResumeStimuli%();
+Pause% :=0;
+ToolbarEnable(3,1);
+ToolbarEnable(4,0);
+return 1;
+end
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func SelectWavemarkDialog%()
+	var iReturn%:=1;
+	var i%;
+    var whichWaveMark% := 1;
+	DlgCreate("Select Wavemark");
+	DlgInteger(1, "Input Wavemark to view, -1 for all", -1, 256);  'max is based on highest possible wavemark value
+    
+	i% := DlgShow(whichWaveMark%);
+
+	if i% = 1 then
+		PrintLog("SelectWavemarkDialog - user hit OK\n");
+        for i% := 0 to fvNWavemarks%-1 do  'for each wavemark channel
+            View(DataWindow%).MarkMask(i%+1,0,0,-1);  'exclude all codes on layer 0
+            View(DataWindow%).MarkMask(i%+1,0,1,whichWaveMark%);  'then include requested code (or all, if -1) on layer 0
+        next;       
+	endif;
+	if i% = 0 then
+		PrintLog("SelectWavemarkDialog - user hit Cancel\n");
+	endif;
+    'PrintLog("Return value is %d\n", iReturn%);  'always return 1, so don't bother reporting this
+	return iReturn%;
+end;
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc WriteParameterFile()
+	var parFileName$;
+	var parFileBase$;
+	var parHandle%;
+    var ii%;
+
+
+	' get filename for parfile (data file + "par" extension) and open it
+	View(DataWindow%);
+	parFileBase$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
+	parFileName$ := parFileBase$ + ".par";
+	PrintLog("par filename is " + parFileName$ + "\n");
+	parHandle% := FileOpen(parFileName$, 8, 1);
+
+	' write general info - eye coil gains, dist to screen
+	Print("Tuning parameters for %s\n\n", parFileBase$);
+
+	Print("General information\n");
+	Print("-------------------\n\n");
+	Print("Distance to screen (MM)    : %s\n", GetDistanceToScreenMM$());
+	Print("Eye coil software gain (X) : %f\n", DegreesPerVoltX);
+	Print("Eye coil software gain (Y) : %f\n", DegreesPerVoltY);
+	Print("Eye coil sampling freq (Hz): %d\n", EyeCoilSamplingFrequency%);
+    Print("Wavemark ports             : %s\n", GetWavemarkPorts$());
+    Print("Continuous ports           : %s\n", GetContinuousPorts$());
+	Print("Reward size (ms)           : %d\n", GetJuiceRewardMS%());
+	Print("Background color           : %s\n", fvBackgroundColor$);
+    
+	Print("\nExperimental parameters\n");
+	Print("-------------------------\n\n");
+
+	Print("Random Progression?                      : %d\n", fvRandomProgression%);
+	Print("Number of repeats                        : %d\n", fvNRepeats%);
+    Print("Stim duration (s)                        : %f\n", fvStimDuration);
+	Print("Inter-image interval                     : %f\n", fvTrialISI);  
+    
+    
+    'Write out image list
+    Print("\nImage List\n");
+    for ii% := 0 to fvFileLen%-1 do 
+        Print("Image %d: %s",ii%+1,fvImageList$[ii%]);
+    next
+    
+    
+	' close parfile
+	FileClose(0);
+
+end;
+
+
+
+
+func IdleProcessing%()
+	var iStatus% := 1;	
+    var xval;
+    var yval;
+    var xind%;
+    var yind%;
+    
+	tNow := View(DataWindow%).MaxTime();
+    
+    ' First time through (tLast<0) just update tLast. Crosstalk on vsg dig outputs leads to erroneous
+    ' triggers. Maybe this will help. 
+    'unused
+'    if tLast < 0 then
+'        tLast := 1;
+'        return 1;
+'    endif
+    
+
+	docase 
+    case iState% = stateVSGWait% then
+        ' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
+        if stateBegin% = 1 then
+            LogStatus("VSGWait", "Begin waiting for Ready Pulse from VSG at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
+        
+        if pulseFound% = 1 then
+            LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
+            Yield(1.0);
+            tLastTrigger := tFall;
+            docase
+            case fvDoNeuropixel% = 1 then
+                ChangeStateTo(stateSendNeuropixelStart%, tFall);
+            else
+                ChangeStateTo(stateRequestStim%, tFall);
+            endcase
+            
+        else
+            if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
+                LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
+                tLastTrigger := tFall;
+            endif;
+        endif;
+        
+        
+    case iState% = stateSendNeuropixelStart% then
+        'We would do one of two things here, either trigger a DIG I/O line up, or send a 
+        'serial instruction (and wait for a return serial acknowledgment), but we are not
+        'certain at this moment that either will work.
+        'autoNameStr$ := FileName$(2) + FileName$(3) + FileName$(4);
+        autoNameStr$ := dataDataSet$ + "_" + FileName$(-4);
+        printlog("Sending START to Neuropixel, using name string '%s'\n",autoNameStr$);
+        
+        neuropixelStatus% := SendSerialMsgNeuropixel(serialCOMPort%, "START " + autoNameStr$, "\n");
+        if neuropixelStatus% = 0 then
+            message("SpikeGLX recording did not successfully start!  Quitting!"); 
+            Stop%();
+        endif;
+        
+        'ChangeStateTo(statePrepareOpto%, tFall);  'this will allow us to go forward in the event we accidentally check the DoNeuropixel box
+        ChangeStateTo(stateRequestStim%, tNow);
+        
+        
+    case iState% = stateRequestStim% then
+        LogStatus("RequestStim", "Request stimulus at " + str$(tNow));
+        SafeSampleKey("S");
+        ChangeStateTo(stateWaitForStimOn%, tNow);
+        
+        
+    case iState% = stateWaitForStimOn% then
+        'Wait for the stimulus to come on
+        if stateBegin% = 1 then
+            LogStatus("WaitForStimOn", "Waiting for stimulus on at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        if View(DataWindow%).FindRisingEdge%(StimChannel%, tStateStart, tTrigger) = 0 then
+            ' Stimulus is up
+            LogStatus("WaitForStimOn", "Stimulus started at " + str$(tTrigger));
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateStimulusPlaying%, tTrigger);
+            sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tTrigger);
+            tImageUp := tTrigger;
+            'SampleText("Stim On",tTrigger);  'TODO - see if Henry wants this sampletext
+            
+        endif
+           
+        
+        
+    case iState% = stateStimulusPlaying% then
+        'Wait for period to be over
+        if stateBegin% = 1 then
+            LogStatus("StimulusPlaying", "Stimulus playing at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        if tNow >= tStateStart + fvStimDuration then
+            ' turn off stimulus and advance it
+            LogStatus("StimulusPlaying", "Turn off and advance stimulus.");
+            SafeSampleKey("X");
+            ChangeStateTo(stateWaitForStimOff%,tNow);
+        endif
+        
+        
+    case iState% = stateWaitForStimOff% then
+        'Wait for the stimulus to turn off
+        if stateBegin% = 1 then
+            LogStatus("WaitForStimOff", "Waiting for stimulus off at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        if View(DataWindow%).FindFallingEdge%(StimChannel%, tLastTrigger, tTrigger) = 1 then
+            SampleText("+",tTrigger);  'Note end of stimulus
+            tLastTrigger := tTrigger;
+            LogStatus("WaitForStimOff", "Stimulus off at " + str$(tLastTrigger));
+            ChangeStateTo(stateTrialCompleted%, tLastTrigger);
+        endif
+        
+           
+    case iState% = stateTrialCompleted% then
+        nTrialsCompleted% += 1; 
+        printlog("Number of stimuli completed is %d\n",nTrialsCompleted%);
+        ToolbarText(str$(nTrialsCompleted%) + "/" + str$(fvNValues%) + " stimuli completed.");
+        if nTrialsCompleted% = fvNValues% then
+            ' We're all done
+            LogStatus("TrialCompleted", "All stimuli complete!");
+            Stop%();
+            iStatus% := 0;  
+        else
+            'Advance Stimulus
+            SafeSampleKey("a");
+            LogStatus("TrialCompleted", "Advancing stimulus");
+            'go to ISI
+            ChangeStateTo(stateInterStimulusInterval%, tLastTrigger); 
+        endif
+        
+        
+    case iState% = stateInterStimulusInterval% then 
+        if stateBegin% = 1 then
+            LogStatus("InterStimulusInterval", "InterStimulusInterval began at " + str$(tNow));
+            stateBegin% := 0;
+        endif   
+        
+        'if tNow > tStateStart + fvTrialISI then
+        if tNow > tImageUp + fvStimDuration + fvTrialISI then
+            LogStatus("InterStimulusInterval", "InterStimulusInterval ended at " + str$(tNow));
+            'ChangeStateTo(statePrepareOpto%, tNow);
+            ChangeStateTo(stateRequestStim%, tNow);
+        endif
+        
+
+    else
+        
+        ' Unknown state!
+        Message("Unknown state=" + str$(iState%));
+        SafeSampleKey("o");  'turn opto off, just in case
+        halt;
+
+	endcase;
+
+	'tLast := tNow;  'unused
+	return iStatus%;
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc DoSampleAutoName(key$,long$,short$,master$,slave$)
+    'This function will do the auto-naming of files.  It will take into account the setup of the system
+    '(if there are one or two 1401s, and whether this is a micro/power or master/slave relationship)
+    'The long$ name should be 8 characters or fewer
+    'The short$ name should be 3 character or fewer
+    
+    if UseTwo1401s% = 0 then
+        SampleAutoName$(dataCellName$ + "_" + long$ + "_000");  'NOTE: maximum of 13 characters!!!
+    else
+        EqualizeSMRFilenumbers(dataPathRoot$ + "\\" + dataDataSet$,dataCellName$+"_" + short$ + master$ + "_",dataCellName$+"_" + short$ + slave$ + "_");
+        SampleAutoName$(dataCellName$ + "_" + short$ + master$ + "_000");  'NOTE: maximum of 13 characters!!!
+        SetStringRegistryValue(key$, "pref", short$);
+    endif;    
+end
+
+
+
+
+' Used to hard-quit from toolbar. This will close data files without saving!!! 
+' It is important that this function be disabled once sampling is started!!!
+
+func Quit%()
+    
+	FileClose(-1,-1);
+	return 0;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' The vdac32% function converts a value in user DAC units into an integer value
+'  (the result of the function) suitable for passing into a sequencer variable
+'  for use in the DAC, ADDAC, RAMP and OFFSET sequencer instructions. It mimics
+'  the vdac32() expression in the text sequence compiler.
+'
+' out     is the output value that you want to generate, in user DAC units.
+' scale   is the user DAC units corresponding to one volt on the actual DAC
+'         (or two volts for a ten-volt system). This is exactly the same as
+'         the DACscale field used with the SET or SDAC directives.
+' offset  is the user DAC units corresponding to zero volts output. This is
+'         exactly the same as the DACOffset field in SET or SDAC.
+'
+' If you want to use this function to calculate the slope for a ramp, use
+'  vdac32%(volts/sticks%(time)) for maximum accuracy.
+'
+func vdac32%(out, scale, offset)
+var v32;                                ' Real variable for the calculation
+out := out - offset;                    ' First compensate for offset
+v32 := ((out * (6553.6 / scale)) * 65536.0);   ' Floating point result
+var v32%;                               ' Integer value for the result
+if v32 > 2147483647.0 then              ' 2147483647 is the largest positive
+    v32% := 2147483647;                 '  integer value
+else
+    if v32 < -2147483647.0 then         ' -2147483648 is the lowest negative value
+        v32% := -2147483647;            '  but we have to stay one above that
+    else
+        v32% := round(v32);             ' We can be sure this will not overflow
+    endif;
+endif;
+return v32%;
+end
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+    stateBegin% := 1;  'Reset for next state - this line is unique (so far) to FreeViewer.s2s and is intended to allow us to do a bit more specific logging
+	if tStart > 0 then tStateStart := tStart; endif;
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func SelectStimFolder%()
+    var stimFolder$;
+    var fh%;
+    var strWhile% := 1;
+    var strInd%;
+    var temp$;
+    
+    'Put up dialog box to allow user to select stimulus folder to use
+    fh%:=FileOpen(fvDefaultStimPath$+"*",9,0, "Select any file in the folder you will use");  'select any stimulus
+    if fh% > 0 then
+        stimFolder$ := FileName$(fh%);  'this gets the name of the selected FILE, with path
+        FileClose();  'close the file
+        
+        'Loop to find final slash, so we can get just the folder name
+        while strWhile% <> 0 do
+            strInd% := strWhile%;  'this grabs the index for each '\', after the last one strWhile% will be 0 and will exit out
+            strWhile% := InStr(stimFolder$,"\\",strInd%+1);  'search for ''\'
+        wend
+        'get name of folder containing stimuli to calibrate
+        fvStimFolder$ := Left$(stimFolder$,strInd%);
+        
+        temp$ := "Use FOLDER: " + fvStimFolder$;
+    else
+        fvStimFolder$ := "";  'assign empty folder, will have to select again
+        temp$ := "No File/Folder Selected";
+    endif;
+    
+    fvUseFile% := 0;  'set to use folder even if we cancel
+    DlgValue$(fvdlgTextItem%,temp$);
+    
+    return 1;  'dialog remains open
+end 
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func SelectStimFile%()
+    var fh%;
+    var temp$;
+    
+    'Put up dialog box to allow user to select stimulus file to use
+    fh%:=FileOpen(fvDefaultStimPath$+"*.txt",8,0, "Select the stimulus file");  'select the file - we're opening it as a text file, but we're just closing it again right now
+    if fh% > 0 then
+        fvStimFile$ := FileName$(fh%);  'this gets the name of the selected file, with path
+        FileClose();  'close the file
+        temp$ := "Use FILE: " + fvStimFile$;
+    else
+        fvStimFile$ := "";  'assign empty file, will have to select again
+        temp$ := "No File/Folder Selected";
+    endif
+    fvUseFile% := 1;  'set to use file even if we cancel
+    
+    DlgValue$(fvdlgTextItem%,temp$);
+    
+    return 1; 'dialog remains open
+end
+
+
+
+
+func SendSerialMsgNeuropixel(port%, msg$, term$)
+    var buffer$;
+    var count% := 60;  'Yikes, it takes a long time to get the Neuropixel stuff ready!
+    var status% := 0;
+    SerialWrite(port%, msg$, term$);
+    while count% > 0 and status% < 1 do
+        count% := count% - 1;
+        status% := SerialRead(port%, buffer$, term$);
+        printlog("read status %d buffer %s\n", status%, buffer$);
+        if status% > 0 then
+            if not (buffer$ = "ACK") then
+                PrintLog("[ERROR]: Failed to receive ACK from imaging acq machine\n");
+                message("Received error from Neuropixel listener!  Error is\n" + buffer$);
+                status% := 0;
+                break;
+            endif
+        endif
+    wend;
+    if status% > 0 then
+        return 1;
+    else
+        return 0;
+    endif    
+end;

@@ -1,0 +1,696 @@
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' JoystickShaping - a program that will allow us to introduce the joystick to an
+'                   animal and provide a few different early reinforcement steps
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+#include "../util/UsreyUtil.s2s"
+'#include "AttentionExtractFunctions.s2s"   'may not need this
+'#include "UsreyFixationPoint.s2s"          'may not need this
+#include "UsreyDAQ.s2s"
+#include "UsreyGratings.s2s"
+#include "Joystick.s2s"
+
+
+
+
+
+'''''''''' Variables ''''''''''
+
+'Waiting to see what we need...
+
+var FrameTriggerChannel%;  'I think we will eventually be putting stimuli up, though not to start
+var StimChannel%;
+var StimChangeChannel%;
+var ReadyChannel%;
+var UtilityChannel%;
+var JoyChannel%;
+var JoyWindow%;	           'XY window to display joystick position
+var DataWindow%;
+var StimHandle%;
+
+
+'var backgroundColor$ := "black";
+var backgroundColor$ := "gray";  'it appears that black BG is not working for now
+var tStateStart;
+var tNow;
+var tLast;
+var tTrigger;
+var tLastTrigger;
+var vTrigger;
+var iState%;
+
+var jsRewardCount%;
+
+' Dialog box variables
+var JoyHoldTime;
+var JoyReturnToCenter%;
+var JoyLockoutTime;
+var JoyMaxRewards%;
+
+' Constants for states
+const stateVSGWait% := 10;		        ' wait for vsg to send ready signal #1
+const stateVSGWaitConfirm% := 11;
+const stateStartTrial% := 12;
+
+
+
+
+
+'''''''''' Preliminaries ''''''''''
+
+
+' Check for valid data file path
+if Len(dataDataSet$) = 0 then
+	Message("No data set is selected! Edit Data parameters...");
+	' Might be nice to open the dialog here....
+	halt;
+endif;
+
+
+
+' Assign channel numbers 
+FrameTriggerChannel% := 25;
+ReadyChannel% := 26;
+StimChannel% := 27;
+StimChangeChannel% := 28;
+JoyChannel% := 29;
+UtilityChannel% := 33;
+ExcludedChans%[0] := 25;  'FrameTriggerChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 33;  'UtilityChannel% is highest non-electrode channel used by this function
+
+
+
+'''''''''' Get The Show On The Road ''''''''''
+
+
+'Run main dialog
+if JoystickShapingDialog%() = 0 then
+    halt;
+endif
+
+
+CreateSampleConfiguration();
+
+InitializeWindows();
+
+'Get Toolbar ready and run it
+InitializeToolbar();
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func IdleProcessing%()
+
+	var iStatus% := 1;	
+    var tempanswer%;
+    var temptext$;
+    var CCHappened%;
+    
+    'The trick here is that sometimes sampling isn't caught up on all channels.  MaxTime() may return a lower
+    'value than MaxTime(ChanN%). When we find a trigger and try to place a TextMark, SampleText will do an internal
+    'call to MaxTime() - no channel # - to determine whether to place it at the requested time or at MaxTime().
+    'In some instances, this has resulted in the TextMark being placed earlier than the event which caused it.
+    'We are now explicitly checking for this - if we find it, we have to avoid updating tLast and continue checking
+    'in order to not miss the trigger AND to put the TextMark at the right time.
+    'Note that we will ONLY do the additional check in instances where a timed TextMark is being placed at the 
+    'time of the trigger.
+    var updateTLast% := 1;  'due to trigger issues, we may not always update tLast (but we usually will)
+    
+    'while getPreciseTiming = 1 do 
+    
+    
+    tNow := View(DataWindow%).MaxTime();
+    
+    'get eye position, but don't check if tNow is small enough that we would give a negative value to ChanMeasure
+'    if tNow > .006 then
+'        xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+'        yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+'    endif;
+        
+    ' Don't update display every time....
+'    if tNow-tLastUpdate > .005 then
+'        View(XYWindow%).XYAddData(1,xEye,yEye);
+'        tLastUpdate := tNow;
+'    endif
+    
+    
+    docase 
+    case iState% = stateVSGWait% then
+        
+        ' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
+        tTrigger := View(DataWindow%).NextTime(ReadyChannel%, tLast, vTrigger);
+        if tTrigger > tLastTrigger and vTrigger = 0 then
+            PrintLog("state stateVSGWait: Got leading edge of trigger\n");
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateVSGWaitConfirm%, tTrigger);
+        endif;
+        
+    case iState% = stateVSGWaitConfirm% then
+        
+        ' Waiting for VSG to confirm it is ready. The downward side of the pulse is expected...
+        tTrigger := View(DataWindow%).NextTime(ReadyChannel%, tLastTrigger, vTrigger);
+        if tTrigger > tLastTrigger and vTrigger = 1 then
+            PrintLog("state stateVSGWaitConfirm: Got trailing edge of trigger\n");
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateStartTrial%, tTrigger);
+            
+            'with the "reversed" logic we have to put the fixpt UP before we can "take it down"
+            'the easiest thing to do appears to be to just put it up and go to stateWaitForBlank...even though it's technically the other way around.
+            'SafeSampleKey("F");
+            'ChangeStateTo(stateWaitForBlank%, tTrigger);
+        endif;
+        
+        
+'    case iState% = stateWaitForEyesOnScreen% then
+'        
+'        if LookingScreen%(xEye, yEye) = 1 then
+'            PrintLog("stateWaitForEyesOnScreen: eyes on screen.\n");
+'            ChangeStateTo(stateStartTrial%, tNow);
+'            SampleText("Eyes On Screen",tNow);
+'        endif;
+'        
+'        
+'        
+'    case iState% = stateStartTrial% then
+'        
+'        ' Start trial. Put up fixation point.
+'        'UpdateToolbarText();
+'        'PrepareTrial();
+'        if LookingScreen%(xEye, yEye) = 1 then
+''            PrintLog("Request Fixation Point\n");
+''            SafeSampleKey("F");
+''            ChangeStateTo(stateWaitForFixPtOn%, tNow);
+'            PrintLog("Remove Fixation Point\n");
+'            SafeSampleKey("X");  'abort removes fixation point, allows gray BG
+'            ChangeStateTo(stateWaitForFixPtOn%, tNow);
+'        else
+'            PrintLog("stateStartTrial: eyes off screen.\n");
+'            ChangeStateTo(stateWaitForEyesOnScreen%, tNow);  'no need to abort, the fixation point never got up
+'            SampleText("Eyes Off Screen",tNow);
+'        endif;
+'        
+'        
+'        
+'    case iState% = stateWaitForFixPtOn% then  'note that this is OFF not ON with logic reversed
+'        tTrigger := View(DataWindow%).NextTime(FixationPointChannel%, tLast, vTrigger);
+''        if tTrigger > tLast then
+''            if tTrigger < tNow then    'View(DataWindow%).MaxTime() then  'try using tNow to avoid rare double-catch
+''                ' Fixation point is up
+''                PrintLog("stateWaitForFixPtOn: signal received. " + str$(tTrigger) + "\n");
+''                tLastTrigger := tTrigger;
+''                ChangeStateTo(stateWaitForReward%, tTrigger);
+''                SampleText("Fixation point on",tTrigger);
+''                DrawStim(1);	' this draws the location of the fixpt.
+''                
+''            else
+''                updateTLast% := 0;  'waiting for sampling to catch up
+''            endif;
+''        endif
+'        if tTrigger > tLast then
+'            if tTrigger < tNow then    'View(DataWindow%).MaxTime() then  'try using tNow to avoid rare double-catch
+'                ' Fixation point is down
+'                PrintLog("stateWaitForFixPtOn: signal received. " + str$(tTrigger) + "\n");
+'                tLastTrigger := tTrigger;
+'                ChangeStateTo(stateWaitForReward%, tTrigger);
+'                SampleText("Gray screen on",tTrigger);
+'                DrawStim(1);	' this draws the location of the fixpt.
+'                
+'            else
+'                updateTLast% := 0;  'waiting for sampling to catch up
+'            endif;
+'        endif
+'        
+'        
+'    case iState% = stateWaitForReward% then
+'        if LookingScreen%(xEye, yEye) = 1 then
+'            if tNow - tStateStart > fxfRewardTime then
+'                PrintLog("Request Fixation Point\n");
+'                Reward%();
+'                fxfRewardCount% += 1;  'increment reward count
+'                UpdateToolbarText();
+'                UpdateRewardTime();
+'                ChangeStateTo(stateWaitForReward%, tNow);  'Change state to SAME state
+'            endif;
+'            
+'        else
+'            PrintLog("stateWaitForReward: eyes off screen.\n");
+'            ChangeStateTo(stateAbort%, tNow);
+'            SampleText("Eyes Off Screen",tNow);
+'        endif;
+'        
+'        
+'    case iState% = stateAbort% then
+'        
+'        ' Signal "X" turns off fixpt and stimulus. The next state 'stateWaitForBlank' only checks for 
+'        ' fixpt off. 
+''        PrintLog("stateAbort: send X key.\n");
+''        SafeSampleKey("X");
+'        
+'        PrintLog("stateAbort: send X key.\n");
+'        SafeSampleKey("F");  'turn on fixation point, make screen black
+'       
+'        ' move on
+'        ChangeStateTo(stateWaitForBlank%, tStateStart);  'don't update time, carry forward
+'        
+'        
+'    case iState% = stateWaitForBlank% then
+'        
+'        ' we just wait for fix point off signal in this case. 
+''        tTrigger := View(DataWindow%).NextTime(FixationPointChannel%, tLast, vTrigger);
+''        if tTrigger > tLast then
+''            ' Fixation point is off
+''            PrintLog("stateWaitForBlank: Fix pt is off.\n");
+''            tLastTrigger := tTrigger;               
+''            ChangeStateTo(stateStartTrial%, tNow);  'don't update time, "credits" for time served
+''            DrawStim(0);	' this undraws the location of the fixpt.
+''        endif
+'        tTrigger := View(DataWindow%).NextTime(FixationPointChannel%, tLast, vTrigger);
+'        if tTrigger > tLast then
+'            if tTrigger < tNow then    'View(DataWindow%).MaxTime() then  'try using tNow to avoid rare double-catch
+'                ' Fixation point is up
+'                PrintLog("stateWaitForBlank: signal received. " + str$(tTrigger) + "\n");
+'                tLastTrigger := tTrigger;
+'                ChangeStateTo(stateStartTrial%, tNow);
+'                SampleText("Black screen on",tTrigger);
+'                DrawStim(0);	' this draws the location of the fixpt.
+'            else
+'                updateTLast% := 0;  'waiting for sampling to catch up
+'            endif;
+'        endif
+'        
+        
+    else
+        
+        ' Unknown state!
+        Message("Unknown state=" + str$(iState%));
+        halt;
+        
+    endcase;
+    
+    
+    if updateTLast% = 1 then 
+        tLast := tNow;
+    endif;
+    
+    'wend;
+    
+	return iStatus%;
+end;
+
+
+
+
+
+
+func JoystickShapingDialog%()
+	var i%;
+    
+	GetJoystickShapingParameters();   
+    
+	DlgCreate("Joystick Shaping Parameters", 25, 10);
+    DlgInteger(1, "Maximum Rewards",1,10000);
+	DlgReal(2, "Hold Time For Reward (s)", 0, 100);
+    DlgReal(3, "Post-Reward Lockout Time (s)", 0, 100);
+    DlgCheck(4, "Require Return To Center");
+
+    DlgButton(3, "Joystick Dialog", JoystickConfigDialogUD%,2,5);
+    
+    'DlgAllow(0, 0, JoystickShapingDialogChanged%);  'not used/written for now
+    
+	i%:=DlgShow(JoyMaxRewards%, JoyHoldTime, JoyLockoutTime, JoyReturnToCenter%);
+    
+	if i% = 1 then
+		SaveJoystickShapingParameters();
+	endif;
+    
+	return i%;
+end;
+
+
+proc GetJoystickShapingParameters()
+	var stmp$;
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\JoystickShaping";
+    
+    JoyMaxRewards% := GetIntRegistryValue%(key$, "JoyMaxRewards", JoyMaxRewards%);
+    JoyHoldTime := GetFloatRegistryValue(key$, "JoyHoldTime", JoyHoldTime);
+    JoyLockoutTime := GetFloatRegistryValue(key$, "JoyLockoutTime", JoyLockoutTime);
+    JoyReturnToCenter% := GetIntRegistryValue%(key$, "JoyReturnToCenter", JoyReturnToCenter%);
+    
+end;
+
+
+proc SaveJoystickShapingParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\JoystickShaping";
+    
+    SetIntRegistryValue(key$, "JoyMaxRewards", JoyMaxRewards%);
+    SetFloatRegistryValue(key$, "JoyHoldTime", JoyHoldTime);
+    SetFloatRegistryValue(key$, "JoyLockoutTime", JoyLockoutTime);
+    SetIntRegistryValue(key$, "JoyReturnToCenter", JoyReturnToCenter%);
+
+end;
+
+
+
+proc CreateSampleConfiguration()
+	var index;
+    var key$;
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    SampleClear(); 'Set standard sampling state
+
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    SampleAutoName$(dataCellName$ + "_js_000");  'NOTE: maximum of 13 characters!!!
+    SampleAutoFile(1);  'Enable automatic file naming
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    
+    
+	'----Event Channel recording definitions----
+    'for now, no stim channels in JoystickShaping, but eventually I think there will be	
+    
+'	SampleEvent(FrameTriggerChannel%,0,2,3600); 'Trigger channel, level
+'	SampleComment$(FrameTriggerChannel%,"Frame");
+'	SampleTitle$(FrameTriggerChannel%,"Frame");
+    
+'	SampleEvent(StimChannel%,3,2,3600); 'Trigger channel, level
+'	SampleComment$(StimChannel%,"Stim");
+'	SampleTitle$(StimChannel%,"Stim");
+'	
+'	SampleEvent(StimChangeChannel%,4,2,3600); 'Trigger channel, level
+'	SampleComment$(StimChangeChannel%,"Stim Chg.");
+'	SampleTitle$(StimChangeChannel%,"Stim Chg.");
+	
+'	SampleEvent(ReadyChannel%,6,2,3600); 'Trigger channel, level
+'	SampleComment$(ReadyChannel%,"VSG Ready");
+'	SampleTitle$(ReadyChannel%,"VSG Ready");
+    
+    
+    '----Analog, non-spiking electrode recording conditions
+    ' Set up eye channels
+'	SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+'	SampleTitle$(XChannel%,EyeXPortLabel$);
+'	SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+'	SampleTitle$(YChannel%,EyeYPortLabel$);
+    
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000); 
+        SampleTitle$(UtilityChannel%,UtilityPortLabel$);
+    endif;
+    
+    'Set up Joystick channel
+    printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPort%());
+    SampleWaveform(JoyChannel%, GetJoystickPort%(), 1000);
+    SampleComment$(JoyChannel%,JoystickPortLabel$);
+    SampleTitle$(JoyChannel%,JoystickPortLabel$);
+
+    
+    
+    '----Set up "spiking" Electrode Channels----
+    GetElectrodeParameters();
+    'For now I am simply assuming that nobody will want to record with the Plexon while doing joystick training, Henry seems OK with that
+    CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
+    
+	SampleTextMark(200);  'increase number of allowed characters, 1 is so stingy!
+    
+    SampleSequencer(script$ + "Tuning.pls");  'this will only be used for reward until we are at the stage that we are putting up stimuli
+
+    SampleOptimise(2,2,Get1401Type%(),2,50);  'otherwise: full optimize timing, channels may have different rates, find actual 1401 type, low usPerTime of 2, high usPerTime of 50
+    
+	SampleMode(1); 'Continuous sampling
+end;
+
+
+
+proc InitializeWindows()
+    
+    'Note that this function has been pared down more severely than others because it's not clear how the
+    'best way to build it up (for future presentations of movable gratings, etc.) is.  For training this
+    'will be fine, but there will likely be a decent amount of work to be done here for a final product.
+    
+	'Open the data sampling window
+	DataWindow% := FileNew(0,4);  'show spike shape setup dialog, only opens if there are WaveMark channels in the sampling config
+    printlog("datawindow is %d\n",dataWindow%);
+	Window(0,48,100,95);
+	View(DataWindow%).WindowVisible(1);    
+    
+    
+    
+    'All of the below code relates to eye position, which is not initially monitored
+    'Later versions of this code may monitor this, but for now, it's commented out
+    'Note that no steps have been taken to make sure the code is appropriate for this script,
+    'or that needed variables have been initialized, etc.
+    
+	'Open an XY view to display eye position
+'	XYWindow% := FileNew(12);
+'	XRange(-30,30);
+'	YRange(-2,-30,30);
+'	XYDrawMode(0,5,0);
+'	WindowVisible(1);
+'	Window(0, 0, 100, 47);
+'	XYColour(1,16);
+'	XYSize(1,-1);
+    
+    
+'	'Calcuate the fixation window
+'	var index%;
+'	var twopi;
+'	twopi := 2.0*4.0*ATan(1.0);
+'	
+'	for index% := 0 to 35 do
+'		FixWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
+'		FixWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
+'	next;
+    
+'	'Create a new channel in the XY view to display the fixation window
+'	iFixationWindowChannel% := XYSetChan(0);
+'	XYColour(iFixationWindowChannel%,13);
+'	XYDrawMode(iFixationWindowChannel%,2,1);
+'	XYJoin(iFixationWindowChannel%,1);
+'	'Draw the fixation window
+'	XYAddData(iFixationWindowChannel%, FixWindowX[], FixWindowY[]);
+    
+
+
+	'Create a new channel in the XY view to display the fixation point
+' 	iStimChannel% := XYSetChan(0);
+    
+	'Create a new channel in the XY view to show the monitor's location
+'	iMonitorChannel% := XYSetChan(0);
+'	XYColour(iMonitorChannel%,13);
+'	XYDrawMode(iMonitorChannel%,3,1);
+'	XYJoin(iMonitorChannel%,2);
+'	XYAddData(iMonitorChannel%,-screenXmax,-screenYmax);
+'	XYAddData(iMonitorChannel%,screenXmax,-screenYmax);
+'	XYAddData(iMonitorChannel%,screenXmax,screenYmax);
+'	XYAddData(iMonitorChannel%,-screenXmax,screenYmax);
+    
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitializeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+    
+    
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+	UpdateToolbarText();  
+    ToolbarSet(1,"Sample start",Start%);
+	ToolbarSet(2,"Sample stop", Stop%);
+	ToolbarSet(3,"Juice", Reward%);
+    ToolbarSet(4,"Adjust Joystick",JoystickConfigDialog%);
+	ToolbarSet(5,"Quit",Quit%);
+	ToolbarEnable(2,0);
+	Toolbar("Go",0x3ff);
+    
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' UpdateToolbarText - Print tallies of trials in toolbar, super easy for now
+'
+
+proc UpdateToolbarText()
+    
+	var s$;
+
+    s$ := "Reward Count = " + Str$(jsRewardCount%);
+
+	ToolbarText(s$);
+    
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Reward%()
+    DefaultReward();
+    'No sample text, just use 'R' from keyboard channel
+	return 1;
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+	var CommandLine$;
+	var Extras$;
+	var Tune$;
+	var Stim$:="";
+    var stimSpec$;
+    var x;
+    var i%;
+    var specFileName$:="F:\\work\\JoyShapingSpecFile.txt";
+    var specFileName2$ := "E:\\work\\JoyShapingSpecFile.txt";
+    var actualSpecFileName$;
+    var specHandle%;
+    
+    'hard code pReward to 1, per Henry
+    'pReward := 1;
+
+    'start sampling
+    SampleStart(0); 'Start sampling now
+    
+	' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");    
+    
+    'get all these grating parameters
+    'disabling grating parameters for now, won't be using them, except for one standard just to pass something to the VSG - it might get angry, no point in tempting it.
+    stimSpec$ := GetGratingParameters$("Stimulus");
+'    ParseGratingParametersBrief%(stimSpec$, xT, yT, wT, hT);  'we may as well just do this every time - 90+% of the time we will anyway, and why put it in the if statements four times?
+'    if attNumPatches% > 1 then
+'        if attGetGPFromMainStim% = 1 then
+'            ParseGratingParametersBrief%(GetGratingParameters$("Distractor1"), xT, yT, wT, hT);
+'            dist1Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
+'            ParseGratingParametersBrief%(dist1Spec$, xD1, yD1, wD1, hD1);  'for helping placement of flashers, etc.
+'        else
+'            dist1Spec$ := GetGratingParameters$("Distractor1");
+'            ParseGratingParametersBrief%(dist1Spec$, xD1, yD1, wD1, hD1);
+'        endif;
+'    endif;
+    
+    Stim$ := " -s " + stimSpec$;  
+'    if attNumPatches% > 1 then
+'            Stim$ := Stim$ + " -s " + dist1Spec$;
+'    endif;
+
+    Extras$ := " -b " + backgroundColor$ + " -d " + GetDistanceToScreenMM$(); 
+
+    
+    'Hardcode the fixation point
+'    'fixationColor$ := "gray";  'black BG not working right now
+'    'fixationColor$ := "white";
+'    fixationColor$ := "black";  'reverse logic
+'    FixationX := 0;
+'    FixationY := 0;
+'    FixationDiameter := (screenXmax + screenYmax)*2;  'this is dumb, but ought to work, as in "be plenty big".  Monitors are basically rectangular.
+'    FixationArg$ := " -f " + str$(FixationX) + "," + str$(FixationY) + "," + str$(FixationDiameter) + "," + fixationColor$;
+    FixationArg$ := "";
+    
+    'open a file to write the trial-by-trial specs for the VSG
+    'Note that this is terribly cheesy and we should really just get a single right location and hard code it.
+    specHandle% := FileOpen(specFileName$, 8, 1);
+    if specHandle% < 0 then 'if the location for the first specfile doesn't work, try another location
+        specHandle% := FileOpen(specFileName2$, 8, 1);
+        actualSpecFileName$ := specFileName2$;  'just assume the second one works
+    else
+        actualSpecFileName$ := specFileName$;
+    endif;
+    
+
+    Print("%s %s %s %s",FixationArg$,Extras$,Stim$,"-C 0,0,0,0");  'this fakes a contrast tuning curve.  For now the program is designed to never "advance", so it's cool
+   
+    'close spec file
+	FileClose(0);    
+    
+    
+    ' djs Update this to use remote stim when configured
+    if GetUseRemoteStimulus%() = 1 then
+        CommandLine$ := "cmd /k " + GetBinDir$(1) + "remote.exe " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim -F " + actualSpecFileName$;
+    else
+        CommandLine$ := "cmd /k " + GetBinDir$(1) + "fixstim.exe -F " + actualSpecFileName$;
+    endif
+    
+    'Print the command line
+    for i% := 1 to Len(CommandLine$) step 100 do
+        SampleText(Mid$(CommandLine$, i%, 100));
+    next
+        
+	'Begin the stimulus program. It will take a few seconds for the VSG to initialize.
+	PrintLog(CommandLine$+"\n");
+	StimHandle% := ProgRun(CommandLine$,1);
+	if StimHandle% <0 then 
+        Message("Could not start stimulus."); 
+        halt; 
+    endif
+	
+	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);
+	ToolbarEnable(1,0);
+	View(DataWindow%);
+	Yield(.1);
+    return 1;
+end;
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+    
+	' Disable idle process func
+	ToolbarSet(0,"");  
+    
+	' Tell stim app to shut down
+	SafeSampleKey("Q");
+	Yield(.1);
+	SampleStop();
+    
+	ProgKill(StimHandle%);
+	while ProgStatus(StimHandle%) > 0 do
+		Yield();
+	wend
+    
+    ' Write parameter file
+	'WriteParameterFile();
+    
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Used to hard-quit from toolbar. This will close data files without saving!!! 
+' It is important that this function be disabled once sampling is started!!!
+
+func Quit%()
+    
+    'The commented stuff seems like it woudl be nice to have, but I'm not sure that other code uses it...
+    
+    ' Tell stim app to shut down
+'	SafeSampleKey("Q");
+'	Yield(.1);
+'	SampleStop();
+'    
+'	ProgKill(StimHandle%);
+'	while ProgStatus(StimHandle%) > 0 do
+'		Yield();
+'	wend
+    
+	FileClose(-1,-1);
+	return 0;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+	if tStart > 0 then tStateStart := tStart; endif;
+end;
