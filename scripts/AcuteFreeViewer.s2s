@@ -865,8 +865,9 @@ func IdleProcessing%()
     var yval;
     var xind%;
     var yind%;
+    var stayInIdleLoop% := 1;
     
-	tNow := View(DataWindow%).MaxTime();
+	'tNow := View(DataWindow%).MaxTime();
     
     ' First time through (tLast<0) just update tLast. Crosstalk on vsg dig outputs leads to erroneous
     ' triggers. Maybe this will help. 
@@ -875,7 +876,10 @@ func IdleProcessing%()
 '        tLast := 1;
 '        return 1;
 '    endif
-    
+
+while stayInIdleLoop% = 1 do
+    stayInIdleLoop% := 0;  'don't repeat idle case statement unless requested
+    tNow := View(DataWindow%).MaxTime();
 
 	docase 
     case iState% = stateVSGWait% then
@@ -926,7 +930,9 @@ func IdleProcessing%()
         
     case iState% = stateRequestStim% then
         LogStatus("RequestStim", "Request stimulus at " + str$(tNow));
-        SafeSampleKey("S");
+        'SafeSampleKey("S");
+        SampleKey("S");
+        printlog("Gave 'S' at %f\n",View(DataWindow%).MaxTime());
         ChangeStateTo(stateWaitForStimOn%, tNow);
         
         
@@ -957,11 +963,19 @@ func IdleProcessing%()
             stateBegin% := 0;
         endif
         
-        if tNow >= tStateStart + fvStimDuration then
+        'If there is only 100 ms left in stimulus, wait aggressively
+        if tNow >= tImageUp + fvStimDuration - 1.1 then
+            stayInIdleLoop% := 1;
+        endif;
+ 
+        'if tNow >= tStateStart + fvStimDuration then
+        if tNow >= tImageUp + fvStimDuration then
             ' turn off stimulus and advance it
             LogStatus("StimulusPlaying", "Turn off and advance stimulus.");
-            SafeSampleKey("X");
+           'SafeSampleKey("X");
+            SampleKey("X");
             ChangeStateTo(stateWaitForStimOff%,tNow);
+            stayInIdleLoop% := 1;
         endif
         
         
@@ -971,6 +985,8 @@ func IdleProcessing%()
             LogStatus("WaitForStimOff", "Waiting for stimulus off at " + str$(tNow));
             stateBegin% := 0;
         endif
+        
+        stayInIdleLoop% := 1;  'just wait aggressively here
         
         if View(DataWindow%).FindFallingEdge%(StimChannel%, tLastTrigger, tTrigger) = 1 then
             SampleText("+",tTrigger);  'Note end of stimulus
@@ -991,10 +1007,14 @@ func IdleProcessing%()
             iStatus% := 0;  
         else
             'Advance Stimulus
-            SafeSampleKey("a");
+            'SafeSampleKey("a");
+            SampleKey("a");
             LogStatus("TrialCompleted", "Advancing stimulus");
             'go to ISI
             ChangeStateTo(stateInterStimulusInterval%, tLastTrigger); 
+            stayInIdleLoop% := 1;
+            'yield(0.001);
+            printlog("Gave 'a' at %f\n",View(DataWindow%).MaxTime());
         endif
         
         
@@ -1004,11 +1024,19 @@ func IdleProcessing%()
             stateBegin% := 0;
         endif   
         
+        'If there is only 100 ms left in ISI, wait aggressively
+        if tNow >= tImageUp + fvStimDuration + fvTrialISI - 1.1 then
+            stayInIdleLoop% := 1;
+        endif;
+        
+        printlog("Checking for ISI done at %f\n",View(DataWindow%).MaxTime());
+        
         'if tNow > tStateStart + fvTrialISI then
         if tNow > tImageUp + fvStimDuration + fvTrialISI then
             LogStatus("InterStimulusInterval", "InterStimulusInterval ended at " + str$(tNow));
             'ChangeStateTo(statePrepareOpto%, tNow);
             ChangeStateTo(stateRequestStim%, tNow);
+            stayInIdleLoop% := 1;
         endif
         
 
@@ -1020,6 +1048,7 @@ func IdleProcessing%()
         halt;
 
 	endcase;
+wend;
 
 	'tLast := tNow;  'unused
 	return iStatus%;
