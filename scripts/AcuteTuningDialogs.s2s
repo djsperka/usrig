@@ -198,7 +198,7 @@ var tunCRGMBalanced%;       ' if 1, balance presentation
 
 'Stimulus-triggered PSTH variables
 var tunSTPNStims%;
-var tunSTPISI;
+'var tunSTPISI;
 
 'Current Source Density variables
 var tunCSDNFlips%;
@@ -817,14 +817,14 @@ proc GetStimTrigPSTHParameters()
 	var key$;
 	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\STP";
     tunSTPNStims% := GetIntRegistryValue%(key$, "STPNStims", tunSTPNStims%);
-    tunSTPISI := GetFloatRegistryValue(key$, "STPISI", tunSTPISI);
+    'tunSTPISI := GetFloatRegistryValue(key$, "STPISI", tunSTPISI);
 end;
 
 proc SaveStimTrigPSTHParameters()
 	var key$;
 	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\STP";
     SetIntRegistryValue(key$, "STPNStims", tunSTPNStims%);
-    SetFloatRegistryValue(key$, "STPISI", tunSTPISI);
+    'SetFloatRegistryValue(key$, "STPISI", tunSTPISI);
 end;
 
 
@@ -1717,10 +1717,12 @@ func StimTrigPSTHDialog%()
 	var i%;
 	GetStimTrigPSTHParameters();
 	DlgCreate("Run Stimulus Triggered PSTH");
-    DlgInteger(1, "Number of E-Stims", 0, 10000);
-	DlgReal(2, "E-Stim ISI (s)", 0.001, 360);
+    DlgInteger(1, "Number of 'Blanks'", 0, 10000);
+    'DlgInteger(1, "Number of E-Stims", 0, 10000);
+	'DlgReal(2, "E-Stim ISI (s)", 0.001, 360);
     
-	i% := DlgShow(tunSTPNStims%, tunSTPISI);
+	'i% := DlgShow(tunSTPNStims%, tunSTPISI);
+    i% := DlgShow(tunSTPNStims%);
 
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
