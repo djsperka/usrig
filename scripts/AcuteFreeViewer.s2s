@@ -42,7 +42,7 @@ var iMonitorChannel%;	' channel number for monitor position display in xy window
 var iStimWindowChannel%;
 
 ' Display stuff
-var fvBackgroundColor$ := "gray";  'for right now, let's not even allow changing this...
+var fvBackgroundColor$ := "gray"; '"(125/125/125)"; 'for right now, let's not even allow changing this...
 
 ' dummy vars
 var iScript%;
@@ -104,9 +104,9 @@ var fvUseFile%;  '1 if use file, 0 if use folder
 var fvDefaultStimPath$ := "G:\\Experiments\\";  'Set this folder for Nujuj
 var fvDefaultStimFile$ := "AcuteFreeViewerStimFile.txt";  'this file will be updated 
 var fvDialogText$;
-var fvImageList$[2000];  'allow up to 2000 unique images
-var fvImageOrder%[10000];  'allow up to 10000 images to be presented total
-var dummyResult[10000];  'This just lets me run GRPP to get the index order on fvImageOrder%[] instead of writing new code, just allows return of dummy values
+var fvImageList$[30000];  'allow up to 2000 unique images
+var fvImageOrder%[30000];  'allow up to 10000 images to be presented total
+var dummyResult[30000];  'This just lets me run GRPP to get the index order on fvImageOrder%[] instead of writing new code, just allows return of dummy values
 
 ' Wavemarks and continuous ports
 var fvNWavemarks% := 0;
@@ -670,14 +670,14 @@ func Start%()
     Verbose$ := " -v ";
     
     'For now, explicitly no fixation
-    FixationArg$ := "";
-    'FixationArg$ := "-f 0,0,1,red";  'this is a sample, if we want fixation later
+    'FixationArg$ := "";
+    FixationArg$ := "-f 0,0,0,black";  'this is a sample, if we want fixation later
     
     var x,y,w,h;
     ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"), x, y, w, h);
     
-    'Syntax here is "-i file,x,y,dur,nLevels,[loWater],[hiWater] ... apparently for the cache values (lo/hiWater) use 0,1 which forces pre-load
-    ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(x) + "," + Str$(y) + "," + Str$(fvStimDuration) + ",250,0,1 ";
+    'Syntax here is "-i file,x,y,dur,nLevels,[loWater],[hiWater] ... apparently for the cache values (lo/hiWater) 0,1 forces pre-load, 0,0 loads each image
+    ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(x) + "," + Str$(y) + "," + Str$(fvStimDuration) + ",250,0,0 ";
     
 
     'Build command line, any values that are unnecessary will be empty, so the build should work no matter what type of command line is required
