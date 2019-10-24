@@ -2,7 +2,7 @@ function  evert(varargin)
 %EVERT Convert a bitmap image to one which uses 32 colors.
 %   evert('inputImageFile') 
 %   evert('inputImageFile', 'Output', 'outputImageFile')
-%   evert('inputImageFile', 'Output', 'outputImageFile', 'Width', wpix, 'Height', wheight)
+%   evert('inputImageFile', 'Output', 'outputImageFile', 'Width', wpix, 'Height', wheight, 'Colors', ncolors, 'FlattenGray', doflatten)
 %
 % The first form reformats the image and displays it (no output written).
 %
@@ -15,8 +15,11 @@ function  evert(varargin)
 % 
 % The last form reformats and rescales to widthxheight pixels.
 %
-% The parameters 'Output', 'Width', and 'Height' are optional and can be
-% used in any combination.
+% The parameters 'Output', 'Width', 'Height', Colors, and 'FlattenGray' are 
+% optional and can be used in any combination.  If ANY value is entered for
+% 'FlattenGray', the program will (not particularly intelligently) flatten
+% any colors that are "almost" gray to [0.5 0.5 0.5] in an attempt to
+% prevent grayscale backgrounds from pixellating.
 
 % Not all formats can be converted. I've had success with jpg, bmp, png
 % files. 
@@ -37,6 +40,7 @@ parser.addParamValue('Output', 'NONE', @ischar);
 parser.addParamValue('Width', NaN, @(x) isscalar(x)); 
 parser.addParamValue('Height', NaN, @(x) isscalar(x)); 
 parser.addParamValue('Colors', 32, @(x) isscalar(x) && x>0 && x<256); 
+parser.addParamValue('FlattenGray', NaN, @(x) isscalar(x));   %If any value is entered for FlattenGray, will force any pixels that have no values greater than 0.07 away from 0.5 to be [0.5 0.5 0.5] so gray bgs are flat
 parser.parse(varargin{:});
 
 
@@ -87,14 +91,26 @@ if imageOK == 1
         rgb = imresize(rgb, [h w]);
     end
     
-    % convert back to indexed file, with 32 colors
+    % convert back to indexed file, with N colors
     [y, newmap] = rgb2ind(rgb, parser.Results.Colors);
+    
+    %Flatten gray levels (so a gray background is not speckled,
+    %particularly on resizing images)
+    if isempty(find(strcmp(parser.UsingDefaults, 'FlattenGray')))
+        for i = 1:size(newmap,1)
+            if ~any(abs(newmap(i,:)-0.5)>0.07)
+                newmap(i,:) = [0.5 0.5 0.5];
+            end
+        end
+    end
 
     % write image file
     if strcmp(parser.Results.Output, 'NONE')
         % display image
         figure;
         imshow(y, newmap);
+        %[trash xx] = sort(newmap(:,1));
+        %newmap(xx,:)
     else
         imwrite(y, newmap, parser.Results.Output, 'bmp');
     end
