@@ -247,7 +247,7 @@ var tunDSSNBlanks%;             ' # of blank periods, the remainder are flashes
 var tunDSSNFlashesPerReward%;   ' # of flashes per each reward
 var tunDSSCurrPeriod%;          ' counts current period
 var tunDSSFlashesUntilReward%;  ' how many flashes until we get a reward?
-var tunDSSFlashOrBlank%[1000];  'is current "flash" a flash or a blank?
+var tunDSSFlashOrBlank%[10000];  'is current "flash" a flash or a blank?
 var tunDSSDuration;             'how long is each flash, will take from "fixation duration"
 var tunDSSIsOn%;                'keep track of current state
 var tunNextDSSTime;             'when is the next flip?
@@ -360,7 +360,7 @@ var tunNRepeats%;		' Number of repeats
 ' The Indices array is the order to step through the values with: tunValues[tunValuesIndices%[0]], tunValues[tunValuesIndices%[1]], ...
 ' djs Make a constant tunMaxTrials to set the max number of trials. Arrays etc should be declared with this const. See below and
 ' tunF1Sum, tunF2Sum. 
-const tunMaxTrials% := 1000;
+const tunMaxTrials% := 10000;
 var tunValues[tunMaxTrials%];
 var tunValues$[tunMaxTrials%];  'for reading the combo tuning file, there will be a '-' separator
 var tun1Values[tunMaxTrials%];
@@ -918,7 +918,7 @@ func TuningCurveOrientationDialog%()
     DlgString(7,40,255,"",3);  'for visual confirmation of selected seq file
     DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
     if tunBoxODonutsCurrentCurve% = 0 then
-        DlgInteger(2, "Number of Repeats", 1, 1000);
+        DlgInteger(2, "Number of Repeats", 1, 3000);
         DlgCheck(5, "Random Progression");
     else
         DlgInteger(2, "----------------", 1, 1);
@@ -1030,7 +1030,7 @@ func TuningCurveContrastDialog%()
     DlgCheck(8, "Do Dual-Screen Combo Tuning",2,9);
     DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
     if tunBoxODonutsCurrentCurve% = 0 then
-        DlgInteger(2, "Number of Repeats", 1, 1000);
+        DlgInteger(2, "Number of Repeats", 1, 3000);
         DlgCheck(5, "Random Progression");
     else
         DlgInteger(2, "----------------", 1, 1);
@@ -1150,7 +1150,7 @@ func TuningCurveSpatialDialog%()
     DlgString(7,40,255,"",3);  'for visual confirmation of selected seq file
     DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
     if tunBoxODonutsCurrentCurve% = 0 then
-        DlgInteger(2, "Number of Repeats", 1, 1000);
+        DlgInteger(2, "Number of Repeats", 1, 3000);
         DlgCheck(5, "Random Progression");
     else
         DlgInteger(2, "----------------", 1, 1);
@@ -1242,7 +1242,7 @@ func TuningCurveTemporalDialog%()
     DlgString(7,40,255,"",3);  'for visual confirmation of selected seq file
     DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
     if tunBoxODonutsCurrentCurve% = 0 then
-        DlgInteger(2, "Number of Repeats", 1, 1000);
+        DlgInteger(2, "Number of Repeats", 1, 3000);
         DlgCheck(5, "Random Progression");
     else
         DlgInteger(2, "----------------", 1, 1);
@@ -1351,7 +1351,7 @@ func TuningCurveAreaDialog%()
     DlgCheck(8, "Do Dual-Screen Combo Tuning",2,9);
     DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
     if tunBoxODonutsCurrentCurve% = 0 then
-        DlgInteger(2, "Number of Repeats", 1, 1000);
+        DlgInteger(2, "Number of Repeats", 1, 3000);
         DlgCheck(5, "Random Progression");
     else
         DlgInteger(2, "----------------", 1, 1);
@@ -1459,7 +1459,7 @@ func TuningCurveXPosDialog%()
         DlgReal(4, "Max X Position", -14, 14);
         'DlgCheck(5, "Random Progression");
         if tunBoxODonutsCurrentCurve% = 0 then
-            DlgInteger(2, "Number of Repeats", 1, 1000);
+            DlgInteger(2, "Number of Repeats", 1, 3000);
             DlgCheck(5, "Random Progression");
         else
             DlgInteger(2, "----------------", 1, 1);
@@ -1516,7 +1516,7 @@ func TuningCurveXPosDialog%()
         
         GetTuningCurveXYPosParameters();
         DlgCreate("XYPos Tuning Curve Parameters");
-        DlgInteger(1, "Number of Repeats", 1, 1000);
+        DlgInteger(1, "Number of Repeats", 1, 3000);
         DlgInteger(2, "Number of X Steps", 0, 100);
         DlgReal(3, "Min X Position", -14, 14);
         DlgReal(4, "Max X Position", -14, 14);
@@ -1598,7 +1598,7 @@ func TuningCurveDisparityDialog%()
     
 	DlgCreate("Disparity Tuning Curve Parameters");
 	DlgInteger(1, "Number of Steps (one way)", 1, 100);
-	DlgInteger(2, "Number of Repeats", 1, 1000);
+	DlgInteger(2, "Number of Repeats", 1, 3000);
 	DlgReal(3, "Center X Position", -14, 14);
 	DlgReal(4, "Max X Position (will mirror)", -14, 14);
     DlgCheck(5, "Slave Screen Is Stationary");
@@ -1682,9 +1682,9 @@ func TuningCurveDonutANDGonzagoDialog%()
         
         
         DlgCreate("Gonzago Tuning Curve Parameters");
-        DlgInteger(1, "Number of Core Contrast Steps", 2, 100);
-        DlgInteger(2, "Number of Donut Area Steps", 2, 100);
-        DlgInteger(3, "Number of Repeats", 1, 1000);
+        DlgInteger(1, "Number of Core Contrast Steps", 1, 100);
+        DlgInteger(2, "Number of Donut Area Steps", 1, 100);
+        DlgInteger(3, "Number of Repeats", 1, 3000);
         DlgReal(4, "Min Core Contrast", 0.1, 100);
         DlgReal(5, "Max Core Contrast", 0.1, 100);
         DlgReal(6, "Min Donut Outer Diameter", 0.1, 100);
@@ -1752,7 +1752,7 @@ func TuningCurveDonutANDGonzagoDialog%()
         
         DlgCreate("Donut Tuning Curve Parameters");
         DlgInteger(1, "Number of Steps", 1, 100);
-        DlgInteger(2, "Number of Repeats", 1, 1000);
+        DlgInteger(2, "Number of Repeats", 1, 3000);
         DlgReal(3, "Min Diameter", 0.1, 100);
         DlgReal(4, "Max Diameter", 0.1, 100);
         DlgCheck(5, "Random Progression");
@@ -1844,7 +1844,7 @@ func TuningCurveBerlinerDialog%()
 	DlgCreate("Berliner Tuning Curve Parameters");
 	'DlgInteger(1, "Number of Steps", 2, 100);
     DlgInteger(1, "Number of Stimuli", 1, 100);
-	DlgInteger(2, "Number of Repeats", 1, 1000);
+	DlgInteger(2, "Number of Repeats", 1, 3000);
 	DlgReal(3, "Min Diameter", 0.1, 100);
 	DlgReal(4, "Max Diameter", 0.1, 100);
 	DlgCheck(5, "Random Progression");
@@ -1993,7 +1993,7 @@ func TuningCurveBoxODonutsDialog%()
     
     DlgCreate("Box O' Donuts Parameters");
     
-    DlgInteger(1,"Number of repeats",1,100,20);
+    DlgInteger(1,"Number of repeats",1,1000,20);
     DlgCheck(2, "Random Progression", 2, 2);
     DlgCheck(3, "Master Follows Curve 1", 2, 3);
     DlgList(4, 55, gratingOptions$[], 2, 35, 1);
@@ -2077,7 +2077,7 @@ func TuningCurveDotsDialog%()
     
     DlgGroup("Tuning Curve Parameters", 1, 1, 47, 6);
 	DlgInteger(1, "Number of Steps", 1, 100, 0, 2);
-	DlgInteger(2, "Number of Repeats", 1, 10, 0, 3);
+	DlgInteger(2, "Number of Repeats", 1, 1000, 0, 3);
 	DlgReal(3, "Min Orientation (deg)", 0, 360, 0, 4);
 	DlgReal(4, "Max Orientation (deg)", 0, 360, 0, 5);
 	DlgCheck(5, "Random Progression", 0, 6);
@@ -2196,7 +2196,7 @@ func TuningCurveCRGDialog%()
     
     DlgCreate("Contrast Reversing Grating Parameters");
     
-    DlgInteger(1,"# of repeats per CRG sequence",1,100,30,1);
+    DlgInteger(1,"# of repeats per CRG sequence",1,1000,30,1);
     DlgInteger(2,"# of frames per turn",1,1000,30,2);
     DlgCheck(3, "Random Progression", 2, 3);
     DlgButton(tundlgSelectSEQFileButton%,   "Select Sequence File", SelectSEQFile%,49,3);
@@ -2361,9 +2361,9 @@ func TuningCurveDanishDialog%()
     
     
 	DlgCreate("Danish Tuning Curve Parameters");
-	DlgInteger(1, "Number of Steps", 2, 100);
+	DlgInteger(1, "Number of Steps", 1, 100);
     'DlgInteger(1, "Number of Stimuli", 1, 100);
-	DlgInteger(2, "Number of Repeats", 1, 1000);
+	DlgInteger(2, "Number of Repeats", 1, 3000);
 	DlgReal(3, "Min Outer Diameter", 0.1, 100);
 	DlgReal(4, "Max Outer Diameter", 0.1, 100);
 	DlgCheck(5, "Random Progression");
@@ -2430,8 +2430,8 @@ func TuningCurveDSSDialog%()
 	var i%;
     var sValues$;
     var iValue%:=0;
-    var result[1000];
-    var indices%[1000];
+    var result[10000];
+    var indices%[10000];
     
 	GetTuningCurveDSSParameters();
     
@@ -2449,10 +2449,10 @@ func TuningCurveDSSDialog%()
     'tunBerlinerNSteps% := 6;
     
 	DlgCreate("DSS Parameters");
-    DlgInteger(1, "Number of Trials", 1, 1000);
-	DlgInteger(2, "Number of Surround Flashes/Blanks", 1, 1000);
-	DlgInteger(3, "Number of 'Blank' Flashes", 0, 500);
-	DlgInteger(4, "Number of Flashes per Reward",  1, 100);
+    DlgInteger(1, "Number of Trials", 1, 10000);
+	DlgInteger(2, "Number of Surround Flashes/Blanks", 1, 10000);
+	DlgInteger(3, "Number of 'Blank' Flashes", 0, 5000);
+	DlgInteger(4, "Number of Flashes per Reward",  1, 1000);
     DlgButton(151, "Core Grating", TunDlgGratingMaster%);
     DlgButton(152, "Donut Grating", TunDlgGratingDonut%);
     DlgButton(153, "Core Vals -> Donut", TunCoreValsToDonut%);
@@ -2511,8 +2511,8 @@ func TuningCurveNullTestANDLagDialog%()
         
         GetTuningCurveNullTestParameters();
         DlgCreate("Null Test Tuning Curve Parameters");
-        DlgInteger(1, "Number of Steps", 2, 99);
-        DlgInteger(2, "Number of Repeats", 1, 30);
+        DlgInteger(1, "Number of Steps", 1, 99);
+        DlgInteger(2, "Number of Repeats", 1, 3000);
         DlgReal(3, "Start Phase", 0, 360);
         DlgReal(4, "End Phase", 0, 360);
         DlgReal(5, "Transition Frequency (Hz)", 0.1,100);
@@ -2589,7 +2589,7 @@ func TuningCurveNullTestANDLagDialog%()
         DlgCheck(10,"Master Screen is Lagged",29,5);
         DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
         if tunBoxODonutsCurrentCurve% = 0 then
-            DlgInteger(2, "Number of Repeats", 1, 1000,30,2);
+            DlgInteger(2, "Number of Repeats", 1, 3000,30,2);
             DlgCheck(5, "Random Progression");
         else
             DlgInteger(2, "----------------", 1, 1,30,2);
@@ -2875,8 +2875,8 @@ func GratingParametersDialogMaster%(label$, &param$, &statparam$, &x, &y, &w, &h
         DlgReal(5, "Inner Width:", 0, 30);
         DlgReal(6, "Inner Height:", 0, 30);
         DlgInteger(7, "Contrast(%):", -100, 100);
-        DlgReal(8, "Spatial Freq:", .01, 10);
-        DlgReal(9, "Temporal Freq:", 0, 10);
+        DlgReal(8, "Spatial Freq:", .01, 100);
+        DlgReal(9, "Temporal Freq:", 0, 100);
         DlgReal(10, "Orientation (degrees):", -360, 360);
         DlgReal(11, "Initial Phase (deg, 0 = white at center)", 0, 360);
         DlgList(12, "Color:", ColorVectorList$[]);
@@ -2952,8 +2952,8 @@ func GratingParametersDialogSlave%(label$, &param$, &statparam$, &x, &y, &w, &h,
         DlgReal(5, "Inner Width:", 0, 30);
         DlgReal(6, "Inner Height:", 0, 30);
         DlgInteger(7, "Contrast(%):", -100, 100);
-        DlgReal(8, "Spatial Freq:", .01, 10);
-        DlgReal(9, "Temporal Freq:", 0, 10);
+        DlgReal(8, "Spatial Freq:", .01, 100);
+        DlgReal(9, "Temporal Freq:", 0, 100);
         DlgReal(10, "Orientation (degrees):", -360, 360);
         DlgReal(11, "Initial Phase (deg, 0 = white at center)", 0, 360);
         DlgList(12, "Color:", ColorVectorList$[]);
@@ -3030,8 +3030,8 @@ func GratingParametersDialogCore%(label$, &param$, &statparam$, &x, &y, &w, &h, 
         DlgReal(5, "Inner Width:", 0, 30);
         DlgReal(6, "Inner Height:", 0, 30);
         DlgInteger(7, "Contrast(%):", -100, 100);
-        DlgReal(8, "Spatial Freq:", .01, 10);
-        DlgReal(9, "Temporal Freq:", 0, 10);
+        DlgReal(8, "Spatial Freq:", .01, 100);
+        DlgReal(9, "Temporal Freq:", 0, 100);
         DlgReal(10, "Orientation (degrees):", -360, 360);
         DlgReal(11, "Initial Phase (deg, 0 = white at center)", 0, 360);
         DlgList(12, "Color:", ColorVectorList$[]);
@@ -3109,8 +3109,8 @@ func GratingParametersDialogDonut%(label$, &param$, &statparam$, &x, &y, &w, &h,
         DlgReal(5, "Inner Width:", 0, 30);
         DlgReal(6, "Inner Height:", 0, 30);
         DlgInteger(7, "Contrast(%):", -100, 100);
-        DlgReal(8, "Spatial Freq:", .01, 10);
-        DlgReal(9, "Temporal Freq:", 0, 10);
+        DlgReal(8, "Spatial Freq:", .01, 100);
+        DlgReal(9, "Temporal Freq:", 0, 100);
         DlgReal(10, "Orientation (degrees):", -360, 360);
         DlgReal(11, "Initial Phase (deg, 0 = white at center)", 0, 360);
         DlgList(12, "Color:", ColorVectorList$[]);
@@ -3457,24 +3457,24 @@ func TuningCurveScriptDialog%()
     DlgCreate("Tuning Curve Parameters", 0, 0, 0, 0, -1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
 	DlgGroup("Common Parameters", 1, 1, 52, 10);
 	DlgReal(1, "Acquire Fixation time(s):", 1, 1000, 40, 2);
-    DlgReal(2, "Acquire Fixation penalty(s):", .2, 10, 40, 3);
-    DlgReal(3, "Stimulus onset delay(s):", 0, 10, 40, 4);
-	DlgReal(4, "Stimulus duration(s):", .1, 60, 40, 5);
-    DlgReal(5, "During-Stim fixation break penalty(s):", .2, 10, 40, 6);
-    DlgReal(6, "Intertrial interval(s):", .01, 10, 40, 7);
-	DlgReal(7, "Maintain fixation after stim(s):", .1, 10, 40, 8);
-	DlgReal(8, "Maintain fixation after stim penalty(s):", .2, 10, 40, 9);
+    DlgReal(2, "Acquire Fixation penalty(s):", .1, 100, 40, 3);
+    DlgReal(3, "Stimulus onset delay(s):", 0, 100, 40, 4);
+	DlgReal(4, "Stimulus duration(s):", .1, 100, 40, 5);
+    DlgReal(5, "During-Stim fixation break penalty(s):", .1, 100, 40, 6);
+    DlgReal(6, "Intertrial interval(s):", .01, 100, 40, 7);
+	DlgReal(7, "Maintain fixation after stim(s):", .1, 100, 40, 8);
+	DlgReal(8, "Maintain fixation after stim penalty(s):", .1, 100, 40, 9);
 	DlgList(9, "Background color:", bcl$, 3, 34, 10);
     if JuicerType% = 1 then
         DlgInteger(10, "Juicer open dur. (ms):", 1, 2000, 40, 11);
     else  'JuicerResult should only be 2, other values should not allow access to dialog box
-        DlgInteger(10, "Num. juicer pulses:", 1, 20, 40, 11);
+        DlgInteger(10, "Num. juicer pulses:", 1, 200, 40, 11);
     endif;   
     'juicer duration / n repeats dialog here?  Have to write values to DAQ parameters if changed, disable if not correct for juicer? 
     DlgGroup("Dual VSG Options", 1, 12, 52, 4);
     DlgCheck(11, "Use Dual VSG", 2, 13);
     'DlgCheck(12, "Select to turn off card sync", 25, 13);
-    DlgInteger(18, 2, 0, 50, 20, 13); DlgText("<-(Frames) Constant Lag (ms)->",22,13); DlgString(19,5,255,"",48,13);
+    DlgInteger(18, 2, 0, 100, 20, 13); DlgText("<-(Frames) Constant Lag (ms)->",22,13); DlgString(19,5,255,"",48,13);
     DlgList(17, "Use Constant Lag?", constantLag$, 3, 25, 14); 
     DlgList(12, "Dual Tuning Configuration:", dualType$, 3, 25, 15);
     
@@ -3735,14 +3735,14 @@ func TunOptoDialog%()
     DlgCheck(4, "Use pulsing opto",2,5);
     DlgCheck(5, "Record Laser Diode",2,6);
     DlgGroup("Wrap-Around Opto", 1, 7, 38, 4);
-    DlgReal(6, "PreStimulus Opto On (s)",0,10,20,8);
-    DlgReal(7, "PostStimulus Opto On (s)",0,10,20,9);
+    DlgReal(6, "PreStimulus Opto On (s)",0,100,20,8);
+    DlgReal(7, "PostStimulus Opto On (s)",0,100,20,9);
     DlgCheck(8, "Keep Opto on between stims",2,10);
     DlgGroup("Pulsing Opto", 1, 11, 38, 5);
     DlgInteger(9, "Opto # Pulses ",0,1000,20,12);
     DlgReal(10, "Opto Period Onset (s)",0,stimdur,20,13);
     DlgReal(11, "Opto Pulse Width (s)",0,stimdur,20,14);
-    DlgReal(12, "Opto Interpulse Interval (s)",0,100,20,15);
+    DlgReal(12, "Opto Interpulse Interval (s)",0,1000,20,15);
     
     'DlgCheck(6, "Record control box voltage");
     'DlgCheck(7, "Record stimulator");
