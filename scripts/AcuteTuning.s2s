@@ -1907,8 +1907,8 @@ proc CreateSampleConfiguration()
         SampleAutoName$(dataCellName$ + "_tun_000");
     endcase;
     
-    printlog("values are %f\n",tunValues[]);
-    printlog("Indices are %d\n",tunValuesIndices%[]);
+    'printlog("values are %f\n",tunValues[]);
+    'printlog("Indices are %d\n",tunValuesIndices%[]);
     
     
     SampleAutoFile(1);
@@ -2529,12 +2529,12 @@ func Start%()
     var Ttf2;
     var Tori;
     var Tori2;
-    var Toritemp;
-    var YKantToriRead;
     var Tphase; 
     var Tcv$; 
     var Tpattern$; 
     var Taperture$;
+    var specFileName$:="C:\\work\\AcuteTuningSpecFile.txt";
+    var specHandle%;
     
     if renderIsBroken% = 1 then
         message("Variable renderIsBroken has been set!  \nWe are FLYING BLIND, IGNORING ALL INCOMING PULSES!");
@@ -2656,13 +2656,12 @@ func Start%()
             endif
         else 'if one grating, use plaidAngle to adjust orientation so that the plaid is "zero degrees" (moves rightward)
             ParseGratingParameters%(GetGratingParameters$("Stimulus"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
-            Toritemp := Tori;
             'Assign orientations
-            Tori := Toritemp - (tunPlaidAngle/2);
+            Tori := 360 - (tunPlaidAngle/2);
             if Tori < 0 then
                 Tori := Tori + 360;
             endif
-            Tori2 := Toritemp + (tunPlaidAngle/2);
+            Tori2 := (tunPlaidAngle/2);
             if Tori2 > 360 then
                 Tori2 := Tori2 - 360;
             endif
@@ -2670,7 +2669,7 @@ func Start%()
             'Stim$ := "-s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
             'Stim$ := Stim$ + " -s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori2, Tphase, Tcv$, Tpattern$, Taperture$);
             'Force contrast to 100 if using one grating
-            Stim$ := "-s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, 100, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
+            Stim$ := " -s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, 100, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
             Stim$ := Stim$ + " -s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, 100, Tsf, Ttf, Tori2, Tphase, Tcv$, Tpattern$, Taperture$);
         endif;
         
@@ -2773,6 +2772,16 @@ func Start%()
 	endcase;
     
     cmdLine$ := "cmd /c " + bin$ + ProgName$ + Extras$ + Stim$ + Tune$;
+    'if command line is too long, do file version
+    if Len(cmdLine$) > 8000 then
+        cmdLine$ := "cmd /k " + bin$ + ProgName$ + " -F " + specFileName$;
+        'open a file to write the trial-by-trial specs for the VSG
+        specHandle% := FileOpen(specFileName$, 8, 1);
+        'print to spec file
+        Print("%s %s %s",Extras$,Stim$,Tune$);  'file should be everything starting from FixationArg$ on   
+        'close spec file
+        FileClose(0);
+    endif;
 
     
     ' Record initial text marks. The command line may need to be broken into pieces. 
@@ -2790,7 +2799,7 @@ func Start%()
     
 	'Begin the stimulus program. It will take a few seconds for the VSG to initialize.
 	PrintLog(cmdLine$+"\n");
-    PrintLog("num advances is %d and num repeats is %d\n",tunNAdvances%,tunNRepeats%);
+    PrintLog("num advances is %d and num repeats is %d and length cmdline is %d\n",tunNAdvances%,tunNRepeats%,Len(cmdLine$));
     
 	StimHandle% := ProgRun(cmdLine$,1);
 	if StimHandle% < 0 then Message("Could not start stimulus."); halt; endif

@@ -1093,7 +1093,7 @@ func TuningCurvePlaidDialog%()
 	DlgCheck(14, "Random Progression",2,16);
     DlgCheck(15, "Use File For Tuning Values (Select 'Tune on' above)",2,17);
     DlgString(16,40,255,"",3,18);  'for visual confirmation of selected seq file
-    DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 19);
+    DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFilePlaid%, 2, 19);
     
     'DlgCheck(8, "Use plaids [grating orientation determines angle]", 0, 9);
     
@@ -2425,6 +2425,22 @@ func SelectTuningFileNullTest%()
     
 end;
 
+func SelectTuningFilePlaid%()
+    'Can't use the generic here because the dialog item to fill is different
+
+    var status% := 1;
+    var direc$;
+    var fh0%;
+    
+    direc$ := FilePath$();  'get current directory
+    fh0%:=FileOpen(direc$+"*.txt",1,0,"Please select a tuning file");  'Find a tuning file
+    direc$ := FileName$(0);  'Get full path of selected file
+    FileClose(fh0%);  'Just close the file, we're not using it
+    DlgValue$(16,direc$);  'Place filename into dialog item 7 of calling dialog
+
+	return status%;  'return 1 so calling dialog doesn't close
+    
+end;
 
 func TuningCurveGenericDialogChanged%(item%)
     'This single dialog changed function can be used for almost ALL the acute tuning dialogs that allow file-based tuning curves
