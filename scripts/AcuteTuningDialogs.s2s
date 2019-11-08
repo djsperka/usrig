@@ -1087,7 +1087,7 @@ func TuningCurvePlaidDialog%()
 	DlgReal(10, "Max Contrast (%)", 0.1, 100, 33, 11);
     
     DlgList(11,30,PlaidNGratingList$[],2,2,13);
-    DlgReal(12, "Plaid Angle (deg)", 0, 360, 33, 14);
+    DlgReal(12, "Plaid Angle (deg)", 1, 359, 33, 14);
     DlgList(13,30,PlaidFullScreenList$[],2,2,15);
     
 	DlgCheck(14, "Random Progression",2,16);
@@ -1115,6 +1115,10 @@ func TuningCurvePlaidDialog%()
     ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
     ' before things proceed. 
 	if i% = 1 then
+        if tunPlaidAngle = 180 then
+            Message("Plaid angle cannot be 0, 180, or 360!  Quitting!");
+            halt;
+        endif;
 		SaveTuningCurvePlaidParameters();
 		PrintLog("TuningCurvePlaidDialog - user hit OK\n");
 		tunType$ := tunTypePlaid$;
