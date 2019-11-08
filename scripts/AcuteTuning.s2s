@@ -2647,13 +2647,17 @@ func Start%()
         if tunPlaidUseTwoGratings% = 1 then  'if two gratings, take both at face value, make sure TF is same
             'Get Distractor1 first so that Tx/Ty/Tw/Th/Tcontrast% come from Stimulus
             ParseGratingParameters%(GetGratingParameters$("Distractor1"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf2, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
-            ParseGratingParameters%(GetGratingParameters$("Stimulus"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
+            ParseGratingParameters%(GetGratingParameters$("Stimulus"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori2, Tphase, Tcv$, Tpattern$, Taperture$);
             if Ttf = Ttf2 then 'Stim$ already has GetGratingParameters$("Stimulus") in it
                 Stim$ := Stim$ + " -s " + GetGratingParameters$("Distractor1");
             else
                 Message("Temporal frequency of Stimulus and Distractor1 gratings must be the same, quitting!");
                 Halt;  'nothing has really happened yet, so we should be able to stop gracefully (test this)
             endif
+            if Tori-Tori2 = 0 or Tori-Tori2 = 180 or Tori-Tori2 = -180 or Tori-Tori2 = 360 or Tori-Tori2 = -360 then
+                Message("Orientation of Stimulus and Distractor1 gratings cannot be the same, or 180 degrees apart, quitting!");
+                Halt;  'nothing has really happened yet, so we should be able to stop gracefully (test this)
+            endif;
         else 'if one grating, use plaidAngle to adjust orientation so that the plaid is "zero degrees" (moves rightward)
             ParseGratingParameters%(GetGratingParameters$("Stimulus"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
             'Assign orientations
