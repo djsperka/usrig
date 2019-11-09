@@ -14,6 +14,7 @@ const tunCVSID$ := "$Id$";
 #include "UsreyGratings.s2s"
 #include "UsreyDAQ.s2s"
 
+
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
 ' Tuning Curve script START
@@ -2533,8 +2534,11 @@ func Start%()
     var Tcv$; 
     var Tpattern$; 
     var Taperture$;
-    var specFileName$:="C:\\work\\AcuteTuningSpecFile.txt";
+    var specFileName$;
     var specHandle%;
+    
+    specFileName$ := GetScriptDir$(0)+"..\\..\\AcuteTuningSpecFile.txt";
+    
     
     if renderIsBroken% = 1 then
         message("Variable renderIsBroken has been set!  \nWe are FLYING BLIND, IGNORING ALL INCOMING PULSES!");
@@ -2652,10 +2656,12 @@ func Start%()
                 Stim$ := Stim$ + " -s " + GetGratingParameters$("Distractor1");
             else
                 Message("Temporal frequency of Stimulus and Distractor1 gratings must be the same, quitting!");
+                SampleStop();
                 Halt;  'nothing has really happened yet, so we should be able to stop gracefully (test this)
             endif
             if Tori-Tori2 = 0 or Tori-Tori2 = 180 or Tori-Tori2 = -180 or Tori-Tori2 = 360 or Tori-Tori2 = -360 then
                 Message("Orientation of Stimulus and Distractor1 gratings cannot be the same, or 180 degrees apart, quitting!");
+                SampleStop();
                 Halt;  'nothing has really happened yet, so we should be able to stop gracefully (test this)
             endif;
         else 'if one grating, use plaidAngle to adjust orientation so that the plaid is "zero degrees" (moves rightward)
