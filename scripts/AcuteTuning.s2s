@@ -2177,7 +2177,12 @@ proc WriteParameterFile()
 	' get filename for parfile (data file + "par" extension) and open it
 	View(DataWindow%);
 	parFileBase$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
-	parFileName$ := parFileBase$ + ".par";
+    'Note that the SampleAutoName treats .smr and .smrx files as unique so we need to segregate the .par files
+    if tunDoNeuropixel% = 1 then
+        parFileName$ := parFileBase$ + ".par0";  'this is a different .par - for .smr files
+    else
+        parFileName$ := parFileBase$ + ".par";  'this is a standard file - for .smrx files
+    endif;
 	PrintLog("par filename is " + parFileName$ + "\n");
 	parHandle% := FileOpen(parFileName$, 8, 1);
 
