@@ -27,8 +27,9 @@
 0014            HALT                   ;End of this sequence section
 
 ; Quit stimulus application
+; djs changed trigger line to work with fixstim. 
 0015 EQ:     'q MOVI   V2,1
-0016            DIGOUT [1000000.]
+0016            DIGOUT [...1....]
 0017            MOVI   V2,0
 0018            HALT                   ;End of this sequence section
 
