@@ -2466,12 +2466,12 @@ proc CreateSampleConfiguration()
         halt
     endcase;
     
-    
-    SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
-	SampleTitle$(XChannel%,EyeXPortLabel$);
-	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
-	SampleTitle$(YChannel%,EyeYPortLabel$);
-    
+    if tunAlwaysLooking% = 0 then
+        SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+        SampleTitle$(XChannel%,EyeXPortLabel$);
+        SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+        SampleTitle$(YChannel%,EyeYPortLabel$);
+    endif;
     
 
     
@@ -3309,7 +3309,10 @@ func Start%()
     var tempCount%;
     var tempSeqVarValue;
     var tempSeqVarValue%;
+    var specFileName$;
+    var specHandle%;
     
+    specFileName$ := GetScriptDir$(0)+"..\\..\\TuningSpecFile.txt";
     
     
 	
@@ -4017,6 +4020,22 @@ func Start%()
 '    for i% := 1 to Len(cmdLine$) step 100 do
 '        SampleText(Mid$(cmdLine$, i%, 100));
 '    next
+    
+    'if command line is too long, do file version
+    if Len(cmdLine$) > 8000 then
+        cmdLine$ := "cmd /k " + bin$ + ProgName$ + RemoteArg$ + " -F " + specFileName$;
+        'open a file to write the trial-by-trial specs for the VSG
+        specHandle% := FileOpen(specFileName$, 8, 1);
+        'print to spec file
+        Print("%s",FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$);  'file should be everything starting from FixationArg$ on, prelim stuff
+        Print("%s",RefrLock$ + OffsetFile$ + StimDur$);  'Dual VSG stuff
+        Print("%s",MasterIndicator$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$);  'Master grating stuff
+        Print("%s",M2Grat$ + M2GratParam$ + TunCurveM2Arg$ + M2Values$);  'Master grating stuff, second grating (only box o' donuts on two gratings)
+        Print("%s",SlaveIndicator$ + SGrat$ + SGratParam$ + TunCurveSArg$ + SValues$);  'Slave grating stuff
+        Print("%s",TunCurveS2Arg$ + S2Values$);  'Second slave parameters (for Box O' Donuts, more possible)
+        'close spec file
+        FileClose(0);
+    endif;
     
     
 	'Begin the stimulus program. It will take a few seconds for the VSG to initialize.

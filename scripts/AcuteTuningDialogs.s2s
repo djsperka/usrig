@@ -54,16 +54,17 @@ const tundlgDanishButton% := 23;
 const tundlgTwoWayContrastButton% := 24;
 const tundlgConditionedContrastButton% := 25;
 const tundlgBorderOwnershipButton% := 26;
-
+const tundlgPlaidButton% := 27;
 
 const tunTypeNone$ := "None";
 const tunTypeOrientation$ := "O";
+const tunTypePlaid$ := "P";
 const tunTypeContrast$ := "C";
 const tunTypeSpatial$ := "S";
 const tunTypeTemporal$ := "T";
 const tunTypeArea$ := "A";
 const tunTypeDriftingBar$ := "G";
-const tunTypeNullTest$ := "P";  'This is P for counterPhase reversal, I guess
+const tunTypeNullTest$ := "N";  'This is P for counterPhase reversal, I guess
 const tunTypeCRG$ := "R"; 'cRg, I guess
 const tunTypeID$ := "I";    ' inner diameter tuning
 'const tunTypeDonut$ := "H";
@@ -92,7 +93,6 @@ var tunOriMaxOrientation;	' max orientation
 var tunOriProgression%;
 var tunOriUseFile%;
 var tunOriTuningFile$;
-var tunOriUsePlaid%;
 
 ' Contrast next
 var tunContrastNSteps%;			' # steps in contrast tuning curve
@@ -161,6 +161,26 @@ var tunIDMaxDiam;		' max diameter
 var tunIDProgression%;
 var tunIDUseFile%;
 var tunIDTuningFile$;
+
+
+' Plaid next
+var tunPlaidNSteps%;		' # steps in plaid tuning curve
+var tunPlaidNRepeats%;		' # repeats in plaid tuning curve
+var tunPlaidStaticDirection;  'Static direction if not being tuned
+var tunPlaidMinDirection;	' min direction
+var tunPlaidMaxDirection;	' max direction
+var tunPlaidMinTF;	    	' min TF
+var tunPlaidMaxTF;	    	' max TF
+var tunPlaidMinContrast;	' min contrast
+var tunPlaidMaxContrast;	' max contrast
+var tunPlaidProgression%;
+var tunPlaidUseFile%;
+var tunPlaidTuningFile$;
+var tunPlaidTuneType%;      ' 0 for orientation; 1 for TF; 2 for contrast
+var tunPlaidUseTwoGratings%;' 0 for no, use 1; 1 for yes, use two
+var tunPlaidAngle;          ' degrees, use if tunPlaidUseTwoGratings% = 0
+var tunPlaidFullScreen%;    ' 0 for no, use specs from "grating"; 1 for yes, full screen
+
 
 ' Null Test next
 var tunNullTestNSteps%;			' # steps in area tuning curve
@@ -316,7 +336,8 @@ func TuningCurveScriptDialog%()
     var tempParam$;
     var tempPhase;
     var boxOK% := 1;  'do the stimulus/crosshairs boxes overlap?
-    var dlgwid% := 45;  'Width of dialog
+    'var dlgwid% := 45;  'Width of dialog
+    var dlgwid% := 66;  'Width of dialog
     
     TuningCurveScriptDialogAllowOK% := 0;  'Disable OK button to start, force selection of experiment
     
@@ -349,7 +370,7 @@ func TuningCurveScriptDialog%()
     
     'DlgCheck(6, "Wait For Camera Trigger?", 2,7);
     DlgText("Camera mode: ", 2, 8);
-    DlgList(7, 12, "None|Wait|Trigger", 3, 31, 8);
+    DlgList(7, 12, "None|Wait|Trigger", 3, 52, 8);
     DlgReal(8, "Camera Baseline Period(s):", 0, 10000, 0, 9);  'new, allow really long stimuli
     DlgCheck(9,"Do Neuropixel Recording",2,10);
     
@@ -360,26 +381,27 @@ func TuningCurveScriptDialog%()
     DlgCheck(10,"Opto/E-Stim On",2,14);
     DlgButton(tundlgOptogeneticsButton%, "Opto/E-Stim Parameters", TunOptoDialog%, 2, 15);
     
-    DlgGroup("Individual Tuning Curve Types", 1, 16, dlgwid%-2, 6);
-	DlgButton(tundlgOrientationButton%, "Orientation", TuningCurveOrientationDialog%, 2, 17);
+    DlgGroup("Individual Tuning Curve Types", 1, 16, dlgwid%-2, 5);
+    DlgButton(tundlgOrientationButton%, "Orientation", TuningCurveOrientationDialog%, 2, 17);
 	DlgButton(tundlgContrastButton%, "Contrast", TuningCurveContrastDialog%, 2, 18);
 	DlgButton(tundlgSpatialButton%, "Spatial Freq", TuningCurveSpatialDialog%, 2, 19);
 	DlgButton(tundlgTemporalButton%, "Temporal Freq", TuningCurveTemporalDialog%, 2, 20);
-    DlgButton(tundlgTwoWayContrastButton%, "Two Way Contrast", TuningCurveTwoWayContrastDialog%, 2, 21);
-	DlgButton(tundlgAreaButton%, "Area", TuningCurveAreaDialog%, 23, 17);
-    DlgButton(tundlgNullTestButton%, "Null Test", TuningCurveNullTestDialog%, 23, 18);
-	DlgButton(tundlgIDButton%, "InnerDiam", TuningCurveIDDialog%, 23, 19);
-    DlgButton(tundlgDanishButton%, "Danishes", TuningCurveDanishDialog%, 23, 20);
-    DlgButton(tundlgConditionedContrastButton%, "Conditioned Contrast", TuningCurveCOnditionedContrastDialog%, 23, 21);
+    DlgButton(tundlgTwoWayContrastButton%, "Two Way Contrast", TuningCurveTwoWayContrastDialog%, 23, 17);
+	DlgButton(tundlgAreaButton%, "Area", TuningCurveAreaDialog%, 23, 18);
+    DlgButton(tundlgNullTestButton%, "Null Test", TuningCurveNullTestDialog%, 23, 19);
+    DlgButton(tundlgPlaidButton%, "Plaid", TuningCurvePlaidDialog%, 23, 20);
+	DlgButton(tundlgIDButton%, "InnerDiam", TuningCurveIDDialog%, 44, 17);
+    DlgButton(tundlgDanishButton%, "Danishes", TuningCurveDanishDialog%, 44, 18);
+    DlgButton(tundlgConditionedContrastButton%, "Conditioned Contrast", TuningCurveConditionedContrastDialog%, 44, 19);
     
-    DlgGroup("Non-Grating Stimuli", 1, 22, dlgwid%-2, 3);
-    DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 23);
-    DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 23, 23);
-    DlgButton(tundlgBorderOwnershipButton%, "Border Ownership", TuningCurveBorderOwnershipDialog%, 2, 24);
+    DlgGroup("Non-Grating Stimuli", 1, 21, dlgwid%-2, 2);
+    DlgButton(tundlgDriftingBarButton%, "Drifting Bars", TuningCurveDriftingBarDialog%, 2, 22);
+    DlgButton(tundlgCRGMButton%, "CRGs", TuningCurveCRGMDialog%, 23, 22);
+    DlgButton(tundlgBorderOwnershipButton%, "Border Ownership", TuningCurveBorderOwnershipDialog%, 44, 22);
     
-    DlgGroup("Neuropixel JIT Stimuli", 1, 25, dlgwid%-2, 2);
-    DlgButton(tundlgStimPSTHButton%, "E-Stim PSTH", StimTrigPSTHDialog%, 2, 26);
-    DlgButton(tundlgCSDButton%, "Current Source Density", CurrentSourceDensityDialog%, 21, 26);
+    DlgGroup("Neuropixel JIT Stimuli", 1, 23, dlgwid%-2, 2);
+    DlgButton(tundlgStimPSTHButton%, "E-Stim PSTH", StimTrigPSTHDialog%, 2, 24);
+    DlgButton(tundlgCSDButton%, "Current Source Density", CurrentSourceDensityDialog%, 21, 24);
     
     DlgAllow(0xffff, 0, TuningCurveScriptDialogChanged%);
     
@@ -489,7 +511,6 @@ proc GetTuningCurveOrientationParameters()
     tunOriMaxOrientation := GetFloatRegistryValue(key$, "MaxOrientation", tunOriMaxOrientation);
     tunOriUseFile% := GetIntRegistryValue%(key$, "UseFile", tunOriUseFile%);
     tunOriTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunOriTuningFile$);
-    tunOriUsePlaid% := GetIntRegistryValue%(key$, "UsePlaid", tunOriUsePlaid%);
 end;
 
 proc SaveTuningCurveOrientationParameters()
@@ -502,7 +523,6 @@ proc SaveTuningCurveOrientationParameters()
     SetFloatRegistryValue(key$, "MaxOrientation", tunOriMaxOrientation);
     SetIntRegistryValue(key$, "UseFile", tunOriUseFile%);
     SetStringRegistryValue(key$, "TuningFile", tunOriTuningFile$);
-    SetIntRegistryValue(key$, "UsePlaid", tunOriUsePlaid%);
 end;
 
 proc GetTuningCurveContrastParameters()
@@ -702,6 +722,55 @@ proc SaveTuningCurveIDParameters()
     SetIntRegistryValue(key$, "UseFile", tunIDUseFile%);
     SetStringRegistryValue(key$, "TuningFile", tunIDTuningFile$);
 end;
+
+
+proc GetTuningCurvePlaidParameters()
+	var stmp$;
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\Plaid";
+
+    tunPlaidNSteps% := GetIntRegistryValue%(key$, "NSteps", tunPlaidNSteps%);
+    tunPlaidNRepeats% := GetIntRegistryValue%(key$, "NRepeats", tunPlaidNRepeats%);
+    tunPlaidProgression% := GetIntRegistryValue%(key$, "Progression", tunPlaidProgression%);
+    tunPlaidStaticDirection := GetFloatRegistryValue(key$, "StaticDirection", tunPlaidStaticDirection);
+    tunPlaidMinDirection := GetFloatRegistryValue(key$, "MinDirection", tunPlaidMinDirection);
+    tunPlaidMaxDirection := GetFloatRegistryValue(key$, "MaxDirection", tunPlaidMaxDirection);
+    tunPlaidMinTF := GetFloatRegistryValue(key$, "MinTF", tunPlaidMinTF);
+    tunPlaidMaxTF := GetFloatRegistryValue(key$, "MaxTF", tunPlaidMaxTF);
+    tunPlaidMinContrast := GetFloatRegistryValue(key$, "MinContrast", tunPlaidMinContrast);
+    tunPlaidMaxContrast := GetFloatRegistryValue(key$, "MaxContrast", tunPlaidMaxContrast);
+    tunPlaidUseFile% := GetIntRegistryValue%(key$, "UseFile", tunPlaidUseFile%);
+    tunPlaidTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunPlaidTuningFile$);
+    tunPlaidAngle := GetFloatRegistryValue(key$, "Angle", tunPlaidAngle);
+    tunPlaidTuneType% := GetIntRegistryValue%(key$, "PlaidTuneType", tunPlaidTuneType%);
+    tunPlaidUseTwoGratings% := GetIntRegistryValue%(key$, "PlaidUseTwoGratings", tunPlaidUseTwoGratings%);
+    tunPlaidFullScreen% := GetIntRegistryValue%(key$, "PlaidFullScreen", tunPlaidFullScreen%);
+    
+end;
+
+proc SaveTuningCurvePlaidParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\Plaid";
+
+    SetIntRegistryValue(key$, "NSteps", tunPlaidNSteps%);
+    SetIntRegistryValue(key$, "NRepeats", tunPlaidNRepeats%);
+    SetIntRegistryValue(key$, "Progression", tunPlaidProgression%);
+    SetFloatRegistryValue(key$, "StaticDirection", tunPlaidStaticDirection);
+    SetFloatRegistryValue(key$, "MinDirection", tunPlaidMinDirection);
+    SetFloatRegistryValue(key$, "MaxDirection", tunPlaidMaxDirection);
+    SetFloatRegistryValue(key$, "MinTF", tunPlaidMinTF);
+    SetFloatRegistryValue(key$, "MaxTF", tunPlaidMaxTF);
+    SetFloatRegistryValue(key$, "MinContrast", tunPlaidMinContrast);
+    SetFloatRegistryValue(key$, "MaxContrast", tunPlaidMaxContrast);
+    SetIntRegistryValue(key$, "UseFile", tunPlaidUseFile%);
+    SetStringRegistryValue(key$, "TuningFile", tunPlaidTuningFile$);
+    SetFloatRegistryValue(key$, "Angle", tunPlaidAngle);
+    SetIntRegistryValue(key$, "PlaidTuneType", tunPlaidTuneType%);
+    SetIntRegistryValue(key$, "PlaidUseTwoGratings", tunPlaidUseTwoGratings%);
+    SetIntRegistryValue(key$, "PlaidFullScreen", tunPlaidFullScreen%);
+    
+end;
+
 
 
 proc GetTuningCurveNullTestParameters()
@@ -938,14 +1007,9 @@ func TuningCurveOrientationDialog%()
     DlgString(7,40,255,"",3);  'for visual confirmation of selected seq file
     DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
     
-    'DlgCheck(8, "Use plaids [grating orientation determines angle]", 0, 9);
-    
     DlgAllow(0xffff, 0, TuningCurveGenericDialogChanged%);
     
-    'Removing plaid option as it doesn't work without REX
-	'i% := DlgShow(tunOriNSteps%, tunOriNRepeats%, tunOriMinOrientation, tunOriMaxOrientation, tunOriProgression%, tunOriUseFile%, tunOriTuningFile$, tunOriUsePlaid%);
     i% := DlgShow(tunOriNSteps%, tunOriNRepeats%, tunOriMinOrientation, tunOriMaxOrientation, tunOriProgression%, tunOriUseFile%, tunOriTuningFile$);
-    tunOriUsePlaid% := 0;  'Just hard code this, makes it easier to put this back in if it is ever a thing.
     
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
@@ -992,6 +1056,166 @@ func TuningCurveOrientationDialog%()
     PrintLog("Return value is %d\n", iReturn%);
 	return iReturn%;
 end;
+
+
+func TuningCurvePlaidDialog%()
+	var iReturn%;
+	var i%;
+    var PlaidTunList$[3];
+    PlaidTunList$[0] := "Tune on Direction";
+    PlaidTunList$[1] := "Tune on Temporal Freq";
+    PlaidTunList$[2] := "Tune on Contrast";
+    var PlaidNGratingList$[2];
+    PlaidNGratingList$[0] := "Use One Grating ('stimulus')";
+    PlaidNGratingList$[1] := "Use 'stimulus' and 'dist1' gratings"; 
+    var PlaidFullScreenList$[2];
+    PlaidFullScreenList$[0] := "Use location specs from 'stimulus'";
+    PlaidFullScreenList$[1] := "Full Screen";
+    
+	GetTuningCurvePlaidParameters();
+	DlgCreate("They've Gone To PLAID!!");
+	DlgInteger(1, "Number of Steps", 1, 99);  'note that 100 steps breaks something - no time to track it down right now JJ
+	DlgInteger(2, "Number of Repeats", 1, 3000);
+	DlgGroup("Tuning Values",1,3,46,9);
+    DlgList(3,30,PlaidTunList$[],3,2,4);
+    DlgReal(4, "Static Direction (deg)", 0, 360, 33, 5);
+    DlgReal(5, "Min Direction (deg)", 0, 360, 33, 6);
+	DlgReal(6, "Max Direction (deg)", 0, 360, 33, 7);
+    DlgReal(7, "Min TF", 0, 100, 33, 8);
+	DlgReal(8, "Max TF", 0, 100, 33, 9);
+    DlgReal(9, "Min Contrast (%)", 0.1, 100, 33, 10);  'contrast of zero breaks GetParameterProgression%
+	DlgReal(10, "Max Contrast (%)", 0.1, 100, 33, 11);
+    
+    DlgList(11,30,PlaidNGratingList$[],2,2,13);
+    DlgReal(12, "Plaid Angle (deg)", 1, 179, 33, 14);
+    DlgList(13,30,PlaidFullScreenList$[],2,2,15);
+    
+	DlgCheck(14, "Random Progression",2,16);
+    DlgCheck(15, "Use File For Tuning Values (Select 'Tune on' above)",2,17);
+    DlgString(16,40,255,"",3,18);  'for visual confirmation of selected seq file
+    DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFilePlaid%, 2, 19);
+    
+    'DlgCheck(8, "Use plaids [grating orientation determines angle]", 0, 9);
+    
+    DlgAllow(0xffff, 0, TuningCurvePlaidDialogChanged%);
+    
+    i% := DlgShow(tunPlaidNSteps%, tunPlaidNRepeats%, tunPlaidTuneType%, tunPlaidStaticDirection, tunPlaidMinDirection, tunPlaidMaxDirection, 
+    tunPlaidMinTF, tunPlaidMaxTF, tunPlaidMinContrast, tunPlaidMaxContrast, tunPlaidUseTwoGratings%, tunPlaidAngle, 
+    tunPlaidFullScreen%, tunPlaidProgression%, tunPlaidUseFile%, tunPlaidTuningFile$);
+    
+    
+	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
+    ' djs 2/4/2011
+    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+    ' before things proceed. 
+	if i% = 1 then
+        if tunPlaidAngle = 180 then
+            Message("Plaid angle cannot be 0, 180, or 360!  Quitting!");
+            halt;
+        endif;
+		SaveTuningCurvePlaidParameters();
+		PrintLog("TuningCurvePlaidDialog - user hit OK\n");
+		tunType$ := tunTypePlaid$;
+        tunUseFile% := tunPlaidUseFile%;  'not sure that tuning files will obviously work off the bat, command line is not yet defined.
+        tunTuningFile$ := tunPlaidTuningFile$;
+        
+        'Reset dialog OK button text on Select dialog, and note which experiment to run
+        DlgValue$(-1,"Go to Plaid");
+        TuningCurveScriptDialogAllowOK% := 1;  'Prepare to enable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
+        
+		if tunContext$ = tunContextDAQ$ then
+            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+            iReturn% := 1;
+		else
+			iReturn% := 1;
+		endif;
+	endif;
+	if i% = 0 then
+		PrintLog("TuningCurvePlaidDialog - user hit Cancel\n");
+		tunType$ := tunTypeNone$;
+		if tunContext$ = tunContextDAQ$ then
+			iReturn% := 1;
+		else
+			iReturn% := 2;
+		endif;
+        'Reset dialog OK button text on Select dialog, and note we need to pick an expt.
+        DlgValue$(-1,"Select Expt.");
+        TuningCurveScriptDialogAllowOK% := 0;  'Prepare to disable OK button
+        TuningCurveScriptDialogChanged%(-1);  'Disables "OK" button, -1 is sham input
+	endif;
+    PrintLog("Return value is %d\n", iReturn%);
+	return iReturn%;
+end;
+
+
+func TuningCurvePlaidDialogChanged%(item%)
+    'This single dialog changed function can be used for almost ALL the acute tuning dialogs that allow file-based tuning curves
+    '(at least currently) because they all have the same structure and therefore the same dialog positions to allow/disallow
+    var enableMins% := 0;
+    docase
+    case DlgValue(15) = 0 then  'If we are not using a tuning file
+        DlgEnable(0,16);  'disable the string box with the text file name (button still works)
+        DlgEnable(1,1);  'enable nSteps, min, and max for all tuning types
+        enableMins% := 1;
+    case DlgValue(15) = 1 then
+        DlgEnable(1,16);  'enable the string box with the text file name
+        DlgEnable(0,1);  'disable nSteps, min, and max for all tuning types
+        DlgEnable(0,4);
+        DlgEnable(0,5);
+        DlgEnable(0,6);
+        DlgEnable(0,7);
+        DlgEnable(0,8);
+        DlgEnable(0,9);
+        DlgEnable(0,10);
+    endcase;
+    
+    'Only allow one set of tuning values to be active
+    docase
+    case DlgValue(3) = 0 and enableMins% = 1 then  'Orientation active
+        DlgEnable(0,4);
+        DlgEnable(1,5);
+        DlgEnable(1,6);
+        DlgEnable(0,7);
+        DlgEnable(0,8);
+        DlgEnable(0,9);
+        DlgEnable(0,10);
+    case DlgValue(3) = 1 and enableMins% = 1 then  'Temporal frequency active
+        DlgEnable(1,4);
+        DlgEnable(0,5);
+        DlgEnable(0,6);
+        DlgEnable(1,7);
+        DlgEnable(1,8);
+        DlgEnable(0,9);
+        DlgEnable(0,10);
+    case DlgValue(3) = 2 and enableMins% = 1 then  'Contrast active
+        DlgEnable(1,4);
+        DlgEnable(0,5);
+        DlgEnable(0,6);
+        DlgEnable(0,7);
+        DlgEnable(0,8);
+        DlgEnable(1,9);
+        DlgEnable(1,10);
+    endcase
+    
+    'And finally, override allowing us to define orientation for TF/Contrast plaid tuning whether dialog- or file-based
+    if DlgValue(3) > 0 then
+        DlgEnable(1,4);
+    endif
+    
+    
+    'Allow angle if we are not using two plaids
+    DlgEnable(1-DlgValue(11),12);
+    
+    return 1;
+end
+
 
 
 
@@ -2205,6 +2429,22 @@ func SelectTuningFileNullTest%()
     
 end;
 
+func SelectTuningFilePlaid%()
+    'Can't use the generic here because the dialog item to fill is different
+
+    var status% := 1;
+    var direc$;
+    var fh0%;
+    
+    direc$ := FilePath$();  'get current directory
+    fh0%:=FileOpen(direc$+"*.txt",1,0,"Please select a tuning file");  'Find a tuning file
+    direc$ := FileName$(0);  'Get full path of selected file
+    FileClose(fh0%);  'Just close the file, we're not using it
+    DlgValue$(16,direc$);  'Place filename into dialog item 7 of calling dialog
+
+	return status%;  'return 1 so calling dialog doesn't close
+    
+end;
 
 func TuningCurveGenericDialogChanged%(item%)
     'This single dialog changed function can be used for almost ALL the acute tuning dialogs that allow file-based tuning curves

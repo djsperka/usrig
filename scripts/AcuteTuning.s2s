@@ -14,6 +14,7 @@ const tunCVSID$ := "$Id$";
 #include "UsreyGratings.s2s"
 #include "UsreyDAQ.s2s"
 
+
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
 ' Tuning Curve script START
@@ -265,13 +266,12 @@ var tStateStart:=-1;	' time that present state started. Used to measure wait tim
 var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
 var tTrigger:=-1;	' temp var for newly discovered trigger times
 var tStimOn:=-1;	' time that stim was turned on. Used to measure spike rates 
-var tStimSequence := -1;    ' time that stim sequence started; followed by pulses on frame channels
 var tInterTrialTime := 0;	' Time spent waiting between trials (i.e. after screen is blank, but before fix point is presented)
 var tRise, tFall;
 
 ' Constants for states
 const stateStartTrial%:=0;		' Start trial state
-const stateWaitForStimOn%:=3;		' Wait for stimulus return trigger (on)
+'const stateWaitForStimOn%:=3;		' Wait for stimulus return trigger (on), this has been replaced entirely by stateWaitForStimTrigger ¯\_(ツ)_/¯
 const stateWaitForStimOff%:=4;		' Wait for stimulus return trigger (off)
 const stateStimulusPlaying%:=5;     ' New, wait for tNow to exceed stimulus duration
 const stateMaintainFixation%:=8;	' Maintaining fixation (stim off period)
@@ -552,7 +552,6 @@ func IdleProcessing%()
                 ' Stimulus has begun
                 LogStatus("WaitForStimTrigger", "Stim sequence started at " + str$(tTrigger));
                 tStimOn := tTrigger;
-                tStimSequence := tTrigger;      ' TODO remove tStimOn ref above - see stateWaitForStimOn
                 tLastTrigger := tTrigger;
                 'ChangeStateTo(stateHoldFixation%, tTrigger);
                 docase
@@ -569,7 +568,6 @@ func IdleProcessing%()
                 ' Stimulus has begun
                 LogStatus("WaitForStimTrigger", "Stim sequence started at " + str$(tRise));
                 tStimOn := tRise;
-                tStimSequence := tRise;
                 tLastTrigger := tRise;
                 docase
                 case tunType$ = tunTypeCRG$ then
@@ -1321,6 +1319,33 @@ proc TuningCurveLabels(iport%)
         ChanTitle$(1, "Chan 1");
         XRange(tunOriMinOrientation, tunOriMaxOrientation);
         
+    case tunType$ = tunTypePlaid$ and tunPlaidTuneType% = 0 then
+        
+        myTitle$ := s$ + " - Plaid Orientation = ";
+        myTitle2$ := " - Plaid Orientation = ";
+        WindowTitle$("Plaid Orientation Tuning - " + s$);
+        XUnits$("Plaid Orientation (degrees)");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunPlaidMinDirection, tunPlaidMaxDirection);
+        
+    case tunType$ = tunTypePlaid$ and tunPlaidTuneType% = 1 then
+        
+        myTitle$ := s$ + " - Plaid Temporal Freq = ";
+        myTitle2$ := " - Plaid Temporal Freq = ";
+        WindowTitle$("Plaid Temporal Freq Tuning - " + s$);
+        XUnits$("Plaid Temporal Freq");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunPlaidMinTF, tunPlaidMaxTF);
+        
+    case tunType$ = tunTypePlaid$ and tunPlaidTuneType% = 2 then
+        
+        myTitle$ := s$ + " - Plaid Contrast = ";
+        myTitle2$ := " - Plaid Contrast = ";
+        WindowTitle$("Plaid Contrast Tuning - " + s$);
+        XUnits$("Plaid Contrast");
+        ChanTitle$(1, "Chan 1");
+        XRange(tunPlaidMinContrast, tunPlaidMaxContrast);
+        
     case tunType$ = tunTypeSpatial$ then
         
         myTitle$ := s$ + " - Spatial Freq = ";
@@ -1448,7 +1473,7 @@ proc CreateSampleConfiguration()
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
     
     'read tuning file, if one is specified
-    if tunUseFile% = 1 then
+    if tunUseFile% = 1 then  'This should also work for plaids in the same manner, as stringification of tune values is still required
         var tunFileLen%;
         var eof%:=1;
         readsetup(",","	 ","","","	");  'Standard read setup
@@ -1545,7 +1570,7 @@ proc CreateSampleConfiguration()
         endif;
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%; 'This does NOT include the conditioning stimuli, will be used then updated below
         
-        'TODO so I have to:
+        'so I have to:
         '1) Expand tunValues to include a second +100 set of values, then add in the conditioning stimuli 1 and 2 at the end
         '    e.g. [10 20 40 80] -> [10 20 40 80 110 120 140 180 0 100]
         '2) Make a parallel tunConditionedContrastValues for StringifyProgression that is the same, but without the +100
@@ -1615,7 +1640,6 @@ proc CreateSampleConfiguration()
         
         isConditioningStimulus% := 1;  'We start on a conditioning stimulus, of course
         
-        'TODO Not sure this is right, and fading.  Check logic again in idle loop tomorrow TODO
         tunNAdvances% := (2*tunNAdvances%)+1;  'update tunNAdvances% to keep blocks straight (i.e. when the interblock time is used) in idle loop
         
     case tunType$ = tunTypeOrientation$ then 
@@ -1630,6 +1654,60 @@ proc CreateSampleConfiguration()
                 GetRepeatedParameterProgression%(tunOriNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunOriMinOrientation, tunOriMaxOrientation, 0, tunOriProgression%);
             else  'cannot run GRPP on a value of 0 steps, simply use minimum value
                 tunValues[0] := tunOriMinOrientation;
+                tunValuesIndices%[0] := 0;
+            endif;
+        endif;
+        tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
+        'message(str$(tunNValues%));
+        tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+    case tunType$ = tunTypePlaid$ and tunPlaidTuneType% = 0 then    
+        SampleAutoName$(dataCellName$ + "_plo_000");
+        tunNRepeats% := tunPlaidNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
+        if tunUseFile% = 1 then
+            tunNAdvances% := tunFileLen%-1;
+            ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunPlaidProgression%);
+        else
+            tunNAdvances% := tunPlaidNSteps%;
+            if tunNAdvances% > 0 then
+                GetRepeatedParameterProgression%(tunPlaidNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunPlaidMinDirection, tunPlaidMaxDirection, 0, tunPlaidProgression%);
+            else  'cannot run GRPP on a value of 0 steps, simply use minimum value
+                tunValues[0] := tunPlaidMinDirection;
+                tunValuesIndices%[0] := 0;
+            endif;
+        endif;
+        tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
+        'message(str$(tunNValues%));
+        tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+    case tunType$ = tunTypePlaid$ and tunPlaidTuneType% = 1 then    
+        SampleAutoName$(dataCellName$ + "_plt_000");
+        tunNRepeats% := tunPlaidNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
+        if tunUseFile% = 1 then
+            tunNAdvances% := tunFileLen%-1;
+            ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunPlaidProgression%);
+        else
+            tunNAdvances% := tunPlaidNSteps%;
+            if tunNAdvances% > 0 then
+                GetRepeatedParameterProgression%(tunPlaidNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunPlaidMinTF, tunPlaidMaxTF, 0, tunPlaidProgression%);
+            else  'cannot run GRPP on a value of 0 steps, simply use minimum value
+                tunValues[0] := tunPlaidMinTF;
+                tunValuesIndices%[0] := 0;
+            endif;
+        endif;
+        tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
+        'message(str$(tunNValues%));
+        tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
+    case tunType$ = tunTypePlaid$ and tunPlaidTuneType% = 2 then    
+        SampleAutoName$(dataCellName$ + "_plc_000");
+        tunNRepeats% := tunPlaidNRepeats%*(tunOptoRepeats%);  'double number of blocks if doing on/off optogenetics
+        if tunUseFile% = 1 then
+            tunNAdvances% := tunFileLen%-1;
+            ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunPlaidProgression%);
+        else
+            tunNAdvances% := tunPlaidNSteps%;
+            if tunNAdvances% > 0 then
+                GetRepeatedParameterProgression%(tunPlaidNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunPlaidMinContrast, tunPlaidMaxContrast, 1, tunPlaidProgression%);
+            else  'cannot run GRPP on a value of 0 steps, simply use minimum value
+                tunValues[0] := tunPlaidMinContrast;
                 tunValuesIndices%[0] := 0;
             endif;
         endif;
@@ -1830,8 +1908,8 @@ proc CreateSampleConfiguration()
         SampleAutoName$(dataCellName$ + "_tun_000");
     endcase;
     
-    printlog("values are %f\n",tunValues[]);
-    printlog("Indices are %d\n",tunValuesIndices%[]);
+    'printlog("values are %f\n",tunValues[]);
+    'printlog("Indices are %d\n",tunValuesIndices%[]);
     
     
     SampleAutoFile(1);
@@ -2099,7 +2177,12 @@ proc WriteParameterFile()
 	' get filename for parfile (data file + "par" extension) and open it
 	View(DataWindow%);
 	parFileBase$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
-	parFileName$ := parFileBase$ + ".par";
+    'Note that the SampleAutoName treats .smr and .smrx files as unique so we need to segregate the .par files
+    if tunDoNeuropixel% = 1 then
+        parFileName$ := parFileBase$ + ".par0";  'this is a different .par - for .smr files
+    else
+        parFileName$ := parFileBase$ + ".par";  'this is a standard file - for .smrx files
+    endif;
 	PrintLog("par filename is " + parFileName$ + "\n");
 	parHandle% := FileOpen(parFileName$, 8, 1);
 
@@ -2167,6 +2250,37 @@ proc WriteParameterFile()
         Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);  
     endif;
     
+    if tunType$ = tunTypePlaid$ then
+        docase
+        case tunPlaidUseTwoGratings% = 1 then
+            Print("\Plaid Second Grating\n");  'Donut grating
+            Print("-------------------\n\n");
+            Tstimstr$ := GetGratingParameters$("Distractor1");
+            ReadSetup(",",",",",",",",",");
+            i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstiminnerw$, Tstiminnerh$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
+            'i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
+            if tunType$ = tunTypeStimTrigPSTH$ then  'if we are using the stimulus-triggered PSTH, contrast is defined as 0
+                Tstimcontrast$ := "0";
+            endif;
+            Print("Position (x, degrees)           : %s\n", Tstimx$);
+            Print("Position (y, degrees)           : %s\n", Tstimy$);
+            Print("Width (degrees)                 : %s\n", Tstimw$);
+            Print("Height (degrees)                : %s\n", Tstimh$);
+            Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", Tstimcv$);
+            Print("Temporal frequency              : %s\n", Tstimtf$);
+            Print("Spatial frequency               : %s\n", Tstimsf$);
+            Print("Orientation (degrees)           : %s\n", Tstimorientation$);
+            Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
+            Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
+            Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
+            Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
+        else
+            Print("Angle Between Plaids            : %f\n", tunPlaidAngle);
+        endcase
+        Print("Full Screen Mode?               : %d\n", tunPlaidFullScreen%);
+        
+    endif;
+    
 
 	Print("\nExperimental parameters\n");
 	Print("-------------------------\n\n");
@@ -2209,6 +2323,30 @@ proc WriteParameterFile()
         Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunOriMinOrientation, tunOriMaxOrientation, tunOriNSteps%, tunOriNRepeats%);
         Print("Values: " + tunValuesStringified$ + "\n");
         Print("\n");
+        
+    case tunType$ = tunTypePlaid$ and tunPlaidTuneType% = 0 then
+        
+        Print("Type:                  : Plaid Direction\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunPlaidMinDirection, tunPlaidMaxDirection, tunPlaidNSteps%, tunPlaidNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n"); 
+        
+    case tunType$ = tunTypePlaid$ and tunPlaidTuneType% = 1 then
+        
+        Print("Type:                  : Plaid Temporal Freq\n");
+        Print("Static Direction       : %f\n",tunPlaidStaticDirection);
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunPlaidMinTF, tunPlaidMaxTF, tunPlaidNSteps%, tunPlaidNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");   
+        
+    case tunType$ = tunTypePlaid$ and tunPlaidTuneType% = 2 then
+        
+        Print("Type:                  : Plaid Contrast\n");
+        Print("Static Direction       : %f\n",tunPlaidStaticDirection);
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunPlaidMinContrast, tunPlaidMaxContrast, tunPlaidNSteps%, tunPlaidNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");   
+        
         
     case tunType$ = tunTypeSpatial$ then
         
@@ -2381,39 +2519,62 @@ func Start%()
     var tempCount%;
     var tempSeqVarValue;
     var tempSeqVarValue%;
-    var tempBinDir$;
     var DGrat$;
     var DGratParam$;
+    'Temporary variables allowing us to grab, manipulate grating parameters (useful for plaids)
+    var Tgr$;
+    var Tx;
+    var Ty;
+    var Tw; 
+    var Th; 
+    var Tiw; 
+    var Tih; 
+    var Tcontrast%; 
+    var Tsf; 
+    var Ttf; 
+    var Ttf2;
+    var Tori;
+    var Tori2;
+    var Tphase; 
+    var Tcv$; 
+    var Tpattern$; 
+    var Taperture$;
+    var specFileName$;
+    var specHandle%;
+    
+    specFileName$ := GetScriptDir$(0)+"..\\..\\AcuteTuningSpecFile.txt";
+    
     
     if renderIsBroken% = 1 then
         message("Variable renderIsBroken has been set!  \nWe are FLYING BLIND, IGNORING ALL INCOMING PULSES!");
     endif;
     
-    
+    'For camera mode, open serial comm port
     if tunCameraMode% = cameraModeTrigger% then
         SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
         SendSerialMsg(serialCOMPort%, GetParameterString$(), "\n");
     endif;
     
-    'For serial communications with Neuropixel, use the same values (I think??) but do not send initial message
+    'For serial communications with Neuropixel, use the same values as camera mode but do not send initial message
     if tunDoNeuropixel% =  1 then
         SerialOpen(serialCOMPort%, serialBaudRate%, serialDataBits%, serialParity%, serialStopBits%, serialFlowCtrl%);
     endif;
     
-'    var XHairArg$;
-	
-	SampleStart(0); 'Start sampling
+	'Start sampling
+	SampleStart(0); 
     
     SequencerPeriodMS := SampleSeqClock(1);  'Get the clock period of the sequencer, in MS, must do this after starting sampling
     
-	SafeSampleKey("0");
+	SafeSampleKey("0");  'clear any digital bits
     
+    'Set scaling for temperature channel
     if tunUseTemperature% = 1 then  
         ChanUnits$(7,"Deg C");
         ChanScale(7,10);  'this will allow us to get the temperature right
         ChanOffset(7,20);
     endif;        
     
+    'Do required prep for opto
     if tunDoOpto% = 1 then
         'set sequencer variable 4 for opto voltage
         'Please note that the input for this has to be a 32-bit variable. Use vdac32% to get the right value.
@@ -2437,19 +2598,12 @@ func Start%()
     'build background gray level string
     tunBGStr$ := "(" + Str$(tunBackgroundGrayLevel%) + "/" + Str$(tunBackgroundGrayLevel%) + "/" + Str$(tunBackgroundGrayLevel%) + ") ";
     
+    'Set various subcomponents of the to-be-built command line
     Stim$ := " -s " + GetGratingParameters$("Stimulus");    
-	Values$ := tunValuesStringified$;
+    Values$ := tunValuesStringified$;
     durValues$ := tunDurValuesStringified$;
-    'Extras$ := " -b " + tunBackgroundColor$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 2 -v";
-    'Extras$ := " -b " + tunBGStr$ + " -d " + GetAcuteDistanceToScreenMM$() + " -p 2 -v";
     Extras$ := " -b " + tunBGStr$ + " -d " + GetAcuteDistanceToScreenMM$();
     Extras$ := Extras$ + " -p " + Str$(READYCHANNELCODE%) + " -v";  'changed ready pulse (-p) to 4 so that it comes on port 2 - this is bitmapped, not linear mapped
-
-    'DisplayHardwareIndex%
-    'RemoteStimulusIP$
-    
-    tempBinDir$ := bin$;
-    PrintLog("bin$ = %s\n", bin$);
     
     
     'By default, set ProgName$ to be FIXSTIM
@@ -2481,6 +2635,7 @@ func Start%()
         ProgName$ := ProgName$ + "-ip " + RenderIP$ + " -prefix " + jsonFilePre$ + " ";
     endif
     
+    
 	docase 
     case tunType$ = tunTypeContrast$ or tunType$ = tunTypeTwoWayContrast$ then  'The call to the VSG is the same for both, Values$ will change of course
         
@@ -2492,17 +2647,62 @@ func Start%()
         Tune$ := " -C " + Values$ + " -t" + durValues$;
 
     case tunType$ = tunTypeOrientation$ then
-        ' ==================================================================== '
-        ' NOTE: 20170410 PCA
-        var Flag$;
-        if tunOriUsePlaid% > 0 then
-            Flag$ := " -X "; ' -X is for plaids
-        else
-            Flag$ := " -O "; ' -O is for regular grating orientation
-        endif
         'Tune$ := Dual$ + " -O " + Values$;
-        Tune$ := Flag$ + Values$;
-        ' ==================================================================== '
+        Tune$ := " -O " + Values$;
+        
+    case tunType$ = tunTypePlaid$ then
+        'TODO - test this, but it might actually work, you never know!
+        
+        if tunPlaidUseTwoGratings% = 1 then  'if two gratings, take both at face value, make sure TF is same
+            'Get Distractor1 first so that Tx/Ty/Tw/Th/Tcontrast% come from Stimulus
+            ParseGratingParameters%(GetGratingParameters$("Distractor1"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf2, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
+            ParseGratingParameters%(GetGratingParameters$("Stimulus"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori2, Tphase, Tcv$, Tpattern$, Taperture$);
+            if Ttf = Ttf2 then 'Stim$ already has GetGratingParameters$("Stimulus") in it
+                Stim$ := Stim$ + " -s " + GetGratingParameters$("Distractor1");
+            else
+                Message("Temporal frequency of Stimulus and Distractor1 gratings must be the same, quitting!");
+                SampleStop();
+                Halt;  'nothing has really happened yet, so we should be able to stop gracefully (test this)
+            endif
+            if Tori-Tori2 = 0 or Tori-Tori2 = 180 or Tori-Tori2 = -180 or Tori-Tori2 = 360 or Tori-Tori2 = -360 then
+                Message("Orientation of Stimulus and Distractor1 gratings cannot be the same, or 180 degrees apart, quitting!");
+                SampleStop();
+                Halt;  'nothing has really happened yet, so we should be able to stop gracefully (test this)
+            endif;
+        else 'if one grating, use plaidAngle to adjust orientation so that the plaid is "zero degrees" (moves rightward)
+            ParseGratingParameters%(GetGratingParameters$("Stimulus"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
+            'Assign orientations
+            Tori := 360 - (tunPlaidAngle/2);
+            if Tori < 0 then
+                Tori := Tori + 360;
+            endif
+            Tori2 := (tunPlaidAngle/2);
+            if Tori2 > 360 then
+                Tori2 := Tori2 - 360;
+            endif
+            'Start over with stim, because the orientations had to be adjusted
+            'Stim$ := "-s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
+            'Stim$ := Stim$ + " -s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori2, Tphase, Tcv$, Tpattern$, Taperture$);
+            'Force contrast to 100 if using one grating
+            Stim$ := " -s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, 100, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
+            Stim$ := Stim$ + " -s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, 100, Tsf, Ttf, Tori2, Tphase, Tcv$, Tpattern$, Taperture$);
+        endif;
+        
+        'Have to change the Values$ variable because the default does not give us what we want, tunValuesStringified$ is OK, but there's more!
+        docase
+        case tunPlaidTuneType% = 0 then 'if tuning on orientation
+            Values$ := "100," + Str$(Ttf) + ",[" + tunValuesStringified$ + "]";
+        case tunPlaidTuneType% = 1 then 'if tuning on temporal frequency  
+            Values$ := "100,[" + tunValuesStringified$ + "]," + Str$(tunPlaidStaticDirection);
+        case tunPlaidTuneType% = 2 then 'if tuning on contrast
+            Values$ := "[" + tunValuesStringified$ + "]," + Str$(Ttf) + "," + Str$(tunPlaidStaticDirection);
+        endcase
+        
+        if tunPlaidFullScreen% = 1 then  'if full screen, set w/h to 0 to indicate this
+            Tw := 0;
+            Th := 0;
+        endif;
+        Tune$ := " -x " + Str$(Tx) + "," + Str$(Ty) + "," + Str$(Tw) + "," + Str$(Th) + "," + Values$;
 
     case tunType$ = tunTypeSpatial$ then
 
@@ -2587,15 +2787,17 @@ func Start%()
 	endcase;
     
     cmdLine$ := "cmd /c " + bin$ + ProgName$ + Extras$ + Stim$ + Tune$;
+    'if command line is too long, do file version
+    if Len(cmdLine$) > 8000 then
+        cmdLine$ := "cmd /k " + bin$ + ProgName$ + " -F " + specFileName$;
+        'open a file to write the trial-by-trial specs for the VSG
+        specHandle% := FileOpen(specFileName$, 8, 1);
+        'print to spec file
+        Print("%s %s %s",Extras$,Stim$,Tune$);  'file should be everything starting from FixationArg$ on   
+        'close spec file
+        FileClose(0);
+    endif;
 
-    ' ==================================================================== '
-    ' NOTE: 20170410 PCA
-    ' reset bin$ back to its original value so we don't screw anything
-    ' else up
-    if DisplayHardwareIndex% = 1 then
-        bin$ := tempBinDir$; 
-    endif      
-    ' ==================================================================== '
     
     ' Record initial text marks. The command line may need to be broken into pieces. 
     if tunTriggerHack% = 0 then
@@ -2612,7 +2814,7 @@ func Start%()
     
 	'Begin the stimulus program. It will take a few seconds for the VSG to initialize.
 	PrintLog(cmdLine$+"\n");
-    PrintLog("num advances is %d and num repeats is %d\n",tunNAdvances%,tunNRepeats%);
+    PrintLog("num advances is %d and num repeats is %d and length cmdline is %d\n",tunNAdvances%,tunNRepeats%,Len(cmdLine$));
     
 	StimHandle% := ProgRun(cmdLine$,1);
 	if StimHandle% < 0 then Message("Could not start stimulus."); halt; endif
