@@ -180,6 +180,7 @@ const atttimingdlgResponseWindow% := 14;
 const atttimingdlgIntertrialTime% := 15;
 const atttimingdlgPenaltyTime% := 16;
 const atttimingdlgLockUncued% := 17;
+const atttimingdlgFixOffAtCC% := 18;
 
 ' constants for color dialog
 var attdlgColorIndexGray% := 0;
@@ -280,6 +281,7 @@ var cuedResponseWindowCloseTime;
 var uncuedResponseWindowCloseTime;
 var trialIsCRForDelayBasedReward%;  'This variable is needed because delay-based reward is treated differently for CRs
 var ActualRewardDuration%;  'we need to keep track of this
+var attFixationOffAtCC%;  'do we want to turn the fixation off early, when the contrast change happens?
 
 'we need to explicitly know the position of the gratings to place the answer windows on the gratings
 var mainX;  'the main grating patch is expected to be the one located over the receptive field
@@ -1633,6 +1635,10 @@ func IdleProcessing%()
         'Check to see if we need to change the colors on the display, cued location
         docase
         case CCHappened% = 1 or CCHappened% = 21 or CCHappened% = 41 then  'This means the cued target window just opened
+            'request fixation point off, if requested - Henry reneging before implementation due to inability to change to different contrast fixpt
+            'if attFixationOffAtCC% = 1 then
+            '    SafeSampleKey("f");
+            'endif;
             'change display colors, if cued target window has just opened
             view(XYWindow%).XYColour(iFixationWindowChannel%,13);  'Change fixation window to blue
             docase  'expectedAnswer% gives cued location
@@ -2381,6 +2387,7 @@ proc GetTimingDialogParameters()
     attUseHazardForReward% := GetIntRegistryValue%(key$, "UseHazardForReward", 0);
     attHazRewardMin% := GetIntRegistryValue%(key$, "HazRewardMin", 100);
     attHazRewardMax% := GetIntRegistryValue%(key$, "HazRewardMax", 200);
+    attFixationOffAtCC% := GetIntRegistryValue%(key$, "FixationOffAtCC", 0);
     
     
 end;
@@ -2411,6 +2418,8 @@ proc SaveTimingDialogParameters()
     SetIntRegistryValue(key$, "UseHazardForReward", attUseHazardForReward%);
     SetIntRegistryValue(key$, "HazRewardMin", attHazRewardMin%);
     SetIntRegistryValue(key$, "HazRewardMax", attHazRewardMax%);
+    SetIntRegistryValue(key$, "FixationOffAtCC", attFixationOffAtCC%);
+   
     
 end;
 
@@ -2992,12 +3001,13 @@ func TimingDialog%()
 	DlgReal(atttimingdlgIntertrialTime%, "Intertrial time(s):", .01, 10);
     DlgReal(atttimingdlgPenaltyTime%, "Generic penalty time(s):", .01, 10);
     DlgCheck(atttimingdlgLockUncued%, "Lock Uncued CC to Cued CC");
+    'DlgCheck(atttimingdlgFixOffAtCC%, "Turn off fixation at CC");
     
          
     DlgAllow(0, 0, TimingDialogChanged%);
     i%:=DlgShow(attAcquisitionTime, attFixationCueMinTime, attFixationCueMaxTime, attCueOnsetTime, attCueOffsetTime, attStimOnsetTime,
     attHazardMinTime, attHazardExpMeanTime, attHazardCutoffTime, attUseHazardForReward%, attHazRewardMin%, attHazRewardMax%,
-    attContrastChangeDuration, attResponseWindow, attInterTrialTime, attAbortPenaltyTime, attLockUncuedToCued%);
+    attContrastChangeDuration, attResponseWindow, attInterTrialTime, attAbortPenaltyTime, attLockUncuedToCued%);   ', attFixationOffAtCC%
     if i% = 1 then
         attFalseAlarmPenaltyTime := attAbortPenaltyTime;
         attMissPenaltyTime := attAbortPenaltyTime;
