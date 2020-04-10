@@ -2551,6 +2551,18 @@ func AttentionScriptDialog%()
 	GetAttentionScriptParameters();
     GetColorsDialogParameters();  'we need to GET the parameters here, or the user will need to open each dialog
     GetTimingDialogParameters();  'this too...
+    'Override JuiceRewardMSMin%/JuiceRewardMSMax% with values from dialog, if using hazard for reward
+    'The problem is that if Henry doesn't run the Timing dialog box, this calculation isn't done and the
+    'values from Config pertain, and they may not be good values.  So we have to calculate them here in case
+    'Henry doesn't run the Timing dialog, which, once his values are set, he wouldn't.
+    'This really isn't great policy and these numbers really should probably be set from within Config/DAQ as
+    'that's where they live, but I guess if Henry complains enough he gets what he wants.  Note that any call
+    'to GetDAQParameters() subsequent to this section will restore the values to the state from Config/DAQ, I
+    'am NOT saving the values written here to the DAQ registry.  Only overriding values if hazard function used.
+    if attUseHazardForReward% = 1 then
+        JuiceRewardMSMin% := attHazRewardMin%;
+        JuiceRewardMSMax% := attHazRewardMax%;
+    endif;
     GetFlasherDialogParameters(); 'and this...
     GetAttOptoParameters();  'and this...
     GetAttCuesToUseParameters();  'and this...
