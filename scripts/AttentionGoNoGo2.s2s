@@ -4153,13 +4153,14 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
 '                endif
                 
                 ''' Set offList, assuming that offList determines which CUES appear
-                if easyList%[ind%] = 1 or isCueAll%[ind%] <> 1 then
+                'if easyList%[ind%] = 1 or isCueAll%[ind%] <> 1 then  'logic seems wrong???
+                if easyList%[ind%] = 1 then
                     offList%[ind%] := alloff% - Pow(2,cuedLoc%[ind%]-1);  'turn off all cues but the intended one
                 else
-                    if isCueAll%[ind%] = 1 then
-                        offList%[ind%] := 256;  'if isCueAll%, use second set of cue circle colors, these match the CueAll fixpt, second set is offBits+256 (third set would be offBits+512, etc.)
+                    if attCueCirclesMatchCueAllFixpt% and isCueAll%[ind%] = 1 then
+                        offList%[ind%] := 256;  'if isCueAll% and cues should match fixpt, all cues on, use second set of cue circle colors, these match the CueAll fixpt, second set is offBits+256 (third set would be offBits+512, etc.)
                     else
-                        offList%[ind%] := 0;
+                        offList%[ind%] := 0;  'all cues on, use first set of cue circle colors
                     endif;
                 endif
                 
