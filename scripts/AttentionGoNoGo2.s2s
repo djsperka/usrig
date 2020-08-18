@@ -90,6 +90,7 @@ var noinfoRGB%[3];  'This was deprecated before it was ever used, but I'm not pu
                     'A) it will be a pain and B) as soon as I do it will be asked for again.  So it's just sitting
                     'there kind of orphaned.  Won't hurt anything.
 var attCueCircleContrastAttend%;
+var attCueCirclesMatchCueAllFixpt%;
 var attCueCircleContrastIgnore1%;
 var attCueCircleContrastIgnore2%;
 var attCueCircleContrastIgnore3%;
@@ -230,6 +231,7 @@ var attcolorsdlgCueCircleColorNoAttenB% := 40;
 var attcolorsdlgCueCircleColorNoInfoR% := 41;
 var attcolorsdlgCueCircleColorNoInfoG% := 42;
 var attcolorsdlgCueCircleColorNoInfoB% := 43;
+var attcolorsdlgAllCueCirclesMatchFix% := 44;
 
 'variables for Henry's tuning curve version
 const attMaxTrl% := 1000;
@@ -984,6 +986,7 @@ func Start%()
     if attUseCueCircles% > 0 then
         'CueCirc$ := CreateCueCircleColorSets$();
         CueCirc$ := CreateCueCircleColorSetsLite$();  'Lite version only creates one set of cue circles, no rotation
+        'printlog("Cue circles list is: %s\n",CueCirc$);
     endif;
     
     'get all these grating parameters
@@ -2444,6 +2447,7 @@ proc GetColorsDialogParameters()
     attCueCircleContrastIgnore2% := GetIntRegistryValue%(key$, "CueCircleContrastD2", 0);
     attCueCircleContrastIgnore3% := GetIntRegistryValue%(key$, "CueCircleContrastD3", 0);
     attCueCircleContrastIgnore4% := GetIntRegistryValue%(key$, "CueCircleContrastD4", 0);
+    attCueCirclesMatchCueAllFixpt% := GetIntRegistryValue%(key$, "CueCirclesMatchCueAllFixpt", 0); 
     attCustomGratingColorCheck% := GetIntRegistryValue%(key$, "CustomGratingColorsCheck", 0);
     attCustomGratingColorStimFrom%[0] := GetIntRegistryValue%(key$, "CustomGratingColorsStimFromRed", 0);
     attCustomGratingColorStimFrom%[1] := GetIntRegistryValue%(key$, "CustomGratingColorsStimFromGreen", 0);
@@ -2492,7 +2496,8 @@ proc SaveColorsDialogParameters()
     SetIntRegistryValue(key$, "CueCircleContrastD1", attCueCircleContrastIgnore1%);
     SetIntRegistryValue(key$, "CueCircleContrastD2", attCueCircleContrastIgnore2%);
     SetIntRegistryValue(key$, "CueCircleContrastD3", attCueCircleContrastIgnore3%);
-    SetIntRegistryValue(key$, "CueCircleContrastD4", attCueCircleContrastIgnore4%);  
+    SetIntRegistryValue(key$, "CueCircleContrastD4", attCueCircleContrastIgnore4%); 
+    SetIntRegistryValue(key$, "CueCirclesMatchCueAllFixpt", attCueCirclesMatchCueAllFixpt%);    
     SetIntRegistryValue(key$, "CustomGratingColorsCheck", attCustomGratingColorCheck%);
     SetIntRegistryValue(key$, "CustomGratingColorsStimFromRed", attCustomGratingColorStimFrom%[0]);
     SetIntRegistryValue(key$, "CustomGratingColorsStimFromGreen", attCustomGratingColorStimFrom%[1]);
@@ -3159,6 +3164,7 @@ func ColorsDialog%()
     DlgInteger(attcolorsdlgCueContrastIgnore2%, "Ignore2 Cue Circle Contrast", 0, 100, 27, 9);
     DlgInteger(attcolorsdlgCueContrastIgnore3%, "Ignore3 Cue Circle Contrast", 0, 100, 27, 10);
     DlgInteger(attcolorsdlgCueContrastIgnore4%, "Ignore4 Cue Circle Contrast", 0, 100, 27, 11);
+    DlgCheck(attcolorsdlgAllCueCirclesMatchFix%, "All cue circles match fixpt on Cue All",2,12);
     DlgText("0-100",30,6);
     DlgText("(0/255)       R         G          B",47,6);
     DlgText("FixPt 1",47,7);
@@ -3218,7 +3224,7 @@ func ColorsDialog%()
     attCustomGratingColorStimFrom%[0], attCustomGratingColorStimFrom%[1], attCustomGratingColorStimFrom%[2], 
     attCustomGratingColorStimTo%[0], attCustomGratingColorStimTo%[1], attCustomGratingColorStimTo%[2], 
     attCustomGratingColorDistractorFrom%[0], attCustomGratingColorDistractorFrom%[1], attCustomGratingColorDistractorFrom%[2], 
-    attCustomGratingColorDistractorTo%[0], attCustomGratingColorDistractorTo%[1], attCustomGratingColorDistractorTo%[2], twentyoneints%);
+    attCustomGratingColorDistractorTo%[0], attCustomGratingColorDistractorTo%[1], attCustomGratingColorDistractorTo%[2], twentyoneints%, attCueCirclesMatchCueAllFixpt%);
     
     
     
@@ -3281,6 +3287,12 @@ func ColorsDialog%()
         
         
         SaveColorsDialogParameters();
+        
+        'Test output within colors dialog, allows me to test without crashing on a non-1401 computer
+        'Problem is that this does not respect the dialog value for the number of gratings, hard to test...
+        var AString$;
+        AString$ := CreateCueCircleColorSetsLite$();  'Lite version only creates one set of cue circles, no rotation
+        printlog("Cue circles list is: %s\n",AString$);
         
 	endif
     
@@ -4144,7 +4156,11 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 if easyList%[ind%] = 1 or isCueAll%[ind%] <> 1 then
                     offList%[ind%] := alloff% - Pow(2,cuedLoc%[ind%]-1);  'turn off all cues but the intended one
                 else
-                    offList%[ind%] := 0;
+                    if isCueAll%[ind%] = 1 then
+                        offList%[ind%] := 256;  'if isCueAll%, use second set of cue circle colors, these match the CueAll fixpt, second set is offBits+256 (third set would be offBits+512, etc.)
+                    else
+                        offList%[ind%] := 0;
+                    endif;
                 endif
                 
                 
@@ -4525,8 +4541,9 @@ proc WriteParameterFile()
 	Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
     
     if attUseCueCircles% > 0 then
-        Print("Attend Cue Circle Contrast      : %d\n", attCueCircleContrastAttend%);
-        Print("Attend Cue Circle Color (r/g/b) : %d %d %d\n", attendRGB%[0], attendRGB%[1], attendRGB%[2]);
+        Print("Attend Cue Circle Contrast        : %d\n", attCueCircleContrastAttend%);
+        Print("Attend Cue Circle Color (r/g/b)   : %d %d %d\n", attendRGB%[0], attendRGB%[1], attendRGB%[2]);
+        Print("Cue Circles Match Fixpt In Cue-All: %d\n",attCueCirclesMatchCueAllFixpt%);
     endif;
     
     
@@ -5234,6 +5251,22 @@ func CreateCueCircleColorSetsLite$()
         CueCircLocal$ := CueCircLocal$ + FadeColorToGray$(tempCol%[],ContrastList%[i%]);
 
     next
+    
+    'If cue circles match fixpt for Cue-All, write second set of specs
+    if attCueCirclesMatchCueAllFixpt% = 1 then
+        for i% := 0 to attNumPatches%-1 do 'loop through each patch
+            CueCircLocal$ := CueCircLocal$ + ",";  'insert comma in all cases
+            CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
+            
+            'This is cue-all fixation color
+            tempCol%[0] := noattenRGB%[0];
+            tempCol%[1] := noattenRGB%[1];
+            tempCol%[2] := noattenRGB%[2];
+            
+            'put in correct color/contrast of cue-all fixation point
+            CueCircLocal$ := CueCircLocal$ + FadeColorToGray$(tempCol%[],ContrastList%[0]);
+        next
+    endif;
     
     'put in closing space
     CueCircLocal$ := CueCircLocal$ + " ";
