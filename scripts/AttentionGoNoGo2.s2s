@@ -4,6 +4,7 @@
 #include "AttentionExtractFunctions.s2s"
 #include "UsreyFixationPoint.s2s"
 #include "UsreyDAQ.s2s"
+#include "Joystick.s2s"
 #include "UsreyGratings.s2s"  'not sure why we didn't just do this from the start...
 
 
@@ -284,6 +285,9 @@ var uncuedResponseWindowCloseTime;
 var trialIsCRForDelayBasedReward%;  'This variable is needed because delay-based reward is treated differently for CRs
 var ActualRewardDuration%;  'we need to keep track of this
 var attFixationOffAtCC%;  'do we want to turn the fixation off early, when the contrast change happens?
+var attRequireJoystickResponse%;
+var attJoyValue;
+var attJoyPos%;
 
 'we need to explicitly know the position of the gratings to place the answer windows on the gratings
 var mainX;  'the main grating patch is expected to be the one located over the receptive field
@@ -341,6 +345,7 @@ var StimHandle%;			' handle for stimulus application
 var DataWindow%;		' 
 var XChannel%;
 var YChannel%;
+var JoyChannel%;
 
 var FrameTriggerChannel%;
 var SynchChannel%;  '**disabled**
@@ -440,6 +445,11 @@ endif
 'get original reward value from config
 origRewardMS% := GetJuiceRewardMS%();
 
+'Joystick channel/port must be set before the main script
+JoyChannel% := 35;
+InitJoystick2(JoyChannel%,GetJoystickPort%()); 'now calls InitJoystick2 - we must do this BEFORE calling the main dialog
+printlog("joystick channel is %d\n",jsChannelNumber%);
+
 ' run main script dialog
 iScript% := AttentionScriptDialog%();
 if iScript% <> 1 then
@@ -464,8 +474,11 @@ OptoCopyChannel% := 49;
 
 
 
+
 ExcludedChans%[0] := 23;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel is highest non-electrode channel used by this function
+
+
 
 
 'If we are not using the Plexon (and thus linking the two 1401s together, just use the standard order of operations:
@@ -517,6 +530,10 @@ proc InitializeToolbar()
 	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
 	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
     'placeholder, not using '6' separates Quit from other functions
+    'but
+    if attRequireJoystickResponse% = 1 then
+        ToolbarSet(6,"Adjust Joystick",CallJoystickConfigDialog%);
+    endif;
 	ToolbarSet(7,"Quit",Quit%);
 	ToolbarEnable(2,0);
 	ToolbarEnable(4,0);
@@ -781,7 +798,16 @@ proc CreateSampleConfiguration()
         SampleTitle$(UtilityChannel%, UtilityPortLabel$);
     endif;
 
-    
+    'Create joystick channel, but only if the joystick is actually present
+    if attRequireJoystickResponse% = 1 then  
+        printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPort%());
+        var ok%;
+        ok%:=SampleWaveform(JoyChannel%, GetJoystickPort%(), 1000);
+        SampleTitle$(JoyChannel%, JoystickPortLabel$);
+    endif;
+    if ok% < 0 then
+        printlog("Error opening joystick channel: %s\n",Error$(ok%));
+    endif;
     
     'Add a digital marker channel for pulsing optogenetics
     'Do it for every opto, easy enough to add this into the wraparound calls in the PLS
@@ -930,6 +956,17 @@ func Start%()
     PrintLog("ttemp " + str$(ttemp) + " tlast " + str$(tLast) + "\n");
     
     
+    if attRequireJoystickResponse% = 1 then
+        'Change offset of joystick channel
+        View(DataWindow%).ChanOffset(JoyChannel%,joystickOffset);  'use value from registry
+        
+        'Set value of right/left joystick
+        GetJoystickParameters();  'now we run the joystick functions from Sperka, should work smoothly
+        DisplayJoystickParameters();
+        
+        'set YRange for JoyChannel
+        View(DataWindow%).YRange(JoyChannel%,0,1);
+    endif;
     
     if attDoOpto% = 1 then
         'set sequencer variable 4 for opto voltage
@@ -1223,7 +1260,7 @@ end;
 func Stop%()
     var i%, mylen%;
     var fn$;
-    var chanToExport%[30];
+    var chanToExport%[30];  'Henry does not want autoexport to Matlab
     
 	' Disable idle process func
 	ToolbarSet(0,"");
@@ -1400,8 +1437,8 @@ func IdleProcessing%()
         docase
         case Looking%(xEye, yEye) = 1 then
             PrintLog("stateWaitForAcquisition: eye in fixation window.\n");
-            ChangeStateTo(stateHoldFixationToStimOn%, tNow);
             SampleText("Fixation Acquired",tNow);
+            ChangeStateTo(stateHoldFixationToStimOn%, tNow);
 '        case attUseCueCircles% >= 2 and LookingAtCuePoint%(xEye, yEye, 1) <> 0 then  'using a hardcoded radius of 1 degree, only check if we are using cue points
 '            'Simple abort on acquisition of cue point instead of fixpt.  Note that IF fixpt window and cue point windows overlap, priority is given to the fixpt window...
 '            PrintLog("stateWaitForAcquisition: eye in cue circle window, aborting trial.\n");
@@ -1415,14 +1452,25 @@ func IdleProcessing%()
         endcase
         
         
+        
     case iState% = stateHoldFixationToStimOn% then
         
         ' Eye must remain inside of fixation window
         docase
         case Looking%(xEye, yEye) = 1 then
             if tNow - tStateStart > attFixationTime then
-                PrintLog("stateHoldFixationToStimOn: Success. Checking to see if we do opto...\n");
-                ChangeStateTo(stateCheckTurnOnOpto%, tNow);
+                if attRequireJoystickResponse% = 1 then
+                    attJoyPos% := GetJoystickPositionUD%(attJoyValue);  'Joy value is filled as secondary output, not used as an input
+                    if attJoyPos% = JSDown% then
+                        ChangeStateTo(stateCheckTurnOnOpto%, tNow);
+                        PrintLog("stateHoldFixationToStimOn: Success with fixation and joystick. Checking to see if we do opto...\n");
+                    else
+                        'Waiting for joystick down, do not change state
+                    endif
+                else
+                    ChangeStateTo(stateCheckTurnOnOpto%, tNow);
+                    PrintLog("stateHoldFixationToStimOn: Success. Checking to see if we do opto...\n");
+                endif
             endif
         else 'if fixation fails before stim on, consider this an abort
             PrintLog("stateHoldFixationToStimOn: failed.\n");
@@ -1710,29 +1758,52 @@ func IdleProcessing%()
             CCHappened% := CCHappened% + 10;  'increment CCHappened%, tens column of 40 means uncued target window closed
         endcase
         
-        'Check to see if the animal has answered, we will use this in below case statement
+        'Check to see if the animal has answered, we will use this in below case statement, get both eye and joystick
         iAnswer% := Answer%(xEye, yEye);
-        docase            
-        case Looking%(xEye, yEye) = 0 and CCHappened% = 0 then  'if fixation is broken and no contrast change has happened, begin abort procedure
+        if attRequireJoystickResponse% = 1 then
+            attJoyPos% := GetJoystickPositionUD%(attJoyValue);  'Joy value is filled as secondary output, not used as an input
+        else
+            attJoyPos% := JSDown%;  'If we are not using the joystick, assign "down" (no response)
+        endif;
+        
+        docase  
+        'if fixation is broken and no contrast change has happened, begin abort procedure            
+        case Looking%(xEye, yEye) = 0 and CCHappened% = 0 then  
             PrintLog("stateCheckForAnswerThroughAnimation: fixation lost before contrast change.\n");
             ChangeStateTo(stateAbort%, tNow);
             
-        case iAnswer% > 0 and iAnswer% = expectedAnswer% then 'there is an answer, answer is to cued window, and cued window is a legal answer (expected answer is 0 if cued location does not change)
+        'if we want a joystick response and fixation is broken, begin abort procedure            
+        case Looking%(xEye, yEye) = 0 and attRequireJoystickResponse% = 1 then  
+            PrintLog("stateCheckForAnswerThroughAnimation: fixation lost while expecting joystick response.\n");
+            ChangeStateTo(stateAbort%, tNow);
+            
+        'if joystick is up (response) and no contrast change has happened, begin abort procedure    
+        case (attJoyPos% = JSCenter% or attJoyPos% = JSHalfUp% or attJoyPos% = JSUp%) and CCHappened% = 0 then  
+            PrintLog("stateCheckForAnswerThroughAnimation: joystick up before contrast change.\n");
+            ChangeStateTo(stateAbort%, tNow);
+            
+        'there is a saccade response, answer is to cued window, and cued window is a legal answer (expected answer is 0 if cued location does not change)    
+        case attRequireJoystickResponse% = 0 and iAnswer% > 0 and iAnswer% = expectedAnswer% then 
             docase
-            case CCHappened% = 0 or CCHappened% = 20 or CCHappened% = 40 then  'if cued window has not yet opened, this is a false alarm
+            'if cued window has not yet opened, this is a false alarm    
+            case CCHappened% = 0 or CCHappened% = 20 or CCHappened% = 40 then  
                 queueReward% := -1;                   
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
                 SampleText("Incorrect",tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-            case tNow <= tStateStart+cuedResponseWindowCloseTime then 'if cued window has opened and not yet closed, it's a hit, set up reward
+                
+            'if cued window has opened and not yet closed, it's a hit, set up reward    
+            case tNow <= tStateStart+cuedResponseWindowCloseTime then 
                 queueReward% := 1;                   
                 attCountAllTrialsCorrect% += 1;
                 attInterTrialTimeThisTrial := attInterTrialTime;
                 SampleText("Correct",tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-            else  'cued window has closed, response too late, it's a miss
+                
+            'cued window has closed, response too late, it's a miss    
+            else  
                 queueReward% := -1;                    
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
                 SampleText("Incorrect",tNow);
@@ -1740,22 +1811,28 @@ func IdleProcessing%()
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over
             endcase
             
-        case iAnswer% > 0 and iAnswer% = expectedAnswerUncued% then 'there is an answer, answer is to uncued window, and uncued window is a legal answer (expectedAnswerUncued% is 0 unless uncued location changes and trial is cue-all)
+        'response, there is a saccade response, answer is to uncued window, and uncued window is a legal answer (expectedAnswerUncued% is 0 unless uncued location changes and trial is cue-all)    
+        case attRequireJoystickResponse% = 0 and iAnswer% > 0 and iAnswer% = expectedAnswerUncued% then 
             docase
-            case CCHappened% < 20 then  'if uncued window has not yet opened, this is a false alarm
+            'if uncued window has not yet opened, this is a false alarm    
+            case CCHappened% < 20 then  
                 queueReward% := -1;                   
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
                 SampleText("Incorrect",tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow); 
-            case tNow <= tStateStart+uncuedResponseWindowCloseTime then 'if uncued window has opened and not yet closed, it's a hit, set up reward
+                
+            'if uncued window has opened and not yet closed, it's a hit, set up reward    
+            case tNow <= tStateStart+uncuedResponseWindowCloseTime then 
                 queueReward% := 1;                   
                 attCountAllTrialsCorrect% += 1;
                 attInterTrialTimeThisTrial := attInterTrialTime;
                 SampleText("Correct",tNow);
                 CCHappened% := 0;
-                ChangeStateTo(stateCheckTurnOffOpto%, tNow);      
-            else  'uncued window has closed, response too late, it's a miss
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+                
+            'uncued window has closed, response too late, it's a miss    
+            else  
                 queueReward% := -1;                    
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
                 SampleText("Incorrect",tNow);
@@ -1763,7 +1840,25 @@ func IdleProcessing%()
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over
             endcase  
             
-        case iAnswer% > 0 then 'there is an answer that does not correspond to any legal location, false alarm
+        'there is a saccade response that does not correspond to any legal location (by process of elimination), false alarm    
+        case attRequireJoystickResponse% = 0 and iAnswer% > 0 then 
+            queueReward% := -1;                   
+            attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+            SampleText("Incorrect",tNow);
+            CCHappened% := 0;
+            ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+            
+        'there is a joystick response (joystick is not down), and any legal-to-respond contrast change has happened, hit
+        case attRequireJoystickResponse% = 1 and (attJoyPos% = JSCenter% or attJoyPos% = JSHalfUp% or attJoyPos% = JSUp%) and expectedAnswer%+expectedAnswerUncued% > 0 then
+            queueReward% := 1;                   
+            attCountAllTrialsCorrect% += 1;
+            attInterTrialTimeThisTrial := attInterTrialTime;
+            SampleText("Correct",tNow);
+            CCHappened% := 0;
+            ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+            
+        'there is a joystick response (joystick is not down), contrast change has happened, but should not be responded to, FA
+        case attRequireJoystickResponse% = 1 and (attJoyPos% = JSCenter% or attJoyPos% = JSHalfUp% or attJoyPos% = JSUp%) and expectedAnswer%+expectedAnswerUncued% = 0 then
             queueReward% := -1;                   
             attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
             SampleText("Incorrect",tNow);
@@ -2320,6 +2415,7 @@ proc GetAttentionScriptParameters()
     attStartBlock% := GetIntRegistryValue%(key$, "StartBlock", 1);
     attCuedLocationChangePct% := GetIntRegistryValue%(key$, "CuedLocationChangePct", 1); ''
     attUncuedLocationChangePct% := GetIntRegistryValue%(key$, "UncuedLocationChangePct", 1); ''
+    attRequireJoystickResponse% := GetIntRegistryValue%(key$, "RequireJoystickResponse", 0);
     
    
 end;
@@ -2357,7 +2453,8 @@ proc SaveAttentionScriptParameters()
     SetIntRegistryValue(key$, "PhaseDeg", attPhaseDeg%);
     SetIntRegistryValue(key$, "StartBlock", attStartBlock%);  
     SetIntRegistryValue(key$, "CuedLocationChangePct", attCuedLocationChangePct%);
-    SetIntRegistryValue(key$, "UncuedLocationChangePct", attUncuedLocationChangePct%);    
+    SetIntRegistryValue(key$, "UncuedLocationChangePct", attUncuedLocationChangePct%);
+    SetIntRegistryValue(key$, "RequireJoystickResponse", attRequireJoystickResponse%);
     
 end;
 
@@ -2637,6 +2734,8 @@ func AttentionScriptDialog%()
     DlgCheck(26,"Opto On",2,18);
     DlgButton(5, "Optogenetics Parameters", AttOptoDialog%, 36, 18);
     
+    DlgCheck(27,"Use Joystick",2,19);
+    DlgButton(6, "Joystick Dialog", CallJoystickConfigDialog%,36-14,19);
     DlgButton(2, "Colors", ColorsDialog%, 2+36, 19);
     DlgButton(3, "Timing", TimingDialog%, 11+36, 19);  
     DlgButton(4, "Flashers", CallDlgGratingFlashers%, 21+36, 19);  
@@ -2645,7 +2744,7 @@ func AttentionScriptDialog%()
     
 	i%:=DlgShow(attNumberOfSetsOfBlocks%, attTrialsPerBlock%, attEasyTrialsPerBlock%, distracterOffForEasy%, attCuedLocationChangePct%, attUncuedLocationChangePct%,
     attContrastBase%, attMaxContChange, attMinContChange, attNContLevels%, attAnswerPointWindowRadius, tenints%[], 
-    attCueCircleExtraRadius, attCueCircleStrokeWidth%, attUseLowReward%, attLowReward%, attDoOpto%);
+    attCueCircleExtraRadius, attCueCircleStrokeWidth%, attUseLowReward%, attLowReward%, attDoOpto%, attRequireJoystickResponse%);
     
     
 	if i% = 1 then
@@ -4688,6 +4787,7 @@ proc WriteParameterFile()
     Print("Intertrial time (s)   : %f\n", attInterTrialTime);
     Print("Abort/miss/FA penalty time (s)   : %f\n", attAbortPenaltyTime);
     Print("Uncued CC locked to Cued?: %d\n", attLockUncuedToCued%);
+    Print("Use Joystick for response?: %d\n", attRequireJoystickResponse%);
     
     
     if attUseFlashers% = 1 then
@@ -5739,4 +5839,28 @@ else
     endif;
 endif;
 return v32%;
+end
+
+
+
+func CallJoystickConfigDialog%()
+    'This function was written simply to prevent "odd" autonaming of files when saving joystick calibration data
+    'Unfortunately, there doesn't seem to be a way to *not* save the data as SampleStop automatically saves it, so
+    'this is the next best thing.  Should work for either dialog-based or toolbar-based calls of Joystick config
+    
+    'Set autoname to use a joystick-based name
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    'if UsePlexon% = 0 then
+    SampleAutoName$(dataCellName$ + "_joystick_000");  'NOTE: maximum of 13 characters!!!    
+    
+    JoystickConfigDialogUD%();  'this needs to be the Up/Down version
+    
+    'Set autoname back to what it should be once we return
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    'if UsePlexon% = 0 then
+    SampleAutoName$(dataCellName$ + "_atn _000");  'NOTE: maximum of 13 characters!!!
+    
+    return 1;
 end
