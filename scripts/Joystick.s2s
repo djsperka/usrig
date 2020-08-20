@@ -7,8 +7,13 @@
 const JSLeft% := 1;
 const JSCenter% := 2;
 const JSRight% := 3;
+const JSHalfLeft% := 15;  'It's an integer, so we can't do 1.5, and as this is being added later, some scripts may count on checking literal values rather than, say, JSLeft%, so we shouldn't change JSLeft% to 10
+const JSHalfRight% := 25;
 const JSDown% := 1;  'Please note that Down/Up are NOT intended to be used together with Left/Right as a two-axis joystick at this point
 const JSUp% := 3;    'Instead it just makes things make a bit more sense to use different variables for an up/down setup.
+const JSHalfDown% := 15;
+const JSHalfUp% := 25;
+
 const JSUndefined% := 0;
 const JSError% := -1;
 
@@ -242,11 +247,11 @@ func GetJoystickPosition%(&v)
             case v <= jsLeftHigh then
                 pos% := JSLeft%;
             case v < jsCenterLow then
-                pos% := JSUndefined%;
+                pos% := JSHalfLeft%;  'was JSUndefined%, change should not affect any code that I can tell
             case v <= jsCenterHigh then
                 pos% := JSCenter%;
             case v < jsRightLow then
-                pos% := JSUndefined%;
+                pos% := JSHalfRight%;  'was JSUndefined%, change should not affect any code that I can tell
             else
                 pos% := JSRight%;
             endcase
@@ -291,11 +296,11 @@ func GetJoystickPositionUD%(&v)
             case v <= jsDownUpperEdge then
                 pos% := JSDown%;
             case v < jsCenterLowerEdgeUD then
-                pos% := JSUndefined%;
+                pos% := JSHalfDown%;  'was JSUndefined%, change should not affect any code that I can tell
             case v <= jsCenterUpperEdgeUD then
                 pos% := JSCenter%;
             case v < jsUpLowerEdge then
-                pos% := JSUndefined%;
+                pos% := JSHalfUp%;  'was JSUndefined%, change should not affect any code that I can tell
             else
                 pos% := JSUp%;
             endcase
