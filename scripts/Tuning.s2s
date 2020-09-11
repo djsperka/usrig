@@ -95,6 +95,7 @@ var tInterTrialTime := 0;	' Time spent waiting between trials (i.e. after screen
 'var iHoldCount% := 0;	' Counter of how many times we progress through the hold fixation state in the maintainence loop. Used to decide if "time out" is required. 
 var tRise, tFall;
 var tKludge := 0.06;    ' Add to Fixation time to account for stim sequence. Ugly hack, admittedly, but one does what one must. 
+var HBCycle% := 1;
 
 
 'button stuff
@@ -455,7 +456,27 @@ func IdleProcessing%()
         
         'put timing marker in both eyetracker file, smr file
         if RecordEyeTrackerOutputFile% = 1 then
-            SafeSampleKey("1");
+            'SafeSampleKey("1");
+            docase
+            case HBCycle% = 1 then
+                SafeSampleKey("1");
+            case HBCycle% = 2 then
+                SafeSampleKey("2");
+            case HBCycle% = 3 then
+                SafeSampleKey("3");
+            case HBCycle% = 4 then
+                SafeSampleKey("4");
+            case HBCycle% = 5 then
+                SafeSampleKey("5");
+            case HBCycle% = 6 then
+                SafeSampleKey("6");
+            case HBCycle% = 7 then
+                SafeSampleKey("7");
+            endcase
+            HBCycle% += 1;  'increment HBCycle%
+            if HBCycle% = 8 then  'and cycle when necessary
+                HBCycle% := 1;
+            endif
             yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
         endif;
         
