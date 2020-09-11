@@ -288,6 +288,7 @@ var attFixationOffAtCC%;  'do we want to turn the fixation off early, when the c
 var attRequireJoystickResponse%;
 var attJoyValue;
 var attJoyPos%;
+var HBCycle% := 1;
 
 'we need to explicitly know the position of the gratings to place the answer windows on the gratings
 var mainX;  'the main grating patch is expected to be the one located over the receptive field
@@ -1397,7 +1398,27 @@ func IdleProcessing%()
         
         'put timing marker in both eyetracker file, smr file
         if RecordEyeTrackerOutputFile% = 1 then
-            SafeSampleKey("1");
+            'SafeSampleKey("1");
+            docase
+            case HBCycle% = 1 then
+                SafeSampleKey("1");
+            case HBCycle% = 2 then
+                SafeSampleKey("2");
+            case HBCycle% = 3 then
+                SafeSampleKey("3");
+            case HBCycle% = 4 then
+                SafeSampleKey("4");
+            case HBCycle% = 5 then
+                SafeSampleKey("5");
+            case HBCycle% = 6 then
+                SafeSampleKey("6");
+            case HBCycle% = 7 then
+                SafeSampleKey("7");
+            endcase
+            HBCycle% += 1;  'increment HBCycle%
+            if HBCycle% = 8 then  'and cycle when necessary
+                HBCycle% := 1;
+            endif
             yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
         endif;
         
@@ -2646,7 +2667,8 @@ func AttentionScriptDialog%()
     var cueCircleList$[4];
   
     cueCircleList$[0] := "No Cue Circles";
-    cueCircleList$[1] := "Cue Circles";
+    'cueCircleList$[1] := "Cue Circles";
+    cueCircleList$[1] := "Cue Squares (not working)";
     cueCircleList$[2] := "Cue Circles + Cue Points";
     cueCircleList$[3] := "Cue Points Only";  'should be ready to go
     
@@ -5173,15 +5195,29 @@ func CreateCueCircleColorSets$()
     RGBList%[4][1] := ignore4RGB%[1];
     RGBList%[4][2] := ignore4RGB%[2];
 
+    'Dan's list of VSG mappings, 8/21/2020
+    '-Q cue circles and central dots
+    '-q  central dots
+    '-r central squares    
+    
+    'The old list of CED dialog entries
+    'cueCircleList$[1] := "Cue Circles";
+    'cueCircleList$[2] := "Cue Circles + Cue Points";
+    'cueCircleList$[3] := "Cue Points Only"; 
+    
+    'The (temporary??) new list of CED dialog entries
+    'cueCircleList$[1] := "Cue Squares (not working)";
+    'cueCircleList$[2] := "Cue Circles + Cue Points";
+    'cueCircleList$[3] := "Cue Points Only"; 
     
     'Set cue flag
-    docase
+    docase  'these values changed as of 8/21/2020 due to remapping on VSG side
     case attUseCueCircles% = 1 then
-        cueFlag$ := "-Q ";
+        cueFlag$ := "-r ";  'Henry is reporting that -r is doing nothing.
     case attUseCueCircles% = 2 then
-        cueFlag$ := "-q ";
+        cueFlag$ := "-Q ";
     case attUseCueCircles% = 3 then
-        cueFlag$ := "-r ";  'this ought to work as of 1/24/18
+        cueFlag$ := "-q ";  
     else
         message("Error!  UseCueCircles% holds an illegal value!  Quitting!");
         quit%();
