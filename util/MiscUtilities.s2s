@@ -1277,6 +1277,24 @@ end
 
 
 
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc DoSampleAutoName(key$,long$,short$,primary$,secondary$)
+    'This function will do the auto-naming of files.  It will take into account the setup of the system
+    '(if there are one or two 1401s, and whether this is a micro/power or primary/secondary relationship)
+    'The long$ name should be 8 characters or fewer
+    'The short$ name should be 3 character or fewer
+    
+    if UseTwo1401s% = 0 then
+        SampleAutoName$(dataCellName$ + "_" + long$ + "_000");  'NOTE: maximum of 13 characters!!!
+    else
+        EqualizeSMRFilenumbers(dataPathRoot$ + "\\" + dataDataSet$,dataCellName$+"_" + short$ + primary$ + "_",dataCellName$+"_" + short$ + secondary$ + "_");
+        SampleAutoName$(dataCellName$ + "_" + short$ + primary$ + "_000");  'NOTE: maximum of 13 characters!!!
+        SetStringRegistryValue(key$, "pref", short$);
+    endif;    
+end
+
+
+
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
 ' out$ = HighestValue$(nVals%,template$)
