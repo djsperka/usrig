@@ -1,0 +1,338 @@
+'PlexonUtilities.s2s - a collection of functions to allow usage of the Plexon system in various pre-defined
+'configurations.  Because many of the desireable Plexon configurations require a large number of channels,
+'which can make getting correct sampling rates tricky, these configurations are often best pre-defined rather 
+'than created at the time of the experiment.  Furthermore, some configurations require two linked 1401s, which
+'is rather more complicated.  Because the addition of new configurations requires changes in several locations,
+'I have decided to gather all of the Plexon-related code that would need to be updated to add/change a 
+'configuration in one location.  Wasn't that sweet of me?  What follows in the comments is a detailed-enough
+'description of what needs to be done to add a configuration, and what need to be done to add Plexon ability to
+'a new/existing script.
+'
+'Note that PlexonUtilities.s2s does not need to be added to the #includes because it is #included in
+'ElectrodeUtilities.s2s, which will be included by default in any script that uses recording electrodes at all.
+'
+'
+'To add a new Plexon Configuration:
+'
+'1) Add Electrode configuration functions for the Primary and Secondary 1401s, as in:
+'           CreateElectrodeSamplingConfiguration30WF30WMPrimary()
+'           CreateElectrodeSamplingConfiguration30WF30WMSecondary()
+'   both of which are in ElectrodeUtilities.s2s
+
+'2) Add a standalone function in the scripts directory as in:
+'           SetPlexonRecording3030OnSecondary1401.s2s
+'
+'3) Add/change a checkbox in GetElectrodeParameters() (also in ElectrodeUtilities.s2s) that creates a new variable 
+'   like UsePlexon30WF30WM% that will indicate the new configuration.
+'
+'4) Take this new variable and update all functions below except SetPathToScriptDirectory() appropriately.
+'
+'Done!
+'
+'
+'To add Plexon ability to a new or existing script:
+'
+'1) Before any substantive code execution (e.g. shortly after the variable declarations) call:
+'           UseTwo1401s% := DoWeUseTwo1401s%();
+'   This will set a necessary variable.  Note that UseTwo1401s% should NOT be declared locally; it is declared here.
+'
+'2) Immediately after #1, call:
+'           GetPortsAndNumWMsWFs%(NumWavemarks%,NumContinuous%,WavemarkPorts%[],ContinuousPorts%[]);
+'   The four variables that are arguments here need to be declared in the main script, and will be filled by this
+'   function with the number and locations of the WMs and WFs from this configuration.  Note that this function
+'   will ALSO subsume any assignment of these variables from non-Plexon scenarios (i.e. the standard electrode
+'   assignment dialog box), because there's no clean way to do it otherwise.
+'
+'3) Replace the call to InitializeToolbar() as follows:
+'           if UseTwo1401s% = 0 then
+'               CreateSampleConfiguration();
+'
+'               ' Get display windows ready
+'               InitializeWindows();
+'    
+'               ' Prepare the toolbar buttons
+'               InitializeToolbar();
+'           else
+'               InitializeToolbar();
+'           endif;
+'   This will get the order of CreateSampleConfiguration() and InitializeWindows() right, as these must be done
+'   AFTER calling the toolbar in a two-1401 configuration.
+'
+'4) Update the InitializeToolbar() function so that the first button will run StartPlexon%() instead of Start%()
+'   when there are two 1401s:
+'           if UseTwo1401s% = 1 then
+'               ToolbarSet(1,"StartPlexon",StartPlexon%);
+'           else
+'               ToolbarSet(1,"Sample start",Start%);
+'           endif;
+'
+'5) Anywhere SampleAutoName is called, declare and define variables as follows:
+'           var key$;
+'           var primaryTxt$;
+'           var secondaryTxt$;
+'           key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+'           SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
+'   Then, replace the SampleAutoName call with:
+'           DoSampleAutoName(key$,"LONG","SHORT",primaryTxt$,secondaryTxt$);
+'   Where the LONG name is 8 characters or fewer and the SHORT name is 3 characters or fewer
+'   Note that DoSampleAutoName() is located in UsreyUtil.s2s.
+'
+'6) At the end of CreateSamplingConfiguration call
+'           SetUpElectrodeConfiguration(NumWavemarks%,ExcludedChans%[]);
+'   to set up the elctrode configuration.  This function will take care of all setup, for manually-selected 
+'   scenarios and for the various pre-set scenarios, including all Plexon functions.  Note that the input
+'   arguments are required.  NumWavemarks% is from #2 above.  ExcludedChans%[] is a 2-element vector listing
+'   the bottom and top CHANNELS that are reserved in the main script for Ready Channels, TextMarks, DigMarks,
+'   and the like.  Typically channels 30-32 are off limits, and often several surrounding that.  ExcludedChans%[]
+'   is set by hand in each script.
+'
+'7) At the end of CreateSamplingConfiguration call
+'           DoSampleOptimise();
+'   which has various optimization settings based on preset configurations.
+'
+'8) There must be a second function to start recording - StartPlexon%() - which should look as follows:
+'           var fp$;  'to hold current file path
+'           fp$ := SetPathToScriptDirectory$();
+'           CreateSampleConfiguration();    
+'    
+'           StartSecondInstanceOfSpike2();
+'       
+'           FilePathSet(fp$);  'change the file path back to what it was
+'           fp$ := FilePath$();  'read out to allow verification
+'           printlog("%s\n",fp$); 'and tell the world to verify
+'    
+'           ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+'    
+'           ' Get display windows ready
+'           InitializeWindows();    
+'    
+'           return 1; 'stay in toolbar
+'   The meat here is to change the current Spike2 directory to the scripts directory which contains the functions
+'   that will be used to run a second instance of Spike2 for the secondary 1401; To set up the sampling configuration 
+'   on the primary 1401; To start the second instance of Spike2 and set up its sampling configuration;  To initialize
+'   windows and go.
+'
+'9) At the beginning of the Start% function, start sampling in triggered mode if there are two 1401s:
+'           if UseTwo1401s% = 1 then
+'               SampleStart(1);  'set sampling to start on a trigger
+'           else
+'    	        SampleStart(0); 'Start sampling now
+'           endif;
+'
+'And that's it!
+
+
+
+var UseTwo1401s% := 0;
+
+
+
+func DoWeUseTwo1401s%()
+    if UsePlexon18WM24WF% = 1 or JoePlexon1% = 1 or UsePlexon30WF30WM% = 1 then  'these Plexon configs use two linked 1401s
+        return 1;
+    else  'other Plexon configs were designed to be used with a single 32-channel 1401
+        return 0;
+    endif;
+end
+
+
+' Get number and location of wavemark ports/continuous ports on the primary 1401
+' Note that the info we gather here is basically used for display, which is only done on the primary 1401.  The
+' secondary 1401 is kinda humming along passively collecting data and doing nothing else.
+func GetPortsAndNumWMsWFs%(&nWMs%,&nWFs%,&WMPorts%[],&WFPorts%[]);
+    'This doesn't really need to be a function as the return is unused, but just in case someday we care
+    
+    ' If we are working with a manual electrode configuration taken from the electrodes dialog (this is standard)
+    ' then we can just run the default functions to get this info.  But there are six "custom" Plexon configurations
+    ' (some of which aren't being used anymore, but they still exist in code) for which we need to do this manually.
+    
+    var i%;
+    docase
+    case UsePlexon18WM24WF% = 1 then  'This configuration has 13 WMs on the primary Micro1401 and expects any eye/joystick ports to be ports 13-15
+        'This configuration expects a secondary 32-channel power-1401 to be linked to the Micro1401
+        nWMs% := 13;  '13 wavemarks on the micro
+        nWFs% := 0;  'no continuous on the micro
+        for i% := 0 to 12 do
+            WMPorts%[i%] := i%;
+        next
+    case UsePlexon7WM15CN% = 1 then 'This configuration has 7 WMs and 15 WFs on a 24-channel power1401 and expects two eye channels on ports 14-15 
+        '(splitting up the continuous channels, because ports 16-23 are only accessed from the expansion port)
+        nWMs% := 7;  '7 wavemarks
+        nWFs% := 15;  '15 continuous
+        for i% := 0 to 6 do
+            WMPorts%[i%] := i%;
+        next
+        for i% := 0 to 6 do  'these are the pre-eyecoil channels, do not use ports 14/15
+            WFPorts%[i%] := i%+7; 
+        next
+        for i% := 7 to 14 do 'start again at port 16
+            WFPorts%[i%] := i%+9;
+        next    
+    case UsePlexon15WF15WF2k% = 1 then  'This configuration collects 30 WFs on a 32-channel power 1401, 15 at 30 kHz and 15 at 2 kHz, 
+        'it collects no WMs.  Eye channels expected on ports 14-15.
+        nWMs% := 0;  '0 wavemarks
+        nWFs% := 30;  '30 continuous    
+        'no wavemark ports
+        for i% := 0 to 13 do  'First 14 ports, do not use ports 14/15
+            WFPorts%[i%] := i%;
+        next
+        for i% := 14 to 29 do  'Start again at port 16
+            WFPorts%[i%] := i%+2;
+        next
+    case UsePlexon24WF% then  'This configuration collects 24 WFs on a 32-channel power 1401, all at 30 kHz, it collects no WMs.
+        'Eye channels expected on ports 14-15.
+        nWMs% := 0;  '0 wavemarks
+        nWFs% := 24;  '24 continuous
+        'no wavemark ports
+        for i% := 0 to 13 do  'First 14 ports, do not use ports 14/15
+            WFPorts%[i%] := i%;
+        next
+        for i% := 14 to 23 do  'Start again at port 16
+            WFPorts%[i%] := i%+2;
+        next
+    case JoePlexon1% = 1 then  'This configuration collects 24 WMs at 20 kHz on a 32-channel power 1401 (primary).  There are supposedly
+        'two eye channels to be set up on unknown ports (above 23) by the calling script, but this does not
+        'appear to be done anywhere.  For now I'm not fixing that as Joe is long gone.  There would also be 24 WFs at 5 kHz on a sceondary linked 24 or 32-channel power1401.
+        nWMs% := 24;  '24 wavemarks
+        nWFs% := 0;  '0 continuous
+        for i% := 0 to 23 do
+            WMPorts%[i%] := i%;
+        next;
+    case UsePlexon30WF30WM% = 1 then  'This configuration is designed for two linked 32-channel power1401s.  On the primary 1401, it will
+        'place 14 WMs at 28011 kHz and 14 WFs at 1000 kHz, interrupted by two eye channels and a joystick
+        'channel on ports 13-15.  The secondary 1401 will have 16 WMs at 28011 kHz and 16 WFs at 1000 kHz.
+        nWMs% := 14;  '14 wavemarks
+        nWFs% := 14;  '14 continuous
+        for i% := 0 to 12 do 'First 13 WMs, do not use ports 13/14/15
+            WMPorts%[i%] := i%;
+        next;
+        WMPorts%[13] := 16;  'The final (14th) WM is separated by the eye/joy channels
+        for i% := 0 to 13 do 'The 14 continuous channels are in order
+            WFPorts%[i%] := i%+17;
+        next;
+    else
+        nWMs% := GetWavemarkPorts%(WMPorts%[]);
+        nWFs% := GetContinuousPorts%(WFPorts%[]);
+    endcase;
+    
+    return 1
+end
+
+
+
+proc SetPrimarySecondaryTxt(&primaryTxt$,&secondaryTxt$);
+    
+    docase
+    case UseTwo1401s% = 1 and UsePlexon18WM24WF% = 1 then
+        primaryTxt$ := "MICRO";
+        secondaryTxt$ := "POWER";
+    case UseTwo1401s% = 1 and UsePlexon30WF30WM% = 1 then
+        primaryTxt$ := "PRIMR";
+        secondaryTxt$ := "SECON";
+    case UseTwo1401s% = 1 then  'this would be for any other two-1401 scenario (for Joe, probably)
+        primaryTxt$ := "PRIMR";
+        secondaryTxt$ := "SECON";
+    else
+        'do not need to set these variables
+    endcase
+    
+end
+
+
+proc SetUpElectrodeConfiguration(numWavemarkPorts%,ExcludedChans%[])
+    docase
+    case UsePlexon18WM24WF% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
+        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
+    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
+        CreateElectrodeSamplingConfiguration7WM15CN(); 
+    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
+        CreateElectrodeSamplingConfiguration15WF15WF2k();
+    case UsePlexon24WF% = 1 then
+        CreateElectrodeSamplingConfiguration24WF(); 
+    case JoePlexon1% = 1 then
+        CreateJoePlexon1SamplingConfigurationMaster();
+    case UsePlexon30WF30WM% = 1 then
+        CreateElectrodeSamplingConfiguration30WF30WMPrimary();
+    else
+        ' Electrodes: wavemark/continuous
+        ' 12/6/2010
+        ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
+        ' and M waveform channels. 
+        '        for i% := 0 to tunNWavemarks%-1 do
+        '            SampleWaveMark(i% + 1, tunWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
+        '            if useCustomLabels% = 1 and CustomLabels$[i%] <> "" then
+        '                SampleTitle$(i% + 1, CustomLabels$[WavemarkPorts%[i%]] + "WM"); 
+        '            else 
+        '                SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%])); 
+        '            endif;
+        '            'SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%]));
+        '        next
+        '        for i% := 0 to tunNContinuous%-1 do
+        '            SampleWaveform(tunNWavemarks% + i% + 1, tunContinuousPorts%[i%], 20000);
+        '            if useCustomLabels% = 1 and CustomLabels$[i%] <> "" then
+        '                SampleTitle$(tunNWavemarks% + i% + 1, CustomLabels$[ContinuousPorts%[i%]] + "WF"); 
+        '            else
+        '                SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
+        '            endif;
+        '            'SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
+        '        next
+        CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%[]);  'Allows a lot of channels while preventing accidentally re-defining a channel
+
+    endcase;
+end
+
+
+
+proc DoSampleOptimise()
+    docase
+    case UsePlexon18WM24WF% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
+        SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
+    case JoePlexon1% = 1 then 
+        SampleOptimise(0,1,4,0,0,0,0);  'copying the micro settings...not necessarily the be-all end-all, just trying to see if anything works
+    case UsePlexon30WF30WM% = 1 then
+        SampleOptimise(0,1,9,0,0,0,0);  'Appears to not need burst mode for Power3.
+    case UsePlexon15WF15WF2k% = 1 or UsePlexon24WF% = 1 then 
+        SampleOptimise(2,2,9,1,50,0,1);  'for big-data, need to set for burst mode, Power1401-3 setting is not clear because help does not list it.  9?  8 for micro1401-3?
+    else
+        SampleOptimise(2,2,Get1401Type%(),2,50);  'otherwise: full optimize timing, channels may have different rates, Power1401 (lowest common denominator, so eh), low usPerTime of 2, high usPerTime of 50
+    endcase;
+end
+
+
+
+func SetPathToScriptDirectory$()
+    var fp$;
+    var fp2$;  'to hold destination file path
+    fp$ := FilePath$();  'get current file path
+    printlog("%s\n",fp$);  'and tell the world what it was
+    var fpok%;
+    fpok% := FilePathSet("F:/work/usrig/scripts");  'change the file path (Alyssa)
+    if fpok% <> 0 then
+        fpok% := FilePathSet("E:/work/usrig/scripts");  'change the file path (Joe) (this is a guess as this computer is not used anymore)
+    endif
+    if fpok% <> 0 then
+        fpok% := FilePathSet("D:/work/usrig/scripts");  'change the file path (Stacey/Henry)
+    endif
+    if fpok% <> 0 then
+        message("Failed to find expected file structure in StartPlexon%()!  Quitting!");
+        halt;
+    endif
+    fp2$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp2$);  'by telling the world about it (hint: it works)
+    return fp$;
+end
+
+
+
+proc StartSecondInstanceOfSpike2()
+    
+    docase
+    case UsePlexon18WM24WF% = 1 then
+        progrun("sonview.exe /M /u2 SetPlexonRecording1824OnPower1401.s2s");  'run the program, .s2s file is now on default path by design
+    case JoePlexon1% = 1 then
+        progrun("sonview.exe /M /u2 SetJoePlexon1RecordingOnSlave.s2s");  'run the program, .s2s file is now on default path by design
+    case UsePlexon30WF30WM% = 1 then
+        progrun("sonview.exe /M /u2 SetPlexonRecording3030OnSecondary1401.s2s");  'run the program, .s2s file is now on default path by design
+    endcase
+    
+end

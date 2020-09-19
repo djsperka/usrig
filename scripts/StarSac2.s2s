@@ -48,8 +48,8 @@ var starJuicePerSmallReward% := 1;
 
 var starNWavemarks% := 0;
 var starNContinuous% := 0;
-var starWavemarkPorts%[16];
-var starContinuousPorts%[16];
+var starWavemarkPorts%[63];
+var starContinuousPorts%[64];
 var starXAxis%, starXNumPerSide%, starYAxis%, starYNumPerSide%;
 var starXOffset, starYOffset;
 var starTargetColor$ := "red";
@@ -104,6 +104,14 @@ var starGratingBarNStripes%;
 var starTargetXPosition;
 var starBarContrastAtTarget[MAXTARGETPOSITIONS%];
 var starGratingBarFirstTargetColor%;
+
+
+var HBCycle% := 1;
+
+
+
+UseTwo1401s% := DoWeUseTwo1401s%();
+GetPortsAndNumWMsWFs%(starNWavemarks%,starNContinuous%,starWavemarkPorts%[],starContinuousPorts%[]);
 
 
 proc GetStarStimScriptParameters()
@@ -604,13 +612,25 @@ ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this
 ExcludedChans%[1] := 31;  'Keyboard (default) is highest non-electrode channel used by this function
 
 
-CreateSampleConfiguration();
+if UseTwo1401s% = 0 then
+    CreateSampleConfiguration();
+    
+    ' Get display windows ready
+    InitializeWindows();
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+else
+    InitializeToolbar();
+endif;
 
-' Get display windows ready
-InitializeWindows();
-
-' Prepare the toolbar buttons
-InitializeToolbar();
+'CreateSampleConfiguration();
+'
+'' Get display windows ready
+'InitializeWindows();
+'
+'' Prepare the toolbar buttons
+'InitializeToolbar();
 
 const stateStartTrial%				:= 0;
 const stateWaitForFixPtOn%			:= 1;
@@ -692,10 +712,47 @@ func IdleProcessing%()
         if View(DataWindow%).FindPulseUp%(ReadyChannel%, -1, tTrigger, tLastTrigger) = 1 then
             LogStatus("VSGWait", "Got ready pulse at " + str$(tTrigger));
             ChangeStateTo(stateStartTrial%, tNow);
+            if RecordEyeTrackerOutputFile% = 1 then
+                'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+            endif;
         endif
 
     case iState% = stateStartTrial% then
-
+        
+        'put timing marker in both eyetracker file, smr file
+        if RecordEyeTrackerOutputFile% = 1 then
+            'SafeSampleKey("1");
+            docase
+            case HBCycle% = 1 then
+                SafeSampleKey("1");
+            case HBCycle% = 2 then
+                SafeSampleKey("2");
+            case HBCycle% = 3 then
+                SafeSampleKey("3");
+            case HBCycle% = 4 then
+                SafeSampleKey("4");
+            case HBCycle% = 5 then
+                SafeSampleKey("5");
+            case HBCycle% = 6 then
+                SafeSampleKey("6");
+            case HBCycle% = 7 then
+                SafeSampleKey("7");
+            endcase
+            HBCycle% += 1;  'increment HBCycle%
+            if HBCycle% = 8 then  'and cycle when necessary
+                HBCycle% := 1;
+            endif
+            yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
+        endif;
+        
         nTrialsStarted% += 1;
         starFixationDuration := Rand(starFixationDurationMax-starFixationDurationMin, starFixationDurationMin);
         LogStatus("StartTrial", "Start trial " + str$(nTrialsStarted%) + " Fix time " + str$(starFixationDuration));
@@ -1021,6 +1078,14 @@ func IdleProcessing%()
 
         ' Unknown state!
         Message("Unknown state=" + str$(iState%));
+        
+        'If the eyetracker is recording an output file, stop recording and close the file
+        if RecordEyeTrackerOutputFile% = 1 then
+            SafeSampleKey("w");  'Stop recording
+            yield(0.1);
+            SafeSampleKey("i");  'Close the file
+        endif
+        
         halt;
 
 	endcase;
@@ -1064,6 +1129,11 @@ end
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 proc CreateSampleConfiguration()
 	var i%;
+    var key$;
+    var primaryTxt$;
+    var secondaryTxt$;
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
 	SampleClear(); 'Set standard sampling state
     SampleChannels(64);  '32 does not work, we need more!
 '	SampleAutoFile(0); 'Enable automatic file naming
@@ -1073,7 +1143,7 @@ proc CreateSampleConfiguration()
 	' Set path for new data files
 	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3, 1);
 	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1, 1);
-	SampleAutoName$(dataCellName$ + "_star_000");
+	DoSampleAutoName(key$,"star","str",primaryTxt$,secondaryTxt$);
 	SampleAutoFile(1);
     
     ' Text marks make extraction easier
@@ -1099,6 +1169,13 @@ proc CreateSampleConfiguration()
 	SampleTitle$(ReadyChannel%,"Ready");
     
     
+    'Digmark channel for eyetracker timing pulses
+    if RecordEyeTrackerOutputFile% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
+    endif
+    
+    
     '----Analog, non-spiking electrode recording conditions
     'EYE COIL CHANNELS. Last # is sampling freq in Hz. 
 	SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
@@ -1115,13 +1192,13 @@ proc CreateSampleConfiguration()
     
     
     '----Set up "spiking" Electrode Channels----
-    CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
+    SetUpElectrodeConfiguration(starNWavemarks%,ExcludedChans%[]);
 
 
 	
 
 	SampleSequencer(script$ + "Tuning.pls");
-	SampleOptimise(2, 2, Get1401Type%(), 2, 50);  'Set optimise mode (do this last)
+	DoSampleOptimise();
 	SampleMode(1); 'Continuous sampling
     
     
@@ -1283,7 +1360,11 @@ proc InitializeToolbar()
 
 	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
 	ToolbarVisible(1);
-	ToolbarSet(1,"Sample start", Start%);
+    if UseTwo1401s% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
+        ToolbarSet(1,"Sample start",Start%);
+    endif;
 	ToolbarSet(2,"Sample stop", Stop%);
 	ToolbarSet(3,"Juice", Juice%);
 	ToolbarSet(4,"Quit", Quit%);
@@ -1297,6 +1378,13 @@ end;
 ' It is important that this function be disabled once sampling is started!!!
 
 func Quit%()
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+    endif
+    
 	FileClose(-1,-1);
 	return 0;
 end;
@@ -1387,6 +1475,14 @@ func Start%()
     if starUseDefaultTargetSize% = 0 then
         fpd := starTargetDiameter;
     endif
+    
+    if UseTwo1401s% = 1 then
+        SampleStart(1);  'set sampling to start on a trigger
+    else
+        SampleStart(0); 'Start sampling now
+    endif;
+    
+    
     
     ' generate target args. 
     if starUseStimulusXY% then
@@ -1602,7 +1698,7 @@ func Start%()
         SampleSeqVar(4,voltageInteger%);
         printlog("Voltage integer is %d\n",voltageInteger%);
     endif;
-    
+        
     
     
     ' Record initial text marks
@@ -1620,7 +1716,17 @@ func Start%()
 	PrintLog(CommandLine$+"\n");
 	StimHandle% := ProgRun(CommandLine$,1);
 	if StimHandle% <0 then Message("Could not start stimulus."); halt; endif
-'	Yield(5);	'Wait a few seconds to make sure the VSG has time to initialize.
+    '	Yield(5);	'Wait a few seconds to make sure the VSG has time to initialize.
+    
+    
+   'If we are asking the eyetracker to record an output file, open the file and start recording
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("I");  'Open the file (this is done by setting a DIGLOW bit), file name will be saved in a sampletext
+        yield(0.5);
+        SafeSampleKey("W");  'Begin recording the file
+        yield(0.5);
+    endif
+    
 
 	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
 	ToolbarEnable(2,1);
@@ -1629,6 +1735,29 @@ func Start%()
 	Yield(.1);
 	return 1;
 end;
+
+
+
+func StartPlexon%()
+    
+    var fp$;  'to hold current file path
+    fp$ := SetPathToScriptDirectory$();
+    CreateSampleConfiguration();    
+    
+    StartSecondInstanceOfSpike2();
+    
+    FilePathSet(fp$);  'change the file path back to what it was
+    fp$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp$); 'and tell the world to verify
+    
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+    ' Get display windows ready
+    InitializeWindows();    
+    
+    return 1; 'stay in toolbar    
+    
+end
 
 
 
@@ -1692,6 +1821,13 @@ func Stop%()
 
 	' Disable idle process func
 	ToolbarSet(0,"");
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+    endif
 
 	' Tell stim app to shut down
 	SafeSampleKey("Q");

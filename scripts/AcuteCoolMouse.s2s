@@ -1,6 +1,7 @@
 ' $Id$
 ' Update 11/8/11 Jeff, includes SafeSampleKey and multi-juicer updates
 
+#include "../util/MiscUtilities.s2s"
 #include "../util/ChannelUtilities.s2s"
 #include "../util/UsreyUtil.s2s"
 #include "UsreyGratings.s2s"
@@ -23,9 +24,9 @@ var iStimWindowChannel%;' channel number for stimulus window in xy window
 var iMonitorChannel%;	' channel number for monitor position display in xy window
 var StimHandle%;	' handle for stimulus application
 var cmNWavemarks% := 0;
-var cmWavemarkPorts%[16];
+var cmWavemarkPorts%[64];
 var cmNContinuous% := 0;
-var cmContinuousPorts%[16];
+var cmContinuousPorts%[64];
 
 ' Stimulus location stuff
 var iStimX%[8];
@@ -37,8 +38,14 @@ var cmScreenXDeg;  'Defined as the distance from the center of the screen to the
 var cmScreenYDeg;
 var screenMMPerDegree;
 
+
+
 ' Initialized logging
 LogInit(1);
+
+
+UseTwo1401s% := DoWeUseTwo1401s%();
+GetPortsAndNumWMsWFs%(cmNWavemarks%,cmNContinuous%,cmWavemarkPorts%[],cmContinuousPorts%[]);
 
 ' initialize filenames for remote case. The filenames must be coordinated so that the 'remote' 
 ' name is the filename as viewed from the remote machine. The 'local' name is the same
@@ -52,7 +59,7 @@ cmLocalGratingParametersFile$ := GetStimDir$(1) + "cmouse-grating-parameters.txt
 'standard recording setup abolishes them
 ' Fetch electrode information. 
 docase
-case UsePlexon% = 1 then
+case UsePlexon18WM24WF% = 1 then
     cmNWavemarks% := 13;  '13 wavemarks on the micro for plexon
     cmNContinuous% := 0;  'no continuous on the micro for plexon
     var i%;
@@ -89,15 +96,27 @@ ReadyChannel% := 24;
 ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 31;  'Keyboard (default) is highest non-electrode channel used by this function
 
+if UseTwo1401s% = 0 then
+    CreateSampleConfiguration();
+    
+    ' Get display windows ready
+    InitializeWindows();
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+else
+    InitializeToolbar();
+endif;
 
-CreateSampleConfiguration();
 
-
-' Get display windows ready
-InitializeWindows();
-
-' Prepare the toolbar buttons
-InitializeToolbar();
+'CreateSampleConfiguration();
+'
+'
+'' Get display windows ready
+'InitializeWindows();
+'
+'' Prepare the toolbar buttons
+'InitializeToolbar();
 
 
 '===============================================================================================
@@ -153,6 +172,11 @@ end;
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 proc CreateSampleConfiguration()
 	var index;
+    var key$;
+    var primaryTxt$;
+    var secondaryTxt$;
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
 	SampleClear(); 'Set standard sampling state
     SampleChannels(64);  '32 does not work, we need more!
 	SampleAutoFile(0); 'Enable automatic file naming
@@ -160,7 +184,7 @@ proc CreateSampleConfiguration()
 	' Set path for new data files
 	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3, 1);
 	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1, 1);
-	SampleAutoName$(dataCellName$ + "_cm_000");
+	DoSampleAutoName(key$,"cm","cm",primaryTxt$,secondaryTxt$);
 	SampleAutoFile(1);
         
 	' channel to look for ready signal from vsg
@@ -171,43 +195,12 @@ proc CreateSampleConfiguration()
     'Note: this has been stolen from Tuning - Henry is having crashing problems and he believes that using the
     'standard recording setup abolishes them
     ' Set up channels for sampling electrodes.
-    if cmCollectElectrodeData% = 1 then
-        var i%;
-        docase
-        case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
-            CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
-        case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
-            CreateElectrodeSamplingConfiguration7WM15CN(); 
-        case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
-            CreateElectrodeSamplingConfiguration15WF15WF2k();
-        case UsePlexon24WF% = 1 then
-            CreateElectrodeSamplingConfiguration24WF(); 
-        case JoePlexon1% = 1 then
-            CreateJoePlexon1SamplingConfigurationMaster();
-        case JoePlexon2% = 1 then
-            message("Electrode Configuration JoePlexon2 is not yet implemented!");
-            halt;
-        else
-            ' Electrodes: wavemark/continuous
-            ' 12/6/2010
-            ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
-            ' and M waveform channels. 
-            '        for i% := 0 to cmNWavemarks%-1 do
-            '            SampleWaveMark(i% + 1, cmWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
-            '            SampleTitle$(i% + 1, "WMrk " + str$(cmWavemarkPorts%[i%])); 
-            '        next
-            '        for i% := 0 to cmNContinuous%-1 do
-            '            SampleWaveform(cmNWavemarks% + i% + 1, cmContinuousPorts%[i%], 20000);
-            '            SampleTitle$(cmNWavemarks% + i% + 1, "Cont " + str$(cmContinuousPorts%[i%]));
-            '        next
-            CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
-        endcase;
-    endif;
+    SetUpElectrodeConfiguration(cmNWavemarks%,ExcludedChans%[]);
     
     
     
 	SampleSequencer(script$ + "Tuning.pls");
-	SampleOptimise(2, 2, Get1401Type%(), 2, 50);  'Set optimise mode (do this last)
+	DoSampleOptimise();
 	SampleMode(1); 'Continuous sampling
 end;
 
@@ -233,7 +226,11 @@ proc InitializeToolbar()
 
 	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
 	ToolbarVisible(1);
-	ToolbarSet(1,"Start",Start%);
+    if UseTwo1401s% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
+        ToolbarSet(1,"Sample start",Start%);
+    endif;
 	ToolbarSet(2,"Stop", Stop%);
 	ToolbarEnable(2,0);
 	Toolbar("Go", 0x3ff);
@@ -256,6 +253,12 @@ func Start%()
     var RemoteArg$;
     var remoteExtras$;
     var i%;
+    
+    if UseTwo1401s% = 1 then
+        SampleStart(1);  'set sampling to start on a trigger
+    else
+        SampleStart(0); 'Start sampling now
+    endif;
     
 	SampleStart(0); 'Start sampling
     
@@ -301,6 +304,32 @@ func Start%()
 
 	return 1;	
 end;
+
+
+func StartPlexon%()
+    var fp$;  'to hold current file path
+    fp$ := SetPathToScriptDirectory$();
+    CreateSampleConfiguration();    
+    
+    StartSecondInstanceOfSpike2();
+    
+    FilePathSet(fp$);  'change the file path back to what it was
+    fp$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp$); 'and tell the world to verify
+    
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+    ' Get display windows ready
+    InitializeWindows();    
+    
+    return 1; 'stay in toolbar    
+
+end
+
+
+
+
+
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''

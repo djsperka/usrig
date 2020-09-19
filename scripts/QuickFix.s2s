@@ -28,7 +28,6 @@ const qfCVSID$ := "$Id$";
 
 ' Overall script control vars
 var Pause% := 0;
-var UseTwo1401s% := 0;
 
 ' Channel numbers and handles
 var StimHandle%;			' handle for stimulus application
@@ -131,6 +130,11 @@ var nRewardsGiven%;
 var qfBackgroundColor$ := "gray";	' background color for stim, for now, don't put this in a dialog
 
 
+var qfNumWavemarks%;
+var qfNumContinuous%;
+var qfWavemarkPorts%[64];
+var qfContinuousPorts%[64];
+
 '
 ' QuickFix script VARIABLES END
 '
@@ -143,6 +147,9 @@ var qfBackgroundColor$ := "gray";	' background color for stim, for now, don't pu
 ' QuickFix script EXECUTION
 '
 
+
+UseTwo1401s% := DoWeUseTwo1401s%();
+GetPortsAndNumWMsWFs%(qfNumWavemarks%,qfNumContinuous%,qfWavemarkPorts%[],qfContinuousPorts%[]);
 
 ' Init logging
 LogInit(1);
@@ -157,7 +164,7 @@ else
 endif;
 
 ' Fetch electrode information. 
-if UsePlexon% = 1 or JoePlexon1% = 1 or JoePlexon2% = 1 then
+if UsePlexon18WM24WF% = 1 or JoePlexon1% = 1 or UsePlexon30WF30WM% = 1 then
     UseTwo1401s% := 1;
 else
     UseTwo1401s% := 0;
@@ -166,7 +173,7 @@ endif;
 
 'Set up electrodes - several options
 'docase
-'case UsePlexon% = 1 then
+'case UsePlexon18WM24WF% = 1 then
 '    tunNWavemarks% := 13;  '13 wavemarks on the micro for plexon
 '    tunNContinuous% := 0;  'no continuous on the micro for plexon
 '    var i%;
@@ -463,19 +470,10 @@ proc CreateSampleConfiguration()
 	var i%;
     var key$;
     
-    var masterTxt$;
-    var slaveTxt$;
+    var primaryTxt$;
+    var secondaryTxt$;
     
-    docase
-    case UseTwo1401s% = 1 and UsePlexon% = 1 then
-        masterTxt$ := "MICRO";
-        slaveTxt$ := "POWER";
-    case UseTwo1401s% = 1 and UsePlexon% = 0 then  'this would be for any two-1401 scenario for Joe
-        masterTxt$ := "MASTR";
-        slaveTxt$ := "SLAVE";
-    else
-        'do not need to set these variables
-    endcase
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
     
     
 	SampleClear(); 'Set standard sampling state
@@ -489,7 +487,7 @@ proc CreateSampleConfiguration()
     
     
     key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
-    DoSampleAutoName(key$,"quickfix","qf",masterTxt$,slaveTxt$);
+    DoSampleAutoName(key$,"quickfix","qf",primaryTxt$,secondaryTxt$);
     
     SampleAutoFile(1);  'Enable automatic file naming
     
@@ -534,36 +532,7 @@ proc CreateSampleConfiguration()
     
     
     ' Set up channels for sampling electrodes.
-    docase
-    case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
-        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
-    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
-        CreateElectrodeSamplingConfiguration7WM15CN(); 
-    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
-        CreateElectrodeSamplingConfiguration15WF15WF2k();
-    case UsePlexon24WF% = 1 then
-        CreateElectrodeSamplingConfiguration24WF(); 
-    case JoePlexon1% = 1 then
-        CreateJoePlexon1SamplingConfigurationMaster();
-    case JoePlexon2% = 1 then
-        message("Electrode Configuration JoePlexon2 is not yet implemented!");
-        halt;
-    else
-        ' Electrodes: wavemark/continuous
-        ' 12/6/2010
-        ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
-        ' and M waveform channels. 
-        tunNWavemarks% := GetWavemarkPorts%(tunWavemarkPorts%[]);
-        tunNContinuous% := GetContinuousPorts%(tunContinuousPorts%[]);
-        for i% := 0 to tunNWavemarks%-1 do
-            SampleWaveMark(i% + 1, tunWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
-            SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%])); 
-        next
-        for i% := 0 to tunNContinuous%-1 do
-            SampleWaveform(tunNWavemarks% + i% + 1, tunContinuousPorts%[i%], 20000);
-            SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
-        next
-    endcase;
+    SetUpElectrodeConfiguration(qfNumWavemarks%,ExcludedChans%[]);
     
         
 	SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
@@ -572,16 +541,7 @@ proc CreateSampleConfiguration()
 	SampleTitle$(YChannel%,"Eye Y");
     
 	SampleSequencer(script$ + "Tuning.pls");
-	docase
-    case UsePlexon% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
-        SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
-    case JoePlexon1% = 1 or JoePlexon2% = 1 then
-        SampleOptimise(0,1,4,0,0,0,0);  'copying the micro settings...not necessarily the be-all end-all, just trying to see if anything works
-    case UsePlexon15WF15WF2k% = 1 or UsePlexon24WF% = 1 then 
-        SampleOptimise(2,2,9,1,50,0,1);  'for big-data, need to set for burst mode, Power1401-3 setting is not clear because help does not list it.  9?  8 for micro1401-3?
-    else
-        SampleOptimise(2,2,2,2,50);  'otherwise: full optimize timing, channels may have different rates, Power1401 (lowest common denominator, so eh), low usPerTime of 2, high usPerTime of 50
-    endcase;
+	DoSampleOptimise();
 	SampleMode(1); 'Continuous sampling
     
 end;
@@ -925,21 +885,8 @@ func StartPlexon%()
     
     'Start the Power1401!  This is a bit cumbersome, and I'm not sure it's transferable, but it's a start, perhaps.
     var fp$;  'to hold current file path
-    var fp2$;  'to hold destination file path
-    fp$ := FilePath$();  'get current file path
-    printlog("%s\n",fp$);  'and tell the world what it was
-    var fpok%;
-    fpok% := FilePathSet("F:/work/AlertRig/Spike2Scripts");  'change the file path (Henry)
-    if fpok% <> 0 then
-        fpok% := FilePathSet("E:/work/AlertRig/Spike2Scripts");  'change the file path (Joe)
-    endif
-    if fpok% <> 0 then
-        message("Failed to find expected file structure in StartPlexon%()!  Quitting!");
-        halt;
-    endif
+    fp$ := SetPathToScriptDirectory$();
         
-    fp2$ := FilePath$();  'read out to allow verification
-    printlog("%s\n",fp2$);  'by telling the world about it (hint: it works)
     
     'Must run this BEFORE the PROGRUN command, because both this sequence AND SetPlexon...
     'access the same directory, and this was causing conflicts because they were running
@@ -947,17 +894,7 @@ func StartPlexon%()
     'SetPlexon... is started, and everything is kosher.
     CreateSampleConfiguration();    
     
-    docase
-    case UsePlexon% = 1 then
-        progrun("sonview.exe /M /u2 SetPlexonRecording1824OnPower1401.s2s");  'run the program, .s2s file is now on default path by design
-    case JoePlexon1% = 1 then
-        progrun("sonview.exe /M /u2 SetJoePlexon1RecordingOnSlave.s2s");  'run the program, .s2s file is now on default path by design
-    case JoePlexon2% = 1 then
-        message("Program to start slave 1401 not yet written for Joe2!  Quitting!");
-        halt; 
-        'This is what we should call the program, then we can just uncomment this line
-        'progrun("sonview.exe /M /u2 SetPlexonRecording1824OnPower1401.s2s");  'run the program, .s2s file is now on default path by design
-    endcase
+    StartSecondInstanceOfSpike2();
     
     FilePathSet(fp$);  'change the file path back to what it was
     fp$ := FilePath$();  'read out to allow verification
@@ -1122,20 +1059,20 @@ end;
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-proc DoSampleAutoName(key$,long$,short$,master$,slave$)
-    'This function will do the auto-naming of files.  It will take into account the setup of the system
-    '(if there are one or two 1401s, and whether this is a micro/power or master/slave relationship)
-    'The long$ name should be 8 characters or fewer
-    'The short$ name should be 3 character or fewer
-    
-    if UseTwo1401s% = 0 then
-        SampleAutoName$(dataCellName$ + "_" + long$ + "_000");  'NOTE: maximum of 13 characters!!!
-    else
-        EqualizeSMRFilenumbers(dataPathRoot$ + "\\" + dataDataSet$,dataCellName$+"_" + short$ + master$ + "_",dataCellName$+"_" + short$ + slave$ + "_");
-        SampleAutoName$(dataCellName$ + "_" + short$ + master$ + "_000");  'NOTE: maximum of 13 characters!!!
-        SetStringRegistryValue(key$, "pref", short$);
-    endif;    
-end
+'proc DoSampleAutoName(key$,long$,short$,master$,slave$)
+'    'This function will do the auto-naming of files.  It will take into account the setup of the system
+'    '(if there are one or two 1401s, and whether this is a micro/power or master/slave relationship)
+'    'The long$ name should be 8 characters or fewer
+'    'The short$ name should be 3 character or fewer
+'    
+'    if UseTwo1401s% = 0 then
+'        SampleAutoName$(dataCellName$ + "_" + long$ + "_000");  'NOTE: maximum of 13 characters!!!
+'    else
+'        EqualizeSMRFilenumbers(dataPathRoot$ + "\\" + dataDataSet$,dataCellName$+"_" + short$ + master$ + "_",dataCellName$+"_" + short$ + slave$ + "_");
+'        SampleAutoName$(dataCellName$ + "_" + short$ + master$ + "_000");  'NOTE: maximum of 13 characters!!!
+'        SetStringRegistryValue(key$, "pref", short$);
+'    endif;    
+'end
 
 
 
