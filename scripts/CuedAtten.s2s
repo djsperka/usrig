@@ -250,6 +250,7 @@ var answerWindowTime;
 var answerWindowStart;
 var answerWindowWhich%;
 
+
 ' Constants for states
 const stateStartTrial%:=0;		        ' Start trial state
 const stateWaitForFixPtOn%:=1;		    ' Waiting for fixation/cue point return trigger (on)
@@ -325,6 +326,11 @@ var trialCueName$;
 var trialCount8bit1%;
 var trialCount8bit2%;
 
+var caNumWavemarks%;
+var caNumContinuous%;
+var caWavemarkPorts%[64];
+var caContinuousPorts%[64];
+
 
 ' Assign channel numbers for eye X,Y and trigger. 
 XChannel% := 23;
@@ -350,6 +356,8 @@ ExcludedChans%[1] := 36;  'UtilityChannel% is highest non-electrode channel used
 LogInit(1);
 InitJoystick2(JoyChannel%,GetJoystickPort%()); 'now calls InitJoystick2 - we must do this BEFORE calling the main dialog
 
+UseTwo1401s% := DoWeUseTwo1401s%();
+GetPortsAndNumWMsWFs%(caNumWavemarks%,caNumContinuous%,caWavemarkPorts%[],caContinuousPorts%[]);
 
 ' Check for valid data file path
 if Len(dataDataSet$) = 0 then
@@ -635,16 +643,26 @@ endif;
 
 
 
-
+if UseTwo1401s% = 0 then
+    CreateSampleConfiguration();
+    
+    ' Get display windows ready
+    InitializeWindows();
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+else
+    InitializeToolbar();
+endif;
 
 'Create Sample Configuration
-CreateSampleConfiguration();
+'CreateSampleConfiguration();
 
 ' Get display windows ready
-InitializeWindows();
+'InitializeWindows();
 
 ' Prepare the toolbar buttons
-InitializeToolbar();
+'InitializeToolbar();
 
 '''End of script, once the toolbar closes, we're done.
 
@@ -1115,18 +1133,15 @@ proc CreateSampleConfiguration()
 	var index;
     var key$;
     key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    var primaryTxt$;
+    var secondaryTxt$;
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
     SampleClear(); 'Set standard sampling state
     SampleChannels(64);  '32 does not work, we need more!
     
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
-    'if UsePlexon% = 0 then
-    SampleAutoName$(dataCellName$ + "_ca_000");  'NOTE: maximum of 13 characters!!!
-    'else
-    '    EqualizeSMRFilenumbers(dataPathRoot$ + "\\" + dataDataSet$,dataCellName$+"_atnMICRO_",dataCellName$+"_atnPOWER_");
-    '    SampleAutoName$(dataCellName$ + "_atnMICRO_000");  'NOTE: maximum of 13 characters!!!
-    '    SetStringRegistryValue(key$, "pref", "atn");
-    'endif;
+    DoSampleAutoName(key$,"ca","ca",primaryTxt$,secondaryTxt$);
     SampleAutoFile(1);  'Enable automatic file naming
     
 	SampleAutoComment(0); 'Prompt for comment after sampling
@@ -1218,9 +1233,7 @@ proc CreateSampleConfiguration()
     
     '----Set up "spiking" Electrode Channels----
     GetElectrodeParameters();
-    'printlog("num wavemark ports = %d and num continuous ports = %d\n",numWavemarkPorts%,numContinuousPorts%); 
-    CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%[]);  'Allows a lot of channels while preventing accidentally re-defining a channel
-	
+    SetUpElectrodeConfiguration(caNumWavemarks%,ExcludedChans%[]);
     
     
     
@@ -1235,11 +1248,7 @@ proc CreateSampleConfiguration()
 
 	'SampleSequencer(script$ + "Attention.pls");
     SampleSequencer(script$ + "Tuning.pls");
-    'if UsePlexon% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
-    '    SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
-    'else
-    SampleOptimise(2,2,Get1401Type%(),2,50);  'otherwise: full optimize timing, channels may have different rates, Power1401 (lowest common denominator, so eh), low usPerTime of 2, high usPerTime of 50
-    'endif;
+    DoSampleOptimise();
 	SampleMode(1); 'Continuous sampling
 end;
 
@@ -1372,11 +1381,11 @@ proc InitializeToolbar()
 	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
 	ToolbarVisible(1);
 	UpdateToolbarText();
-    '    if UsePlexon% = 1 then
-    '        ToolbarSet(1,"StartPlexon",StartPlexon%);
-    '    else
-    ToolbarSet(1,"Sample start",Start%);
-    '    endif;
+    if UseTwo1401s% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
+        ToolbarSet(1,"Sample start",Start%);
+    endif;
 	ToolbarSet(2,"Sample stop", Stop%);
 	ToolbarSet(3,"Pause stimuli",PauseStimuli%);  'updated all ToolbarEnable commands
 	ToolbarSet(4,"Resume stimuli",ResumeStimuli%);  'updated all ToolbarEnable commands
@@ -1417,7 +1426,7 @@ func Start%()
     
     
     'start sampling
-    'if UsePlexon% = 1 then
+    'if UseTwo1401s% = 1 then
     '    SampleStart(1);  'set sampling to start on a trigger     
     'else
     SampleStart(0); 'Start sampling now
@@ -1545,6 +1554,29 @@ end;
 
 
 
+func StartPlexon%()
+           var fp$;  'to hold current file path
+           fp$ := SetPathToScriptDirectory$();
+           CreateSampleConfiguration();    
+    
+           StartSecondInstanceOfSpike2();
+       
+           FilePathSet(fp$);  'change the file path back to what it was
+           fp$ := FilePath$();  'read out to allow verification
+           printlog("%s\n",fp$); 'and tell the world to verify
+    
+           ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+           ' Get display windows ready
+           InitializeWindows();    
+    
+           return 1; 'stay in toolbar    
+    
+end
+
+
+
+
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Stop%()
     var i%, j%, mylen%;
@@ -1608,7 +1640,7 @@ func Stop%()
     
     'Note that this commented section does NOT include an update to use the "totalChanToExport%" syntax and may no longer work as-is
     '    docase
-    '    case UsePlexon% = 1 then  'use hardcoded Plexon values - 18 WaveMarks and 24 LFPs for now, on the micro it's 
+    '    case UsePlexon18WM24WF% = 1 then  'use hardcoded Plexon values - 18 WaveMarks and 24 LFPs for now, on the micro it's 
     '        for i% := 0 to 12 do
     '            chanToExport%[i%+4] := i%+1;  'wavemark channels are in order
     '        next;
@@ -1681,7 +1713,7 @@ func Stop%()
     ' Write parameter file
 	WriteParameterFile();
     
-    '    if UsePlexon% = 1 then
+    '    if UseTwo1401s% = 1 then
     '        ' Save most recent .s2r file name to registry
     '        fn$ := Left$(fn$,mylen%-4);
     '        fn$ := fn$ + ".s2r";
@@ -3897,20 +3929,26 @@ func CallJoystickConfigDialog%()
     'This function was written simply to prevent "odd" autonaming of files when saving joystick calibration data
     'Unfortunately, there doesn't seem to be a way to *not* save the data as SampleStop automatically saves it, so
     'this is the next best thing.  Should work for either dialog-based or toolbar-based calls of Joystick config
+    var key$;
+    var primaryTxt$;
+    var secondaryTxt$;
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
     
     'Set autoname to use a joystick-based name
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
-    'if UsePlexon% = 0 then
-    SampleAutoName$(dataCellName$ + "_joystick_000");  'NOTE: maximum of 13 characters!!!    
+
+    
+    DoSampleAutoName(key$,"joystick","joy",primaryTxt$,secondaryTxt$);    
     
     JoystickConfigDialog%();
     
     'Set autoname back to what it should be once we return
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
-    'if UsePlexon% = 0 then
-    SampleAutoName$(dataCellName$ + "_ca_000");  'NOTE: maximum of 13 characters!!!
+
+    DoSampleAutoName(key$,"ca","ca",primaryTxt$,secondaryTxt$);
     
     return 1;
 end

@@ -48,8 +48,8 @@ var starJuicePerSmallReward% := 1;
 
 var starNWavemarks% := 0;
 var starNContinuous% := 0;
-var starWavemarkPorts%[16];
-var starContinuousPorts%[16];
+var starWavemarkPorts%[63];
+var starContinuousPorts%[64];
 var starXAxis%, starXNumPerSide%, starYAxis%, starYNumPerSide%;
 var starXOffset, starYOffset;
 var starTargetColor$ := "red";
@@ -107,6 +107,12 @@ var starGratingBarFirstTargetColor%;
 
 
 var HBCycle% := 1;
+
+
+
+UseTwo1401s% := DoWeUseTwo1401s%();
+GetPortsAndNumWMsWFs%(starNWavemarks%,starNContinuous%,starWavemarkPorts%[],starContinuousPorts%[]);
+
 
 proc GetStarStimScriptParameters()
 	var key$;
@@ -606,13 +612,25 @@ ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this
 ExcludedChans%[1] := 31;  'Keyboard (default) is highest non-electrode channel used by this function
 
 
-CreateSampleConfiguration();
+if UseTwo1401s% = 0 then
+    CreateSampleConfiguration();
+    
+    ' Get display windows ready
+    InitializeWindows();
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+else
+    InitializeToolbar();
+endif;
 
-' Get display windows ready
-InitializeWindows();
-
-' Prepare the toolbar buttons
-InitializeToolbar();
+'CreateSampleConfiguration();
+'
+'' Get display windows ready
+'InitializeWindows();
+'
+'' Prepare the toolbar buttons
+'InitializeToolbar();
 
 const stateStartTrial%				:= 0;
 const stateWaitForFixPtOn%			:= 1;
@@ -1111,6 +1129,11 @@ end
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 proc CreateSampleConfiguration()
 	var i%;
+    var key$;
+    var primaryTxt$;
+    var secondaryTxt$;
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
 	SampleClear(); 'Set standard sampling state
     SampleChannels(64);  '32 does not work, we need more!
 '	SampleAutoFile(0); 'Enable automatic file naming
@@ -1120,7 +1143,7 @@ proc CreateSampleConfiguration()
 	' Set path for new data files
 	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3, 1);
 	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1, 1);
-	SampleAutoName$(dataCellName$ + "_star_000");
+	DoSampleAutoName(key$,"star","str",primaryTxt$,secondaryTxt$);
 	SampleAutoFile(1);
     
     ' Text marks make extraction easier
@@ -1169,13 +1192,13 @@ proc CreateSampleConfiguration()
     
     
     '----Set up "spiking" Electrode Channels----
-    CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
+    SetUpElectrodeConfiguration(starNWavemarks%,ExcludedChans%[]);
 
 
 	
 
 	SampleSequencer(script$ + "Tuning.pls");
-	SampleOptimise(2, 2, Get1401Type%(), 2, 50);  'Set optimise mode (do this last)
+	DoSampleOptimise();
 	SampleMode(1); 'Continuous sampling
     
     
@@ -1337,7 +1360,11 @@ proc InitializeToolbar()
 
 	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
 	ToolbarVisible(1);
-	ToolbarSet(1,"Sample start", Start%);
+    if UseTwo1401s% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
+        ToolbarSet(1,"Sample start",Start%);
+    endif;
 	ToolbarSet(2,"Sample stop", Stop%);
 	ToolbarSet(3,"Juice", Juice%);
 	ToolbarSet(4,"Quit", Quit%);
@@ -1448,6 +1475,14 @@ func Start%()
     if starUseDefaultTargetSize% = 0 then
         fpd := starTargetDiameter;
     endif
+    
+    if UseTwo1401s% = 1 then
+        SampleStart(1);  'set sampling to start on a trigger
+    else
+        SampleStart(0); 'Start sampling now
+    endif;
+    
+    
     
     ' generate target args. 
     if starUseStimulusXY% then
@@ -1700,6 +1735,29 @@ func Start%()
 	Yield(.1);
 	return 1;
 end;
+
+
+
+func StartPlexon%()
+    
+    var fp$;  'to hold current file path
+    fp$ := SetPathToScriptDirectory$();
+    CreateSampleConfiguration();    
+    
+    StartSecondInstanceOfSpike2();
+    
+    FilePathSet(fp$);  'change the file path back to what it was
+    fp$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp$); 'and tell the world to verify
+    
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+    ' Get display windows ready
+    InitializeWindows();    
+    
+    return 1; 'stay in toolbar    
+    
+end
 
 
 

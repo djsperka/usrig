@@ -1,11 +1,11 @@
 ' $Id$
 
-var UsePlexon%;
+var UsePlexon18WM24WF%;  'This configuration was the original, and was originally named "UsePlexon%" but needed to be renamed to avoid confusion - note that this configuration is currently internally deprecated, you can't set it to 1!
 var UsePlexon15WF15WF2k%;
 var UsePlexon7WM15CN%;
 var UsePlexon24WF%;
 var JoePlexon1%;
-var JoePlexon2%;
+var UsePlexon30WF30WM%;
 var UseCustomLabels%;
 var CustomLabels$[32];
 var ExcludedChans%[2];  'This allows us (if we use CreateElectrodeSamplingConfiguration32) to exclude the channels reserved for other info
@@ -22,6 +22,7 @@ var UseChanByChanSampRates%;
 
 #include "DlgUtilities.s2s"
 #include "UsreyUtil.s2s"
+#include "PlexonUtilities.s2s"
 
 var WavemarkPorts%[32];
 var NumWavemarkPorts%;
@@ -223,12 +224,12 @@ proc GetElectrodeParameters()
     NumWavemarkPorts% := ReadStr(s$, WavemarkPorts%[]);
     s$ := GetStringRegistryValue$(key$, "ContinuousPorts", "");
     NumContinuousPorts% := ReadStr(s$, ContinuousPorts%[]);
-    Profile(key$, "UsePlexon", 0, UsePlexon%);
+    Profile(key$, "UsePlexon", 0, UsePlexon18WM24WF%);
     Profile(key$, "UsePlexon15WF15WF2k", 0, UsePlexon15WF15WF2k%);
     Profile(key$, "UsePlexon7WM15CN", 0, UsePlexon7WM15CN%);
     Profile(key$, "UsePlexon24WF", 0, UsePlexon24WF%);
     Profile(key$, "JoePlexon1", 0, JoePlexon1%);
-    Profile(key$, "JoePlexon2", 0, JoePlexon2%);
+    Profile(key$, "UsePlexon30WF30WM", 0, UsePlexon30WF30WM%);
     Profile(key$, "UseCustomLabels", 0, UseCustomLabels%);
     Profile(key$, "WavemarkSamplingRate", 28000, WavemarkSamplingRate%);  'actually setting a default value!
     Profile(key$, "WaveformSamplingRate", 20000, WaveformSamplingRate%);  'actually setting a default value!
@@ -255,12 +256,12 @@ proc SaveElectrodeParameters()
 	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
     SetStringRegistryValue(key$, "WavemarkPorts", GetWavemarkPorts$());
     SetStringRegistryValue(key$, "ContinuousPorts", GetContinuousPorts$());
-    Profile(key$, "UsePlexon", UsePlexon%); 
+    Profile(key$, "UsePlexon", UsePlexon18WM24WF%); 
     Profile(key$, "UsePlexon15WF15WF2k", UsePlexon15WF15WF2k%);
     Profile(key$, "UsePlexon7WM15CN", UsePlexon7WM15CN%);    
     Profile(key$, "UsePlexon24WF", UsePlexon24WF%); 
     Profile(key$, "JoePlexon1", JoePlexon1%);
-    Profile(key$, "JoePlexon2", JoePlexon2%);
+    Profile(key$, "UsePlexon30WF30WM", UsePlexon30WF30WM%);
     Profile(key$, "UseCustomLabels", UseCustomLabels%);
     Profile(key$, "WavemarkSamplingRate", WavemarkSamplingRate%);
     Profile(key$, "WaveformSamplingRate", WaveformSamplingRate%);
@@ -549,6 +550,100 @@ func CreateJoePlexon1SamplingConfigurationSlave()
     SampleUsPerTime(2);  'set same sample period for both units
     SampleTimePerADC(1);  'set same ADC rate for both units
     
+    
+    return iStatus%;  'this is useless!
+end
+
+
+
+
+'This function sets up the sampling on the Primary 1401 (32-channel) for the 30WF/30WM configuration
+'It creates 14 WaveMarks and 14 Waveforms.  Two eye position channels and a joystick channel are expected to be on ports 13-15
+func CreateElectrodeSamplingConfiguration30WF30WMPrimary()
+    var iStatus% := -1;
+    var i%;
+    
+    'do not use ports 13-15
+    'do not use channels 23-32
+    
+    'Make sure the ports we assume are correct
+    'Note that in principle we could use a utility port or something here though we need to be sure it will be collected at 1 kHz
+    'and we can only have three total ports used, between 13-15.  Add other ports here if they will be used.
+    docase 
+    case WhichEyeXPort%() = -1 then
+       'This is OK, do nothing
+    case WhichEyeXPort%() < 13 or WhichEyeXPort%() > 15 then
+        message("The EyeX port must be between 13 and 15!");
+        halt;
+    endcase;
+    docase 
+    case WhichEyeYPort%() = -1 then
+       'This is OK, do nothing
+    case WhichEyeYPort%() < 13 or WhichEyeYPort%() > 15 then
+        message("The EyeY port must be between 13 and 15!");
+        halt;
+    endcase;
+    docase 
+    case WhichjoystickPort%() = -1 then
+       'This is OK, do nothing
+    case WhichJoystickPort%() < 13 or WhichJoystickPort%() > 15 then
+        message("The EyeX port must be between 13 and 15!");
+        halt;
+    endcase;
+    
+    'do not use ports 13-15
+    'do not use channels 23-32
+    
+    'First 13 ports (0-12) are Wavemarks, channels 1-13
+    for i% := 0 to 12 do
+		SampleWaveMark(i%+1, i%, 2000, 34, 15, 28011); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(i%+1, "WMrk " + str$(i%+1)); 
+	next
+    'Port 16 is the final (14th) Wavemark, but the channel sticks at 14
+    SampleWaveMark(14, 16, 2000, 34, 15, 28011); ' chan, port, event rate, points, pre-trigger, rate
+    SampleTitle$(14, "WMrk " + str$(14));
+    
+    'Ports 17-24 will be on channels 15-22
+    for i% := 15 to 22 do
+		SampleWaveform(i%,i%+2,1000);  'chan, port, sampling rate
+		SampleTitle$(i%, "LFP " + str$(i%)); 
+	next
+    
+    'Ports 25-30 will be on channels 33-38
+    for i% := 33 to 38 do
+		SampleWaveform(i%,i%-8,1000);  'chan, port, sampling rate
+		SampleTitle$(i%, "LFP " + str$(i%)); 
+	next
+    
+    SampleUsPerTime(1.7);  'set same sample period for both units
+    SampleTimePerADC(1);  'set same ADC rate for both units
+    
+    return iStatus%;  'this is useless!
+end
+
+
+
+
+'This function sets up the sampling on the Secondary 1401 (32-channel) for the 30WF/30WM configuration
+'It creates 16 WaveMarks and 16 Waveforms.
+func CreateElectrodeSamplingConfiguration30WF30WMSecondary()
+    var iStatus% := -1;
+    var i%;
+    
+    'First 16 ports (0-15) are Wavemarks, channels 1-16
+    for i% := 0 to 15 do
+		SampleWaveMark(i%+1, i%, 2000, 34, 15, 28011); ' chan, port, event rate, points, pre-trigger, rate
+		SampleTitle$(i%+1, "WMrk " + str$(i%+1)); 
+	next
+    
+    'Ports 16-31 are Waveforms, will be on channels 17-32
+    for i% := 16 to 31 do
+		SampleWaveform(i%+1,i%,1000);  'chan, port, sampling rate
+		SampleTitle$(i%+1, "LFP " + str$(i%+1)); 
+	next
+    
+    SampleUsPerTime(1.7);  'set same sample period for both units
+    SampleTimePerADC(1);  'set same ADC rate for both units
     
     return iStatus%;  'this is useless!
 end
