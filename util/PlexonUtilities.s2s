@@ -23,7 +23,7 @@
 '           SetPlexonRecording3030OnSecondary1401.s2s
 '
 '3) Add/change a checkbox in GetElectrodeParameters() (also in ElectrodeUtilities.s2s) that creates a new variable 
-'   like UsePlexon30WF30WM% that will indicate the new configuration.
+'   like UsePlexon32LFP29SpikingWF% that will indicate the new configuration.
 '
 '4) Take this new variable and update all functions below except SetPathToScriptDirectory() appropriately.
 '
@@ -128,7 +128,7 @@ var UseTwo1401s% := 0;
 
 
 func DoWeUseTwo1401s%()
-    if UsePlexon18WM24WF% = 1 or JoePlexon1% = 1 or UsePlexon30WF30WM% = 1 then  'these Plexon configs use two linked 1401s
+    if UsePlexon18WM24WF% = 1 or JoePlexon1% = 1 or UsePlexon32LFP29SpikingWF% = 1 then  'these Plexon configs use two linked 1401s
         return 1;
     else  'other Plexon configs were designed to be used with a single 32-channel 1401
         return 0;
@@ -198,7 +198,7 @@ func GetPortsAndNumWMsWFs%(&nWMs%,&nWFs%,&WMPorts%[],&WFPorts%[]);
         for i% := 0 to 23 do
             WMPorts%[i%] := i%;
         next;
-    case UsePlexon30WF30WM% = 1 then  'This configuration is designed for two linked 32-channel power1401s.  On the primary 1401, it will
+    case UsePlexon32LFP29SpikingWF% = 1 then  'This configuration is designed for two linked 32-channel power1401s.  On the primary 1401, it will
         'place 14 WMs at 28011 kHz and 14 WFs at 1000 kHz, interrupted by two eye channels and a joystick
         'channel on ports 13-15.  The secondary 1401 will have 16 WMs at 28011 kHz and 16 WFs at 1000 kHz.
         nWMs% := 14;  '14 wavemarks
@@ -226,7 +226,7 @@ proc SetPrimarySecondaryTxt(&primaryTxt$,&secondaryTxt$);
     case UseTwo1401s% = 1 and UsePlexon18WM24WF% = 1 then
         primaryTxt$ := "MICRO";
         secondaryTxt$ := "POWER";
-    case UseTwo1401s% = 1 and UsePlexon30WF30WM% = 1 then
+    case UseTwo1401s% = 1 and UsePlexon32LFP29SpikingWF% = 1 then
         primaryTxt$ := "PRIMR";
         secondaryTxt$ := "SECON";
     case UseTwo1401s% = 1 then  'this would be for any other two-1401 scenario (for Joe, probably)
@@ -251,8 +251,8 @@ proc SetUpElectrodeConfiguration(numWavemarkPorts%,ExcludedChans%[])
         CreateElectrodeSamplingConfiguration24WF(); 
     case JoePlexon1% = 1 then
         CreateJoePlexon1SamplingConfigurationMaster();
-    case UsePlexon30WF30WM% = 1 then
-        CreateElectrodeSamplingConfiguration30WF30WMPrimary();
+    case UsePlexon32LFP29SpikingWF% = 1 then
+        CreateElectrodeSamplingConfiguration32LFP29SpikingPrimary(ExcludedChans%[]);
     else
         ' Electrodes: wavemark/continuous
         ' 12/6/2010
@@ -289,7 +289,7 @@ proc DoSampleOptimise()
         SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
     case JoePlexon1% = 1 then 
         SampleOptimise(0,1,4,0,0,0,0);  'copying the micro settings...not necessarily the be-all end-all, just trying to see if anything works
-    case UsePlexon30WF30WM% = 1 then
+    case UsePlexon32LFP29SpikingWF% = 1 then
         SampleOptimise(0,1,9,0,0,0,0);  'Appears to not need burst mode for Power3.
     case UsePlexon15WF15WF2k% = 1 or UsePlexon24WF% = 1 then 
         SampleOptimise(2,2,9,1,50,0,1);  'for big-data, need to set for burst mode, Power1401-3 setting is not clear because help does not list it.  9?  8 for micro1401-3?
@@ -331,7 +331,7 @@ proc StartSecondInstanceOfSpike2()
         progrun("sonview.exe /M /u2 SetPlexonRecording1824OnPower1401.s2s");  'run the program, .s2s file is now on default path by design
     case JoePlexon1% = 1 then
         progrun("sonview.exe /M /u2 SetJoePlexon1RecordingOnSlave.s2s");  'run the program, .s2s file is now on default path by design
-    case UsePlexon30WF30WM% = 1 then
+    case UsePlexon32LFP29SpikingWF% = 1 then
         progrun("sonview.exe /M /u2 SetPlexonRecording3030OnSecondary1401.s2s");  'run the program, .s2s file is now on default path by design
     endcase
     
