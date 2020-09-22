@@ -364,6 +364,15 @@ var OptoCopyChannel%;
 
 var autoNameTemplate$;
 
+var attNumWavemarks%;
+var attNumContinuous%;
+var attWavemarkPorts%[64];
+var attContinuousPorts%[64];
+
+
+UseTwo1401s% := DoWeUseTwo1401s%();
+GetPortsAndNumWMsWFs%(attNumWavemarks%,attNumContinuous%,attWavemarkPorts%[],attContinuousPorts%[]);
+
 proc GetAttentionScriptParameters()
 	var stmp$;
 	var key$;
@@ -1534,7 +1543,7 @@ ExcludedChans%[1] := 49;  'OptoCopyChannel is highest non-electrode channel used
 'must be started on the POWER 1401 (the second, non-dominant instance of Spike2) FIRST and on the MICRO 1401 (the first, 
 'dominant instance of Spike 2) SECOND.  Starting sampling on the Micro will run the VSG program (Fixstim) which gives
 'the sampling trigger and sets the experiment in motion.
-if UsePlexon% = 0 then
+if UseTwo1401s% = 0 then
     CreateSampleConfiguration();
 
     ' Initialize extraction
@@ -1622,7 +1631,7 @@ proc InitializeToolbar()
 	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
 	ToolbarVisible(1);
 	UpdateToolbarText();
-    if UsePlexon% = 1 then
+    if UseTwo1401s% = 1 then
         ToolbarSet(1,"StartPlexon",StartPlexon%);
     else
         ToolbarSet(1,"Sample start",Start%);
@@ -2925,7 +2934,7 @@ proc InitializeWindows()
 	Window(0,48,100,95);
 	View(DataWindow%).WindowVisible(1);
     
-    if UsePlexon% = 1 then
+    if UseTwo1401s% = 1 then
         'Get the name of the most recent .s2r resource file, if any
         var key$;
         var fn$;
@@ -3102,18 +3111,16 @@ proc CreateSampleConfiguration()
 	var index;
     var key$;
     key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    var primaryTxt$;
+    var secondaryTxt$;
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
+    
     SampleClear(); 'Set standard sampling state
     SampleChannels(64);  '32 does not work, we need more!
 
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
-    if UsePlexon% = 0 then
-        SampleAutoName$(dataCellName$ + "_atn_000");  'NOTE: maximum of 13 characters!!!
-    else
-        EqualizeSMRFilenumbers(dataPathRoot$ + "\\" + dataDataSet$,dataCellName$+"_atnMICRO_",dataCellName$+"_atnPOWER_");
-        SampleAutoName$(dataCellName$ + "_atnMICRO_000");  'NOTE: maximum of 13 characters!!!
-        SetStringRegistryValue(key$, "pref", "atn");
-    endif;
+    DoSampleAutoName(key$,"atn","atn",primaryTxt$,secondaryTxt$);
     'autoNameTemplate$ := SampleAutoName$();  'to retrieve sample name, this must be called AFTER setting ::rolls eyes::
     SampleAutoFile(1);  'Enable automatic file naming
     
@@ -3148,19 +3155,7 @@ proc CreateSampleConfiguration()
 	SampleTitle$(ReadyChannel%,"VSG Ready");
     
     ' Set up channels for sampling electrodes.
-    docase
-    case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
-        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
-    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
-        CreateElectrodeSamplingConfiguration7WM15CN();
-    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
-        CreateElectrodeSamplingConfiguration15WF15WF2k();
-    case UsePlexon24WF% = 1 then
-        CreateElectrodeSamplingConfiguration24WF();
-    else  'just set up the channels as expected
-        'CreateElectrodeSamplingConfiguration(1, 11);
-        CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
-    endcase;
+    SetUpElectrodeConfiguration(attNumWavemarks%,ExcludedChans%[]);
 	
     ' Set up eye channels whether using Plexon or not
 	'SampleWaveform(XChannel%,14,1000);
@@ -3195,26 +3190,14 @@ proc CreateSampleConfiguration()
         SampleTitle$(OptoCopyChannel%, "OptoCopy");
     endif;
     
-    
-    'I don't know what this is, but it's a problem for Plexon configs
-'    if UsePlexon% = 0 and UsePlexon7WM15CN% = 0 then  'Kill it if we're using the Plexon
-'        SampleWaveform(NumberOfElectrodes%+10, 6, 1000);
-'        SampleTitle$(NumberOfElectrodes%+10, "PD");
-'    endif;
+   
     
     
 	SampleTextMark(200);  'increase number of allowed characters, 1 is so stingy!
     
 	'SampleSequencer(script$ + "Attention.pls");
     SampleSequencer(script$ + "Tuning.pls");
-    docase
-    case UsePlexon% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
-        SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
-    case UsePlexon15WF15WF2k% = 1 or UsePlexon24WF% = 1 then 
-        SampleOptimise(2,2,9,1,50,0,1);  'for big-data, need to set for burst mode, Power1401-3 setting is not clear because help does not list it.  9?  8 for micro1401-3?
-    else
-        SampleOptimise(2,2,Get1401Type%(),2,50);  'otherwise: full optimize timing, channels may have different rates, Power1401 (lowest common denominator, so eh), low usPerTime of 2, high usPerTime of 50
-    endcase;
+    DoSampleOptimise();
 	SampleMode(1); 'Continuous sampling
 end;
 
@@ -3323,7 +3306,7 @@ func Stop%()
 '    chanToExport%[3] := 32;  '32 is the digital marker channel
 '    chanToExport%[4] := StimChannel%;  'stim channel
 '    docase
-'    case UsePlexon% = 1 then  'use hardcoded Plexon values - 18 WaveMarks and 24 LFPs for now, on the micro it's 
+'    case UsePlexon18WM24WF% = 1 then  'use hardcoded Plexon values - 18 WaveMarks and 24 LFPs for now, on the micro it's 
 '        for i% := 0 to 12 do
 '            chanToExport%[i%+5] := i%+1;  'wavemark channels are in order
 '        next;
@@ -3363,15 +3346,16 @@ func Stop%()
     ' Write parameter file
 	WriteParameterFile();
     
-    if UsePlexon% = 1 then
-        ' Save most recent .s2r file name to registry
-        fn$ := Left$(fn$,mylen%-4);
-        fn$ := fn$ + ".s2r";
-        var key$;
-        key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
-        SetStringRegistryValue(key$, "microS2Rfile", fn$);
-        printlog("S2R file name %s was saved to registry\n",fn$);
-    endif;
+'I think this is unused    
+'    if UseTwo1401s% = 1 then
+'        ' Save most recent .s2r file name to registry
+'        fn$ := Left$(fn$,mylen%-4);
+'        fn$ := fn$ + ".s2r";
+'        var key$;
+'        key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
+'        SetStringRegistryValue(key$, "microS2Rfile", fn$);
+'        printlog("S2R file name %s was saved to registry\n",fn$);
+'    endif;
     
     
     ' update statistics
@@ -3388,12 +3372,7 @@ func StartPlexon%()
     
     'Start the Power1401!  This is a bit cumbersome, and I'm not sure it's transferable, but it's a start, perhaps.
     var fp$;  'to hold current file path
-    var fp2$;  'to hold destination file path
-    fp$ := FilePath$();  'get current file path
-    printlog("%s\n",fp$);  'and tell the world what it was
-    FilePathSet("F:/work/AlertRig/Spike2Scripts");  'change the file path
-    fp2$ := FilePath$();  'read out to allow verification
-    printlog("%s\n",fp2$);  'by telling the world about it (hint: it works)
+    fp$ := SetPathToScriptDirectory$();
     
     'These two functions are not done before initializing the toolbar in dual-1401 mode
     'Must run this BEFORE the PROGRUN command, because both this sequence AND SetPlexon...
@@ -3402,7 +3381,7 @@ func StartPlexon%()
     'SetPlexon... is started, and everything is kosher.
     CreateSampleConfiguration();
     
-    progrun("sonview.exe /M /u2 SetPlexonRecording1824OnPower1401.s2s");  'run the program, .s2s file is now on default path by design
+    StartSecondInstanceOfSpike2();
     
     FilePathSet(fp$);  'change the file path back to what it was
     fp$ := FilePath$();  'read out to allow verification
@@ -3458,7 +3437,7 @@ func Start%()
    
   
     'start sampling
-    if UsePlexon% = 1 then
+    if UseTwo1401s% = 1 then
         SampleStart(1);  'set sampling to start on a trigger     
     else
     	SampleStart(0); 'Start sampling now

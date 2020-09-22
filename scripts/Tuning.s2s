@@ -28,7 +28,6 @@ const tunCVSID$ := "$Id$";
 
 ' Overall script control vars
 var Pause% := 0;
-var UseTwo1401s% := 0;
 
 ' Channel numbers and handles
 var StimHandle%;			' handle for stimulus application
@@ -284,31 +283,15 @@ ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel use
 ButtonChannel% := 27;
 ButtonPort% := 5;  'This appears to be correct
 
-' Fetch electrode information. 
-if UsePlexon% = 1 or JoePlexon1% = 1 or JoePlexon2% = 1 then
-    UseTwo1401s% := 1;
-else
-    UseTwo1401s% := 0;
-endif;
+' Fetch information about whether we are going to be using two 1401s 
+UseTwo1401s% := DoWeUseTwo1401s%();
 
-docase
-case UsePlexon% = 1 then
-    tunNWavemarks% := 13;  '13 wavemarks on the micro for plexon
-    tunNContinuous% := 0;  'no continuous on the micro for plexon
-    var i%;
-    for i% := 0 to 12 do
-        tunWavemarkPorts%[i%] := i%;
-    next;
-case UsePlexon7WM15CN% = 1 then 
-    tunNWavemarks% := 7;  '7 wavemarks
-    tunNContinuous% := 15;  '15 continuous
-    for i% := 0 to 7 do
-        tunWavemarkPorts%[i%] := i%;
-    next;
-else
-    tunNWavemarks% := GetWavemarkPorts%(tunWavemarkPorts%[]);
-    tunNContinuous% := GetContinuousPorts%(tunContinuousPorts%[]);
-endcase;
+
+' Get number of wavemark ports/continuous ports on the primary 1401
+' Note that the info we gather here is basically used for display, which is only done on the primary 1401.  The
+' secondary 1401 is kinda humming along passively collecting data and doing nothing else.
+GetPortsAndNumWMsWFs%(tunNWavemarks%,tunNContinuous%,tunWavemarkPorts%[],tunContinuousPorts%[]);
+
 
 
 ''Create sampling configuration
@@ -1664,141 +1647,11 @@ proc CreateSampleConfiguration()
     var key$;
     var eof% := 1;
     
-    var masterTxt$;
-    var slaveTxt$;
+    var primaryTxt$;
+    var secondaryTxt$;
     
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
     
-    
-    ''''''' TESTING ''''''''
-    
-'    if tunType$ = tunTypeGonzago$ then     
-'        'DoSampleAutoName(key$,"gz","gz",masterTxt$,slaveTxt$);
-'        
-'        'By definition, tuntype1 is contrast (on the core)  
-'        GetRepeatedParameterProgression%(tunGonzagoCoreContrastNSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunGonzagoMinContrast, tunGonzagoMaxContrast, 1, 0);
-'        tun1NValues% := 2*(tunGonzagoCoreContrastNSteps%+1);
-'        
-'        
-'        'By definition, tuntype2 is area (on the donut)
-'        GetRepeatedParameterProgression%(tunGonzagoDonutAreaNSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunGonzagoMinOuterDiameter, tunGonzagoMaxOuterDiameter, 1, 0);
-'        tun2NValues% := 2*(tunGonzagoDonutAreaNSteps%+1);
-'        
-'        
-'        tunNRepeats% := tunGonzagoNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics   
-'        tunNAdvances% := tun1NValues%*tun2NValues%-1;  'this gives the correct number of advances
-'        tunNValues% := tun1NValues%*tun2NValues%*tunGonzagoNRepeats%;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
-'        
-'        'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
-'        GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],tunGonzagoProgression%,tunGonzagoNRepeats%); 
-'        
-'        'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
-'        tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunGonzagoNRepeats%, tun1Values[], tun1ValuesIndices%[]);
-'        tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunGonzagoNRepeats%, tun2Values[], tun2ValuesIndices%[]);
-'        
-'        printlog("Core values are: %s\n",tun1ValuesStringified$);
-'        printlog("Donut values are: %s\n",tun2ValuesStringified$);
-'        halt;
-'    endif
-'    
-'    'read tuning file, if one is specified
-'    if tunUseFile% = 1 then
-'        eof%:=1;
-'        readsetup(",","	 ","","","	");  'Standard read setup
-'        FileOpen(tunTuningFile$,8,0);  'open specified file
-''        if tunContrastDualScreenCombo% = 0 or tunAreaDualScreenCombo% = 0 then
-''            while eof% > 0 do
-''                eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
-''                tunFileLen%+=1;  'increment tuning file length
-''            wend
-''        else
-''            while eof% > 0 do
-''                eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
-''                tunFileLen%+=1;  'increment tuning file length
-''            wend
-''        endif;  
-'        'The read function actually isn't any different in the two cases above
-'        while eof% > 0 do
-'            eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
-'            tunFileLen%+=1;  'increment tuning file length
-'        wend
-'        tunFileLen%-=1;  'decrement tuning file length because we increment when we find EOF.
-'        FileClose();  'close the file
-'        'Now deal out the values to tun1Values and tun2Values
-'        tun1FileLen% := 0;
-'        tun2FileLen% := 0;
-'        eof% := 0;  'Just reusing this variable, no longer is end of file, is now a label for tunValues1 or tunValues2
-'        for i% := 0 to tunFileLen%-1 do
-'            docase
-'            case tunValues$[i%] = "-" then
-'                eof% := 1;  'change to tunValues2[] on the "-"
-'            case eof% = 0 then  'otherwise it is expected to be a number
-'                tunValues[tun1FileLen%] := Val(tunValues$[i%]);  'may use tunValues or tun1Values later, let's not worry about which right now, fill both
-'                tun1Values[tun1FileLen%] := Val(tunValues$[i%]);
-'                tun1FileLen%+=1;  'increment tuning file length
-'            case eof% = 1 then
-'                tun2Values[tun2FileLen%] := Val(tunValues$[i%]);
-'                tun2FileLen%+=1;  'increment tuning file length
-'            endcase
-'        next;
-'        printlog("tun1 len is %d and tun2 len is %d\n",tun1FileLen%,tun2FileLen%);
-'    endif
-'   
-'    if tunType$ = tunTypeContrast$ then 
-'        tunNRepeats% := tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-'        if tunContrastDualScreenCombo% = 0 then
-'            if tunUseFile% = 1 then
-'                tunNAdvances% := tunFileLen%-1;
-'                ShuffleAndExpand(tunFileLen%,tunNRepeats%,tunValuesIndices%[],tunContrastProgression%);
-'            else
-'                tunNAdvances% := tunContrastNSteps%;
-'                GetRepeatedParameterProgression%(tunContrastNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, tunContrastProgression%);
-'            endif;
-'            'tunNValues% := (tunContrastNSteps%+1)*tunContrastNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-'            tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  'shorter, should work the same as above commented line, keeping old line for contrast only just in case...
-'            printlog("Tun Values are %f\n",tunValues);
-'            printlog("Tun Values Indices are %d\n",tunValuesIndices%);
-'            tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
-'        else 'do the dual-screen combo version
-'            if tunUseFile% = 1 then
-'                'ShuffleAndExpand(tunFileLen%,1,tunValuesIndices%[],0);
-'                tun1NValues% := tun1FileLen%;
-'                tun2NValues% := tun2FileLen%;
-'            else
-'                GetRepeatedParameterProgression%(tunContrastNSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, 0);
-'                GetRepeatedParameterProgression%(tunContrastNSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunContrastMinContrast, tunContrastMaxContrast, 1, 0);
-'                tun1NValues% := (tunContrastNSteps%+1); 
-'                tun2NValues% := (tunContrastNSteps%+1); 
-'            endif;
-'            tunNAdvances% := tun1NValues%*tun2NValues%-1;  'this gives the correct number of advances
-'            tunNValues% := tun1NValues%*tun2NValues%*tunContrastNRepeats%;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
-'            'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
-'            GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],tunContrastProgression%,tunContrastNRepeats%); 
-'            'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
-'            tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunContrastNRepeats%, tun1Values[], tun1ValuesIndices%[]);
-'            tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunContrastNRepeats%, tun2Values[], tun2ValuesIndices%[]);  
-'        endif; 
-'    endif;
-'    printlog("tun values are %s\n",tunValuesStringified$);
-'    halt
-    
-    ''''''' TESTING ''''''''
-    
-    
-    
-    
-    
-    
-    
-    docase
-    case UseTwo1401s% = 1 and UsePlexon% = 1 then
-        masterTxt$ := "MICRO";
-        slaveTxt$ := "POWER";
-    case UseTwo1401s% = 1 and UsePlexon% = 0 then  'this would be for any two-1401 scenario for Joe
-        masterTxt$ := "MASTR";
-        slaveTxt$ := "SLAVE";
-    else
-        'do not need to set these variables
-    endcase
     
 	SampleClear(); 'Set standard sampling state
     SampleChannels(64);  '32 does not work, we need more!
@@ -1886,7 +1739,7 @@ proc CreateSampleConfiguration()
     docase
         
     case tunType$ = tunTypeDots$ then 
-        DoSampleAutoName(key$,"dots","dot",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"dots","dot",primaryTxt$,secondaryTxt$);
         
         tunNAdvances% := tunDotsNSteps%;
         tunNRepeats% := tunDotsNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
@@ -1902,7 +1755,7 @@ proc CreateSampleConfiguration()
 '            SampleAutoName$(dataCellName$ + "_conMICRO_000");  'NOTE: maximum of 13 characters!!!
 '            SetStringRegistryValue(key$, "pref", "con");
 '        endif;
-        DoSampleAutoName(key$,"con","con",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"con","con",primaryTxt$,secondaryTxt$);
         
         'this is the old way...might need to look back if the new way doesn't work!
         'tunNAdvances% := tunContrastNSteps%;  'this...
@@ -1944,7 +1797,7 @@ proc CreateSampleConfiguration()
         
         
     case tunType$ = tunTypeOrientation$ then 
-        DoSampleAutoName(key$,"ori","ori",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"ori","ori",primaryTxt$,secondaryTxt$);
         
         tunNRepeats% := tunOriNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
@@ -1957,7 +1810,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeSpatial$ then 
-        DoSampleAutoName(key$,"spa","spa",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"spa","spa",primaryTxt$,secondaryTxt$);
         
         tunNRepeats% := tunSpatialNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
@@ -1970,7 +1823,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeTemporal$ then 
-        DoSampleAutoName(key$,"tem","tem",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"tem","tem",primaryTxt$,secondaryTxt$);
         
         tunNRepeats% := tunTemporalNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
@@ -1983,7 +1836,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeArea$ then 
-        DoSampleAutoName(key$,"area","are",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"area","are",primaryTxt$,secondaryTxt$);
         
         tunNRepeats% := tunAreaNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunAreaDualScreenCombo% = 0 then
@@ -2018,7 +1871,7 @@ proc CreateSampleConfiguration()
         endif;        
         
     case tunType$ = tunTypeNullTest$ then 
-        DoSampleAutoName(key$,"nulltest","nul",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"nulltest","nul",primaryTxt$,secondaryTxt$);
         
         tunNRepeats% := tunNullTestNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
         if tunUseFile% = 1 then
@@ -2031,7 +1884,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%); 
     case tunType$ = tunTypeLag$ then 
-        DoSampleAutoName(key$,"lag","lag",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"lag","lag",primaryTxt$,secondaryTxt$);
         
         'this is the old way...might need to look back if the new way doesn't work!
         'tunNAdvances% := tunLagNSteps%;  'this...
@@ -2051,7 +1904,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  'shorter, should work the same as above commented line, keeping old line for contrast only just in case...
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);
     case tunType$ = tunTypeXPos$ then 
-        DoSampleAutoName(key$,"xpos","xps",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"xpos","xps",primaryTxt$,secondaryTxt$);
         
         tunNAdvances% := tunXPosNSteps%;
         tunNRepeats% := tunXPosNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
@@ -2059,7 +1912,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunXPosNSteps%+1)*tunXPosNRepeats%;
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);   
     case tunType$ = tunTypeXYPos$ then 
-        DoSampleAutoName(key$,"xypos","xyp",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"xypos","xyp",primaryTxt$,secondaryTxt$);
         
         'for tun1, use X
         if tunXYPosNXSteps% = 0 then  'this allows for no x movement
@@ -2096,7 +1949,7 @@ proc CreateSampleConfiguration()
         printlog("XY values are %s\n",tunValuesStringified$);
         
     case tunType$ = tunTypeDisparity$ then 
-        DoSampleAutoName(key$,"disprity","dis",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"disprity","dis",primaryTxt$,secondaryTxt$);
         
         tunNAdvances% := tunDisparityNSteps%;
         tunNRepeats% := tunDisparityNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
@@ -2105,7 +1958,7 @@ proc CreateSampleConfiguration()
         tunNValues% := (2*tunDisparityNSteps%+1)*tunDisparityNRepeats%;
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);         
     case tunType$ = tunTypeDonut$ then 
-        DoSampleAutoName(key$,"donut","don",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"donut","don",primaryTxt$,secondaryTxt$);
         
         tunNAdvances% := tunAreaNSteps%;
         tunNRepeats% := tunAreaNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
@@ -2117,7 +1970,7 @@ proc CreateSampleConfiguration()
         '    PrintLog("%d %f\n", i%, tunValues[tunValuesIndices%[i%]]);
         'next
     case tunType$ = tunTypeBerliner$ then 
-        DoSampleAutoName(key$,"berliner","ber",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"berliner","ber",primaryTxt$,secondaryTxt$);
         
         tunNAdvances% := tunBerlinerNSteps%-1;  'subtract one because tunBerlinerNSteps% is literal (that is, n stims)
         tunNRepeats% := tunBerlinerNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
@@ -2251,7 +2104,7 @@ proc CreateSampleConfiguration()
             temp2$ := "_lag";
         endcase;
               
-        DoSampleAutoName(key$,"_boxodonuts" + temp1$ + temp2$,"_boxodonuts" + temp1$ + temp2$,masterTxt$,slaveTxt$);  'Note that this does not reflect the correct number of characters...it may not work properly?
+        DoSampleAutoName(key$,"_boxodonuts" + temp1$ + temp2$,"_boxodonuts" + temp1$ + temp2$,primaryTxt$,secondaryTxt$);  'Note that this does not reflect the correct number of characters...it may not work properly?
         
         tunNRepeats% := tunBoxODonutsNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics   
         tunNAdvances% := tun1NValues%*tun2NValues%-1;  'this gives the correct number of advances
@@ -2316,7 +2169,7 @@ proc CreateSampleConfiguration()
             temp2$ := "_crg";
         endcase;
         
-        DoSampleAutoName(key$,"_crg" + temp2$,"_crg" + temp2$,masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"_crg" + temp2$,"_crg" + temp2$,primaryTxt$,secondaryTxt$);
         
         
         tunNRepeats% := tunCRGNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
@@ -2336,7 +2189,7 @@ proc CreateSampleConfiguration()
         
         
     case tunType$ = tunTypeDanish$ then 
-        DoSampleAutoName(key$,"dan","dan",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"dan","dan",primaryTxt$,secondaryTxt$);
         
         tunNAdvances% := tunDanishNSteps%;
         tunNRepeats% := tunDanishNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
@@ -2352,7 +2205,7 @@ proc CreateSampleConfiguration()
         
         
     case tunType$ = tunTypeGonzago$ then     
-        DoSampleAutoName(key$,"gz","gz",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"gz","gz",primaryTxt$,secondaryTxt$);
         
         'By definition, tuntype1 is contrast (on the core)  
         GetRepeatedParameterProgression%(tunGonzagoCoreContrastNSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunGonzagoMinContrast, tunGonzagoMaxContrast, 1, 0);
@@ -2377,7 +2230,7 @@ proc CreateSampleConfiguration()
         
         
     case tunType$ = tunTypeDSS$ then
-        DoSampleAutoName(key$,"dss","dss",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"dss","dss",primaryTxt$,secondaryTxt$);
         
         tunNValues% := tunDSSNTrials%;   '*(1+tunDoOpto%);  'double number of blocks if doing optogenetics?????  Not sure how that would work with DSS.  If it's ever a question we'll have to work that logic out, but it might not ever be...
         od := GetDonutOD();  'get the outer diameter of the donut
@@ -2393,7 +2246,7 @@ proc CreateSampleConfiguration()
         
         
     else    
-        DoSampleAutoName(key$,"tun","tun",masterTxt$,slaveTxt$);
+        DoSampleAutoName(key$,"tun","tun",primaryTxt$,secondaryTxt$);
     endcase;
     
     
@@ -2525,61 +2378,13 @@ proc CreateSampleConfiguration()
     
     
     '----Set up "spiking" Electrode Channels----
-    docase
-    case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
-        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
-    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
-        CreateElectrodeSamplingConfiguration7WM15CN(); 
-    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
-        CreateElectrodeSamplingConfiguration15WF15WF2k();
-    case UsePlexon24WF% = 1 then
-        CreateElectrodeSamplingConfiguration24WF(); 
-    case JoePlexon1% = 1 then
-        CreateJoePlexon1SamplingConfigurationMaster();
-    case JoePlexon2% = 1 then
-        message("Electrode Configuration JoePlexon2 is not yet implemented!");
-        halt;
-    else
-        ' Electrodes: wavemark/continuous
-        ' 12/6/2010
-        ' Wavemark channels will be channels # 1-N, waveform N+1 - N+1+M, where there are N wavemark channels
-        ' and M waveform channels. 
-'        for i% := 0 to tunNWavemarks%-1 do
-'            SampleWaveMark(i% + 1, tunWavemarkPorts%[i%], 2000, 34, 15, 28000); ' chan, port, event rate, points, pre-trigger, rate
-'            if useCustomLabels% = 1 and CustomLabels$[i%] <> "" then
-'                SampleTitle$(i% + 1, CustomLabels$[WavemarkPorts%[i%]] + "WM"); 
-'            else 
-'                SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%])); 
-'            endif;
-'            'SampleTitle$(i% + 1, "WMrk " + str$(tunWavemarkPorts%[i%]));
-'        next
-'        for i% := 0 to tunNContinuous%-1 do
-'            SampleWaveform(tunNWavemarks% + i% + 1, tunContinuousPorts%[i%], 20000);
-'            if useCustomLabels% = 1 and CustomLabels$[i%] <> "" then
-'                SampleTitle$(tunNWavemarks% + i% + 1, CustomLabels$[ContinuousPorts%[i%]] + "WF"); 
-'            else
-'                SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
-'            endif;
-'            'SampleTitle$(tunNWavemarks% + i% + 1, "Cont " + str$(tunContinuousPorts%[i%]));
-'        next
-        CreateElectrodeSamplingConfiguration32(1, 1+numWavemarkPorts%, ExcludedChans%);  'Allows a lot of channels while preventing accidentally re-defining a channel
+    'This function will set up standard sampling as well as various pre-set samplings including the Plexon setups
+    SetUpElectrodeConfiguration(numWavemarkPorts%,ExcludedChans%[]);
 
-    endcase;
-    
-        
-	
-    
 	SampleSequencer(script$ + "Tuning.pls");
-	docase
-    case UsePlexon% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
-        SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
-    case JoePlexon1% = 1 or JoePlexon2% = 1 then
-        SampleOptimise(0,1,4,0,0,0,0);  'copying the micro settings...not necessarily the be-all end-all, just trying to see if anything works
-    case UsePlexon15WF15WF2k% = 1 or UsePlexon24WF% = 1 then 
-        SampleOptimise(2,2,9,1,50,0,1);  'for big-data, need to set for burst mode, Power1401-3 setting is not clear because help does not list it.  9?  8 for micro1401-3?
-    else
-        SampleOptimise(2,2,Get1401Type%(),2,50);  'otherwise: full optimize timing, channels may have different rates, Power1401 (lowest common denominator, so eh), low usPerTime of 2, high usPerTime of 50
-    endcase;
+    
+    DoSampleOptimise();
+	
 	SampleMode(1); 'Continuous sampling
     
 end;
@@ -2661,7 +2466,7 @@ func Stop%()
 '    chanToExport%[3] := 32;  '32 is the digital marker channel
 '    chanToExport%[4] := StimChannel%;  'stim channel
 '    docase
-'    case UsePlexon% = 1 then  'use hardcoded Plexon values - 18 WaveMarks and 24 LFPs for now, on the micro it's 
+'    case UsePlexon18WM24WF% = 1 then  'use hardcoded Plexon values - 18 WaveMarks and 24 LFPs for now, on the micro it's 
 '        for i% := 0 to 12 do
 '            chanToExport%[i%+5] := i%+1;  'wavemark channels are in order
 '        next;
@@ -3248,24 +3053,8 @@ end
 
 func StartPlexon%()
     
-    
-    'Start the Power1401!  This is a bit cumbersome, and I'm not sure it's transferable, but it's a start, perhaps.
     var fp$;  'to hold current file path
-    var fp2$;  'to hold destination file path
-    fp$ := FilePath$();  'get current file path
-    printlog("%s\n",fp$);  'and tell the world what it was
-    var fpok%;
-    fpok% := FilePathSet("F:/work/AlertRig/Spike2Scripts");  'change the file path (Henry)
-    if fpok% <> 0 then
-        fpok% := FilePathSet("E:/work/AlertRig/Spike2Scripts");  'change the file path (Joe)
-    endif
-    if fpok% <> 0 then
-        message("Failed to find expected file structure in StartPlexon%()!  Quitting!");
-        halt;
-    endif
-        
-    fp2$ := FilePath$();  'read out to allow verification
-    printlog("%s\n",fp2$);  'by telling the world about it (hint: it works)
+    fp$ := SetPathToScriptDirectory$();
     
     'Must run this BEFORE the PROGRUN command, because both this sequence AND SetPlexon...
     'access the same directory, and this was causing conflicts because they were running
@@ -3273,17 +3062,8 @@ func StartPlexon%()
     'SetPlexon... is started, and everything is kosher.
     CreateSampleConfiguration();    
     
-    docase
-    case UsePlexon% = 1 then
-        progrun("sonview.exe /M /u2 SetPlexonRecording1824OnPower1401.s2s");  'run the program, .s2s file is now on default path by design
-    case JoePlexon1% = 1 then
-        progrun("sonview.exe /M /u2 SetJoePlexon1RecordingOnSlave.s2s");  'run the program, .s2s file is now on default path by design
-    case JoePlexon2% = 1 then
-        message("Program to start slave 1401 not yet written for Joe2!  Quitting!");
-        halt; 
-        'This is what we should call the program, then we can just uncomment this line
-        'progrun("sonview.exe /M /u2 SetPlexonRecording1824OnPower1401.s2s");  'run the program, .s2s file is now on default path by design
-    endcase
+    StartSecondInstanceOfSpike2();
+    
     
     FilePathSet(fp$);  'change the file path back to what it was
     fp$ := FilePath$();  'read out to allow verification
@@ -4606,21 +4386,6 @@ proc FlushButton(&startT,endT,&bStatus%,&buttonT)
 end
 
 
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-proc DoSampleAutoName(key$,long$,short$,master$,slave$)
-    'This function will do the auto-naming of files.  It will take into account the setup of the system
-    '(if there are one or two 1401s, and whether this is a micro/power or master/slave relationship)
-    'The long$ name should be 8 characters or fewer
-    'The short$ name should be 3 character or fewer
-    
-    if UseTwo1401s% = 0 then
-        SampleAutoName$(dataCellName$ + "_" + long$ + "_000");  'NOTE: maximum of 13 characters!!!
-    else
-        EqualizeSMRFilenumbers(dataPathRoot$ + "\\" + dataDataSet$,dataCellName$+"_" + short$ + master$ + "_",dataCellName$+"_" + short$ + slave$ + "_");
-        SampleAutoName$(dataCellName$ + "_" + short$ + master$ + "_000");  'NOTE: maximum of 13 characters!!!
-        SetStringRegistryValue(key$, "pref", short$);
-    endif;    
-end
 
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''

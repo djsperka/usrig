@@ -376,22 +376,23 @@ var tun1ValuesStringified$;     'For Box O' Donuts
 var tun2ValuesStringified$;
 
 
-' Wavemarks and continuous ports are specified elsewhere
+' Wavemarks and continuous ports
+const tunMaxPorts% := 64;  'there can be more channels, but that's all the ports we can collect
 var tunNWavemarks% := 0;
-var tunWavemarkPorts%[16];
+var tunWavemarkPorts%[tunMaxPorts%];
 var tunNContinuous% := 0;
-var tunContinuousPorts%[16];
+var tunContinuousPorts%[tunMaxPorts%];
 
-' Hold sum of F1 values. Each channel (up to 16) has values saved according to the index of the tuning value
+' Hold sum of F1 values. Each channel (up to tunMaxPorts%) has values saved according to the index of the tuning value
 ' Rely on the fact that arrays are initialized with 0s in Spike2. 
-var tunF1Sum[16][tunMaxTrials%];  'see, this isn't really a sum, it's a matrix that holds all the values
-var tunF2Sum[16][tunMaxTrials%];
-var tunF0ActualSum[16][tunMaxTrials%];  'these are really sums
-var tunF1ActualSum[16][tunMaxTrials%];  
-var tunF2ActualSum[16][tunMaxTrials%];
-var tunF0Count%[16][tunMaxTrials%];  'use these to allow us to calculate averages instead of putting every single value on the plot
-var tunF1Count%[16][tunMaxTrials%]; 
-var tunF2Count%[16][tunMaxTrials%];
+var tunF1Sum[tunMaxPorts%][tunMaxTrials%];  'see, this isn't really a sum, it's a matrix that holds all the values
+var tunF2Sum[tunMaxPorts%][tunMaxTrials%];
+var tunF0ActualSum[tunMaxPorts%][tunMaxTrials%];  'these are really sums
+var tunF1ActualSum[tunMaxPorts%][tunMaxTrials%];  
+var tunF2ActualSum[tunMaxPorts%][tunMaxTrials%];
+var tunF0Count%[tunMaxPorts%][tunMaxTrials%];  'use these to allow us to calculate averages instead of putting every single value on the plot
+var tunF1Count%[tunMaxPorts%][tunMaxTrials%]; 
+var tunF2Count%[tunMaxPorts%][tunMaxTrials%];
 var tunTF;              ' Will need to use this during FFT analysis. Use at your own risk....
 
 

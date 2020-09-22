@@ -1,29 +1,24 @@
-'SetPlexonRecording1824OnPower1401.s2s - a script designed to be automatically opened
+'SetPlexonRecording32LFP29SpikingOnSecondary1401.s2s - a script designed to be automatically opened
 'with a new instance of Spike2 for linked-1401 recording with the Plexon electrode
 '
-'This script will set up the sampling configuration on the Power1401 with 5 WaveMarks and
-'24 LFP channels, then start sampling contingent on a trigger.  This script is not intended
+'This script will set up the sampling configuration on the secondary Power1401 with 17 LFP WaveForms
+'and 15 spiking WaveForm channels, then start sampling contingent on a trigger.  This script is not intended
 'to do anything else.  Once recording is ready to go, the user will run the experiment from
-'the Spike2 instance controlling the Micro1401 mark II - the trigger will start sampling on
+'the Spike2 instance controlling the primary Power1401 - the trigger will start sampling on
 'both 1401s simultaneously and there will be nothing left to do on this Spike2 instance except
 'stop sampling once the whole thing is done.
+
 
 #include "../util/UsreyUtil.s2s"  'this should include ElectrodeUtilities and everything else needed
 
 var DataWindow%;
 var key$;
-'const SynchChannel% := 28;  '28 overwrites, whatevs, only for testing
 
 SampleClear();
 
-CreateJoePlexon1SamplingConfigurationSlave(); 'separate sampling configuration for Joe
+CreateElectrodeSamplingConfiguration32LFP29SpikingSecondary();
 
-'For synchronization test, will overwrite one data channel
-'SampleEvent(SynchChannel%,1,2,3600); 'Synch channel, level
-'SampleComment$(SynchChannel%,"Synch");
-'SampleTitle$(SynchChannel%,"Synch");
-
-SampleOptimise(0,1,2,0,0,0,0);  'for the Power 1401: manually set sampling timing, group channels with same ideal rate, Power1401, unused, unused, do not disable for compatibility, no burst mode
+SampleOptimise(0,1,9,0,0,0,0);  'Appears to not need burst mode for Power3.
 
 
 
@@ -63,8 +58,8 @@ proc InitializeToolbar()
 	Profile(key$, "powerS2Rfile", "x", fn$);
     'Profile(key$, "useSpikeTemplate", 0, useSpikeTemplate%);  'not used
     
-    'Apply the .s2r resource file to the current data window, which will apply the spike shape templates
-    'if useSpikeTemplate% = 1 and fn$ <> "x" then  'now, not putting in a checkbox, Henry says let it load every time
+    'Apply the ,s2r resource file to the current data window, which will apply the spike shape templates
+    'if useSpikeTemplate% = 1 and fn$ <> "x" then  'now, not putting in a checkbox, Henry sayd let it load every time
     if fn$ <> "x" then
         FileApplyResource(fn$);
     endif
@@ -97,7 +92,6 @@ func Start%()
         
     SampleStart(1);  'set sampling to start on a trigger
     
-    XRange(0, 30);
     
     ToolbarEnable(2,1);
 	ToolbarEnable(1,0);
@@ -153,7 +147,7 @@ func Stop%()
     
     ' Save most recent .s2r file name to registry
     fn$ := Left$(fn$,mylen%-4);
-    fn$ := fn$ + "s2r";
+    fn$ := fn$ + ".s2r";
     var key$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
 	Profile(key$, "powerS2Rfile", fn$);

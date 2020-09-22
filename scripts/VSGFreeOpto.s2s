@@ -17,12 +17,11 @@ var XChannel%;
 var YChannel%;
 var DigitalLaserChannel%;
 var OptoCopyChannel%;
-var UseTwo1401s% := 0;
 var OptoUsePulse%;
 var ooNWavemarks% := 0;
-var ooWavemarkPorts%[16];
+var ooWavemarkPorts%[64];
 var ooNContinuous% := 0;
-var ooContinuousPorts%[16];
+var ooContinuousPorts%[64];
 var ooOptoState%;
 var ooOptoFirstState%;
 var ooTotalOptoTime;
@@ -55,26 +54,47 @@ var stateWaitOpto% := 4;
 var stateDone% := 100;
 
 
+UseTwo1401s% := DoWeUseTwo1401s%();
+GetPortsAndNumWMsWFs%(ooNWavemarks%,ooNContinuous%,ooWavemarkPorts%[],ooContinuousPorts%[]);
+
+
 'Run the dialog box
 if ooOptoDialog%() = 0 then
     halt;
 endif;
 
+if UseTwo1401s% = 0 then
+    CreateSampleConfiguration();
+    
+    ' Get display windows ready
+    InitializeWindows();
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+else
+    InitializeToolbar();
+endif;
+
+
 
 'Create the Sampling configuration
-CreateSampleConfiguration();
-
+'CreateSampleConfiguration();
+'
 'Initialize windows
-InitializeWindows();
-
+'InitializeWindows();
+'
 'Run the toolbar
-InitializeToolbar();
+'InitializeToolbar();
 
 ''''''End main script''''''
 
 func CreateSampleConfiguration()
     
     key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    var primaryTxt$;
+    var secondaryTxt$;
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
+    
     SampleClear(); 'Set standard sampling state
     SampleChannels(64);  '32 does not work, we need more!
     
@@ -89,37 +109,13 @@ func CreateSampleConfiguration()
     
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
-    SampleAutoName$(dataCellName$ + "_oo_000");  'NOTE: maximum of 13 characters!!!  Use "oo" for OPTO ONLY in the autoname
+    DoSampleAutoName(key$,"oo","oo",primaryTxt$,secondaryTxt$);
     SampleAutoFile(1);  'Enable automatic file naming
     SampleAutoComment(0); 'Prompt for comment after sampling
     SampleAutoCommit(60); 'Seconds between each file commit
     
     
-    ' Fetch electrode information. 
-    if UsePlexon% = 1 or JoePlexon1% = 1 or JoePlexon2% = 1 then
-        UseTwo1401s% := 1;
-    else
-        UseTwo1401s% := 0;
-    endif;
-    
-    docase
-    case UsePlexon% = 1 then
-        ooNWavemarks% := 13;  '13 wavemarks on the micro for plexon
-        ooNContinuous% := 0;  'no continuous on the micro for plexon
-        var i%;
-        for i% := 0 to 12 do
-            ooWavemarkPorts%[i%] := i%;
-        next;
-    case UsePlexon7WM15CN% = 1 then 
-        ooNWavemarks% := 7;  '7 wavemarks
-        ooNContinuous% := 15;  '15 continuous
-        for i% := 0 to 7 do
-            ooWavemarkPorts%[i%] := i%;
-        next;
-    else
-        ooNWavemarks% := GetWavemarkPorts%(ooWavemarkPorts%[]);
-        ooNContinuous% := GetContinuousPorts%(ooContinuousPorts%[]);
-    endcase;
+
     
     
     'Set up eye channels, normally this would NOT be independent for X/Y, but who know what wacky thing we might want to do in testing
@@ -140,24 +136,7 @@ func CreateSampleConfiguration()
     
     
     ' Set up channels for sampling electrodes.
-    docase
-    case UsePlexon% = 1 then  'call Plexon setup function, this will ONLY set up the sampling configuration for the Micro1401 mark II.  The Power1401 will be set up from its own dedicated script in its dedicated Spike2 instance
-        CreatePlexonSamplingConfiguration1824Micro(); 'Note that for right now the ONLY Plexon configuration is 18 WaveMark/24 LFP (maximal WMs for 24 LFPs, trust me)
-    case UsePlexon7WM15CN% = 1 then  'call 7 wavemark, 15 continuous setup
-        CreateElectrodeSamplingConfiguration7WM15CN(); 
-    case UsePlexon15WF15WF2k% = 1 then  'call 15 waveform, 15 waveform@2k setup
-        CreateElectrodeSamplingConfiguration15WF15WF2k();
-    case UsePlexon24WF% = 1 then
-        CreateElectrodeSamplingConfiguration24WF(); 
-    case JoePlexon1% = 1 then
-        CreateJoePlexon1SamplingConfigurationMaster();
-    case JoePlexon2% = 1 then
-        message("Electrode Configuration JoePlexon2 is not yet implemented!");
-        halt;
-    else
-        CreateElectrodeSamplingConfiguration32(1, 1+ooNWavemarks%, ExcludedChans%[]);  'Allows a lot of channels while preventing accidentally re-defining a channel
-        
-    endcase;
+    SetUpElectrodeConfiguration(ooNWavemarks%,ExcludedChans%[]);
     
     
     
@@ -165,16 +144,7 @@ func CreateSampleConfiguration()
     
     SampleSequencer(script$ + "Tuning.pls");  
     
-    docase
-    case UsePlexon% = 1 then  'Set optimise mode (do this last, so it's outside of the CreatePlexonSamplingConfiguration... functions)
-        SampleOptimise(0,1,4,0,0,0,0);  'for the Micro 1401 mk II: manually set sampling timing, group channels with same ideal rate, micro1401, unused, unused, do not disable for compatibility, no burst mode
-    case JoePlexon1% = 1 or JoePlexon2% = 1 then
-        SampleOptimise(0,1,4,0,0,0,0);  'copying the micro settings...not necessarily the be-all end-all, just trying to see if anything works
-    case UsePlexon15WF15WF2k% = 1 or UsePlexon24WF% = 1 then 
-        SampleOptimise(2,2,9,1,50,0,1);  'for big-data, need to set for burst mode, Power1401-3 setting is not clear because help does not list it.  9?  8 for micro1401-3?
-    else
-        SampleOptimise(2,2,Get1401Type%(),2,50);  'otherwise: full optimize timing, channels may have different rates, Power1401 (lowest common denominator, so eh), low usPerTime of 2, high usPerTime of 50
-    endcase;
+    DoSampleOptimise();
     
     SampleMode(1); 'Continuous sampling
     
@@ -323,11 +293,11 @@ proc InitializeToolbar()
     
 	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
 	ToolbarVisible(1);
-'    if UseTwo1401s% = 1 then
-'        ToolbarSet(1,"StartPlexon",StartPlexon%);
-'    else
+    if UseTwo1401s% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
         ToolbarSet(1,"Sample start",Start%);
-'    endif;
+    endif;
 	ToolbarSet(2,"Sample stop", Stop%);
 	ToolbarSet(3,"Juice", Juice%);
 '	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
@@ -429,11 +399,11 @@ func Start%()
     var nPulsesFloat;
     
 	'start sampling
-'    if UseTwo1401s% = 1 then
-'        SampleStart(1);  'set sampling to start on a trigger
-'    else
+    if UseTwo1401s% = 1 then
+        SampleStart(1);  'set sampling to start on a trigger
+    else
     	SampleStart(0); 'Start sampling now
-'    endif;
+    endif;
     
     SampleSeqVar(5, 0);
 
@@ -496,6 +466,26 @@ func Start%()
 return 1;
 end;
 
+func StartPlexon%()
+    
+    var fp$;  'to hold current file path
+    fp$ := SetPathToScriptDirectory$();
+    CreateSampleConfiguration();    
+    
+    StartSecondInstanceOfSpike2();
+    
+    FilePathSet(fp$);  'change the file path back to what it was
+    fp$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp$); 'and tell the world to verify
+    
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+    ' Get display windows ready
+    InitializeWindows();    
+    
+    return 1; 'stay in toolbar   
+    
+end
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 'func PauseStimuli%();
