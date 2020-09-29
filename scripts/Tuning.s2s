@@ -52,6 +52,7 @@ var ButtonChannel%;
 var ButtonPort%;
 var StimulatorChannel%;
 var UtilityChannel%;
+var JoyChannel%;
 
 ' xy windows for plotting (TuningWindow) and PSTH. 
 var TuningWindow%[16];	' one for each wavemark channel
@@ -250,6 +251,7 @@ endif;
 
 XChannel% := 25;
 YChannel% := 26;
+JoyChannel% := 28;
 
 ' djs 9-18-14 renumber these channels - save this stanza in case the extracts suffer....
 'FixationPointChannel% := 28;
@@ -281,7 +283,7 @@ ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel use
 ' end djs 9-18-14
 
 ButtonChannel% := 27;
-ButtonPort% := 5;  'This appears to be correct
+'ButtonPort% := 5;  'This appears to be correct, no longer used, now uses UtilityPort% from config
 
 ' Fetch information about whether we are going to be using two 1401s 
 UseTwo1401s% := DoWeUseTwo1401s%();
@@ -2373,6 +2375,11 @@ proc CreateSampleConfiguration()
         SampleTitle$(YChannel%,EyeYPortLabel$);
     endif;
     
+    if JoystickPort% > -1 then
+        printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPort%());
+        SampleWaveform(JoyChannel%, GetJoystickPort%(), 1000);
+        SampleTitle$(JoyChannel%, JoystickPortLabel$);
+    endif
 
     
     
