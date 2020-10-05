@@ -1266,6 +1266,24 @@ for i% := 0 to mymaxNum% do
     else
         FileClose(0);  'if the file exists, just close the file
     endif
+    check% := FileOpen(pTemplate$+thisNum$+".smrx",8,0);  'check for existence of power file
+    if check% < 0 then 'file does not exist, create dummy file
+        FileOpen(pTemplate$+thisNum$+".smrx",8,1);
+        Print("Fake file");
+        FileClose(0);  'Closes file that has been written
+        printlog("Wrote fake file %s\n",pTemplate$+thisNum$+".smrx");
+    else
+        FileClose(0);  'if the file exists, just close the file
+    endif
+    check% := FileOpen(mTemplate$+thisNum$+".smrx",8,0);  'check for existence of micro file
+    if check% < 0 then 'file does not exist, create dummy file
+        FileOpen(mTemplate$+thisNum$+".smrx",8,1);
+        Print("Fake file");
+        FileClose(0);  'Closes file that has been written
+        printlog("Wrote fake file %s\n",mTemplate$+thisNum$+".smrx");
+    else
+        FileClose(0);  'if the file exists, just close the file
+    endif
         
 next;
     
