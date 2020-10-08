@@ -188,7 +188,7 @@
 
 ; give heartbeat 1 pulse
 0127 HB1:   '1  MOVI   V2,1            ;Log that sequencer is in use
-0128            DIGLOW [.......1]
+0128            DIGLOW [.....001]
 0129            MARK   101             ;Mark heartbeat on digital marker channel
 ;0130            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
 ;0131            DIGLOW [.......0]
@@ -197,7 +197,7 @@
 
 ; give heartbeat 2 pulse
 0132 HB2:   '2  MOVI   V2,1            ;Log that sequencer is in use
-0133            DIGLOW [......1.]
+0133            DIGLOW [.....010]
 0134            MARK   102             ;Mark heartbeat on digital marker channel
 ;0137            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
 ;0138            DIGLOW [......0.]
@@ -206,7 +206,7 @@
 
 ; give heartbeat 3 pulse
 0137 HB3:   '3  MOVI   V2,1            ;Log that sequencer is in use
-0138            DIGLOW [......11]
+0138            DIGLOW [.....011]
 0139            MARK   103             ;Mark heartbeat on digital marker channel
 ;0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
 ;0145            DIGLOW [......00]
@@ -215,7 +215,7 @@
 
 ; give heartbeat 4 pulse
 0142 HB4:   '4  MOVI   V2,1            ;Log that sequencer is in use
-0143            DIGLOW [.....1..]
+0143            DIGLOW [.....100]
 0144            MARK   104             ;Mark heartbeat on digital marker channel
 ;0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
 ;0145            DIGLOW [.....0..]
@@ -224,7 +224,7 @@
 
 ; give heartbeat 5 pulse
 0147 HB5:   '5  MOVI   V2,1            ;Log that sequencer is in use
-0148            DIGLOW [.....1.1]
+0148            DIGLOW [.....101]
 0149            MARK   105             ;Mark heartbeat on digital marker channel
 ;0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
 ;0145            DIGLOW [.....0.0]
@@ -233,7 +233,7 @@
 
 ; give heartbeat 6 pulse
 0152 HB6:   '6  MOVI   V2,1            ;Log that sequencer is in use
-0153            DIGLOW [.....11.]
+0153            DIGLOW [.....110]
 0154            MARK   106             ;Mark heartbeat on digital marker channel
 ;0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
 ;0145            DIGLOW [.....00.]
