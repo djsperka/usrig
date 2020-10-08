@@ -136,7 +136,7 @@ func DoWeUseTwo1401s%()
 end
 
 
-' Get number and location of wavemark ports/continuous ports on the primary 1401
+' Get number and location of wavemark ports/continuous ports on the **PRIMARY** 1401
 ' Note that the info we gather here is basically used for display, which is only done on the primary 1401.  The
 ' secondary 1401 is kinda humming along passively collecting data and doing nothing else.
 func GetPortsAndNumWMsWFs%(&nWMs%,&nWFs%,&WMPorts%[],&WFPorts%[]);
@@ -199,16 +199,15 @@ func GetPortsAndNumWMsWFs%(&nWMs%,&nWFs%,&WMPorts%[],&WFPorts%[]);
             WMPorts%[i%] := i%;
         next;
     case UsePlexon32LFP29SpikingWF% = 1 then  'This configuration is designed for two linked 32-channel power1401s.  On the primary 1401, it will
-        'place 14 WMs at 28011 kHz and 14 WFs at 1000 kHz, interrupted by two eye channels and a joystick
-        'channel on ports 13-15.  The secondary 1401 will have 16 WMs at 28011 kHz and 16 WFs at 1000 kHz.
-        nWMs% := 14;  '14 wavemarks
-        nWFs% := 14;  '14 continuous
-        for i% := 0 to 12 do 'First 13 WMs, do not use ports 13/14/15
-            WMPorts%[i%] := i%;
+        'place 14 WFs at 28011 kHz and 15 WFs at 1000 kHz, interrupted by two eye channels and a joystick
+        'channel on ports 13-15.  The secondary 1401 will have 16 WFs at 28011 kHz and 16 WFs at 1000 kHz.
+        nWMs% := 0;  '0 wavemarks
+        nWFs% := 29;  '29 continuous
+        for i% := 0 to 12 do 'First 13 WFs, do not use ports 13/14/15
+            WFPorts%[i%] := i%;
         next;
-        WMPorts%[13] := 16;  'The final (14th) WM is separated by the eye/joy channels
-        for i% := 0 to 13 do 'The 14 continuous channels are in order
-            WFPorts%[i%] := i%+17;
+        for i% := 0 to 15 do 'The final 16 WF channels are in order starting on 16
+            WFPorts%[i%] := i%+16;
         next;
     else
         nWMs% := GetWavemarkPorts%(WMPorts%[]);
@@ -332,7 +331,7 @@ proc StartSecondInstanceOfSpike2()
     case JoePlexon1% = 1 then
         progrun("sonview.exe /M /u2 SetJoePlexon1RecordingOnSlave.s2s");  'run the program, .s2s file is now on default path by design
     case UsePlexon32LFP29SpikingWF% = 1 then
-        progrun("sonview.exe /M /u2 SetPlexonRecording3030OnSecondary1401.s2s");  'run the program, .s2s file is now on default path by design
+        progrun("sonview.exe /M /u2 SetPlexonRecording32LFP29SpikingOnSecondary1401.s2s");  'run the program, .s2s file is now on default path by design
     endcase
     
 end

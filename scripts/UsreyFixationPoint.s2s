@@ -147,6 +147,8 @@ proc CloseASLOutputFile()
         message("Coding error, attempt to close ASL file but no file is currently open!  Tell Jeff!");
     endif;
     
+    SafeSampleKey("Z");  'zero the DIGLOWs
+    
     if whoops% = 1 then
         message("Coding error, ASL file closed while recording!  Recording successfully stopped, but tell Jeff!");
     endif;
@@ -174,6 +176,7 @@ proc StopASLRecording()
         SafeSampleKey("w");  'Stop recording
         ASLOutputFileIsRecording% := 0;  'Note that we are not recording
         SampleText("ASL output file recording stopped");
+        SafeSampleKey("Z");  'zero the DIGLOWs
     else
         message("Coding error, attempt to stop recording on ASL file but file is not currently recording!  Tell Jeff!");
     endcase;

@@ -675,7 +675,9 @@ func CreateElectrodeSamplingConfiguration32LFP29SpikingPrimary(ExcludedChans%[])
         i% += 1;  'increment i% on every loop
     wend
     chanIndex% := 0;  'Reset chanIndex% for use below
-    
+
+    'printlog("The usable channel list on primary is %d\n",UseChans%[]);
+
     'do not use ports 13-15
     'do not use channels 23-32
     
@@ -709,11 +711,11 @@ func CreateElectrodeSamplingConfiguration32LFP29SpikingPrimary(ExcludedChans%[])
     
     'First 13 ports (0-12) are Spiking Waveforms, first 13 channels of UseChans%[]
     for i% := 0 to 12 do
-		SampleWaveForm(UseChans%[i%], i%, 28011); ' chan, port, sampling rate
+		SampleWaveform(UseChans%[i%], i%, 28011); ' chan, port, sampling rate
 		SampleTitle$(UseChans%[i%], "SpkWF " + str$(i%+1)); 
 	next
     'Port 16 is the final (14th) Spiking Waveform, 14th channel of UseChans%[]
-    SampleWaveMark(UseChans%[13], 16, 28011); ' chan, port, sampling rate
+    SampleWaveform(UseChans%[13], 16, 28011); ' chan, port, sampling rate
     SampleTitle$(UseChans%[13], "SpkWF " + str$(14));
     
     '15 LFP Waveforms are on ports 17-31, and 15th-29th channels of UseChans%[];
@@ -732,23 +734,30 @@ end
 
 
 'This function sets up the sampling on the Secondary 1401 (32-channel) for the 32LFP/29Spiking configuration
-'It creates 15 Spiking Waveforms and17 LFP channels.
+'It creates 15 Spiking Waveforms and 17 LFP channels.
 func CreateElectrodeSamplingConfiguration32LFP29SpikingSecondary()
     var iStatus% := -1;
     var i%;
     
     'First 15 ports (0-14) are Spiking Waveforms, channels 1-15
     for i% := 0 to 14 do
-		SampleWaveMark(i%+1, i%, 28011); ' chan, port, sampling rate
+		SampleWaveform(i%+1, i%, 28011); ' chan, port, sampling rate
 		SampleTitle$(i%+1, "SpkWF " + str$(i%+15));  'Keep channel titles in register with primary 1401, start at 15
 	next
     
-    'Ports 15-31 are LFP Waveforms, will be on channels 16-32
-    for i% := 15 to 31 do
+    'Ports 15-27 are LFP Waveforms, will be on channels 16-28
+    for i% := 15 to 27 do
 		SampleWaveform(i%+1,i%,1000);  'chan, port, sampling rate
 		SampleTitle$(i%+1, "LFP " + str$(i%+1));  'Keep channel titles in register with primary 1401, start at 16
 	next
-    
+
+    'Reserve channels 29-33 for Spike2 (should be only 30-32, but why not buffer?)
+    'Ports 28-31 are also LFP Waveforms, will be on channels 34-37
+    for i% := 28 to 31 do
+		SampleWaveform(i%+6,i%,1000);  'chan, port, sampling rate
+		SampleTitle$(i%+6, "LFP " + str$(i%+1));  'Keep channel titles in register with primary 1401, start at 29
+	next
+
     SampleUsPerTime(1.7);  'set same sample period for both units
     SampleTimePerADC(1);  'set same ADC rate for both units
     
