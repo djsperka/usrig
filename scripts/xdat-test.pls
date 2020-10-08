@@ -23,23 +23,29 @@
         '2  DIGLOW [...00010]
             HALT
 
-        '3  DIGLOW [...00100]
+        '3  DIGLOW [...00011]
             HALT
 
-        '4  DIGLOW [...01000]
+        '4  DIGLOW [...00100]
             HALT
 
-        '5  DIGLOW [...10000]
+        '5  DIGLOW [...10101]
             HALT
 
-        'O  DIGLOW [.1.00000]   ; open file, XDAT bit 6
+        '6  DIGLOW [...10110]
             HALT
 
-        'o  DIGLOW [.0.00000]   ; close file
+        '7  DIGLOW [...10111]
             HALT
 
-        'R  DIGLOW [..100000]   ; start recording, XDAT bit 7
+        'I  DIGLOW [.1.00000]   ; open file, XDAT bit 6
             HALT
 
-        'r  DIGLOW [..000000]   ; stop recording, XDAT bit 7
+        'i  DIGLOW [.0.00000]   ; close file
+            HALT
+
+        'W  DIGLOW [..100000]   ; start recording, XDAT bit 7
+            HALT
+
+        'w  DIGLOW [..000000]   ; stop recording, XDAT bit 7
             HALT
