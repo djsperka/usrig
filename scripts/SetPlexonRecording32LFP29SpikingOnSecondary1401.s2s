@@ -32,9 +32,10 @@ FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
 'SampleAutoName$(dataCellName$ + "_atn_power_" + Str$(GetIntRegistryValue%(key$, "fn", 0)));
 'SampleAutoName$(dataCellName$ + "_atnPOWER_000");  'NOTE: maximum of 13 characters!!!
 SampleAutoName$(dataCellName$ + "_" + GetStringRegistryValue$(key$, "pref", "") + "SECON_000"); 'NOTE: maximum of 13 characters!!!
-SampleAutoFile(1);  'Enable automatic file naming
+SampleAutoFile(1);  
 SampleAutoComment(0); 'Prompt for comment after sampling
 SampleAutoCommit(60); 'Seconds between each file commit
+SampleMode(1); 'Continuous sampling
 InitializeToolbar();  'puts the function into the toolbar
 
 
@@ -52,18 +53,18 @@ proc InitializeToolbar()
 	View(DataWindow%).WindowVisible(1);
     
     'Get the name of the most recent .s2r resource file, if any, and determine whether we are to use it
-    var key$;
-    var fn$;
-    'var useSpikeTemplate%;  'not used
-	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
-	Profile(key$, "powerS2Rfile", "x", fn$);
-    'Profile(key$, "useSpikeTemplate", 0, useSpikeTemplate%);  'not used
-    
-    'Apply the ,s2r resource file to the current data window, which will apply the spike shape templates
-    'if useSpikeTemplate% = 1 and fn$ <> "x" then  'now, not putting in a checkbox, Henry sayd let it load every time
-    if fn$ <> "x" then
-        FileApplyResource(fn$);
-    endif
+    'Currently there are no scripts that set the "powerS2Rfile" value in the registry.  So this is just dead code
+    'right now.  Commenting it out since apparently Henry didn't want to load spike shape templates anyways.
+'    var key$;
+'    var fn$;
+'	 key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";  '<---- Note that AttentionGNG is probably the wrong place to put things, as many scripts could use this
+'	 Profile(key$, "powerS2Rfile", "x", fn$);
+'    
+'    'Apply the .s2r resource file to the current data window, which will apply the spike shape templates
+'    'if useSpikeTemplate% = 1 and fn$ <> "x" then  'now, not putting in a checkbox, Henry says let it load every time
+'    if fn$ <> "x" then
+'        FileApplyResource(fn$);
+'    endif
     
     
 	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
@@ -78,17 +79,6 @@ proc InitializeToolbar()
 end;
 
 func Start%()
-
-'    var key$;
-'    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filenumber";
-'    
-'    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
-'    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
-'    printlog("File will be %s\n",dataCellName$ + "_atn_power_" + Str$(GetIntRegistryValue%(key$, "fn", 0)));
-'    SampleAutoName$(dataCellName$ + "_atn_power_" + Str$(GetIntRegistryValue%(key$, "fn", 0)));
-'    SampleAutoFile(1);  'Enable automatic file naming
-'    SampleAutoComment(0); 'Prompt for comment after sampling
-'    SampleAutoCommit(60); 'Seconds between each file commit
     
         
     SampleStart(1);  'set sampling to start on a trigger
@@ -143,6 +133,9 @@ func Stop%()
     printlog("file name is %s\n",fn$);
     mylen% := Len(fn$);
     fn$ := Left$(fn$,mylen%-4);
+    if Right$(fn$,1) = "." then  'if the file is an .smrx, we need to adjust further
+        fn$ := Left$(fn$,Len(fn$)-1);
+    endif;
     fn$ := fn$ + ".mat";
     FileSaveAs(fn$,100,0,"",0,"UseSName=0"); 'Do not overwrite the .mat file - should have a different name and if it doesn't that is a red flag    
     

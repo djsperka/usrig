@@ -148,12 +148,15 @@ func Stop%()
     printlog("file name is %s\n",fn$);
     mylen% := Len(fn$);
     fn$ := Left$(fn$,mylen%-4);
+    if Right$(fn$,1) = "." then  'if the file is an .smrx, we need to adjust further
+        fn$ := Left$(fn$,Len(fn$)-1);
+    endif;
     fn$ := fn$ + ".mat";
     FileSaveAs(fn$,100,0,"",0,"UseSName=0"); 'Do not overwrite the .mat file - should have a different name and if it doesn't that is a red flag    
     
     ' Save most recent .s2r file name to registry
     fn$ := Left$(fn$,mylen%-4);
-    fn$ := fn$ + "s2r";
+    fn$ := fn$ + ".s2r";
     var key$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
 	Profile(key$, "powerS2Rfile", fn$);

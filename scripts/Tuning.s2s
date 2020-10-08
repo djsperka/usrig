@@ -280,10 +280,8 @@ ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this
 ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
 
 
-' end djs 9-18-14
-
 ButtonChannel% := 27;
-'ButtonPort% := 5;  'This appears to be correct, no longer used, now uses UtilityPort% from config
+'ButtonPort% := 5;  'No longer used, now uses UtilityPort% from config
 
 ' Fetch information about whether we are going to be using two 1401s 
 UseTwo1401s% := DoWeUseTwo1401s%();
@@ -292,6 +290,7 @@ UseTwo1401s% := DoWeUseTwo1401s%();
 ' Get number of wavemark ports/continuous ports on the primary 1401
 ' Note that the info we gather here is basically used for display, which is only done on the primary 1401.  The
 ' secondary 1401 is kinda humming along passively collecting data and doing nothing else.
+' The thing is, the Wavemark info here is used for spike plotting, the continuous info is unused.  OK, maybe it will be useful someday.
 GetPortsAndNumWMsWFs%(tunNWavemarks%,tunNContinuous%,tunWavemarkPorts%[],tunContinuousPorts%[]);
 
 
@@ -1047,6 +1046,7 @@ func IdleProcessing%()
             SafeSampleKey("w");  'Stop recording
             yield(0.1);
             SafeSampleKey("i");  'Close the file
+            SafeSampleKey("Z");  'zero the DIGLOWs
         endif
         
         halt;
@@ -1657,7 +1657,6 @@ proc CreateSampleConfiguration()
     
 	SampleClear(); 'Set standard sampling state
     SampleChannels(64);  '32 does not work, we need more!
-'	SampleAutoFile(0); 'Enable automatic file naming
 	SampleAutoComment(0); 'Prompt for comment after sampling
 	SampleAutoCommit(60); 'Seconds between each file commit
     
@@ -2405,6 +2404,7 @@ func Quit%()
         SafeSampleKey("w");  'Stop recording
         yield(0.1);
         SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
     endif
     
 	FileClose(-1,-1);
@@ -2431,6 +2431,7 @@ func Stop%()
         SafeSampleKey("w");  'Stop recording
         yield(0.1);
         SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
     endif
     
     ' Tell stim app to shut down.
@@ -2506,6 +2507,9 @@ func Stop%()
 '    fn$ := FileName$();  'get current file name
 '    mylen% := Len(fn$);
 '    fn$ := Left$(fn$,mylen%-4);
+'    if Right$(fn$,1) = "." then  'if the file is an .smrx, we need to adjust further
+'        fn$ := Left$(fn$,Len(fn$)-1);
+'    endif;
 '    fn$ := fn$ + ".mat";
 '    FileSaveAs(fn$,100,0,"",0,"UseSName=0"); 'Do not overwrite the .mat file - should have a different name and if it doesn't that is a red flag    
     
@@ -3061,7 +3065,7 @@ end
 func StartPlexon%()
     
     var fp$;  'to hold current file path
-    fp$ := SetPathToScriptDirectory$();
+    
     
     'Must run this BEFORE the PROGRUN command, because both this sequence AND SetPlexon...
     'access the same directory, and this was causing conflicts because they were running
@@ -3069,6 +3073,7 @@ func StartPlexon%()
     'SetPlexon... is started, and everything is kosher.
     CreateSampleConfiguration();    
     
+    fp$ := SetPathToScriptDirectory$();
     StartSecondInstanceOfSpike2();
     
     
@@ -3076,7 +3081,7 @@ func StartPlexon%()
     fp$ := FilePath$();  'read out to allow verification
     printlog("%s\n",fp$); 'and tell the world to verify
     
-    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar
     
 
     ' Get display windows ready

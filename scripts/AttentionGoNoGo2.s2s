@@ -1233,6 +1233,7 @@ func Quit%()
         SafeSampleKey("w");  'Stop recording
         yield(0.1);
         SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
     endif
     
 	FileClose(-1,-1);
@@ -1261,6 +1262,7 @@ func Stop%()
         SafeSampleKey("w");  'Stop recording
         yield(0.1);
         SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
     endif
     
 	' Tell stim app to shut down
@@ -1287,6 +1289,9 @@ func Stop%()
     if UseTwo1401s% = 1 then
         ' Save most recent .s2r file name to registry
         fn$ := Left$(fn$,mylen%-4);
+        if Right$(fn$,1) = "." then  'if the file is an .smrx, we need to adjust further
+            fn$ := Left$(fn$,Len(fn$)-1);
+        endif;
         fn$ := fn$ + ".s2r";
         var key$;
         key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG";
@@ -2167,6 +2172,7 @@ func IdleProcessing%()
             SafeSampleKey("w");  'Stop recording
             yield(0.1);
             SafeSampleKey("i");  'Close the file
+            SafeSampleKey("Z");  'zero the DIGLOWs
         endif
         
         halt;

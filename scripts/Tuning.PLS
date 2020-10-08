@@ -190,86 +190,86 @@
 0127 HB1:   '1  MOVI   V2,1            ;Log that sequencer is in use
 0128            DIGLOW [.......1]
 0129            MARK   101             ;Mark heartbeat on digital marker channel
-0130            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
-0131            DIGLOW [.......0]
-0132            MOVI   V2,0            ;Log that sequencer is not in use
-0133            HALT   
+;0130            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+;0131            DIGLOW [.......0]
+0130            MOVI   V2,0            ;Log that sequencer is not in use
+0131            HALT   
 
 ; give heartbeat 2 pulse
-0134 HB2:   '2  MOVI   V2,1            ;Log that sequencer is in use
-0135            DIGLOW [......1.]
-0136            MARK   102             ;Mark heartbeat on digital marker channel
-0137            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
-0138            DIGLOW [......0.]
-0139            MOVI   V2,0            ;Log that sequencer is not in use
-0140            HALT   
+0132 HB2:   '2  MOVI   V2,1            ;Log that sequencer is in use
+0133            DIGLOW [......1.]
+0134            MARK   102             ;Mark heartbeat on digital marker channel
+;0137            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+;0138            DIGLOW [......0.]
+0135            MOVI   V2,0            ;Log that sequencer is not in use
+0136            HALT   
 
 ; give heartbeat 3 pulse
-0141 HB3:   '3  MOVI   V2,1            ;Log that sequencer is in use
-0142            DIGLOW [......11]
-0143            MARK   103             ;Mark heartbeat on digital marker channel
-0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
-0145            DIGLOW [......00]
-0146            MOVI   V2,0            ;Log that sequencer is not in use
-0147            HALT   
+0137 HB3:   '3  MOVI   V2,1            ;Log that sequencer is in use
+0138            DIGLOW [......11]
+0139            MARK   103             ;Mark heartbeat on digital marker channel
+;0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+;0145            DIGLOW [......00]
+0140            MOVI   V2,0            ;Log that sequencer is not in use
+0141            HALT   
 
 ; give heartbeat 4 pulse
-0141 HB4:   '4  MOVI   V2,1            ;Log that sequencer is in use
-0142            DIGLOW [.....1..]
-0143            MARK   104             ;Mark heartbeat on digital marker channel
-0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
-0145            DIGLOW [.....0..]
-0146            MOVI   V2,0            ;Log that sequencer is not in use
-0147            HALT 
+0142 HB4:   '4  MOVI   V2,1            ;Log that sequencer is in use
+0143            DIGLOW [.....1..]
+0144            MARK   104             ;Mark heartbeat on digital marker channel
+;0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+;0145            DIGLOW [.....0..]
+0145            MOVI   V2,0            ;Log that sequencer is not in use
+0146            HALT   
 
 ; give heartbeat 5 pulse
-0141 HB5:   '5  MOVI   V2,1            ;Log that sequencer is in use
-0142            DIGLOW [.....1.1]
-0143            MARK   105             ;Mark heartbeat on digital marker channel
-0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
-0145            DIGLOW [.....0.0]
-0146            MOVI   V2,0            ;Log that sequencer is not in use
-0147            HALT 
-
-; give heartbeat 6 pulse
-0141 HB6:   '6  MOVI   V2,1            ;Log that sequencer is in use
-0142            DIGLOW [.....11.]
-0143            MARK   106             ;Mark heartbeat on digital marker channel
-0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
-0145            DIGLOW [.....00.]
-0146            MOVI   V2,0            ;Log that sequencer is not in use
-0147            HALT 
-
-; give heartbeat 7 pulse
-0141 HB7:   '7  MOVI   V2,1            ;Log that sequencer is in use
-0142            DIGLOW [.....111]
-0143            MARK   107             ;Mark heartbeat on digital marker channel
-0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
-0145            DIGLOW [.....000]
-0146            MOVI   V2,0            ;Log that sequencer is not in use
-0147            HALT 
-
-
-; Tell ASL to open file for output 
-0148 ASLOPEN: 'I MOVI  V2,1            ;Log that sequencer is in use
-0149            DIGLOW [.1......]      ;open file, XDAT bit 6
+0147 HB5:   '5  MOVI   V2,1            ;Log that sequencer is in use
+0148            DIGLOW [.....1.1]
+0149            MARK   105             ;Mark heartbeat on digital marker channel
+;0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+;0145            DIGLOW [.....0.0]
 0150            MOVI   V2,0            ;Log that sequencer is not in use
 0151            HALT   
 
-; Tell ASL to close output file
-0152 ASLCLOSE: 'i MOVI V2,1            ;Log that sequencer is in use
-0153            DIGLOW [.0......]      ;close file
-0154            MOVI   V2,0            ;Log that sequencer is not in use
-0155            HALT   
+; give heartbeat 6 pulse
+0152 HB6:   '6  MOVI   V2,1            ;Log that sequencer is in use
+0153            DIGLOW [.....11.]
+0154            MARK   106             ;Mark heartbeat on digital marker channel
+;0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+;0145            DIGLOW [.....00.]
+0155            MOVI   V2,0            ;Log that sequencer is not in use
+0156            HALT   
 
-; Tell ASL to start recording to open output file
-0156 ASLREC: 'W MOVI   V2,1            ;Log that sequencer is in use
-0157            DIGLOW [..1.....]      ;start recording, XDAT bit 5 (7 no worky)
-0158            MOVI   V2,0            ;Log that sequencer is not in use
-0159            HALT   
+; give heartbeat 7 pulse
+0157 HB7:   '7  MOVI   V2,1            ;Log that sequencer is in use
+0158            DIGLOW [.....111]
+0159            MARK   107             ;Mark heartbeat on digital marker channel
+;0144            DELAY  s(0.010)-2      ;Delay for 10 ms for adequate pulse width
+;0145            DIGLOW [.....000]
+0160            MOVI   V2,0            ;Log that sequencer is not in use
+0161            HALT   
 
-; Tell ASL to stop recording; do not close output file
-0160 ASLSTOPR: 'w MOVI V2,1            ;Log that sequencer is in use
-0161            DIGLOW [..0.....]      ;stop recording, XDAT bit 5 (7 no worky)
-0162            MOVI   V2,0            ;Log that sequencer is not in use
-0163            HALT
+
+; Tell ASL to open file for output (and force marker bits low)
+0162 ASLOPEN: 'I MOVI  V2,1            ;Log that sequencer is in use
+0163            DIGLOW [.1...000]      ;open file, XDAT bit 6
+0164            MOVI   V2,0            ;Log that sequencer is not in use
+0165            HALT   
+
+; Tell ASL to close output file (and force marker bits low)
+0166 ASLCLOSE: 'i MOVI V2,1            ;Log that sequencer is in use
+0167            DIGLOW [.0...000]      ;close file
+0168            MOVI   V2,0            ;Log that sequencer is not in use
+0169            HALT   
+
+; Tell ASL to start recording to open output file (and force marker bits low)
+0170 ASLREC: 'W MOVI   V2,1            ;Log that sequencer is in use
+0171            DIGLOW [..1..000]      ;start recording, XDAT bit 5 (7 no worky)
+0172            MOVI   V2,0            ;Log that sequencer is not in use
+0173            HALT   
+
+; Tell ASL to stop recording; do not close output file (and force marker bits low)
+0174 ASLSTOPR: 'w MOVI V2,1            ;Log that sequencer is in use
+0175            DIGLOW [..0..000]      ;stop recording, XDAT bit 5 (7 no worky)
+0176            MOVI   V2,0            ;Log that sequencer is not in use
+0177            HALT
