@@ -665,15 +665,20 @@ func GratingParametersDialogMaster%(label$, &param$, &statparam$, &x, &y, &w, &h
 	var i% := 13;  'That's right, 13
     var tempPhase;
     var firstRun := 1;
+    var iw := 0;
+    var ih := 0;
     
 	var ColorVectorList$[5];
 	var cvl$[5];
 	var icvl% := 0;
     var icvlS% := 0;
 	ColorVectorList$[0]:="Black/White";	cvl$[0]:="b";
-	ColorVectorList$[1]:="L cone";		cvl$[1]:="l";
-	ColorVectorList$[2]:="M cone";		cvl$[2]:="m";
-	ColorVectorList$[3]:="S cone";		cvl$[3]:="s";
+    ColorVectorList$[1]:="Blue/Yellow";	cvl$[1]:="[0/0/1]-[1/1/0]";
+    ColorVectorList$[2]:="Red/Cyan";	cvl$[2]:="[1/0/0]-[0/1/1]";
+    ColorVectorList$[3]:="Green/Magenta";	cvl$[3]:="[0/1/0]-[1/0/1]";
+	'ColorVectorList$[1]:="L cone";		cvl$[1]:="l";
+	'ColorVectorList$[2]:="M cone";		cvl$[2]:="m";
+	'ColorVectorList$[3]:="S cone";		cvl$[3]:="s";
 	ColorVectorList$[4]:="Custom";		cvl$[4]:="custom";
     
 	var PatternList$[2];
@@ -694,7 +699,7 @@ func GratingParametersDialogMaster%(label$, &param$, &statparam$, &x, &y, &w, &h
         
         ' If the passed param$ is non-empty, then parse it before opening the dialog. 
         if Len(param$)>0 then
-            if ParseGratingParameters%(param$, x, y, w, h, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$) = 0 then
+            if ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$) = 0 then
                 icvl% := FindMatchedStringIndex%(cv$, cvl$[], 2, 0);
                 ipl% := FindMatchedStringIndex%(pattern$, pl$[], 2, 0);
                 ial% := FindMatchedStringIndex%(aperture$, al$, 3, 0);
@@ -731,9 +736,9 @@ func GratingParametersDialogMaster%(label$, &param$, &statparam$, &x, &y, &w, &h
 		pattern$ := pl$[ipl%];
 		aperture$ := al$[ial%];
 		' save parameters
-        param$ := EncodeGratingParameters$(x, y, w, h, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+        param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
 		'param$ := Print$("%.1f,%.1f,%.1f,%.1f,%d,%.2f,%.2f,%.1f,%s,%s,%s", x, y, w, h, contrast%, sf, tf, ori, cv$, pattern$, aperture$);
-        statparam$ := EncodeGratingParameters$(x, y, w, h, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$);  'hardcoded zero TF
+        statparam$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$);  'hardcoded zero TF
         'statparam$ := Print$("%.1f,%.1f,%.1f,%.1f,%d,%.2f,0.00,%.1f,%s,%s,%s", x, y, w, h, contrast%, sf, ori, cv$, pattern$, aperture$); 'hardcoded zero TF
     endif
     return i%;
@@ -744,15 +749,20 @@ func GratingParametersDialogSlave%(label$, &param$, &statparam$, &x, &y, &w, &h,
 	var i% := 13;  'That's right, 13
     var tempPhase;
     var firstRun := 1;
+    var iw := 0;
+    var ih := 0;
     
 	var ColorVectorList$[5];
 	var cvl$[5];
 	var icvl% := 0;
     var icvlS% := 0;
 	ColorVectorList$[0]:="Black/White";	cvl$[0]:="b";
-	ColorVectorList$[1]:="L cone";		cvl$[1]:="l";
-	ColorVectorList$[2]:="M cone";		cvl$[2]:="m";
-	ColorVectorList$[3]:="S cone";		cvl$[3]:="s";
+    ColorVectorList$[1]:="Blue/Yellow";	cvl$[1]:="[0/0/1]-[1/1/0]";
+    ColorVectorList$[2]:="Red/Cyan";	cvl$[2]:="[1/0/0]-[0/1/1]";
+    ColorVectorList$[3]:="Green/Magenta";	cvl$[3]:="[0/1/0]-[1/0/1]";
+	'ColorVectorList$[1]:="L cone";		cvl$[1]:="l";
+	'ColorVectorList$[2]:="M cone";		cvl$[2]:="m";
+	'ColorVectorList$[3]:="S cone";		cvl$[3]:="s";
 	ColorVectorList$[4]:="Custom";		cvl$[4]:="custom";
     
 	var PatternList$[2];
@@ -773,7 +783,7 @@ func GratingParametersDialogSlave%(label$, &param$, &statparam$, &x, &y, &w, &h,
         
         ' If the passed param$ is non-empty, then parse it before opening the dialog. 
         if Len(param$)>0 then
-            if ParseGratingParameters%(param$, x, y, w, h, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$) = 0 then
+            if ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$) = 0 then
                 icvl% := FindMatchedStringIndex%(cv$, cvl$[], 2, 0);
                 ipl% := FindMatchedStringIndex%(pattern$, pl$[], 2, 0);
                 ial% := FindMatchedStringIndex%(aperture$, al$, 3, 0);
@@ -810,9 +820,9 @@ func GratingParametersDialogSlave%(label$, &param$, &statparam$, &x, &y, &w, &h,
 		pattern$ := pl$[ipl%];
 		aperture$ := al$[ial%];
 		' save parameters
-		param$ := EncodeGratingParameters$(x, y, w, h, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+		param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
 		'param$ := Print$("%.1f,%.1f,%.1f,%.1f,%d,%.2f,%.2f,%.1f,%s,%s,%s", x, y, w, h, contrast%, sf, tf, ori, cv$, pattern$, aperture$);
-        statparam$ := EncodeGratingParameters$(x, y, w, h, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$);  'hardcoded zero TF
+        statparam$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$);  'hardcoded zero TF
         'statparam$ := Print$("%.1f,%.1f,%.1f,%.1f,%d,%.2f,0.00,%.1f,%s,%s,%s", x, y, w, h, contrast%, sf, ori, cv$, pattern$, aperture$); 'hardcoded zero TF
     endif
     return i%;
@@ -843,13 +853,15 @@ func TunMasterValsToSlave%()
     var contrast%;
     var sf, tf, ori, phase;
     var cv$, pattern$, aperture$;
+    var iw := 0;
+    var ih := 0;
     
     var tempParams$;
     
     tempParams$ := GetGratingParameters$("Stimulus");
     SaveGratingParameters("SlaveStimulus", tempParams$);
-    ParseGratingParameters%(tempParams$, x, y, w, h, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
-    tempParams$ := EncodeGratingParameters$(x, y, w, h, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$);  'hardcoded zero TF
+    ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    tempParams$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$);  'hardcoded zero TF
     SaveGratingParameters("StatSlaveStimulus", tempParams$);
     
     return 1;
@@ -862,13 +874,15 @@ func TunSlaveValsToMaster%()
     var contrast%;
     var sf, tf, ori, phase;
     var cv$, pattern$, aperture$;
+    var iw := 0;
+    var ih := 0;
     
     var tempParams$;
     
     tempParams$ := GetGratingParameters$("SlaveStimulus");
     SaveGratingParameters("Stimulus", tempParams$);
-    ParseGratingParameters%(tempParams$, x, y, w, h, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
-    tempParams$ := EncodeGratingParameters$(x, y, w, h, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$);  'hardcoded zero TF
+    ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    tempParams$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$);  'hardcoded zero TF
     SaveGratingParameters("StatStimulus", tempParams$);
     
     return 1;
