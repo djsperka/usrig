@@ -158,6 +158,9 @@ var fvGiveLookingTO%;
 var fvAdvance%;
 var fvNValues%;
 var fvNAdvances%;
+var fvXPos;
+var fvYPos;
+var fvUseStimLocation%;
 
 
 'Deprecated variables
@@ -291,7 +294,7 @@ func FreeViewerScriptDialog%()
     
         
     DlgCreate("FreeViewer Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
-    DlgGroup("Stimulus and Fixation", 1, 1, 50, 11);
+    DlgGroup("Stimulus and Fixation", 1, 1, 50, 14);
     DlgInteger(1, "Number of repeats", 1, 1000, 0, 2);
     DlgCheck(2, "Random Progression?", 0, 3);
     DlgReal(3, "Period Duration, s", 0.05, 100, 0, 4);
@@ -302,23 +305,26 @@ func FreeViewerScriptDialog%()
     DlgReal(8, "Acquisition Time Out, s", 0, 100, 0, 9);
     DlgReal(9, "Look Away Time Out, s", 0, 100, 0, 10);
     DlgCheck(10, "Always Looking?", 0, 11);
+    DlgCheck(11, "Use Stimulus Location From Config?", 0, 12);
+    DlgReal(12, "Image X Position (deg)", -20, 20, 0, 13);
+    DlgReal(13, "Image Y Position (deg)", -20, 20, 0, 14);
     
-    DlgGroup("Screen", 1, 12, 50, 3);
-    DlgReal(11, "Screen Width, mm", 10, 3000, 0, 13);
-    DlgReal(12, "Screen Height, mm", 10, 3000, 0, 14);
+    DlgGroup("Screen", 1, 15, 50, 3);
+    DlgReal(14, "Screen Width, mm", 10, 3000, 0, 16);
+    DlgReal(15, "Screen Height, mm", 10, 3000, 0, 17);
     
-    DlgGroup("Reward", 1, 15, 50, 2);
-    DlgReal(13, "Prob of reward each period", 0, 1, 0, 16);
+    DlgGroup("Reward", 1, 18, 50, 2);
+    DlgReal(16, "Prob of reward each period", 0, 1, 0, 19);
     
-    DlgGroup("Optogenetics", 1, 17, 50, 7);
-    DlgCheck(14, "Use Opto", 0, 18);
-    DlgReal(15, "Opto Voltage Out (V)", 0.0002, 5, 0, 19); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+    DlgGroup("Optogenetics", 1, 20, 50, 7);
+    DlgCheck(17, "Use Opto", 0, 21);
+    DlgReal(18, "Opto Voltage Out (V)", 0.0002, 5, 0, 22); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
     
     
-    DlgGroup("Images", 1, 20, 50, 3);
-    fvdlgTextItem% := DlgText(fvDialogText$, 3, 21, 40);
-    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 22);
-    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 23, 22);
+    DlgGroup("Images", 1, 23, 50, 3);
+    fvdlgTextItem% := DlgText(fvDialogText$, 3, 24, 40);
+    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 25);
+    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 23, 25);
    
     'these have been removed from the dialog before ever being used, just a guide
     'DlgReal(4, "Maximum Image Display Time, s", 0.1, 1000, 0, 5);  
@@ -333,11 +339,11 @@ func FreeViewerScriptDialog%()
 '    DlgButton(tundlgOptogeneticsButton%, "Optogenetics Parameters", TunOptoDialog%, 18, 19);  'for now, keep them in the same dialog   
     
     'Right now we don't seem to need a callback, it's ready directly below if we do 
-'    DlgAllow(0xffff, 0, FreeViewerScriptDialogChanged%);
+    DlgAllow(0xffff, 0, FreeViewerScriptDialogChanged%);
 
     i%:=DlgShow(fvNRepeats%, fvRandomProgression%, fvPeriodDuration, fvNumPeriodsPerBlock%, fvMinViewPeriodsForAdvance%, 
-    fvTrialISI, fvAcquisitionTime, fvAcquisitionTO, fvLookAwayTO, fvAlwaysLooking%, fvScreenMMX, fvScreenMMY, 
-    fvProbRewardEachPeriod, fvDoOpto%,fvOptoVoltageOut);
+    fvTrialISI, fvAcquisitionTime, fvAcquisitionTO, fvLookAwayTO, fvAlwaysLooking%, fvUseStimLocation%, fvXPos, fvYPos, 
+    fvScreenMMX, fvScreenMMY, fvProbRewardEachPeriod, fvDoOpto%,fvOptoVoltageOut);
     
     if i% = 1 then
 		SaveFreeViewerScriptParameters();
@@ -354,6 +360,13 @@ func FreeViewerScriptDialog%()
 '            message("Reward min delay was greater than max delay!\nBoth values set to max delay!");
 '        endif;
         
+        if fvUseStimLocation% = 1 then
+            var temp1;
+            var temp2;
+            ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"),fvXPos,fvYPos,temp1,temp2);
+        endif
+        
+        
         iReturn% := 1;  'set return value to success, otherwise we'll just quit.
         
 	endif;
@@ -361,9 +374,16 @@ func FreeViewerScriptDialog%()
 	return iReturn%;
 end;
 
-'func FreeViewerScriptDialogChanged%(item%)     
-'    return 1;
-'end
+func FreeViewerScriptDialogChanged%(item%)  
+    if DlgValue(11) = 0 then  
+        DlgEnable(1,12);
+        DlgEnable(1,13);
+    else
+        DlgEnable(0,12);
+        DlgEnable(0,13);
+    endif;
+    return 1;
+end
 
 
 
@@ -390,6 +410,9 @@ proc GetFreeViewerScriptParameters()
     fvMinViewPeriodsForAdvance% := GetIntRegistryValue%(key$, "MinViewPeriodsForAdvance", fvMinViewPeriodsForAdvance%);
     fvPeriodDuration := GetFloatRegistryValue(key$, "PeriodDuration", fvPeriodDuration);
     fvProbRewardEachPeriod := GetFloatRegistryValue(key$, "ProbRewardEachPeriod", fvProbRewardEachPeriod);
+    fvUseStimLocation% := GetIntRegistryValue%(key$, "UseStimLocation", fvUseStimLocation%);
+    fvXPos := GetFloatRegistryValue(key$, "XPos", fvXPos);
+    fvYPos := GetFloatRegistryValue(key$, "YPos", fvYPos);
     
     
     'from an older conception, not used
@@ -428,6 +451,9 @@ proc SaveFreeViewerScriptParameters()
     SetIntRegistryValue(key$, "MinViewPeriodsForAdvance", fvMinViewPeriodsForAdvance%);
     SetFloatRegistryValue(key$, "PeriodDuration", fvPeriodDuration);
     SetFloatRegistryValue(key$, "ProbRewardEachPeriod", fvProbRewardEachPeriod);
+    SetIntRegistryValue(key$, "UseStimLocation", fvUseStimLocation%);
+    SetFloatRegistryValue(key$, "XPos", fvXPos);
+    SetFloatRegistryValue(key$, "YPos", fvYPos);
     
     'From an older conception, not used
     'SetFloatRegistryValue(key$, "MinTimeForAdvance", fvMinTimeForAdvance);
@@ -836,7 +862,7 @@ func Start%()
     FixationArg$ := "";
     'FixationArg$ := "-f 0,0,1,red";  'this is a sample, if we want fixation later
     
-    ImageArg$ := " -i " + ImageFileLoc$;
+    ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvXPos) + "," + Str$(fvYPos) + ",0,0";
     
 
     'Build command line, any values that are unnecessary will be empty, so the build should work no matter what type of command line is required
