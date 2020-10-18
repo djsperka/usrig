@@ -3150,6 +3150,7 @@ func Start%()
     var tempSeqVarValue%;
     var specFileName$;
     var specHandle%;
+    var startSecs := 45;
     
     specFileName$ := GetScriptDir$(0)+"..\\..\\TuningSpecFile.txt";
     
@@ -3158,10 +3159,19 @@ func Start%()
 	'start sampling
     if UseTwo1401s% = 1 then
         SampleStart(1);  'set sampling to start on a trigger
+        while SampleStatus() <> 2 and startSecs > 0 do
+            yield(1);
+            startSecs := startSecs - 1;
+        wend
     else
     	SampleStart(0); 'Start sampling now
     endif;
-    
+
+    if startSecs <= 0 then
+        message("Sampling did not successfully start in 45 seconds!  Quitting!");
+        halt
+    endif
+
     ' djs Set sequencer variable 5 if this is rivalry
     if tunDoRivalry% = 1 then
         SampleSeqVar(5, 1);
