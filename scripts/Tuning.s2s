@@ -37,14 +37,14 @@ var XChannel%;
 var YChannel%;
 
 var FrameChannel%;
-var FrameSlaveChannel%;
+'var FrameSlaveChannel%;
 var FixationPointChannel%;
 var StimChannel%;
 var StimChangeChannel%;
 var ReadyChannel%;
-var ReadySlaveChannel%;
-var FixationPointSlaveChannel%;
-var StimSlaveChannel%;
+'var ReadySlaveChannel%;
+'var FixationPointSlaveChannel%;
+'var StimSlaveChannel%;
 'var DigitalLaserChannel%;
 var OptoCopyChannel%;
 var SequencerPeriodMS;
@@ -160,6 +160,7 @@ var tunFileLen%;
 var tun1FileLen%;
 var tun2FileLen%;
 
+
 ' Init logging
 LogInit(1);
 
@@ -267,10 +268,10 @@ ReadyChannel% := 40;
 FrameChannel% := 41;
 FixationPointChannel% := 42;
 StimChannel% := 43;
-ReadySlaveChannel% := 44;
-FrameSlaveChannel% := 45;
-FixationPointSlaveChannel% := 46;
-StimSlaveChannel% := 47;
+'ReadySlaveChannel% := 44;
+'FrameSlaveChannel% := 45;
+'FixationPointSlaveChannel% := 46;
+'StimSlaveChannel% := 47;
 'DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
 OptoCopyChannel% := 49;
 StimulatorChannel% := 39;
@@ -409,31 +410,31 @@ func IdleProcessing%()
                     tLastTrigger := tFall;
                 endif;
             endif;
-        else
-            pulseFoundSlave% := View(DataWindow%).FindPulseUp%(ReadySlaveChannel%, tLastTrigger+tic, tRise, tFall);
-            if pulseFound% = 1 and pulseFoundSlave% = 1 then
-                LogStatus("VSGWait", "Got SLAVE Ready Pulse from VSG at " + str$(tRise));
-                Yield(1.0);
-                tLastTrigger := tFall;
-                ChangeStateTo(stateStartTrial%, tFall);
-                if RecordEyeTrackerOutputFile% = 1 then
-                    'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
-                    SafeSampleKey("1");
-                    yield(0.2);
-                    SafeSampleKey("1");
-                    yield(0.2);
-                    SafeSampleKey("1");
-                    yield(0.2);
-                    SafeSampleKey("1");
-                    yield(0.2);
-                endif;
-            else
-                ' TODO - do this for slave also
-                if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
-                    LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
-                    tLastTrigger := tFall;
-                endif;
-            endif;
+'        else
+'            pulseFoundSlave% := View(DataWindow%).FindPulseUp%(ReadySlaveChannel%, tLastTrigger+tic, tRise, tFall);
+'            if pulseFound% = 1 and pulseFoundSlave% = 1 then
+'                LogStatus("VSGWait", "Got SLAVE Ready Pulse from VSG at " + str$(tRise));
+'                Yield(1.0);
+'                tLastTrigger := tFall;
+'                ChangeStateTo(stateStartTrial%, tFall);
+'                if RecordEyeTrackerOutputFile% = 1 then
+'                    'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+'                    SafeSampleKey("1");
+'                    yield(0.2);
+'                    SafeSampleKey("1");
+'                    yield(0.2);
+'                    SafeSampleKey("1");
+'                    yield(0.2);
+'                    SafeSampleKey("1");
+'                    yield(0.2);
+'                endif;
+'            else
+'                ' TODO - do this for slave also
+'                if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
+'                    LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
+'                    tLastTrigger := tFall;
+'                endif;
+'            endif;
         endif
 
     case iState% = stateStartTrial% then
@@ -1669,18 +1670,6 @@ proc CreateSampleConfiguration()
         eof%:=1;
         readsetup(",","	 ","","","	");  'Standard read setup
         FileOpen(tunTuningFile$,8,0);  'open specified file
-'        if tunContrastDualScreenCombo% = 0 or tunAreaDualScreenCombo% = 0 then
-'            while eof% > 0 do
-'                eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
-'                tunFileLen%+=1;  'increment tuning file length
-'            wend
-'        else
-'            while eof% > 0 do
-'                eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
-'                tunFileLen%+=1;  'increment tuning file length
-'            wend
-'        endif;  
-        'The read function actually isn't any different in the two cases above
         while eof% > 0 do
             eof% := read(tunValues$[tunFileLen%]);  'read to end of file, must put each value on a new line to count number of stimuli in a block
             tunFileLen%+=1;  'increment tuning file length
@@ -2288,22 +2277,22 @@ proc CreateSampleConfiguration()
 	SampleComment$(StimChannel%,"Stim");
 	SampleTitle$(StimChannel%,"Stim");
     
-	SampleEvent(FrameSlaveChannel%, 4, 2, 3600);
-	SampleComment$(FrameSlaveChannel%,"Frame-Slave");
-	SampleTitle$(FrameSlaveChannel%,"Frame-Slave");
+'	SampleEvent(FrameSlaveChannel%, 4, 2, 3600);
+'	SampleComment$(FrameSlaveChannel%,"Frame-Slave");
+'	SampleTitle$(FrameSlaveChannel%,"Frame-Slave");
     
-	SampleEvent(ReadySlaveChannel%, 5, 2, 3600); 'Trigger channel, level
-	SampleComment$(ReadySlaveChannel%,"Ready-Slave");
-	SampleTitle$(ReadySlaveChannel%,"Ready-Slave");
+'	SampleEvent(ReadySlaveChannel%, 5, 2, 3600); 'Trigger channel, level
+'	SampleComment$(ReadySlaveChannel%,"Ready-Slave");
+'	SampleTitle$(ReadySlaveChannel%,"Ready-Slave");
     
     ' djs Add channels to capture slave fixpt and stim onset
-	SampleEvent(FixationPointSlaveChannel%, 6, 2, 3600); 'Trigger channel, level
-	SampleComment$(FixationPointSlaveChannel%,"Fixpt-Slave");
-	SampleTitle$(FixationPointSlaveChannel%,"Fixpt-Slave");
+'	SampleEvent(FixationPointSlaveChannel%, 6, 2, 3600); 'Trigger channel, level
+'	SampleComment$(FixationPointSlaveChannel%,"Fixpt-Slave");
+'	SampleTitle$(FixationPointSlaveChannel%,"Fixpt-Slave");
 	
-	SampleEvent(StimSlaveChannel%, 7, 2,3600); 'Trigger channel, level
-	SampleComment$(StimSlaveChannel%,"Stim-Slave");
-	SampleTitle$(StimSlaveChannel%,"Stim-Slave");
+'	SampleEvent(StimSlaveChannel%, 7, 2,3600); 'Trigger channel, level
+'	SampleComment$(StimSlaveChannel%,"Stim-Slave");
+'	SampleTitle$(StimSlaveChannel%,"Stim-Slave");
     
     
     'Add a digital marker channel for pulsing optogenetics OR eye tracker output file
@@ -2667,6 +2656,12 @@ proc WriteParameterFile()
 	Print("\nTuning parameters\n");
 	Print("-------------------\n\n");
 	docase 
+        case tunType$ = tunTypeBakersDozen$ then
+            Print("Type                  : BakersDozen\n");
+            Print("File                  : " + tunBakersDozenFileLoc$ + "\n");
+            Print("\n");
+            
+        
 		case tunType$ = tunTypeContrast$ then
 
 			Print("Type:                  : Contrast\n");
@@ -3756,7 +3751,10 @@ func Start%()
             TunCurveMArg$ := " -P " + Str$(tunNullTestTF) + ",s,";
         else
             TunCurveMArg$ := " -P " + Str$(tunNullTestTF) + ",q,";
-        endif;        
+        endif;  
+        
+    case tunType$ = tunTypeBakersDozen$ then
+        'Do nothing here, file has been specified
         
     else
 
@@ -3768,7 +3766,73 @@ func Start%()
     
 
     'Build command line, any values that are unnecessary will be empty, so the build should work no matter what type of command line is required
-    if tunDoRivalry% = 0 then
+    docase
+    case tunType$ = tunTypeBakersDozen$ then
+        'We will simply assume we need a file for this
+        'The syntax for the file will be " -Flag1 arg1,arg2,...,argN -Flag2 arg1,arg2,...,argN ... -FlagN arg1,arg2,...,argN "
+        'Be sure that the text is printed on one line (no new lines/carriage returns) and to enclose the entire text with a single pair of double quotes as shown
+        'Type           Flag    [min max] of argument, units
+        'Orientation    -O      [0 360], degrees
+        'Temporal Freq  -T      [0 100], Hz
+        'Spatial Freq   -S      [0.01 100], cyc/deg
+        'Contrast       -C      [0.1 100], percent contrast
+        'Area           -A      [0.1 100], degrees diameter
+        'XYPosition     -Z      [-14 14], degrees from center. For XYPos args are paired and comma separated: x1,y1,x2,y2,...xN,yN
+        'XPosition      -X      [-14 14], degrees from center
+        'DonutHole      -M      [0 100], degrees diameter of center hole
+        '---Non-Grating values---
+        'FixPtPosition  -y      [-14 14], degrees from center. For FixPtPos args are paired and comma separated: x1,y1,x2,y2,...xN,yN
+        'StimDelay      -E      [0 100], seconds of stimulus onset delay
+        'StimDuration   -t      [0 100], seconds of stimulus duration
+        
+        'BakersDozen is NOT currently implemented for rivalry, dual-VSG, distractor gratings, or other nonsense like that!  Just one damn grating!
+        
+        'Read BakersDozen file from disk, write corresponding control file
+        var BakersDozenLoc2$;
+        var tempstr$;
+        var tempchar$;
+        var FullText$;  
+        var numRead%;
+        
+        ReadSetup(Chr$(7),Chr$(7));  'Setting hard/soft separators to nonsense "bell" character so no sepaarator will be found, empty 3/4 arg defaults to string delimited by double quotes
+        
+        FileOpen(tunBakersDozenFileLoc$,8,0);  'Open user-generated file, is NOT command-line ready
+        
+        'Ensure format of user-generated file seems legit
+        numRead% := Read(FullText$);
+        FileClose();  'Close file once it's read
+        if numRead% <> 1 then
+            message("Expected one string in Bakers Dozen file, got " + Str$(numRead%) + "!!  Quitting!!");
+            halt
+        endif;
+        
+        'Add "_bakersdozen_ctrl" to end of file name, if extension is 3 chars, will slide in before extension
+        'otherwise (no extension, or 2/4/etc. char extension) will just tack on to end
+        tempstr$ := Right$(tunBakersDozenFileLoc$,4);  'Get putative extension (probably .txt), assume . + 3 chars
+        tempchar$ := Left$(tempstr$,1);  'Get first char of putative extension
+        if tempchar$ = "." then
+            BakersDozenLoc2$ := Left$(tunBakersDozenFileLoc$,Len(tunBakersDozenFileLoc$)-4) + "_bakersdozen_ctrl" + tempstr$;
+        else
+            BakersDozenLoc2$ := tunBakersDozenFileLoc$ + "_bakersdozen_ctrl";
+        endif;
+        
+        'Open new file for writing, rather than overwrite user-generated file, it can be reused.
+        FileOpen(BakersDozenLoc2$,8,1);
+        
+        'Reuse tempstr$ to hold arguments
+        tempstr$ := FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$; 'prelim stuff
+        tempstr$ := tempstr$ + MGrat$ + MGratParam$;  'Master grating only, tuning curve values are in the file
+        
+        'Print to the new file
+        print("%s %s",tempstr$,FullText$);
+
+        FileClose();
+        
+        'Create command line, referencing new file
+        cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + " -F " + BakersDozenLoc2$;
+        
+        
+    case tunDoRivalry% = 0 then
         cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$; 'prelim stuff
         cmdLine$ := cmdLine$ + RefrLock$ + OffsetFile$ + StimDur$;  'Dual VSG stuff
         cmdLine$ := cmdLine$ + MasterIndicator$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$;  'Master grating stuff
@@ -3845,7 +3909,7 @@ func Start%()
             SampleText(Mid$(tailS$, i%, 100));
         next
         
-    endif
+    endcase
         
     ' Record initial text marks. The command line may need to be broken into pieces.
     ' For tuning: Version 6,7 are always box--o-donuts

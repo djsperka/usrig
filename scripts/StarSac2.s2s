@@ -27,6 +27,7 @@ var starFixationDurationMax;		' Time required to maintain fixation, seconds (max
 var starAcquisitionTime;			' Time allowed to acquire target before fail trial, seconds
 var starInterTrialTime;				' Blank time following a trial (both successful and failed), seconds
 var starAnswerTime;					' time to move to answer window, seconds
+var starHoldAnswer;                 ' required time to hold answer, seconds
 var starNumTargets%;				' number of targets to use
 var starUseStimulusXY% := 1;
 var starTargetX := 5.0;
@@ -122,6 +123,7 @@ proc GetStarStimScriptParameters()
 	starAcquisitionTime := GetFloatRegistryValue(key$, "AcquisitionTime", starAcquisitionTime);
 	starInterTrialTime := GetFloatRegistryValue(key$, "InterTrialTime", starInterTrialTime);
     starAnswerTime := GetFloatRegistryValue(key$, "AnswerTime", starAnswerTime);
+    starHoldAnswer := GetFloatRegistryValue(key$, "HoldAnswer", starHoldAnswer);
     starNumTargets% := GetIntRegistryValue%(key$, "NumTargets", starNumTargets%);
     starNumBlocks% := GetIntRegistryValue%(key$, "NumBlocks", starNumBlocks%);
     starNumPerBlock% := GetIntRegistryValue%(key$, "NumPerBlock", starNumPerBlock%);
@@ -156,6 +158,7 @@ proc SaveStarStimScriptParameters()
 	SetFloatRegistryValue(key$, "AcquisitionTime", starAcquisitionTime);
 	SetFloatRegistryValue(key$, "InterTrialTime", starInterTrialTime);
     SetFloatRegistryValue(key$, "AnswerTime", starAnswerTime);
+    SetFloatRegistryValue(key$, "HoldAnswer", starHoldAnswer);
     SetIntRegistryValue(key$, "NumTargets", starNumTargets%);
     SetIntRegistryValue(key$, "NumBlocks", starNumBlocks%);
     SetIntRegistryValue(key$, "NumPerBlock", starNumPerBlock%);
@@ -186,6 +189,7 @@ end;
 func StarStimScriptDialog%()
 	var i%;
     var gratingAsTargetOpts$[3];
+    var sixFloats[6];
     
     gratingAsTargetOpts$[0] := "Use dot for target";
     gratingAsTargetOpts$[1] := "Use grating for target";
@@ -196,40 +200,60 @@ func StarStimScriptDialog%()
     GetStarStimOptoParameters();
     GetStarStimGratingBarParameters();
     
+    sixFloats[0] := starFixationDurationMin;
+    sixFloats[1] := starFixationDurationMax;
+    sixFloats[2] := starAcquisitionTime;
+    sixFloats[3] := starInterTrialTime;
+    sixFloats[4] := starAnswerTime;
+    sixFloats[5] := starHoldAnswer;
+    
 	DlgCreate("StarSac2 Script Parameters");
 	DlgReal(1, "Fixation duration min(s):", .01, 10);
 	DlgReal(2, "Fixation duration max(s):", .01, 10);
 	DlgReal(3, "Acquisition time(s):", .01, 10);
 	DlgReal(4, "Intertrial time(s):", .01, 10);
 	DlgReal(5, "Answer time(s):", .01, 10);
-	DlgInteger(6, "Number of targets:", 1, 99);
-    DlgInteger(7, "Number of blocks", 1, 50);
-    DlgInteger(8, "Num each targ per block", 1, 10);
-    DlgCheck(9, "Use opto?");
-    DlgCheck(10, "Use stimulus position?");
-    DlgReal(11, "Target X", -20.0, 20.0);
-    DlgReal(12, "Target Y", -20.0, 20.0);
+    DlgReal(6, "Answer hold time(s):", .01, 10);
+	DlgInteger(7, "Number of targets:", 1, 99);
+    DlgInteger(8, "Number of blocks", 1, 50);
+    DlgInteger(9, "Num each targ per block", 1, 10);
+    DlgCheck(10, "Use opto?");
+    DlgCheck(11, "Use stimulus position?");
+    DlgReal(12, "Target X", -20.0, 20.0);
+    DlgReal(13, "Target Y", -20.0, 20.0);
     'DlgReal(13, "Rotation(deg)", 0.0, 360.0);
-    DlgCheck(13, "Keep fixpt on?");
-    DlgReal(14, "Min small reward time", 0, 10);
-    DlgReal(15, "Max small reward time", 0, 10);
-    DlgInteger(16, "Juice per small reward", 0, 10, 0, 0, 1);
-    DlgInteger(17, "Small reward size(ms)", 1, 200);
-    DlgCheck(18, "Use fixpt diameter for target");
-    DlgReal(19, "Target diameter", 0.1, 100);
-    smallAreaTextItemNumber% := DlgText("Text Here",2,20,25);
+    DlgCheck(14, "Keep fixpt on?");
+    DlgReal(15, "Min small reward time", 0, 10);
+    DlgReal(16, "Max small reward time", 0, 10);
+    DlgInteger(17, "Juice per small reward", 0, 10, 0, 0, 1);
+    DlgInteger(18, "Small reward size(ms)", 1, 200);
+    DlgCheck(19, "Use fixpt diameter for target");
+    DlgReal(20, "Target diameter", 0.1, 100);
+    smallAreaTextItemNumber% := DlgText("Text Here",2,21,25);
     'DlgCheck(20, "Use grating for target",2,21);
-    DlgList(20,30,gratingAsTargetOpts$[],3,0,21);
-    DlgButton(101, "SmallArea", StarStimSmallAreaDialog%,2,22);
-    DlgButton(102, "Opto Parameters", StarStimOptoDialog%,20,22);
-    DlgButton(103, "Squarewave Bar Parameters", StarStimGratingBarDialog%,2,23);
+    DlgList(21,30,gratingAsTargetOpts$[],3,0,22);
+    DlgButton(101, "SmallArea", StarStimSmallAreaDialog%,2,23);
+    DlgButton(102, "Opto Parameters", StarStimOptoDialog%,20,23);
+    DlgButton(103, "Squarewave Bar Parameters", StarStimGratingBarDialog%,2,24);
     DlgAllow(0xffff, 0, StarStimScriptDialogChanged%);
-	i%:=DlgShow(starFixationDurationMin, starFixationDurationMax, starAcquisitionTime, starInterTrialTime, starAnswerTime, starNumTargets%, 
+	'i%:=DlgShow(starFixationDurationMin, starFixationDurationMax, starAcquisitionTime, starInterTrialTime, starAnswerTime, starNumTargets%, 
+    i%:=DlgShow(sixFloats[], starNumTargets%,
     starNumBlocks%, starNumPerBlock%, starDoOpto%, starUseStimulusXY%, starTargetX, starTargetY,
     starKeepFixptOn%, starMinSmallRewardDelta, starMaxSmallRewardDelta, starJuicePerSmallReward%, starMSPerRewardHit%,
     starUseDefaultTargetSize%, starTargetDiameter, starTargetIsGrating%);
 	if i% = 1 then
+        
+        'extract six floats
+        starFixationDurationMin := sixFloats[0]; 
+        starFixationDurationMax := sixFloats[1]; 
+        starAcquisitionTime := sixFloats[2];
+        starInterTrialTime := sixFloats[3];
+        starAnswerTime := sixFloats[4];
+        starHoldAnswer  := sixFloats[5];
+        
+        
 		SaveStarStimScriptParameters();
+        
         
         
         'Adjust starPostStimOptoTime, which must not allow the opto time to go past the max time
@@ -634,14 +658,14 @@ endif;
 
 const stateStartTrial%				:= 0;
 const stateWaitForFixPtOn%			:= 1;
-const stateWaitForAcquisition%	:= 2;
+const stateWaitForAcquisition%	    := 2;
 const stateHoldFixation%			:= 3;
-const stateShowStim%					:= 4;
+const stateShowStim%				:= 4;
 const stateWaitForStimOn%			:= 5;
 const stateWaitForAnswer%			:= 6;
 const stateSuccess%					:= 7;
-const stateWaitForFixPtOff%		:= 8;
-const stateAbort%						:= 9;
+const stateWaitForFixPtOff%		    := 8;
+const stateAbort%			        := 9;
 const stateWaitForStimOff%			:= 10;
 const stateFailure%					:= 11;
 const stateAbortTime%				:= 12;
@@ -651,6 +675,7 @@ const stateVSGWait%					:= 14;		' wait for vsg to send ready signal #1
 const stateVSGWaitConfirm%			:= 15;		' wait for vsg to send ready signal #2
 const stateWaitThroughPreOpto%      := 16;      ' wait for pre-opto to finish, if opto trial
 const stateWaitForPostOpto%         := 17;      ' wait for post-opto to finish, and turn off laser
+const stateHoldAnswer%              := 18;
 
 
 var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
@@ -962,9 +987,9 @@ func IdleProcessing%()
 
         if InTargetWindow%(xEye, yEye) = 1 then
             
-            LogStatus("WaitForAnswer", "Got answer at " + str$(tNow));
-            ChangeStateTo(stateSuccess%, tNow);
-            tPostStimStart := tNow;
+            LogStatus("WaitForAnswer", "Entered answer window at " + str$(tNow));
+            ChangeStateTo(stateHoldAnswer%, tNow);
+            'tPostStimStart := tNow;
 
         else
             
@@ -990,7 +1015,24 @@ func IdleProcessing%()
             endif
 
         endif
-
+        
+    case iState% = stateHoldAnswer% then
+        
+        docase
+        case InTargetWindow%(xEye, yEye) = 1 and tNow > tStateStart+starHoldAnswer then
+            
+            LogStatus("HoldAnswer", "Answer fully held at " + str$(tNow));
+            ChangeStateTo(stateSuccess%, tNow);
+            tPostStimStart := tNow;
+        case InTargetWindow%(xEye, yEye) = 0 then
+            LogStatus("Hold Answer", "Answer broken at " + str$(tNow));
+            ChangeStateTo(stateFailure%, tNow);
+            tPostStimStart := tNow;
+            fixBrokenThisTrial% := 1;
+        endcase
+        
+        
+        
     case iState% = stateSuccess% then
 
         nTrialsSuccess% += 1;

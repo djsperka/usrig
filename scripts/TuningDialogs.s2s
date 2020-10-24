@@ -29,6 +29,7 @@ const tunTypeGonzago$ := "GZ";
 const tunTypeDSS$ := "DSS";
 const tunTypeNullTest$ := "NULL";
 const tunTypeLag$ := "LAG";
+const tunTypeBakersDozen$ := "BAKER";
 var tunType$:=tunTypeNone$;
 var tunType1$:=tunTypeNone$;  'for first of two tuning curves, if Box O' Donuts, or for non-CRG curve in CRG scenarios
 var tunType2$:=tunTypeNone$;  'for second of two tuning curves, if Box O' Donuts
@@ -55,7 +56,7 @@ const tundlgBerlinerButton% := 15;
 const tundlgBoxODonutsButton% := 16;
 const tundlgXPosButton% := 17;
 const tundlgDotsButton% := 18;
-const tundlgDisparityButton% := 19;
+const tundlgDisparityAndBakersDozenButton% := 19;
 const tundlgCRGButton% := 20;
 const tundlgSelectSEQFileButton% := 21;
 const tundlgBlankButton% := 22;
@@ -306,6 +307,11 @@ var tunOptoUsePulse% := 0;  'Are we using a "pulsing stimulation"?
 var tunLaserDiode% := 0;  'Are we recording the output of the laser using a photodiode?
 var tunInterBlockTime := 0;        ' New, time between blocks, important for opto
 
+
+'Baker's Dozen variables
+var tunBDTuningFile$;
+var tunBakersDozenFileLoc$;
+
 ' Strings that hold grating parameters
 var tunGratingParams$;
 var tunGratingParamsSlave$;
@@ -349,6 +355,7 @@ var tunButtonCollect%;            'Collect button data for rivalry?
 var tunUseLagDialog%;             'will be 1 if we are using the lag dialog, 0 for null test
 var tunUseDonutDialog%;           'will be 1 if we are using the donut dialog, 0 for Gonzagos
 var tunUseConstantLag%;           '0 = no constant lag, 1 = constant lag on master, 2 = constant lag on slave
+var tunUseDisparityDialog%;
 var tunConstantLagFrames%;
 var tunConstantLagMS$;
 
@@ -898,7 +905,17 @@ proc SaveTunOptoParameters()
 end;
 
 
+proc GetTuningCurveBakersDozenParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\BakersDozen";
+    tunBDTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunBDTuningFile$);
+end;
 
+proc SaveTuningCurveBakersDozenParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\BakersDozen";
+    SetStringRegistryValue(key$, "TuningFile", tunBDTuningFile$);
+end;
 
 
 
@@ -1580,74 +1597,124 @@ end
 
 
 
-func TuningCurveDisparityDialog%()
+func TuningCurveDisparityAndBakersDozenDialog%()
     'This is closely related to XPos
 	var iReturn% := 0;
 	var i%;
-    var x, y, w, h, iw, ih, sf, tf, ori, phase;
-    var contrast%;
-    var param$, cv$, pattern$, aperture$;
-    var label$;
     
-    'get parameters for Disparity tuning curve
-    GetTuningCurveDisparityParameters();
-    
-    'get current x position, will allow update without going to grating parameters
-    param$ := GetGratingParameters$("Stimulus");  'for XPos, get grating parameters from master stimulus, will reset master/slave accordingly 
-	ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
-    tunDisparityCenterXPos := x;
-    
-	DlgCreate("Disparity Tuning Curve Parameters");
-	DlgInteger(1, "Number of Steps (one way)", 1, 100);
-	DlgInteger(2, "Number of Repeats", 1, 3000);
-	DlgReal(3, "Center X Position", -14, 14);
-	DlgReal(4, "Max X Position (will mirror)", -14, 14);
-    DlgCheck(5, "Slave Screen Is Stationary");
-    DlgCheck(6, "No function - only linear for now");
-    'DlgCheck(6, "Linear progression (unchecked is log)");
-    DlgCheck(7, "Random Progression");
-    
-    
-	i% := DlgShow(tunDisparityNSteps%, tunDisparityNRepeats%, tunDisparityCenterXPos, tunDisparityMaxXPos, tunDisparityOnMaster%, tunDisparityLinear%, tunDisparityProgression%);
-	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
-	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-    ' 
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
-    'tunMaximalDiam := tunAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
-	if i% = 1 then
-		SaveTuningCurveDisparityParameters();
-        'and reset the x position for master AND slave gratings
-        x := tunDisparityCenterXPos;
-        param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
-        SaveGratingParameters("Stimulus", param$);  'this saves master
-        TunMasterValsToSlave%();  'this copies master values over to slave
-		
-        tunType$ := tunTypeDisparity$;
+    if tunUseDisparityDialog% = 1 then   'run disparity dialog    
+        
+        var x, y, w, h, iw, ih, sf, tf, ori, phase;
+        var contrast%;
+        var param$, cv$, pattern$, aperture$;
+        var label$;
+        
+        'get parameters for Disparity tuning curve
+        GetTuningCurveDisparityParameters();
+        
+        'get current x position, will allow update without going to grating parameters
+        param$ := GetGratingParameters$("Stimulus");  'for XPos, get grating parameters from master stimulus, will reset master/slave accordingly 
+        ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+        tunDisparityCenterXPos := x;
+        
+        DlgCreate("Disparity Tuning Curve Parameters");
+        DlgInteger(1, "Number of Steps (one way)", 1, 100);
+        DlgInteger(2, "Number of Repeats", 1, 3000);
+        DlgReal(3, "Center X Position", -14, 14);
+        DlgReal(4, "Max X Position (will mirror)", -14, 14);
+        DlgCheck(5, "Slave Screen Is Stationary");
+        DlgCheck(6, "No function - only linear for now");
+        'DlgCheck(6, "Linear progression (unchecked is log)");
+        DlgCheck(7, "Random Progression");
         
         
-		if tunContext$ = tunContextDAQ$ then
-            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-            iReturn% := 1;
-		else
-			iReturn% := 1;
-		endif;
-	endif;
-	if i% = 0 then
-'		PrintLog("TuningCurveAreaDialog - user hit Cancel\n");
-		tunType$ := tunTypeNone$;
-		if tunContext$ = tunContextDAQ$ then
-			iReturn% := 1;
-		else
-			iReturn% := 2;
-		endif;
-	endif;
+        i% := DlgShow(tunDisparityNSteps%, tunDisparityNRepeats%, tunDisparityCenterXPos, tunDisparityMaxXPos, tunDisparityOnMaster%, tunDisparityLinear%, tunDisparityProgression%);
+        ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+        ' When user hits OK we always save the parameters, and when user hits Cancel we don't.
+        ' 
+        ' djs 2/4/2011
+        ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+        ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+        ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+        ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+        ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+        ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+        ' before things proceed. 
+        'tunMaximalDiam := tunAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
+        if i% = 1 then
+            SaveTuningCurveDisparityParameters();
+            'and reset the x position for master AND slave gratings
+            x := tunDisparityCenterXPos;
+            param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+            SaveGratingParameters("Stimulus", param$);  'this saves master
+            TunMasterValsToSlave%();  'this copies master values over to slave
+            
+            tunType$ := tunTypeDisparity$;
+            
+            
+            if tunContext$ = tunContextDAQ$ then
+                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+                iReturn% := 1;
+            else
+                iReturn% := 1;
+            endif;
+        endif;
+        if i% = 0 then
+            '		PrintLog("TuningCurveAreaDialog - user hit Cancel\n");
+            tunType$ := tunTypeNone$;
+            if tunContext$ = tunContextDAQ$ then
+                iReturn% := 1;
+            else
+                iReturn% := 2;
+            endif;
+        endif;
+        
+    else  'Run Baker's Dozen dialog
+        GetTuningCurveBakersDozenParameters();
+        DlgCreate("Run Baker's Dozen Tuning Curve");
+        DlgString(1,40,255,"",3);  'for visual confirmation of selected seq file
+        DlgButton(tundlgSelectTuningFileButton%, " Select Baker's Dozen File ", SelectBakersDozenFile%, 2, 2);
+
+        'DlgAllow(0xffff, 0, TuningCurveGenericDialogChanged%);
+        
+        i% := DlgShow(tunBDTuningFile$);
+        
+        ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+        ' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
+        ' djs 2/4/2011
+        ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+        ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+        ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+        ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+        ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+        ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+        ' before things proceed. 
+        if i% = 1 then
+            SaveTuningCurveBakersDozenParameters();
+            PrintLog("TuningCurveBakersDozenDialog - user hit OK\n");
+            tunType$ := tunTypeBakersDozen$;
+            tunUseFile% := 1;
+            tunBakersDozenFileLoc$ := tunBDTuningFile$;
+            
+            if tunContext$ = tunContextDAQ$ then
+                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+                iReturn% := 1;
+            else
+                iReturn% := 1;
+            endif;
+        endif;
+        if i% = 0 then
+            PrintLog("TuningCurveOrientationDialog - user hit Cancel\n");
+            tunType$ := tunTypeNone$;
+            if tunContext$ = tunContextDAQ$ then
+                iReturn% := 1;
+            else
+                iReturn% := 2;
+            endif;
+        endif;
+        
+    endif;
+    
     
 	return iReturn%;
 end;
@@ -3515,7 +3582,7 @@ func TuningCurveScriptDialog%()
     DlgButton(tundlgBoxODonutsButton%, " Box O' Donuts ", TuningCurveBoxODonutsDialog%, 36, 23);
     DlgButton(tundlgDotsButton%, "     Dots!     ", TuningCurveDotsDialog%, 2, 24);
     DlgButton(tundlgCRGButton%,"      CRaGs      ",TuningCurveCRGDialog%, 18, 24);
-    DlgButton(tundlgDisparityButton%, "      Disparity      ", TuningCurveDisparityDialog%, 36, 24);
+    DlgButton(tundlgDisparityAndBakersDozenButton%, "      Disparity      ", TuningCurveDisparityAndBakersDozenDialog%, 36, 24);
     DlgButton(tundlgDanishButton%, "  Danishes!  ", TuningCurveDanishDialog%, 2, 25);
     DlgButton(tundlgDSSButton%,"        DSS        ",TuningCurveDSSDialog%, 18, 25);
     DlgButton(tundlgNullTestANDLagButton%,"      Null Test     ",TuningCurveNullTestANDLagDialog%, 36, 25);
@@ -3644,8 +3711,8 @@ func TuningCurveScriptDialogChanged%(item%)
     DlgValue$(19,Str$(DlgValue(18)*1000/dataScreenHz));  'just set the text values of the frame to millisecond conversion every time
     DlgEnable(0,19);  'Always disable millisecond conversion, we can't type here to get frame values
     if DlgValue(11) = 0 then  'If single VSG, do not allow Donuts or Berliners or disparity or CRG
-        'DlgEnable(0,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%,-tundlgBoxODonutsButton%,-tundlgCRGButton%,-tundlgDisparityButton%); 'old version
-        DlgEnable(0,-tundlgBerlinerButton%,-tundlgCRGButton%,-tundlgDisparityButton%);  'allow boxOdonuts for single screen now
+        'DlgEnable(0,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%,-tundlgBoxODonutsButton%,-tundlgCRGButton%,-tundlgDisparityAndBakersDozenButton%); 'old version
+        DlgEnable(0,-tundlgBerlinerButton%,-tundlgCRGButton%);  'allow boxOdonuts for single screen now
         'Also disable card synch functions, dual tuning listbox
         DlgEnable(0,12); 'dual tuning listbox
         DlgEnable(0,17); 'constant lag listbox
@@ -3664,12 +3731,14 @@ func TuningCurveScriptDialogChanged%(item%)
         DlgValue$(-tundlgXPosButton%, "XY Position");
         DlgValue$(-tundlgNullTestANDLagButton%, "      Null Test     ");
         DlgValue$(-tundlgDonutANDGonzagoButton%, "      Gonzagos!     ");
+        DlgValue$(-tundlgDisparityAndBakersDozenButton%, "   Baker's Dozen   ");
         tunUseLagDialog% := 0;
         tunUseDonutDialog% := 0;
+        tunUseDisparityDialog% := 0;
     endif;
     if DlgValue(11) = 1 then  'If dual VSG, allow donuts and Berliners and disparity and CRG
-        'DlgEnable(1,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%,-tundlgBoxODonutsButton%,-tundlgCRGButton%,-tundlgDisparityButton%);  'old version
-        DlgEnable(1,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%,-tundlgCRGButton%,-tundlgDisparityButton%);  'allow boxOdonuts for single screen now
+        'DlgEnable(1,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%,-tundlgBoxODonutsButton%,-tundlgCRGButton%,-tundlgDisparityAndBakersDozenButton%);  'old version
+        DlgEnable(1,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%,-tundlgCRGButton%);  'allow boxOdonuts for single screen now
         'Also allow turning off card synch, dual tuning listbox
         DlgEnable(1,12);  'dual tuning listbox
         DlgEnable(1,17); 'constant lag listbox
@@ -3680,6 +3749,7 @@ func TuningCurveScriptDialogChanged%(item%)
         DlgEnable(0,-tundlgDSSButton%);
         'DlgEnable(0,-tundlgNullTestANDLagButton%);  'this is now NullTest/Lag, don't enable/disable
         'Also, change labels on buttons to reflect the binocular aspect of using dual VSG
+        DlgValue$(-tundlgDisparityAndBakersDozenButton%, "   Disparity   ");  'Except disparity
         docase 
         case DlgValue(12) = 0 then
             DlgValue$(-tundlgOrientationButton%, " D Orientation ");
@@ -3711,6 +3781,7 @@ func TuningCurveScriptDialogChanged%(item%)
         endcase;
         tunUseLagDialog% := 1;
         tunUseDonutDialog% := 1;
+        tunUseDisparityDialog% := 1;
     endif;
     if DlgValue(13) = 0 then 'disable maintain mode timing if not using maintain mode
         DlgEnable(0,7);
@@ -3947,6 +4018,23 @@ func SelectTuningFile%()
     
 end;
 
+
+func SelectBakersDozenFile%()
+    'This generic function ought to work for any of the dialogs where we allow the selection of a tuning file
+
+    var status% := 1;
+    var direc$;
+    var fh0%;
+    
+    direc$ := FilePath$();  'get current directory
+    fh0%:=FileOpen(direc$+"*.txt",1,0,"Please select a tuning file");  'Find a tuning file
+    direc$ := FileName$(0);  'Get full path of selected file
+    FileClose(fh0%);  'Just close the file, we're not using it
+    DlgValue$(1,direc$);  'Place filename into dialog item 1 of calling dialog
+
+	return status%;  'return 1 so calling dialog doesn't close
+    
+end;
 
 func TuningCurveGenericDialogChanged%(item%)
     'This single dialog changed function can be used for ALL the tuning dialogs that allow file-based tuning curves
