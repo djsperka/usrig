@@ -194,7 +194,7 @@ endif;
 
 ' When TF/CRG curve, don't do f1 and f2. 
 ' Also Dots. Also Stationary
-if tunType$ = tunTypeTemporal$ or tunType$ = tunTypeCRG$ or tunType$ = tunTypeDots$ or tunSetStationary% = 1 then
+if tunType$ = tunTypeTemporal$ or tunType$ = tunTypeCRG$ or tunType$ = tunTypeDots$ or tunType$ = tunTypeBakersDozen$ or tunSetStationary% = 1 then
     tunDoF12% := 0;
 endif
 
@@ -1631,8 +1631,13 @@ proc TuningCurveLabels(iport%)
         WindowTitle$("Null Test Counterphase Tuning - " + s$);
         XUnits$("Phase (degrees)");
         ChanTitle$(1, "Chan 1");
-        XRange(tunNullTestMinPhase, tunNullTestMaxPhase);        
-        
+        XRange(tunNullTestMinPhase, tunNullTestMaxPhase);   
+    
+    case tunType$ = tunTypeBakersDozen$ then
+        WindowTitle$("Baker's Dozen: NO Tuning - " + s$);
+        XUnits$("No Tuning");
+        ChanTitle$(1, "Chan 1");
+        XRange(0, 100); 
         
     else
         
@@ -1666,7 +1671,7 @@ proc CreateSampleConfiguration()
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
     
     'read tuning file, if one is specified
-    if tunUseFile% = 1 then
+    if tunUseFile% = 1 and tunType$ <> tunTypeBakersDozen$ then
         eof%:=1;
         readsetup(",","	 ","","","	");  'Standard read setup
         FileOpen(tunTuningFile$,8,0);  'open specified file
@@ -3795,7 +3800,7 @@ func Start%()
         var numRead%;
         
         ReadSetup(Chr$(7),Chr$(7));  'Setting hard/soft separators to nonsense "bell" character so no sepaarator will be found, empty 3/4 arg defaults to string delimited by double quotes
-        
+    
         FileOpen(tunBakersDozenFileLoc$,8,0);  'Open user-generated file, is NOT command-line ready
         
         'Ensure format of user-generated file seems legit
