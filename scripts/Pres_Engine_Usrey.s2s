@@ -25,16 +25,16 @@
 '==================================== Very Variable Variables ============================
 var ThisVersion$ := "vUsrey";  'Usrey, adapting for use in Usrey Lab
 '===================================== Included Files ====================================
-'#include "TransStair.s2s"
-'#include "GetDrivePath.s2s"
-'#include "RegistryUtils.s2s"
-#include "../../../Sutter_Stuff/experiments/ced_scripts/TransStair.s2s"  'BigAl
-#include "../../../Sutter_Stuff/experiments/ced_scripts/GetDrivePath.s2s"  'BigAl
-'#include "../../../Sutter_Stuff/experiments/ced_scripts/RegistryUtils.s2s"    'These are 100% duplicated in the Usrey includes, which are necessary, so just dump them from here
 
-'#include "../../../experiments/ced_scripts/TransStair.s2s"  'Seager
-'#include "../../../experiments/ced_scripts/GetDrivePath.s2s"  'Seager
-'#include "../../../experiments/ced_scripts/RegistryUtils.s2s"  'Seager
+
+    '#include "../../../Sutter_Stuff/experiments/ced_scripts/TransStair.s2s"  'BigAl
+    '#include "../../../Sutter_Stuff/experiments/ced_scripts/GetDrivePath.s2s"  'BigAl
+
+    #include "../../../experiments/ced_scripts/TransStair.s2s"  'Seager
+    #include "../../../experiments/ced_scripts/GetDrivePath.s2s"  'Seager
+
+
+
 
 
 '===================================== Global Variables ==================================
@@ -266,7 +266,7 @@ if 1 then  'VAR declarations are folded below
     var ContinuousRove;       'If non-zero, do continuous rove uniformly at 0.1 dB intervals between +-ContinuousRove
     var OverallPSTHType%;     'If 0, use all stimuli in overall PSTH.  If 1, split by AM, collapse across BW.  If 2 split by BW, collapse across AM
     var PA5Absent%;           'If 1, PA5 is missing, do all attenuation possible with software attenuation
-    
+    var HBCycle%;             'Heartbeat cycle
     
 	'===== Trial Sequence Variables =====
     var StimOrder$[NMaxTrials%][10];   'A matrix of stimulus letters, trials in rows, stims to be concatenated in columns
@@ -759,6 +759,7 @@ if 1 then  'VAR declarations are folded below
     var iEyePosChannel%:=1;  '1 is the correct channel for the XY data
     var iFixWindowChannel%;  'channel for displaying the fixation window
     var iFixChannel%;  'channel for displaying the fixation point
+    var iMonitorChannel%;  'channel for displaying the monitor position
     var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
     var windowX[36], windowY[36];
     var joystickXOffset; 'use registry?  
@@ -820,9 +821,12 @@ endif;  'Just bookending the VAR declarations to allow folding them away
 
 '=============================== Preliminary Actions =================================
 
-'#include "zTools.s2s"
-#include "../../../Sutter_Stuff/experiments/ced_scripts/zTools.s2s"  'BigAl
-'#include "../../../experiments/ced_scripts/zTools.s2s"  'Seager
+
+    '#include "../../../Sutter_Stuff/experiments/ced_scripts/zTools.s2s"  'BigAl
+
+    #include "../../../experiments/ced_scripts/zTools.s2s"  'Seager
+
+
 
 
 'These #include files have to point to the correct location, and since we will NOT be keeping this in 
@@ -870,6 +874,43 @@ ok% := filecopy(OnlineDir$+"empty_file.txt",OnlineDir$+"matlab_done.txt"); 'asse
 
 'Create hidden log window, for printing to output log file, must do this before trying to write to window...
 HiddenLogHandle% := FileNew(1);  'open the log window invisibly
+
+
+
+'Define and set channel numbers as in TUNING
+'Some of this stuff is unnecessary, just ripped from TUNING wholesale
+var XChannel%;
+var YChannel%;
+var FrameChannel%;
+var FixationPointChannel%;
+var StimChannel%;
+var ReadyChannel%;
+var OptoCopyChannel%;
+'var SequencerPeriodMS;
+var ButtonChannel%;
+var ButtonPort%;
+var StimulatorChannel%;
+var UtilityChannel%;
+var JoyChannel%;
+
+XChannel% := 25;
+YChannel% := 26;
+JoyChannel% := 28;
+ReadyChannel% := 40;
+FrameChannel% := 41;
+FixationPointChannel% := 42;
+StimChannel% := 43;
+OptoCopyChannel% := 49;
+StimulatorChannel% := 39;
+UtilityChannel% := 38;
+ButtonChannel% := 27;
+ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
+
+
+
+
+
 
 
 '======= Toolbar - Program stays in Toolbar and iterates Main%() until Quit%() =======
@@ -1254,8 +1295,11 @@ func LoadParam%()
 	'Change StimLength to seconds
     ArrDiv(Stimlength,SampleRate);
     
+    
+    
 	'Set a default value for SolenoidOpenDur just in case there is a programming error later we don't lock the solenoid
-    SolenoidOpenDur% := PayHVal;
+    'SolenoidOpenDur% := PayHVal;
+    SolenoidOpenDur% := JuiceRewardMS%;  'allows us to use value from CONFIG - NOTE that the old solenoid type is not supported, but we don't have any of those left I don't think
     
 	'check that TOFactors do not decrement
     if LazyTOFactor < 1 or ReleaseTOFactor < 1 then
@@ -1267,21 +1311,21 @@ func LoadParam%()
         message("Warning!  Lazy/ReleaseTOMax is less than the original penalty!");
     endif;
     
-	'Make sure that the PayVals (solenoid open durations) are not invalid
-    SOMax := max(PayHVal,PayCRVal,PayMVal,PayFAVal,PayPTVal,PayPNTVal);
-    SOMin := min(PayHVal,PayCRVal,PayMVal,PayFAVal,PayPTVal,PayPNTVal);
-    docase
-        case SOMin < 2 then
-		message("All solenoid open durations must be greater than 1 millisecond!");
-        printlog("All solenoid open durations must be greater than 1 millisecond!\n");
-        view(HiddenLogHandle%).print("All solenoid open durations must be greater than 1 millisecond!\r");
-		return ConditionalQuit%();  'Quits if params haven't been loaded, returns otherwise
-        case SOMax > 1999 then
-		message("All solenoid open durations must be less than 1 second!");
-        printlog("All solenoid open durations must be less than 1 second!\n");
-        view(HiddenLogHandle%).print("All solenoid open durations must be less than 1 second!\r");
-		return ConditionalQuit%();  'Quits if params haven't been loaded, returns otherwise
-    endcase;
+	'Make sure that the PayVals (solenoid open durations) are not invalid - these are not used in the Usrey version
+'    SOMax := max(PayHVal,PayCRVal,PayMVal,PayFAVal,PayPTVal,PayPNTVal);
+'    SOMin := min(PayHVal,PayCRVal,PayMVal,PayFAVal,PayPTVal,PayPNTVal);
+'    docase
+'        case SOMin < 2 then
+'		message("All solenoid open durations must be greater than 1 millisecond!");
+'        printlog("All solenoid open durations must be greater than 1 millisecond!\n");
+'        view(HiddenLogHandle%).print("All solenoid open durations must be greater than 1 millisecond!\r");
+'		return ConditionalQuit%();  'Quits if params haven't been loaded, returns otherwise
+'        case SOMax > 1999 then
+'		message("All solenoid open durations must be less than 1 second!");
+'        printlog("All solenoid open durations must be less than 1 second!\n");
+'        view(HiddenLogHandle%).print("All solenoid open durations must be less than 1 second!\r");
+'		return ConditionalQuit%();  'Quits if params haven't been loaded, returns otherwise
+'    endcase;
     
     
 	'calculate MPenalty and FAPenalty, etc., with respect to ITI
@@ -1292,7 +1336,7 @@ func LoadParam%()
         MPenalty := 0;  'ITI will be the sum total of the penalty
     endif;
     '
-    'Note that MPenaltyTUp and MPenaltyTDown do not DO ANYTHING
+    
     if MPenaltyTUp >= MinITI then
         MPenaltyTUp := MPenaltyTUp - MinITI;  'ITI will be added back in at the time of the penalty
     else
@@ -1432,9 +1476,26 @@ func StartSampling%()
     var ii%;  'looping
     var WMSize%;
     var WMPre%;
+    var key$;
     
     DataCollected% := 1;  'note that we have collected data, for Quit%()
-        
+    
+    
+    ' Fetch information about whether we are going to be using two 1401s - for new version that uses CONFIG 
+    UseTwo1401s% := DoWeUseTwo1401s%();
+    if UseTwo1401s% = 1 then
+        message("Use of two 1401s is not implemented for pres_engine_usrey!  Quitting!");
+        halt
+    endif;
+    
+    
+    ' Get number of wavemark ports/continuous ports on the primary 1401
+    ' Note that the info we gather here is basically used for display, which is only done on the primary 1401.  The
+    ' secondary 1401 is kinda humming along passively collecting data and doing nothing else.
+    ' The thing is, the Wavemark info here is used for spike plotting, the continuous info is unused.  OK, maybe it will be useful someday.
+    ' Just freaking keep the "tun" prefix, it's probably easier
+    GetPortsAndNumWMsWFs%(tunNWavemarks%,tunNContinuous%,tunWavemarkPorts%[],tunContinuousPorts%[]);
+    
     'Since the maximum size of the PlayWave buffer is determined the first time we start sampling, there are 
     'issues for loading multiple parameter/trials files.  The problem lies in that later trials files may 
     'specify longer stim sequences than the first trials file, and then overrun the buffer.
@@ -1522,6 +1583,7 @@ func StartSampling%()
         DlgCheck(13,"Verbose: Display Super Detailed Main Loop Info (don't!)");
         DlgCheck(14,"Verbose: Display Detailed Stimulus Load Info");
         DlgCheck(15,"Verbose: Display Detailed Joystick/Lever Info");
+        DlgAllow(0, 0, PresEngDialogChanged%);
         ok% := DlgShow(FilePrefix$,StartTrialInd%,MaxPointSec,dlgLFPValue%,dlgWaveformValue%,dlgJoystickValue%,VerboseStimID%,VerboseAccuracy%,
                        VerboseIncrements%,VerbosePA5%,VerboseTrialTiming%,VerboseMainLoop%,VerboseUberVerbose%, VerboseStimLoad%,VerboseJoyLev%);   
         'Dialog changes FilePrefix$, StartTrialInd%, MaxPointSec, etc.
@@ -1538,9 +1600,10 @@ func StartSampling%()
             ToolbarSet(9, "Verbose is off", ToggleVerbose%);
         endif;
         
-        MonkeyLetter$ := Left$(UCase$(FilePrefix$),1);  'monkey letter is always upper case
+        'MonkeyLetter$ := Left$(UCase$(FilePrefix$),1);  'monkey letter is always upper case
+        MonkeyLetter$ := Left$(UCase$(dataCellName$),3);  'monkey letter is always upper case, this can be multiple letters, for Usrey, there may be multiple monkeys with one letter?
         
-        'set the sampling rates
+        'set the sampling rates, these will be unused
         configLFPSampleRate% := dlgLFPSampleRates%[dlgLFPValue%];
         configWaveformSampleRate% := dlgWaveformSampleRates%[dlgWaveformValue%];
         configJoystickSampleRate% := dlgJoystickSampleRates%[dlgJoystickValue%];
@@ -1587,16 +1650,16 @@ func StartSampling%()
 		'Set MaxPoint%
         MaxPoint% := round(MaxPointSec * SampleRate);  'Calculate MaxPoint%, round is necessary because if MaxPointSec is a multiple of 1.15, there is a weird math fail
         printlog("The max number of points in a stimulus is %d and the maximum duration is %f seconds\n",MaxPoint%,MaxPointSec);
-        printlog("Data file prefix is now %s\n",FilePrefix$);
+        printlog("Data file prefix is now %s\n",dataCellName$);
         printlog("Starting with trial number %d:%d\n",SwitchCurrFile%,CurrTrialIndexList%[SwitchCurrFile%-1]+1);
         view(HiddenLogHandle%).print("The max number of points in a stimulus is %d and the maximum duration is %f seconds\r",MaxPoint%,MaxPointSec);
-        view(HiddenLogHandle%).print("Data file prefix is now %s\r",FilePrefix$);
+        view(HiddenLogHandle%).print("Data file prefix is now %s\r",dataCellName$);
         view(HiddenLogHandle%).print("Starting with trial number %d:%d\r",SwitchCurrFile%,CurrTrialIndexList%[SwitchCurrFile%-1]+1);
         
         
         'check for existence of online files, assume .idx and .spk files will exist together
         FilePathSet(OnlineDir$);  'go to correct directory as FileList doesn't play nicely otherwise
-        NumOfFiles := filelist(list$,-1,FilePrefix$+".idx");
+        NumOfFiles := filelist(list$,-1,dataCellName$+".idx");
         
         if NumOfFiles = 0 then 'files do not exist, we will create them later
             FoundFile := 0;  'will break out of loop
@@ -1616,20 +1679,6 @@ func StartSampling%()
         if NumOfFiles = 1 then 'files exist
             message("A file of that name exists!  Please try again.");
             FoundFile := 1;  'stay in while loop
-            'This was a nice idea, but it's problematic because the .smr file does not allow appending!
-'            q% := query("A file of that name exists!","New Name","Keep This Name");
-'            if q% = 1 then
-'                FoundFile := 1;  'stay in while loop
-'            else
-'                q% := query("Overwrite file or append to file?","Overwrite","Append");
-'                if q% = 1 then 'delete files
-'                    Filedelete(OnlineDir$+FilePrefix$+".idx");  'deletes online index file, if it exists
-'                    Filedelete(OnlineDir$+FilePrefix$+".spk");  'deletes online spike file, if it exists
-'                    FoundFile := 0;  'break out of loop
-'                else
-'                    FoundFile := 0;  'break out of loop, leave files, will naturally be appended
-'                endif;
-'            endif;
         endif;
     wend;
     
@@ -1639,7 +1688,10 @@ func StartSampling%()
     
     'Instead of opening a configuration file, we're going to manually create the configuration
     
-    SampleClear();  'Have to clear out whatever is in there or things like the spike shape waveform dialog come along for the ride.
+    SampleClear(); 'Set standard sampling state
+    SampleChannels(64);  '32 does not work, we need more!
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
     
     'Always create a reward channel
     'SampleEvent(configRewardChannel%,configRewardPort%,2,1);   'this is dual-defined, using memchannel
@@ -1653,187 +1705,236 @@ func StartSampling%()
     SampleAutoName$(dataCellName$ + "_" + "audio" + "_000");  'NOTE: maximum of 13 characters!!!
     SampleAutoFile(1);
     
-    'Create an LFP (EEG) channel if requested
-    if CollectEEG% = 1 then
-        SampleWaveform(configLFPChannel%,configLFPPort%,configLFPSampleRate%);  'up from 2000, should give good values 
-        SampleComment$(configLFPChannel%,"LFP");
-        SampleTitle$(configLFPChannel%,"LFP");
-        if NTrodes% = 1 then
-            SampleWaveform(configTemporaryHighFrequencyLFPChannel%,configTemporaryHighFrequencyLFPPort%,configTemporaryHighFrequencyLFPSampleRate%);  'up from 2000, should give good values 
-            SampleComment$(configTemporaryHighFrequencyLFPChannel%,"HighFreqLFP");
-            SampleTitle$(configTemporaryHighFrequencyLFPChannel%,"HF-LFP");
-        endif;
-        if NTrodes% > 1 then
-            SampleWaveform(configLFPChannel2%,configLFPPort2%,configLFPSampleRate%); 
-            SampleComment$(configLFPChannel2%,"LFP2");
-            SampleTitle$(configLFPChannel2%,"LFP2");
-        endif;
-        if NTrodes% > 2 then
-            SampleWaveform(configLFPChannel3%,configLFPPort3%,configLFPSampleRate%); 
-            SampleComment$(configLFPChannel3%,"LFP3");
-            SampleTitle$(configLFPChannel3%,"LFP3");
-        endif;
-    endif;
-
-    'Create spike waveform and wavemark channel if not behavioral
-    if NTrodes% > 0 then   'was if Behavioral = 0
-        SampleWaveform(configWaveformChannel%,configWaveMarkPort%,configWaveformSampleRate%); 
-        SampleComment$(configWaveformChannel%,"Raw");
-        SampleTitle$(configWaveformChannel%,"Raw");
-        
-        WMSize% := configWaveformSampleRate%/833;  'these will be automatically floored at the division (also assignment) step because of integer math, if rounding is preferred we'll need to set up a float math version
-        WMPre% := configWaveformSampleRate%/2900;
-        
-        SampleWaveMark(configWaveMarkChannel%,configWaveMarkPort%,2000,WMSize%,WMPre%,configWaveformSampleRate%); 
-        'SampleWaveMark(configWaveMarkChannel%,configWaveMarkPort%,2000,60,17,configWaveformSampleRate%);  'old version, with hardcode values
-        SampleComment$(configWaveMarkChannel%,"Units");
-        SampleTitle$(configWaveMarkChannel%,"Units");
-        
-        if NTrodes% > 1 then
-            SampleWaveform(configWaveformChannel2%,configWaveMarkPort2%,configWaveformSampleRate%); 
-            SampleComment$(configWaveformChannel2%,"Raw2");
-            SampleTitle$(configWaveformChannel2%,"Raw2");
-        
-            SampleWaveMark(configWaveMarkChannel2%,configWaveMarkPort2%,2000,WMSize%,WMPre%,configWaveformSampleRate%); 
-            SampleComment$(configWaveMarkChannel2%,"Units2");
-            SampleTitle$(configWaveMarkChannel2%,"Units2");
-        endif;
-        
-        if NTrodes% > 2 then
-            SampleWaveform(configWaveformChannel3%,configWaveMarkPort3%,configWaveformSampleRate%); 
-            SampleComment$(configWaveformChannel3%,"Raw3");
-            SampleTitle$(configWaveformChannel3%,"Raw3");
-        
-            SampleWaveMark(configWaveMarkChannel3%,configWaveMarkPort3%,2000,WMSize%,WMPre%,configWaveformSampleRate%); 
-            SampleComment$(configWaveMarkChannel3%,"Units3");
-            SampleTitle$(configWaveMarkChannel3%,"Units3");
-        endif;
-    endif;
+    SampleTextMark(200);  'Channel 30 is textmark channel
     
-    'Create joystick/lever channels...if joystick create God Button or Motion channels if appropriate
     docase
-    case RespDevice% = 0 then  'create lever channel
-        SampleEvent(configLeverChannel%,configLeverPort%,2,10); 
-        SampleComment$(configLeverChannel%,"Lever");
-        SampleTitle$(configLeverChannel%,"Lever");
-    else  'create joystick channels
-        'X
-        SampleWaveform(configJoyXChannel%,configJoyXPort%,configJoystickSampleRate%); 
-        SampleComment$(configJoyXChannel%,"JoystikX");
-        SampleTitle$(configJoyXChannel%,"JoystikX");
-        'Y
-        SampleWaveform(configJoyYChannel%,configJoyYPort%,configJoystickSampleRate%); 
-        SampleComment$(configJoyYChannel%,"JoystikY");
-        SampleTitle$(configJoyYChannel%,"JoystikY");
-        'Read joystick offsets
-        GetJoystickOffsets(JoystickType%);
-        'Set additional info for joystick channels, notably offset
-        SampleCalibrate(configJoyXChannel%,"volt",1,joystickXOffset);
-        SampleCalibrate(configJoyYChannel%,"volt",1,joystickYOffset);
-        
-        
-        'Create XY view for joystick display
-        joyview% := FileNew(12);  'open an XY window
-        'Create a new channel in the XY view to display the fixation point
-        joydatachan% := XYSetChan(0);
-        XRange(-2.5,2.5);  'set XRange
-        YRange(-2,-2.5,2.5);  'set YRange, all visible channels
-        XYDrawMode(0,5,0);  'turns off automatic axis range mode
-        WindowVisible(1);  'make window visible
-        'Window(75, 55, 100, 100); 'set to lower 16th of screen
-        Window(0, 60, 40, 100); 'trying different position
-        XYColour(joydatachan%,16);  'set a colo(u)r for joydatachan%
-        XYSize(joydatachan%,-1); 'for channel joydatachan%, plot only one point at a time (-1)
-        
-        'draw X axis
-        xaxisdrawchan% := XYSetChan(0);  'create channel to hold data
-        XYColour(xaxisdrawchan%,13);    'set color
-        XYDrawMode(xaxisdrawchan%,2,0);  'set draw mode to make data points invisible
-        XYDrawMode(xaxisdrawchan%,3,1);  'set draw mode to dotted line
-        XYJoin(xaxisdrawchan%,1);   'set join mode to join with line
-        XYAddData(xaxisdrawchan%,-2.5,0);  'add data to extreme ends of X-axis
-        XYAddData(xaxisdrawchan%,2.5,0);
-        
-        'draw Y axis
-        yaxisdrawchan% := XYSetChan(0);  'create channel to hold data
-        XYColour(yaxisdrawchan%,13);    'set color
-        XYDrawMode(yaxisdrawchan%,2,0);  'set draw mode to make data points invisible
-        XYDrawMode(yaxisdrawchan%,3,1);  'set draw mode to dotted line
-        XYJoin(yaxisdrawchan%,1);   'set join mode to join with line
-        XYAddData(yaxisdrawchan%,0,-2.5);  'add data to extreme ends of Y-axis
-        XYAddData(yaxisdrawchan%,0,2.5);
-
-                
-        'check for potential non-lever devices
-        docase
-        case GodButtonExists% = 1 then
-            SampleEvent(configGodChannel%,configGodPort%,2,10); 
-            SampleComment$(configGodChannel%,"Shaping");
-            SampleTitle$(configGodChannel%,"Shaping");
-        case Motion% = 1 then
-            SampleEvent(configMotionChannel%,configMotionPort%,2,10); 
-            SampleComment$(configMotionChannel%,"Motion");
-            SampleTitle$(configMotionChannel%,"Motion");
-        endcase;
+'    case tunDoOpto% = 1 then
+'        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+'        'SampleTitle$(DigitalLaserChannel%,"Laser On");
+'        SampleTitle$(32,"Laser On");  'Digital marker is by definition channel 32
+    case RecordEyeTrackerOutputFile% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
+    endcase
+    
+    docase
+    case tunButtonCollect% = 1 and UtilityPort% > -1 then  'use utility port for button
+'        SampleWaveform(ButtonChannel%,ButtonPort%,10000);  'Giving 0.1 ms resolution for now
+'        SampleComment$(ButtonChannel%,"Raw Button");
+'        SampleTitle$(ButtonChannel%,"Raw Button");
+        SampleWaveform(ButtonChannel%, UtilityPort%, 1000);
+        SampleTitle$(ButtonChannel%,"Button");  'We ought to title the button channel something, right? -jj 9/22/16
+    case tunButtonCollect% = 1 and UtilityPort% = -1 then  'if utility port is undefined, this is an error
+        Message("You must set a UtilityPort in Config->DAQ to use the rivalry button!  Quitting!");
+        halt
+    case UtilityPort% > -1 then  'otherwise, utility port is a utility port
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);        
+        SampleTitle$(UtilityChannel%,UtilityPortLabel$);   
     endcase;
     
-    'For the pure behavioral case (lever, behavioral) set lower fundamental clock rate
-    if RespDevice% = 0 and Behavioral% = 1 then
-        SampleTimePerAdc(2);
-        SampleUsPerTime(50);
-    else  'for all other scenarios set a higher fundamental clock rate
-        SampleTimePerAdc(1);
-        SampleUsPerTime(5);
+    
+    if tunAlwaysLooking% = 0 then
+        SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+        SampleTitle$(XChannel%,EyeXPortLabel$);
+        SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+        SampleTitle$(YChannel%,EyeYPortLabel$);
     endif;
     
+    if JoystickPort% > -1 then
+        printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPort%());
+        SampleWaveform(JoyChannel%, GetJoystickPort%(), 1000);
+        SampleTitle$(JoyChannel%, JoystickPortLabel$);
+    endif
+    
+    '----Set up "spiking" Electrode Channels----
+    'This function will set up standard sampling as well as various pre-set samplings including the Plexon setups
+    SetUpElectrodeConfiguration(numWavemarkPorts%,ExcludedChans%[]);
+    
+    DoSampleOptimise();
+    
+    SampleMode(1); 'Continuous sampling
+    
+    'Create an LFP (EEG) channel if requested
+'    if CollectEEG% = 1 then
+'        SampleWaveform(configLFPChannel%,configLFPPort%,configLFPSampleRate%);  'up from 2000, should give good values 
+'        SampleComment$(configLFPChannel%,"LFP");
+'        SampleTitle$(configLFPChannel%,"LFP");
+'        if NTrodes% = 1 then
+'            SampleWaveform(configTemporaryHighFrequencyLFPChannel%,configTemporaryHighFrequencyLFPPort%,configTemporaryHighFrequencyLFPSampleRate%);  'up from 2000, should give good values 
+'            SampleComment$(configTemporaryHighFrequencyLFPChannel%,"HighFreqLFP");
+'            SampleTitle$(configTemporaryHighFrequencyLFPChannel%,"HF-LFP");
+'        endif;
+'        if NTrodes% > 1 then
+'            SampleWaveform(configLFPChannel2%,configLFPPort2%,configLFPSampleRate%); 
+'            SampleComment$(configLFPChannel2%,"LFP2");
+'            SampleTitle$(configLFPChannel2%,"LFP2");
+'        endif;
+'        if NTrodes% > 2 then
+'            SampleWaveform(configLFPChannel3%,configLFPPort3%,configLFPSampleRate%); 
+'            SampleComment$(configLFPChannel3%,"LFP3");
+'            SampleTitle$(configLFPChannel3%,"LFP3");
+'        endif;
+'    endif;
+
+    'Create spike waveform and wavemark channel if not behavioral
+'    if NTrodes% > 0 then   'was if Behavioral = 0
+'        SampleWaveform(configWaveformChannel%,configWaveMarkPort%,configWaveformSampleRate%); 
+'        SampleComment$(configWaveformChannel%,"Raw");
+'        SampleTitle$(configWaveformChannel%,"Raw");
+'        
+'        WMSize% := configWaveformSampleRate%/833;  'these will be automatically floored at the division (also assignment) step because of integer math, if rounding is preferred we'll need to set up a float math version
+'        WMPre% := configWaveformSampleRate%/2900;
+'        
+'        SampleWaveMark(configWaveMarkChannel%,configWaveMarkPort%,2000,WMSize%,WMPre%,configWaveformSampleRate%); 
+'        'SampleWaveMark(configWaveMarkChannel%,configWaveMarkPort%,2000,60,17,configWaveformSampleRate%);  'old version, with hardcode values
+'        SampleComment$(configWaveMarkChannel%,"Units");
+'        SampleTitle$(configWaveMarkChannel%,"Units");
+'        
+'        if NTrodes% > 1 then
+'            SampleWaveform(configWaveformChannel2%,configWaveMarkPort2%,configWaveformSampleRate%); 
+'            SampleComment$(configWaveformChannel2%,"Raw2");
+'            SampleTitle$(configWaveformChannel2%,"Raw2");
+'        
+'            SampleWaveMark(configWaveMarkChannel2%,configWaveMarkPort2%,2000,WMSize%,WMPre%,configWaveformSampleRate%); 
+'            SampleComment$(configWaveMarkChannel2%,"Units2");
+'            SampleTitle$(configWaveMarkChannel2%,"Units2");
+'        endif;
+'        
+'        if NTrodes% > 2 then
+'            SampleWaveform(configWaveformChannel3%,configWaveMarkPort3%,configWaveformSampleRate%); 
+'            SampleComment$(configWaveformChannel3%,"Raw3");
+'            SampleTitle$(configWaveformChannel3%,"Raw3");
+'        
+'            SampleWaveMark(configWaveMarkChannel3%,configWaveMarkPort3%,2000,WMSize%,WMPre%,configWaveformSampleRate%); 
+'            SampleComment$(configWaveMarkChannel3%,"Units3");
+'            SampleTitle$(configWaveMarkChannel3%,"Units3");
+'        endif;
+'    endif;
+    
+    'Create joystick/lever channels...if joystick create God Button or Motion channels if appropriate
+'    docase
+'    case RespDevice% = 0 then  'create lever channel
+'        SampleEvent(configLeverChannel%,configLeverPort%,2,10); 
+'        SampleComment$(configLeverChannel%,"Lever");
+'        SampleTitle$(configLeverChannel%,"Lever");
+'    else  'create joystick channels
+'        'X
+'        SampleWaveform(configJoyXChannel%,configJoyXPort%,configJoystickSampleRate%); 
+'        SampleComment$(configJoyXChannel%,"JoystikX");
+'        SampleTitle$(configJoyXChannel%,"JoystikX");
+'        'Y
+'        SampleWaveform(configJoyYChannel%,configJoyYPort%,configJoystickSampleRate%); 
+'        SampleComment$(configJoyYChannel%,"JoystikY");
+'        SampleTitle$(configJoyYChannel%,"JoystikY");
+'        'Read joystick offsets
+'        GetJoystickOffsets(JoystickType%);
+'        'Set additional info for joystick channels, notably offset
+'        SampleCalibrate(configJoyXChannel%,"volt",1,joystickXOffset);
+'        SampleCalibrate(configJoyYChannel%,"volt",1,joystickYOffset);
+'        
+'        
+'        'Create XY view for joystick display
+'        joyview% := FileNew(12);  'open an XY window
+'        'Create a new channel in the XY view to display the fixation point
+'        joydatachan% := XYSetChan(0);
+'        XRange(-2.5,2.5);  'set XRange
+'        YRange(-2,-2.5,2.5);  'set YRange, all visible channels
+'        XYDrawMode(0,5,0);  'turns off automatic axis range mode
+'        WindowVisible(1);  'make window visible
+'        'Window(75, 55, 100, 100); 'set to lower 16th of screen
+'        Window(0, 60, 40, 100); 'trying different position
+'        XYColour(joydatachan%,16);  'set a colo(u)r for joydatachan%
+'        XYSize(joydatachan%,-1); 'for channel joydatachan%, plot only one point at a time (-1)
+'        
+'        'draw X axis
+'        xaxisdrawchan% := XYSetChan(0);  'create channel to hold data
+'        XYColour(xaxisdrawchan%,13);    'set color
+'        XYDrawMode(xaxisdrawchan%,2,0);  'set draw mode to make data points invisible
+'        XYDrawMode(xaxisdrawchan%,3,1);  'set draw mode to dotted line
+'        XYJoin(xaxisdrawchan%,1);   'set join mode to join with line
+'        XYAddData(xaxisdrawchan%,-2.5,0);  'add data to extreme ends of X-axis
+'        XYAddData(xaxisdrawchan%,2.5,0);
+'        
+'        'draw Y axis
+'        yaxisdrawchan% := XYSetChan(0);  'create channel to hold data
+'        XYColour(yaxisdrawchan%,13);    'set color
+'        XYDrawMode(yaxisdrawchan%,2,0);  'set draw mode to make data points invisible
+'        XYDrawMode(yaxisdrawchan%,3,1);  'set draw mode to dotted line
+'        XYJoin(yaxisdrawchan%,1);   'set join mode to join with line
+'        XYAddData(yaxisdrawchan%,0,-2.5);  'add data to extreme ends of Y-axis
+'        XYAddData(yaxisdrawchan%,0,2.5);
+'
+'                
+'        'check for potential non-lever devices
+'        docase
+'        case GodButtonExists% = 1 then
+'            SampleEvent(configGodChannel%,configGodPort%,2,10); 
+'            SampleComment$(configGodChannel%,"Shaping");
+'            SampleTitle$(configGodChannel%,"Shaping");
+'        case Motion% = 1 then
+'            SampleEvent(configMotionChannel%,configMotionPort%,2,10); 
+'            SampleComment$(configMotionChannel%,"Motion");
+'            SampleTitle$(configMotionChannel%,"Motion");
+'        endcase;
+'    endcase;
+    
+    'For the pure behavioral case (lever, behavioral) set lower fundamental clock rate
+'    if RespDevice% = 0 and Behavioral% = 1 then
+'        SampleTimePerAdc(2);
+'        SampleUsPerTime(50);
+'    else  'for all other scenarios set a higher fundamental clock rate
+'        SampleTimePerAdc(1);
+'        SampleUsPerTime(5);
+'    endif;
+    
     'If monitoring fixation, create appropriate channels and window
-    if DoFixation% > 0 then
-        if configEyeXPort% = 1000 then
-            message("configEyeXPort and configEyeYPort need to be set to the appropriate input ports!  Quitting!");
-            view(HiddenLogHandle%).print("\rQuitting because configEyeXPort and configEyeYPort have not been set!\r");
-            quit%();
-        endif;
-        
-        SampleWaveform(configEyeXChannel%, configEyeXPort%, 1000);
-        SampleTitle$(configEyeXChannel%,"Eye X");
-        SampleWaveform(configEyeYChannel%, configEyeYPort%, 1000);
-        SampleTitle$(configEyeYChannel%, "Eye Y");
-        
-        'Open an XY view to display eye position
-        EyeXYWindow% := FileNew(12);
-        XRange(-15,15);
-        YRange(-2,-15,15);
-        XYDrawMode(0,5,0);
-        WindowVisible(1);
-        Window(0, 0, 50, 50);
-        XYSize(iEyePosChannel%, -1);
-        XYColour(iEyePosChannel%, 16);
-        
-        'Calcuate the fixation window
-        var index%;
-        var twopi;
-        twopi := 2.0*4.0*ATan(1.0);
-        
-        for index% := 0 to 35 do
-            FixWindowX[index%] := FixWindowRadius * Cos(index% * twopi/36.0);
-            FixWindowY[index%] := FixWindowRadius * Sin(index% * twopi/36.0);
-        next;
-        
-        'Create a new channel in the XY view to display the fixation window
-        iFixWindowChannel% := XYSetChan(0);
-        XYColour(iFixWindowChannel%, 13);
-        XYDrawMode(iFixWindowChannel%, 2, 1);
-        XYJoin(iFixWindowChannel%, 1);
-        
-        'Create a new channel in the XY view to display the fixation point
-        iFixChannel% := XYSetChan(0);
-        
-    endif;
+'    if DoFixation% > 0 then
+'        if configEyeXPort% = 1000 then
+'            message("configEyeXPort and configEyeYPort need to be set to the appropriate input ports!  Quitting!");
+'            view(HiddenLogHandle%).print("\rQuitting because configEyeXPort and configEyeYPort have not been set!\r");
+'            quit%();
+'        endif;
+'        
+'        SampleWaveform(configEyeXChannel%, configEyeXPort%, 1000);
+'        SampleTitle$(configEyeXChannel%,"Eye X");
+'        SampleWaveform(configEyeYChannel%, configEyeYPort%, 1000);
+'        SampleTitle$(configEyeYChannel%, "Eye Y");
+'        
+'        'Open an XY view to display eye position
+'        EyeXYWindow% := FileNew(12);
+'        XRange(-15,15);
+'        YRange(-2,-15,15);
+'        XYDrawMode(0,5,0);
+'        WindowVisible(1);
+'        Window(0, 0, 50, 50);
+'        XYSize(iEyePosChannel%, -1);
+'        XYColour(iEyePosChannel%, 16);
+'        
+'        'Calcuate the fixation window
+'        var index%;
+'        var twopi;
+'        twopi := 2.0*4.0*ATan(1.0);
+'        
+'        for index% := 0 to 35 do
+'            FixWindowX[index%] := FixWindowRadius * Cos(index% * twopi/36.0);
+'            FixWindowY[index%] := FixWindowRadius * Sin(index% * twopi/36.0);
+'        next;
+'        
+'        'Create a new channel in the XY view to display the fixation window
+'        iFixWindowChannel% := XYSetChan(0);
+'        XYColour(iFixWindowChannel%, 13);
+'        XYDrawMode(iFixWindowChannel%, 2, 1);
+'        XYJoin(iFixWindowChannel%, 1);
+'        
+'        'Create a new channel in the XY view to display the fixation point
+'        iFixChannel% := XYSetChan(0);
+'        
+'    endif;
     
     
     'Turn off optimization to mimic config files, because no optimization was being done
-    SampleOptimise(0,1,2);  'Set optimise mode (do this last)
-	SampleMode(1); 'Continuous sampling
+'    SampleOptimise(0,1,2);  'Set optimise mode (do this last)
+'	SampleMode(1); 'Continuous sampling
     
     '''End sampling configuration'''
     
@@ -1891,6 +1992,52 @@ func StartSampling%()
         endif;
     wend;
     
+    Window(0,48,50,95);
+    XRange(0, 30);
+	View(ctview%).WindowVisible(1);
+    
+    'Open an XY view to display eye position
+	EyeXYWindow% := FileNew(12);
+	XRange(-30,30);
+	YRange(-2,-30,30);
+	XYDrawMode(0,5,0);
+	WindowVisible(1);
+	Window(0, 0, 50, 47);
+	XYColour(1,16);
+	XYSize(1,-1);
+    
+    'Calcuate the fixation window
+	var index%;
+	var twopi;
+	twopi := 2.0*4.0*ATan(1.0);
+	
+	for index% := 0 to 35 do
+		FixWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
+		FixWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
+	next;
+    
+    
+    'Create a new channel in the XY view to display the fixation window
+	iFixWindowChannel% := XYSetChan(0);
+	XYColour(2,13);
+	XYDrawMode(2,2,1);
+	XYJoin(2,1);
+	'Draw the fixation window
+	XYAddData(2, FixWindowX[], FixWindowY[]);
+
+	'Create a new channel in the XY view to display the fixation point
+	iFixChannel% := XYSetChan(0);
+
+	'Create a new channel in the XY view to show the monitor's location
+	iMonitorChannel% := XYSetChan(0);
+	XYColour(4,13);
+	XYDrawMode(4,3,1);
+	XYJoin(4,2);
+	XYAddData(4,-9,-7);
+	XYAddData(4,9,-7);
+	XYAddData(4,9,7);
+	XYAddData(4,-9,7);
+    
     
     
 	'Get AD Conversion Rate, Seconds Per Sample
@@ -1899,8 +2046,8 @@ func StartSampling%()
     SecPerSample := TimePerADC*UsPerTime/1000000;
     
 	'Title and resize data window
-    WindowTitle$(FilePrefix$);  
-    Window(0,0,100,30);
+    WindowTitle$(dataCellName$);  
+    'Window(0,0,100,30);
     
     frontview(loghandle());  'bring logwindow to front and resize it
     if Behavioral% = 1 then
@@ -1918,7 +2065,7 @@ func StartSampling%()
     frontview(ctview%);		 'bring data window back to front
     
 	'Show Sampling Controls only if we're collecting physiological data
-    if NTrodes%  > 0 then  
+    if tunNWavemarks%  > 0 then  
         view(SampleHandle(1)).WindowVisible(1); 'Sampling Controls take over system - nothing happens until
         'Sample Data is clicked on the Sampling Controls
     endif;
@@ -1933,6 +2080,7 @@ func StartSampling%()
     ChanTitle$(MemChanStart%,"TrialStart"); 'Give it a title
     chanshow(MemChanStim%,MemChanRw%,MemChanStart%); 'show these three channels
     
+    'Doesn't really matter how to set these up as the animal won't be responding - no Auditory task in Usrey lab!
     if RespDevice% = 0 then  'if physical device is lever
         MemChanLeverDebounce% := MemChan(8,25); 'Create textmark channel for debounced lever with attached lever value, 25 characters
         ChanTitle$(MemChanLeverDebounce%,"DBLever");  'Give it a title
@@ -1956,7 +2104,7 @@ func StartSampling%()
     endif;
     
     'if Behavioral% = 0 then  'create channels to trigger histograms, only if recording, make these for up to three electrodes
-    if NTrodes% > 0 then
+    if tunNWavemarks% > 0 then
         MemChanHistTrigger% := MemChan(8, 25); 'Create textmarker channel for stimname/frequency, all trials
         ChanTitle$(MemChanHistTrigger%,"TestStimStart"); 'give it a title
         chanhide(MemChanHistTrigger%);  'hide it
@@ -1998,20 +2146,20 @@ func StartSampling%()
     
 	'Show channels
     'chanshow(30);  'show channel 30 (textmark)
-    chanshow(configWaveMarkChannel%,configWaveMarkChannel2%,configWaveMarkChannel3%);  'always show spike channels
-    chanshow(configRewardChannel%,31);   'always show reward and keyboard
-    if RespDevice% = 0 then  'if physical device is lever
-        chanshow(configLeverChannel%);  'if it's a "lever" scenario, show lever channel 
-    else  'if physical device is joystick
-        chanshow(configJoyXChannel%,configJoyYChannel%);  'if it's a "joystick" scenario, show X and Y joystick channels
-    endif;
-    if CollectEEG% = 1 then 'If it's a recording EEG, show it
-        chanshow(configLFPChannel%,configLFPChannel2%,configLFPChannel2%);
-    endif;
-    chanhide(configWaveformChannel%,configWaveformChannel2%,configWaveformChannel3%);  'hide the waveform channels
-    Drawmode(configWaveMarkChannel%,2);   'sets drawing mode of WaveMark 1 (spikes) to Lines
-    Drawmode(configWaveMarkChannel2%,2);   'sets drawing mode of WaveMark 2 (spikes) to Lines
-    Drawmode(configWaveMarkChannel3%,2);   'sets drawing mode of WaveMark 3 (spikes) to Lines
+'    chanshow(configWaveMarkChannel%,configWaveMarkChannel2%,configWaveMarkChannel3%);  'always show spike channels
+'    chanshow(configRewardChannel%,31);   'always show reward and keyboard
+'    if RespDevice% = 0 then  'if physical device is lever
+'        chanshow(configLeverChannel%);  'if it's a "lever" scenario, show lever channel 
+'    else  'if physical device is joystick
+'        chanshow(configJoyXChannel%,configJoyYChannel%);  'if it's a "joystick" scenario, show X and Y joystick channels
+'    endif;
+'    if CollectEEG% = 1 then 'If it's a recording EEG, show it
+'        chanshow(configLFPChannel%,configLFPChannel2%,configLFPChannel2%);
+'    endif;
+'    chanhide(configWaveformChannel%,configWaveformChannel2%,configWaveformChannel3%);  'hide the waveform channels
+'    Drawmode(configWaveMarkChannel%,2);   'sets drawing mode of WaveMark 1 (spikes) to Lines
+'    Drawmode(configWaveMarkChannel2%,2);   'sets drawing mode of WaveMark 2 (spikes) to Lines
+'    Drawmode(configWaveMarkChannel3%,2);   'sets drawing mode of WaveMark 3 (spikes) to Lines
     
 	'Start sampling
     samplemode(1);   'sets continuous recording
@@ -2025,12 +2173,21 @@ func StartSampling%()
     'SafeSampleKeySutter%("B");  'turn on LED and incandescent simultaneously
     SafeSampleKeySutter%("K");	'close solenoid if it's open!!
     if ContReinfDelay >= 0 then
-        SafeSampleKeySutter%("I");  'turn on incandescent if we're doing continuous reinforcement
+        'SafeSampleKeySutter%("I");  'turn on incandescent if we're doing continuous reinforcement
     endif;
+    
+    'If we are asking the eyetracker to record an output file, open the file and start recording
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKeySutter%("I");  'Open the file (this is done by setting a DIGLOW bit), file name will be saved in a sampletext
+        yield(0.5);
+        SafeSampleKeySutter%("W");  'Begin recording the file
+        yield(0.5);
+        RecordEyeTrackerOutputFile% := 2;  'This allows us to easily run the timing pulses once
+    endif
     
     
 	'Open spike shape waveform window if physiological experiment
-    if Behavioral% = 0 then
+    if tunNWavemarks% > 0 then
         ssopen(1,1);  'opens a visible spike shape waveform window
         SSButton(12, 0);  'sets size of displayed templates to small
         window(0,60,50,100);  'resize new wavemark template window
@@ -2410,6 +2567,20 @@ func Main%()
         
         Now := view(ctview%).maxtime();  'Get current time, every time
         
+        'Send eyetracker file pulses once
+        if Now > 0.001 and RecordEyeTrackerOutputFile% = 2 then
+            'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+            SafeSampleKeySutter%("1");
+            yield(0.2);
+            SafeSampleKeySutter%("1");
+            yield(0.2);
+            SafeSampleKeySutter%("1");
+            yield(0.2);
+            SafeSampleKeySutter%("1");
+            yield(0.2);
+            RecordEyeTrackerOutputFile% := 1;  'Don't send eyetracker file pulses again
+        endif;
+        
         'Update the joystick plot every 5 ms
         if RespDevice% <> 0 and Now-tLastJoyUpdate > .005 then
             XJoy := View(ctview%).ChanMeasure(configJoyXChannel%,2,Now-.001,Now-.006);
@@ -2449,7 +2620,8 @@ func Main%()
                         RewardCount% := 1;  'Give one reward
                         GBRew% := 1; 'indicate God Button reward
                         RewardTime := GodButtonTime;  'and do it immediately
-                        SolenoidOpenDur% := PayHVal;  'and set it for delivery as specified by Hit value
+                        'SolenoidOpenDur% := PayHVal;  'and set it for delivery as specified by Hit value
+                        SolenoidOpenDur% := JuiceRewardMS%;
                     endif;
                     GodButtonPrev% := GodButton%;              'Record current state/time of last press of God Button
                     GodButtonTimePrev := GodButtonTime;
@@ -2764,7 +2936,8 @@ func Main%()
                         ChangeThresh(1,1,0,0);        
                     endcase;
                     NextReinfTime := RewardTime + ITI + PayHVal/1000;  'Calculate time next trial should start
-                    SolenoidOpenDur% := PayHVal;  'and set it for delivery as specified by Hit value
+                    'SolenoidOpenDur% := PayHVal;  'and set it for delivery as specified by Hit value
+                    SolenoidOpenDur% := JuiceRewardMS%;
                     ContReinfDelay := ContReinfDelay + ContReinfDelayInc;  'Extend delay on correct trial
                     UpdateITI();
                     if ContReinfDelay > ContReinfDelayMax then
@@ -2981,6 +3154,31 @@ func Main%()
                 AllowMainLoopVerbose% := 0;  'Don't repeat this 
             endif;
             if Now >= NextTrialTime then 'if it is time for the next trial, begin trial
+                 'put timing marker in both eyetracker file, smr file
+                    if RecordEyeTrackerOutputFile% = 1 then
+                        'SafeSampleKey("1");
+                        docase
+                        case HBCycle% = 1 then
+                            SafeSampleKey("1");
+                        case HBCycle% = 2 then
+                            SafeSampleKey("2");
+                        case HBCycle% = 3 then
+                            SafeSampleKey("3");
+                        case HBCycle% = 4 then
+                            SafeSampleKey("4");
+                        case HBCycle% = 5 then
+                            SafeSampleKey("5");
+                        case HBCycle% = 6 then
+                            SafeSampleKey("6");
+                        case HBCycle% = 7 then
+                            SafeSampleKey("7");
+                        endcase
+                        HBCycle% += 1;  'increment HBCycle%
+                        if HBCycle% = 8 then  'and cycle when necessary
+                            HBCycle% := 1;
+                        endif
+                        yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
+                    endif;   
                 ChangeStateTo(StateBeginPassiveTrial%, Now, 0);
             endif; 
             'Allow pause here
@@ -3134,7 +3332,8 @@ func Main%()
                 RewardTime := StimDoneTime + RewardDelay;
                 if RewardCount% > 0 then 'add RewardDelay to NextTrialTime if reward will be given
                     NextTrialTime := NextTrialTime + RewardDelay;
-                    SolenoidOpenDur% := PayPassVal;
+                    'SolenoidOpenDur% := PayPassVal;
+                    SolenoidOpenDur% := JuiceRewardMS%;
                     ChangeStateTo(StateReward%, StimDoneTime, 1);
                 else
                     if NothingToLoad% = 1 then  'if all stimuli are finished, get ready to quit
@@ -3164,7 +3363,32 @@ func Main%()
                     CueLights("off",CurrentCueLights$,"same");  'Turn off house light, leave cue lights (cue lights should already be off)
                 endif;
             else
-                if Now >= NextTrialTime then 'if it is time for the next trial, begin trial
+                    if Now >= NextTrialTime then 'if it is time for the next trial, begin trial
+                        'put timing marker in both eyetracker file, smr file
+                        if RecordEyeTrackerOutputFile% = 1 then
+                            'SafeSampleKey("1");
+                            docase
+                            case HBCycle% = 1 then
+                                SafeSampleKey("1");
+                            case HBCycle% = 2 then
+                                SafeSampleKey("2");
+                            case HBCycle% = 3 then
+                                SafeSampleKey("3");
+                            case HBCycle% = 4 then
+                                SafeSampleKey("4");
+                            case HBCycle% = 5 then
+                                SafeSampleKey("5");
+                            case HBCycle% = 6 then
+                                SafeSampleKey("6");
+                            case HBCycle% = 7 then
+                                SafeSampleKey("7");
+                            endcase
+                            HBCycle% += 1;  'increment HBCycle%
+                            if HBCycle% = 8 then  'and cycle when necessary
+                                HBCycle% := 1;
+                            endif
+                            yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
+                        endif;
                     ChangeStateTo(StateBeginActiveTrial%, Now, 1);
                 endif;
             endif;
@@ -4123,7 +4347,8 @@ func Main%()
                         RewardCount% := 1;
                     endif;
                     RewardTime := StimDoneTime + RewardDelay;
-                    SolenoidOpenDur% := PayHVal;  'Just set the open duration to the hit value
+                    'SolenoidOpenDur% := PayHVal;  'Just set the open duration to the hit value
+                    SolenoidOpenDur% := JuiceRewardMS%;
                     SolenoidOpenDurFloat := SolenoidOpenDur%;  'have to convert to a float 
                     NextTrialTime := RewardTime + SolenoidOpenDurFloat/1000 + ITI;
                     StimulusLoaded% := 0; 'Now indicate that the stimulus must be loaded (here we load during the ITI rather than the stim.
@@ -7056,7 +7281,8 @@ proc TrialResultGoNoGo()
         'values of rewards
     case TargetResponse% = 1 and TargVar%[CurrTrialIndex%] > 0 and TargVar%[CurrTrialIndex%] < 8 then 'HIT
         RandReward(PayHProb,TargVar%[CurrTrialIndex%]);  'will calculate reward status, number of rewards
-        SolenoidOpenDur% := CalcPayVal%(PayHVal,1);  'Reward value, bias term is positive for "go"
+        'SolenoidOpenDur% := CalcPayVal%(PayHVal,1);  'Reward value, bias term is positive for "go"
+        SolenoidOpenDur% := JuiceRewardMS%;
         if RepeatOnError% = 1 then
             HitsR := UpdateBehavVal(HitsR);  'allows us to deal with increment AND StimIsRepeating%
             UpdateBehavVal2(NonRepeatedTrialCount%,HitsNR%[]);
@@ -7081,7 +7307,8 @@ proc TrialResultGoNoGo()
         
     case TargetResponse% = 1 and TargVar%[CurrTrialIndex%] = 0 then 'FALSE ALARM
         RandReward(PayFAProb,1);  'if rewarding on FA, only reward once
-        SolenoidOpenDur% := PayFAVal;  'Reward value
+        'SolenoidOpenDur% := PayFAVal;  'Reward value
+        SolenoidOpenDur% := 0;
         FalseAlarm% := 1;  'Note that it was a false alarm
         if RepeatOnError% = 1 then
             FAsR := UpdateBehavVal(FAsR);  'allows us to deal with increment AND StimIsRepeating%
@@ -7103,7 +7330,8 @@ proc TrialResultGoNoGo()
         
     case TargetResponse% = 0 and TargVar%[CurrTrialIndex%] = 0 then 'CORRECT REJECTION
         RandReward(PayCRProb,NumHitsCR%);  'Calculate reward, give number based on CR value
-        SolenoidOpenDur% := CalcPayVal%(PayCRVal,-1);  'Reward value, bias term is negative for "no-go"
+        'SolenoidOpenDur% := CalcPayVal%(PayCRVal,-1);  'Reward value, bias term is negative for "no-go"
+        SolenoidOpenDur% := JuiceRewardMS%;
         if RepeatOnError% = 1 then
             CRsR := UpdateBehavVal(CRsR);  'allows us to deal with increment AND StimIsRepeating%
             UpdateBehavVal2(NonRepeatedTrialCount%,CRsNR%[]);
@@ -7124,7 +7352,8 @@ proc TrialResultGoNoGo()
         
     case TargetResponse% = 0 and TargVar%[CurrTrialIndex%] > 0 and TargVar%[CurrTrialIndex%] < 8 then 'MISS
         RandReward(PayMProb,1); 'If paying on miss, only give one reward
-        SolenoidOpenDur% := PayMVal;  'Reward value
+        'SolenoidOpenDur% := PayMVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1;  'Note that it was a Miss
         if RepeatOnError% = 1 then
             MissesR := UpdateBehavVal(MissesR);  'allows us to deal with increment AND StimIsRepeating%
@@ -7147,7 +7376,8 @@ proc TrialResultGoNoGo()
         
     case TargetResponse% = 1 and TargVar%[CurrTrialIndex%] = 8 then 'PROBE 1 TARGET RESPONSE
         RandReward(PayPTProb,1);  'if paying on probe, only give one reward
-        SolenoidOpenDur% := PayPTVal;  'Reward value
+        'SolenoidOpenDur% := PayPTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         if RepeatOnError% = 1 then
             PoTsR := UpdateBehavVal(PoTsR);  'allows us to deal with increment AND StimIsRepeating%
             TrialResult$ := "P1Tr";
@@ -7162,7 +7392,8 @@ proc TrialResultGoNoGo()
         
     case TargetResponse% = 0 and TargVar%[CurrTrialIndex%] = 8 then 'PROBE 1 NONTARGET RESPONSE
         RandReward(PayPNTProb,1); 'if paying on probe, only give one reward
-        SolenoidOpenDur% := PayPNTVal;  'Reward value
+        'SolenoidOpenDur% := PayPNTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         if RepeatOnError% = 1 then
             PoNTsR := UpdateBehavVal(PoNTsR);  'allows us to deal with increment AND StimIsRepeating%
             TrialResult$ := "P1NTr";
@@ -7177,7 +7408,8 @@ proc TrialResultGoNoGo()
         
     case TargetResponse% = 1 and TargVar%[CurrTrialIndex%] = 9 then 'PROBE 2 TARGET RESPONSE
         RandReward(PayPTProb,1);  'if paying on probe, only give one reward
-        SolenoidOpenDur% := PayPTVal;  'Reward value
+        'SolenoidOpenDur% := PayPTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         if RepeatOnError% = 1 then
             PtTsR := UpdateBehavVal(PtTsR);  'allows us to deal with increment AND StimIsRepeating%
             TrialResult$ := "P2Tr";
@@ -7192,7 +7424,8 @@ proc TrialResultGoNoGo()
         
     case TargetResponse% = 0 and TargVar%[CurrTrialIndex%] = 9 then 'PROBE 2 NONTARGET RESPONSE
         RandReward(PayPNTProb,1); 'if paying on probe, only give one reward
-        SolenoidOpenDur% := PayPNTVal;  'Reward value
+        'SolenoidOpenDur% := PayPNTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         if RepeatOnError% = 1 then
             PtNTsR := UpdateBehavVal(PtNTsR);  'allows us to deal with increment AND StimIsRepeating%
             TrialResult$ := "P2NTr";
@@ -7214,7 +7447,8 @@ proc TrialResultGoNoGo()
             TrialResult$ := "NRT";
         endif;
         RandReward(PayNRProb,1);  'will calculate reward status, only one reward on no-response
-        SolenoidOpenDur% := PayNRVal;  'Reward value
+        'SolenoidOpenDur% := PayNRVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1;  'Consider it a miss
         MPenaltyTemp := NRPenalty;  'change MPenaltyTemp to the correct penalty for no response
         UpdateResponseWindow("inc");  'Lengthen response window on no-response
@@ -7233,7 +7467,8 @@ proc TrialResultGoNoGo()
             TrialResult$ := "NRNT";
         endif;
         RandReward(PayNRProb,1);  'will calculate reward status, only one reward on no-response
-        SolenoidOpenDur% := PayNRVal;  'Reward value
+        'SolenoidOpenDur% := PayNRVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1;  'Consider it a miss
         MPenaltyTemp := NRPenalty;  'change MPenaltyTemp to the correct penalty for no response
         UpdateResponseWindow("inc");  'Lengthen response window on no-response
@@ -7273,7 +7508,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "HU";
         endif;
         RandReward(PayHUProb,NRew%);  'will calculate reward status, number of rewards
-        SolenoidOpenDur% := CalcPayVal%(PayHUVal,1);  'Reward value, bias term is positive for "up"
+        'SolenoidOpenDur% := CalcPayVal%(PayHUVal,1);  'Reward value, bias term is positive for "up"
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("Hit(Up)\n");
         view(HiddenLogHandle%).print("Hit(Up)\r");
         if DoResponseBias% > 0 then
@@ -7295,7 +7531,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "MU";
         endif;
         RandReward(PayMUProb,1);  'will calculate reward status, only one reward on miss
-        SolenoidOpenDur% := PayMUVal;  'Reward value
+        'SolenoidOpenDur% := PayMUVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1; 
         MPenaltyTemp := MPenaltyTDown;  'change MPenaltyTemp to the correct penalty for down target
         if RepeatOnError% = 1 then
@@ -7317,7 +7554,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "P1PU";
         endif;
         RandReward(PayPTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPTVal;  'Reward value
+        'SolenoidOpenDur% := PayPTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("ToProbe1(Up)\n");
         view(HiddenLogHandle%).print("ToProbe1(Up)\r");
         ChangeThresh(0,0,1,1);  'Increase X threshold on any completed trial
@@ -7333,7 +7571,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "P1NPU";
         endif;
         RandReward(PayPNTProb,1);  'will calculate reward status, only on reward on probe
-        SolenoidOpenDur% := PayPNTVal;  'Reward value
+        'SolenoidOpenDur% := PayPNTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("AwayFromProbe1(JoystickUp)\n");
         view(HiddenLogHandle%).print("AwayFromProbe1(JoystickUp)\r");
         ChangeThresh(0,0,1,1);  'Increase X threshold on any completed trial
@@ -7349,7 +7588,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "P2PU";
         endif;
         RandReward(PayPTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPTVal;  'Reward value
+        'SolenoidOpenDur% := PayPTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("ToProbe2(Up)\n");
         view(HiddenLogHandle%).print("ToProbe2(Up)\r");
         ChangeThresh(0,0,1,1);  'Increase X threshold on any completed trial
@@ -7365,7 +7605,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "P2NPU";
         endif;
         RandReward(PayPNTProb,1);  'will calculate reward status, only on reward on probe
-        SolenoidOpenDur% := PayPNTVal;  'Reward value
+        'SolenoidOpenDur% := PayPNTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("AwayFromProbe2(JoystickUp)\n");
         view(HiddenLogHandle%).print("AwayFromProbe2(JoystickUp)\r");
         ChangeThresh(0,0,1,1);  'Increase X threshold on any completed trial
@@ -7381,7 +7622,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "CU";
         endif;
         RandReward(PayMUProb,1);  'will calculate reward status, only one reward on response to catch
-        SolenoidOpenDur% := PayMUVal;  'Reward value
+        'SolenoidOpenDur% := PayMUVal;  'Reward value
+        SolenoidOpenDur% := 0;
         printlog("Catch(JoystickUp)\n");
         view(HiddenLogHandle%).print("Catch(JoystickUp)\r");
         Miss% := 1;  'Consider it a miss
@@ -7400,7 +7642,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "HD";
         endif;
         RandReward(PayHDProb,NRew2%);  'will calculate reward status, number of reward hits
-        SolenoidOpenDur% := CalcPayVal%(PayHDVal,-1);  'Reward value, bias term is negative for "down"
+        'SolenoidOpenDur% := CalcPayVal%(PayHDVal,-1);  'Reward value, bias term is negative for "down"
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("Hit(Down)\n");
         view(HiddenLogHandle%).print("Hit(Down)\r");
         if DoResponseBias% > 0 then
@@ -7422,7 +7665,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "MD";
         endif;
         RandReward(PayMDProb,1);  'will calculate reward status, only one reward on miss
-        SolenoidOpenDur% := PayMDVal;  'Reward value
+        'SolenoidOpenDur% := PayMDVal;  'Reward value
+        SolenoidOpenDur% := 0;
         if RepeatOnError% = 1 then
             FutureTrialIndex% := CurrTrialIndex%;  '"decrement" current trial to present this stimulus again
             FutureTrialIndexList%[SwitchCurrFile%-1] := CurrTrialIndexList%[SwitchCurrFile%-1];  'decrement list as well
@@ -7444,7 +7688,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "P1NPD";
         endif;
         RandReward(PayPTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPTVal;  'Reward value
+        'SolenoidOpenDur% := PayPTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("AwayFromProbe1(JoystickDown)\n");
         view(HiddenLogHandle%).print("AwayFromProbe1(JoystickDown)\r");
         ChangeThresh(0,0,1,1);  'Increase X threshold on any completed trial
@@ -7460,7 +7705,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "P1PD";
         endif;
         RandReward(PayPNTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPNTVal;  'Reward value
+        'SolenoidOpenDur% := PayPNTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("ToProbe1(Down)\n");
         view(HiddenLogHandle%).print("ToProbe1(Down)\r");
         ChangeThresh(0,0,1,1);  'Increase X threshold on any completed trial
@@ -7476,7 +7722,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "P2NPD";
         endif;
         RandReward(PayPTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPTVal;  'Reward value
+        'SolenoidOpenDur% := PayPTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("AwayFromProbe2(JoystickDown)\n");
         view(HiddenLogHandle%).print("AwayFromProbe2(JoystickDown)\r");
         ChangeThresh(0,0,1,1);  'Increase X threshold on any completed trial
@@ -7492,7 +7739,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "P2PD";
         endif;
         RandReward(PayPNTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPNTVal;  'Reward value
+        'SolenoidOpenDur% := PayPNTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("ToProbe2(Down)\n");
         view(HiddenLogHandle%).print("ToProbe2(Down)\r");
         ChangeThresh(0,0,1,1);  'Increase X threshold on any completed trial
@@ -7508,7 +7756,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "CD";
         endif;
         RandReward(PayMDProb,1);  'will calculate reward status, only one reward on response to catch
-        SolenoidOpenDur% := PayMDVal;  'Reward value
+        'SolenoidOpenDur% := PayMDVal;  'Reward value
+        SolenoidOpenDur% := 0;
         printlog("Catch(JoystickDown)\n");
         view(HiddenLogHandle%).print("Catch(JoystickDown)\r");
         Miss% := 1;  'Consider it a miss
@@ -7526,7 +7775,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "NRU";
         endif;
         RandReward(PayNRProb,1);  'will calculate reward status, only one reward on no-response
-        SolenoidOpenDur% := PayNRVal;  'Reward value
+        'SolenoidOpenDur% := PayNRVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1;  'Consider it a miss
         MPenaltyTemp := NRPenalty;  'change MPenaltyTemp to the correct penalty for no response
         UpdateResponseWindow("inc");  'Lengthen response window on no-response
@@ -7547,7 +7797,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "NRD";
         endif;
         RandReward(PayNRProb,1);  'will calculate reward status, only one reward on no-response
-        SolenoidOpenDur% := PayNRVal;  'Reward value
+        'SolenoidOpenDur% := PayNRVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1;  'Consider it a miss
         MPenaltyTemp := NRPenalty;  'change MPenaltyTemp to the correct penalty for no response
         UpdateResponseWindow("inc");  'Lengthen response window on no-response
@@ -7568,7 +7819,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "NRP1";
         endif;
         RandReward(PayNRProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayNRVal;  'Reward value
+        'SolenoidOpenDur% := PayNRVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1;  'Consider it a miss
         MPenaltyTemp := NRPenalty;  'change MPenaltyTemp to the correct penalty for no response
         printlog("NoResponse(Probe1)\n");
@@ -7584,7 +7836,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "NRP2";
         endif;
         RandReward(PayNRProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayNRVal;  'Reward value
+        'SolenoidOpenDur% := PayNRVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1;  'Consider it a miss
         MPenaltyTemp := NRPenalty;  'change MPenaltyTemp to the correct penalty for no response
         printlog("NoResponse(Probe2)\n");
@@ -7600,7 +7853,8 @@ func TrialResultForcedChoiceUD(NRew%,NRew2%)
             TrialResult$ := "NRC";
         endif;
         RandReward(PayCatchProb,NumHitsCR%);  'will calculate reward status, give same number of hits as CR
-        SolenoidOpenDur% := PayCatchVal;  'Reward value
+        'SolenoidOpenDur% := PayCatchVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("NoResponse(Catch)\n");
         view(HiddenLogHandle%).print("NoResponse(Catch)\r");
         LastResult% := 0;
@@ -7643,7 +7897,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "HR";
         endif;
         RandReward(PayHRProb,NRew%);  'will calculate reward status, number of reward hits
-        SolenoidOpenDur% := CalcPayVal%(PayHRVal,1);  'Reward value, bias term is positive for "right"
+        'SolenoidOpenDur% := CalcPayVal%(PayHRVal,1);  'Reward value, bias term is positive for "right"
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("Hit(Right)\n");
         view(HiddenLogHandle%).print("Hit(Right)\r");
         if DoResponseBias% > 0 then
@@ -7665,7 +7920,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "MR";
         endif;
         RandReward(PayMRProb,1);  'will calculate reward status, only one reward on miss
-        SolenoidOpenDur% := PayMRVal;  'Reward value
+        'SolenoidOpenDur% := PayMRVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1;  'Note that it was a miss
         MPenaltyTemp := MPenaltyTDown;  'change MPenaltyTemp to the correct penalty for DOWN target, will add LEFT variable if necessary
         if RepeatOnError% = 1 then
@@ -7687,7 +7943,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "P1PR";
         endif;
         RandReward(PayPTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPTVal;  'Reward value
+        'SolenoidOpenDur% := PayPTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("ToProbe1(Right)\n");
         view(HiddenLogHandle%).print("ToProbe1(Right)\r");
         ChangeThresh(1,1,0,0);  'Increase Y threshold on any completed trial
@@ -7703,7 +7960,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "P2PR";
         endif;
         RandReward(PayPTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPTVal;  'Reward value
+        'SolenoidOpenDur% := PayPTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("ToProbe2(Right)\n");
         view(HiddenLogHandle%).print("ToProbe2(Right)\r");
         ChangeThresh(1,1,0,0);  'Increase Y threshold on any completed trial
@@ -7719,7 +7977,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "P1NPR";
         endif;
         RandReward(PayPNTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPNTVal;  'Reward value
+        'SolenoidOpenDur% := PayPNTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("AwayFromProbe1(JoystickRight)\n");
         view(HiddenLogHandle%).print("AwayFromProbe1(JoystickRight)\r");
         ChangeThresh(1,1,0,0);  'Increase Y threshold on any completed trial
@@ -7735,7 +7994,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "P2NPR";
         endif;
         RandReward(PayPNTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPNTVal;  'Reward value
+        'SolenoidOpenDur% := PayPNTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("AwayFromProbe2(JoystickRight)\n");
         view(HiddenLogHandle%).print("AwayFromProbe2(JoystickRight)\r");
         ChangeThresh(1,1,0,0);  'Increase Y threshold on any completed trial
@@ -7751,7 +8011,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "CR";
         endif;
         RandReward(PayMRProb,1);  'will calculate reward status, only one reward on response to catch trial
-        SolenoidOpenDur% := PayMRVal;  'Reward value
+        'SolenoidOpenDur% := PayMRVal;  'Reward value
+        SolenoidOpenDur% := 0;
         printlog("Catch(JoystickRight)\n");
         view(HiddenLogHandle%).print("Catch(JoystickRight)\r");
         Miss% := 1;  'Consider it a miss
@@ -7770,7 +8031,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "HL";
         endif;
         RandReward(PayHLProb,NRew2%);  'will calculate reward status, number of reward hits
-        SolenoidOpenDur% := CalcPayVal%(PayHLVal,-1);  'Reward value, bias term is negative for "left"
+        'SolenoidOpenDur% := CalcPayVal%(PayHLVal,-1);  'Reward value, bias term is negative for "left"
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("Hit(Left)\n");
         view(HiddenLogHandle%).print("Hit(Left)\r");
         if DoResponseBias% > 0 then
@@ -7792,7 +8054,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "ML";
         endif;
         RandReward(PayMLProb,1);  'will calculate reward status, only one reward on miss
-        SolenoidOpenDur% := PayMLVal;  'Reward value
+        'SolenoidOpenDur% := PayMLVal;  'Reward value
+        SolenoidOpenDur% := 0;
         if RepeatOnError% = 1 then
             FutureTrialIndex% := CurrTrialIndex%;  '"decrement" current trial to present this stimulus again
             FutureTrialIndexList%[SwitchCurrFile%-1] := CurrTrialIndexList%[SwitchCurrFile%-1];  'decrement list as well
@@ -7814,7 +8077,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "P1NPL";
         endif;
         RandReward(PayPTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPTVal;  'Reward value
+        'SolenoidOpenDur% := PayPTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("AwayFromProbe1(JoystickLeft)\n");
         view(HiddenLogHandle%).print("AwayFromProbe1(JoystickLeft)\r");
         ChangeThresh(1,1,0,0);  'Increase Y threshold on any completed trial
@@ -7830,7 +8094,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "P2NPL";
         endif;
         RandReward(PayPNTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPNTVal;  'Reward value
+        'SolenoidOpenDur% := PayPNTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("AwayFromProbe2(JoystickLeft)\n");
         view(HiddenLogHandle%).print("AwayFromProbe2(JoystickLeft)\r");
         ChangeThresh(1,1,0,0);  'Increase Y threshold on any completed trial
@@ -7846,7 +8111,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "P1PL";
         endif;
         RandReward(PayPTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPTVal;  'Reward value
+        'SolenoidOpenDur% := PayPTVal;  'Reward value
+        SolenoidOpenDur% := 0;
         printlog("ToProbe1(Left)\n");
         view(HiddenLogHandle%).print("ToProbe1(Left)\r");
         ChangeThresh(1,1,0,0);  'Increase Y threshold on any completed trial
@@ -7862,7 +8128,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "P2PL";
         endif;
         RandReward(PayPNTProb,1);  'will calculate reward status, only one reward on probe
-        SolenoidOpenDur% := PayPNTVal;  'Reward value
+        'SolenoidOpenDur% := PayPNTVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("ToProbe2(Left)\n");
         view(HiddenLogHandle%).print("ToProbe2(Left)\r");
         ChangeThresh(1,1,0,0);  'Increase Y threshold on any completed trial
@@ -7878,7 +8145,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "CL";
         endif;
         RandReward(PayMLProb,1);  'will calculate reward status, only one reward on response to catch
-        SolenoidOpenDur% := PayMLVal;  'Reward value
+        'SolenoidOpenDur% := PayMLVal;  'Reward value
+        SolenoidOpenDur% := 0;
         printlog("Catch(JoystickLeft)\n");
         view(HiddenLogHandle%).print("Catch(JoystickLeft)\r");
         Miss% := 1;  'Consider it a miss
@@ -7896,7 +8164,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "NRR";
         endif;
         RandReward(PayNRProb,1);  'will calculate reward status, only one reward on no-response
-        SolenoidOpenDur% := PayNRVal;  'Reward value
+        'SolenoidOpenDur% := PayNRVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1;  'Consider it a miss
         MPenaltyTemp := NRPenalty;  'change MPenaltyTemp to the correct penalty for non-response
         UpdateResponseWindow("inc");  'Lengthen response window on no-response
@@ -7917,7 +8186,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "NRL";
         endif;
         RandReward(PayNRProb,1);  'will calculate reward status, only one reward on no-response
-        SolenoidOpenDur% := PayNRVal;  'Reward value
+        'SolenoidOpenDur% := PayNRVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1;  'Consider it a miss
         MPenaltyTemp := NRPenalty;  'change MPenaltyTemp to the correct penalty for non-response
         UpdateResponseWindow("inc");  'Lengthen response window on no-response
@@ -7938,7 +8208,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "NRP1";
         endif;
         RandReward(PayNRProb,1);  'will calculate reward status, only one reward on no-response
-        SolenoidOpenDur% := PayNRVal;  'Reward value
+        'SolenoidOpenDur% := PayNRVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1;  'Consider it a miss
         MPenaltyTemp := NRPenalty;  'change MPenaltyTemp to the correct penalty for non-response
         printlog("NoResponse(Probe1)\n");
@@ -7954,7 +8225,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "NRP2";
         endif;
         RandReward(PayNRProb,1);  'will calculate reward status, only one reward on no-response
-        SolenoidOpenDur% := PayNRVal;  'Reward value
+        'SolenoidOpenDur% := PayNRVal;  'Reward value
+        SolenoidOpenDur% := 0;
         Miss% := 1;  'Consider it a miss
         MPenaltyTemp := NRPenalty;  'change MPenaltyTemp to the correct penalty for non-response
         printlog("NoResponse(Probe2)\n");
@@ -7970,7 +8242,8 @@ func TrialResultForcedChoiceLR(NRew%,Nrew2%)
             TrialResult$ := "NRC";
         endif;
         RandReward(PayCatchProb,NumHitsCR%);  'will calculate reward status, give same number of rewards as for CR
-        SolenoidOpenDur% := PayCatchVal;  'Reward value
+        'SolenoidOpenDur% := PayCatchVal;  'Reward value
+        SolenoidOpenDur% := JuiceRewardMS%;
         printlog("NoResponse(Catch)\n");
         view(HiddenLogHandle%).print("NoResponse(Catch)\r");
         LastResult% := 0;
@@ -8093,9 +8366,9 @@ proc CueLights(HouseOnOffSame$,Cues$,OnOffSame$);
     'First, change the House light if requested
     docase  'Any command NOT "on" or "off" will result in no change of House light
         case LCase$(HouseOnOffSame$) = "on" then
-        SafeSampleKeySutter%("I");  'Turn on House light
+        'SafeSampleKeySutter%("I");  'Turn on House light
         case LCase$(HouseOnOffSame$) = "off" then
-        SafeSampleKeySutter%("J");  'Turn off House light
+        'SafeSampleKeySutter%("J");  'Turn off House light
         case LCase$(HouseOnOffSame$) = "same" then
         'do nothing
     else
@@ -8107,7 +8380,7 @@ proc CueLights(HouseOnOffSame$,Cues$,OnOffSame$);
     docase  'Any command NOT "on" or "off" will result in no change of Cue lights
         case LCase$(OnOffSame$) = "on" then  'turn on all appropriate cue lights
         if LCase$(Cues$) = "green" then
-            SafeSampleKeySutter%("G");  'turn on green LED if (incorrect) "green" command is given ("(g)(r)een" results in (g)reen+(r)ed)
+            'SafeSampleKeySutter%("G");  'turn on green LED if (incorrect) "green" command is given ("(g)(r)een" results in (g)reen+(r)ed)
         else
             NoLight% := 1;  'indicate that no light has been selected yet
             for loopy% := 1 to len(Cues$) do
@@ -8115,19 +8388,19 @@ proc CueLights(HouseOnOffSame$,Cues$,OnOffSame$);
                 Cues$ := DelStr$(Cues$,1,1);
                 docase
                     case LCase$(tempstr$) = "r" then
-                    SafeSampleKeySutter%("V");  'turn on red LED
+                    'SafeSampleKeySutter%("V");  'turn on red LED
                     NoLight% := 0;  'At least one light was indicated
                     case LCase$(tempstr$) = "g" then
-                    SafeSampleKeySutter%("G");  'turn on green LED
+                    'SafeSampleKeySutter%("G");  'turn on green LED
                     NoLight% := 0;  'At least one light was indicated
                     case LCase$(tempstr$) = "y" then
-                    SafeSampleKeySutter%("L");  'turn on yellow LED
+                    'SafeSampleKeySutter%("L");  'turn on yellow LED
                     NoLight% := 0;  'At least one light was indicated
                 endcase;
             next;
         endif;
         if NoLight% = 1 then
-            SafeSampleKeySutter%("L"); 'turn on yellow LED if there is no light indicated in the trials file
+            'SafeSampleKeySutter%("L"); 'turn on yellow LED if there is no light indicated in the trials file
         endif;
         case LCase$(OnOffSame$) = "off" then  'turn off all appropriate cue lights
         if LCase$(Cues$) = "green" then
@@ -8139,19 +8412,19 @@ proc CueLights(HouseOnOffSame$,Cues$,OnOffSame$);
                 Cues$ := DelStr$(Cues$,1,1);
                 docase
                     case LCase$(tempstr$) = "r" then
-                    SafeSampleKeySutter%("W");  'turn off red LED
+                    'SafeSampleKeySutter%("W");  'turn off red LED
                     NoLight% := 0;  'At least one light was indicated
                     case LCase$(tempstr$) = "g" then
-                    SafeSampleKeySutter%("H");  'turn off green LED
+                    'SafeSampleKeySutter%("H");  'turn off green LED
                     NoLight% := 0;  'At least one light was indicated
                     case LCase$(tempstr$) = "y" then
-                    SafeSampleKeySutter%("M");  'turn off yellow LED
+                    'SafeSampleKeySutter%("M");  'turn off yellow LED
                     NoLight% := 0;  'At least one light was indicated
                 endcase;
             next;
         endif;
         if NoLight% = 1 then
-            SafeSampleKeySutter%("M"); 'turn off yellow LED if there is no light indicated in the trials file
+            'SafeSampleKeySutter%("M"); 'turn off yellow LED if there is no light indicated in the trials file
         endif;
         case LCase$(OnOffSame$) = "same" then  
         'do nothing
@@ -8175,7 +8448,7 @@ proc FlashOn(Cue$,FlashDurationMS%,FlashPeriodMS%);
     var FlashRepeats%;  '#of repeats, on+off = 1 repeat
     var tempFlashDur;   'to deal with int/float conversion
     
-    SafeSampleKeySutter%("O");  'Turn off all lights before flashing
+    'SafeSampleKeySutter%("O");  'Turn off all lights before flashing
     
     Cue$ := Left$(Cue$,1);  'Get first letter - can only flash one LED
     
@@ -8211,7 +8484,7 @@ proc FlashOn(Cue$,FlashDurationMS%,FlashPeriodMS%);
     
     sampleseqvar(8,1);  'Set Flash-Allow variable to 1, this allows flashing    
     
-    SafeSampleKeySutter%("F");  'Start the flash
+    'SafeSampleKeySutter%("F");  'Start the flash
     
 end;
 '========================= Turn Off Cue Light Flashing ===========================
@@ -10983,19 +11256,19 @@ func SafeUpdate(Success%[])
     if ok% > 0 then 'if the file is successfully deleted, run the online updater
 	 	'these IFs are not mutually exclusive
         if Success%[0] = 0 then
-            ok% := filecopy(OnlineDir$+FilePrefix$+"a.idx",OnlineDir$+FilePrefix$+"a_ma.idx",1);
+            ok% := filecopy(OnlineDir$+dataCellName$+"a.idx",OnlineDir$+dataCellName$+"a_ma.idx",1);
         endif;
         if Success%[1] = 0 then
-            ok% := filecopy(OnlineDir$+FilePrefix$+"p.idx",OnlineDir$+FilePrefix$+"p_ma.idx",1);
+            ok% := filecopy(OnlineDir$+dataCellName$+"p.idx",OnlineDir$+dataCellName$+"p_ma.idx",1);
         endif;
         if Success%[2] = 0 then
-            ok% := filecopy(OnlineDir$+FilePrefix$+"m.idx",OnlineDir$+FilePrefix$+"m_ma.idx",1);
+            ok% := filecopy(OnlineDir$+dataCellName$+"m.idx",OnlineDir$+dataCellName$+"m_ma.idx",1);
         endif;
         if Success%[3] = 0 then
-            ok% := filecopy(OnlineDir$+FilePrefix$+"w.idx",OnlineDir$+FilePrefix$+"w_ma.idx",1);
+            ok% := filecopy(OnlineDir$+dataCellName$+"w.idx",OnlineDir$+dataCellName$+"w_ma.idx",1);
         endif;
-        ok% := filecopy(OnlineDir$+FilePrefix$+"all.idx",OnlineDir$+FilePrefix$+"all_ma.idx",1);
-        ok% := filecopy(OnlineDir$+FilePrefix$+".spk",OnlineDir$+FilePrefix$+"_ma.spk",1);
+        ok% := filecopy(OnlineDir$+dataCellName$+"all.idx",OnlineDir$+dataCellName$+"all_ma.idx",1);
+        ok% := filecopy(OnlineDir$+dataCellName$+".spk",OnlineDir$+dataCellName$+"_ma.spk",1);
         ok% := filecopy(OnlineDir$+"empty_file.txt",OnlineDir$+"spike2_done.txt");
         arrconst(UpdateSuccess%[],1);  'Reset success for all (even if not all were updated - none failed)
     endif;
@@ -11016,12 +11289,12 @@ func IDXupdate(Type$)
     var a;   'will hold either trial-specific attenuation or fade attenuation as appropriate
     
 	'Try opening type-specific file.  File will not exist on first run of each type
-    fh%:=fileopen(OnlineDir$+FilePrefix$+Type$+".idx",8,2);  
+    fh%:=fileopen(OnlineDir$+dataCellName$+Type$+".idx",8,2);  
     
     
 	'If the type-specific file does not exist, create it
     if fh%<0 then
-        fh%:=fileopen(OnlineDir$+FilePrefix$+Type$+".idx",8,3); 
+        fh%:=fileopen(OnlineDir$+dataCellName$+Type$+".idx",8,3); 
         if NSpeakers% < 2 then
             view(fh%).print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t","Trial","S-Seq","T-Info","T-Name","Atten","S-Onset","T-Onset","S-Offset","T-Resp"); 'header tag1, split for length and looping
             'print("%s\t%s\t%s\t%s\t%s\n\n","Result",Date$(),"Parameter File: "+ParamFile$,"Trials File: "+TrialFile$,ThisVersion$); 'header tag2, old, pre-looping
@@ -11098,11 +11371,11 @@ func IDXupdate(Type$)
     
     
 	'Try opening overall file.  File will not exist on first run
-    fh2%:=fileopen(OnlineDir$+FilePrefix$+".idx",8,2);
+    fh2%:=fileopen(OnlineDir$+dataCellName$+".idx",8,2);
     
 	'If the overall file does not exist, create it
     if fh2%<0 then
-        fh2%:=fileopen(OnlineDir$+FilePrefix$+".idx",8,3); 
+        fh2%:=fileopen(OnlineDir$+dataCellName$+".idx",8,3); 
         if NSpeakers% < 2 then
             view(fh2%).print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t","Trial","Type","S-Seq","T-Info","T-Name","Atten","S-Onset","T-Onset","S-Offset","T-Resp"); 'header tag1, split for length and looping
             'print("%s\t%s\t%s\t%s\t%s\n\n","Result",Date$(),"Parameter File: "+ParamFile$,"Trials File: "+TrialFile$,ThisVersion$); 'header tag2, old, pre-looping
@@ -11164,11 +11437,11 @@ func IDXupdate(Type$)
     
     
 	'Try opening log file.  File will not exist on first run
-    fhlog%:=fileopen(LogDir$+FilePrefix$+".log",8,2);
+    fhlog%:=fileopen(LogDir$+dataCellName$+".log",8,2);
     
 	'If the log file does not exist, create it
     if fhlog%<0 then
-        fhlog%:=fileopen(LogDir$+FilePrefix$+".log",8,3); 
+        fhlog%:=fileopen(LogDir$+dataCellName$+".log",8,3); 
         view(fhlog%).print("%s\t%s\t",Date$(),"Parameter File: "+ParamFile$); 'header tag 1
         for ii% := 0 to NTrialsFiles%-1 do
             view(fhlog%).print("%s\t","Trials File " + Str$(ii%+1) + ": " + TrialFileList$[ii%]); 'header tag 2
@@ -11216,11 +11489,11 @@ func SPKappend();
         
 
         'Try opening file.  File will not exist on first run
-        fh%:=fileopen(OnlineDir$+FilePrefix$+fileSuffix$,8,2);
+        fh%:=fileopen(OnlineDir$+dataCellName$+fileSuffix$,8,2);
         
         'If the file does not exist, create it
         if fh%<0 then
-            fh%:=fileopen(OnlineDir$+FilePrefix$+fileSuffix$,8,3); 
+            fh%:=fileopen(OnlineDir$+dataCellName$+fileSuffix$,8,3); 
             view(fh%).print("Header\t","Info\t","Here\n"); 'header tag
         endif;
         
@@ -11278,11 +11551,11 @@ proc WriteLightLog()
     var ii%;  'looping
     
 	'Try opening light log file.  File will not exist on first run
-    fh%:=fileopen(OnlineDir$+FilePrefix$+"lightlog.idx",8,2);  
+    fh%:=fileopen(OnlineDir$+dataCellName$+"lightlog.idx",8,2);  
     
 	'If the light log file does not exist, create it
     if fh%<0 then
-        fh%:=fileopen(OnlineDir$+FilePrefix$+"lightlog.idx",8,3); 
+        fh%:=fileopen(OnlineDir$+dataCellName$+"lightlog.idx",8,3); 
         view(fh%).print("Action\t","Time\t",ThisVersion$+"\n"); 'header tag, note version here as well
     endif;
     
@@ -11432,11 +11705,11 @@ proc WriteTimingLog(id,wl,sp,sa,no)
     var ii%;  'looping
     
 	'Try opening light log file.  File will not exist on first run
-    fh%:=fileopen(OnlineDir$+FilePrefix$+"timinglog.idx",8,2);  
+    fh%:=fileopen(OnlineDir$+dataCellName$+"timinglog.idx",8,2);  
     
 	'If the light log file does not exist, create it
     if fh%<0 then
-        fh%:=fileopen(OnlineDir$+FilePrefix$+"timinglog.idx",8,3); 
+        fh%:=fileopen(OnlineDir$+dataCellName$+"timinglog.idx",8,3); 
         view(fh%).print("IDX\t","Lightlog\t","SPK\t","SafeUpdate\t","Total\t",ThisVersion$+"\n"); 'header tag, note version here as well
     endif;
     
@@ -12061,10 +12334,18 @@ func Quit%()
 var fhlog%;  'file handle for log
 var ii%;
     
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKeySutter%("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKeySutter%("i");  'Close the file
+        SafeSampleKeySutter%("Z");  'zero the DIGLOWs
+    endif
+    
     if SampleStatus()=2 then
         StopSampling%();  'Turns off LEDs
     endif;
-    
+   
     'If we are trial wrapping, save the current trial indices
     if TrialWrap% = 1 then
         SaveTrialIndices(MonkeyLetter$);
@@ -12078,14 +12359,14 @@ var ii%;
             printlog("Begin the next session with trial number %d\n",CurrTrialIndex%+1);
             view(HiddenLogHandle%).print("Begin the next session with trial number %d\r",CurrTrialIndex%+1);
             'create TrialWrap file
-            fh%:=fileopen(OnlineDir$+FilePrefix$+"trialwrap.idx",8,3); 
+            fh%:=fileopen(OnlineDir$+dataCellName$+"trialwrap.idx",8,3); 
             view(fh%).print(CurrTrialIndex%+1);
             fileclose();   'Close fh%
         else
             printlog("Begin the next session with trial numbers ");
             view(HiddenLogHandle%).print("Begin the next session with trial numbers ");
             'create TrialWrap file
-            fh%:=fileopen(OnlineDir$+FilePrefix$+"trialwrap.idx",8,3); 
+            fh%:=fileopen(OnlineDir$+dataCellName$+"trialwrap.idx",8,3); 
             for ii% := 0 to NTrialsFiles%-1 do
                 printlog("%d ", FutureTrialIndexList%[ii%]+1);
                 view(HiddenLogHandle%).print("%d ", FutureTrialIndexList%[ii%]+1);
@@ -12218,11 +12499,11 @@ var ii%;
     
     'do one last update of the output log file
 	'Try opening log file.  File will not exist on first run
-    fhlog%:=fileopen(LogDir$+FilePrefix$+".log",8,2);
+    fhlog%:=fileopen(LogDir$+dataCellName$+".log",8,2);
     
 	'If the log file does not exist, create it
     if fhlog%<0 then
-        fhlog%:=fileopen(LogDir$+FilePrefix$+".log",8,3); 
+        fhlog%:=fileopen(LogDir$+dataCellName$+".log",8,3); 
         view(fhlog%).print("%s\t%s\t%s\t%s\n\n",Date$(),"Parameter File: "+ParamFile$,"Trials File: "+TrialFile$,ThisVersion$); 'header tag
     endif;
     
@@ -12250,3 +12531,15 @@ var ii%;
     return 0;
     
 end;
+
+'=================== PresEngDialogChanged =======================
+func PresEngDialogChanged%(item%)
+    var status% := 1;
+    
+    DlgEnable(0,1);  'Disable name, we will use autonaming
+    DlgEnable(0,4);  'Disable sampling rate settings
+    DlgEnable(0,5);  'Disable sampling rate settings
+    DlgEnable(0,6);  'Disable sampling rate settings
+    
+    return status%;
+end
