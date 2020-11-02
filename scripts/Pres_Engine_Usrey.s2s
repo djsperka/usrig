@@ -27,11 +27,11 @@ var ThisVersion$ := "vUsrey";  'Usrey, adapting for use in Usrey Lab
 '===================================== Included Files ====================================
 
 
-    '#include "../../../Sutter_Stuff/experiments/ced_scripts/TransStair.s2s"  'BigAl
-    '#include "../../../Sutter_Stuff/experiments/ced_scripts/GetDrivePath.s2s"  'BigAl
+    #include "../../../Sutter_Stuff/experiments/ced_scripts/TransStair.s2s"  'BigAl
+    #include "../../../Sutter_Stuff/experiments/ced_scripts/GetDrivePath.s2s"  'BigAl
 
-    #include "../../../experiments/ced_scripts/TransStair.s2s"  'Seager
-    #include "../../../experiments/ced_scripts/GetDrivePath.s2s"  'Seager
+    '#include "../../../experiments/ced_scripts/TransStair.s2s"  'Seager
+    '#include "../../../experiments/ced_scripts/GetDrivePath.s2s"  'Seager
 
 
 
@@ -377,6 +377,7 @@ if 1 then  'VAR declarations are folded below
     var SkipLoop%;               'Allows us to essentially re-run an IF in the main loop, normally 0.
     var NothingToLoad%;          'Allows us to skip loadstim step after final stimulus (if not trialwrapping)
     var RewardWait%;             'Are we waiting for a reward to finish?
+    var MyAutoName$;             'what is the autoname of the file
     
 	'===== Continuous Reinforcement Variables =====
     var BeginReinfTime;			  'Holds the time that the joystick X movement starts a continuous reinforcement trial
@@ -822,9 +823,9 @@ endif;  'Just bookending the VAR declarations to allow folding them away
 '=============================== Preliminary Actions =================================
 
 
-    '#include "../../../Sutter_Stuff/experiments/ced_scripts/zTools.s2s"  'BigAl
+    #include "../../../Sutter_Stuff/experiments/ced_scripts/zTools.s2s"  'BigAl
 
-    #include "../../../experiments/ced_scripts/zTools.s2s"  'Seager
+    '#include "../../../experiments/ced_scripts/zTools.s2s"  'Seager
 
 
 
@@ -1658,28 +1659,29 @@ func StartSampling%()
         
         
         'check for existence of online files, assume .idx and .spk files will exist together
-        FilePathSet(OnlineDir$);  'go to correct directory as FileList doesn't play nicely otherwise
-        NumOfFiles := filelist(list$,-1,dataCellName$+".idx");
-        
-        if NumOfFiles = 0 then 'files do not exist, we will create them later
-            FoundFile := 0;  'will break out of loop
-        endif;
-        if NumOfFiles < 0 then 'there is an error, presumably this must have been a problem once...?
-            message("Quitting due to an error in FileList while trying to locate online .idx files.\n\nThe error is:\n\n"+error$(NumOfFiles));
-            printlog(error$(NumOfFiles));
-            printlog("\nQuitting because FileList has thrown the above error trying to locate online .idx files!\n");
-            view(HiddenLogHandle%).print(error$(NumOfFiles));
-            view(HiddenLogHandle%).print("\rQuitting because FileList has thrown the above error trying to locate online .idx files!\r");
-            quit%();
-        endif;
-        if NumOfFiles > 1 then 'more than one match - try again
-            message("There must be a * wildcard in your file name.  Please try again.");
-            FoundFile := 1; 'stay in while loop
-        endif;
-        if NumOfFiles = 1 then 'files exist
-            message("A file of that name exists!  Please try again.");
-            FoundFile := 1;  'stay in while loop
-        endif;
+'        FilePathSet(OnlineDir$);  'go to correct directory as FileList doesn't play nicely otherwise
+'        NumOfFiles := filelist(list$,-1,dataCellName$+".idx");
+'        
+'        if NumOfFiles = 0 then 'files do not exist, we will create them later
+'            FoundFile := 0;  'will break out of loop
+'        endif;
+'        if NumOfFiles < 0 then 'there is an error, presumably this must have been a problem once...?
+'            message("Quitting due to an error in FileList while trying to locate online .idx files.\n\nThe error is:\n\n"+error$(NumOfFiles));
+'            printlog(error$(NumOfFiles));
+'            printlog("\nQuitting because FileList has thrown the above error trying to locate online .idx files!\n");
+'            view(HiddenLogHandle%).print(error$(NumOfFiles));
+'            view(HiddenLogHandle%).print("\rQuitting because FileList has thrown the above error trying to locate online .idx files!\r");
+'            quit%();
+'        endif;
+'        if NumOfFiles > 1 then 'more than one match - try again
+'            message("There must be a * wildcard in your file name.  Please try again.");
+'            FoundFile := 1; 'stay in while loop
+'        endif;
+'        if NumOfFiles = 1 then 'files exist
+'            message("A file of that name exists!  Please try again.");
+'            FoundFile := 1;  'stay in while loop
+    '        endif;
+    FoundFile := 0;  'We are just getting out of the loop, not checking file names when we are autonaming
     wend;
     
     
@@ -1702,7 +1704,7 @@ func StartSampling%()
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
     
-    SampleAutoName$(dataCellName$ + "_" + "audio" + "_000");  'NOTE: maximum of 13 characters!!!
+    MyAutoName$ := SampleAutoName$(dataCellName$ + "_" + "audio" + "_000");  'NOTE: maximum of 13 characters!!!
     SampleAutoFile(1);
     
     SampleTextMark(200);  'Channel 30 is textmark channel
@@ -1733,12 +1735,10 @@ func StartSampling%()
     endcase;
     
     
-    if tunAlwaysLooking% = 0 then
-        SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
-        SampleTitle$(XChannel%,EyeXPortLabel$);
-        SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
-        SampleTitle$(YChannel%,EyeYPortLabel$);
-    endif;
+    SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+    SampleTitle$(XChannel%,EyeXPortLabel$);
+    SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+    SampleTitle$(YChannel%,EyeYPortLabel$);
     
     if JoystickPort% > -1 then
         printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPort%());
@@ -2046,7 +2046,7 @@ func StartSampling%()
     SecPerSample := TimePerADC*UsPerTime/1000000;
     
 	'Title and resize data window
-    WindowTitle$(dataCellName$);  
+    WindowTitle$(MyAutoName$);  
     'Window(0,0,100,30);
     
     frontview(loghandle());  'bring logwindow to front and resize it
@@ -2197,92 +2197,92 @@ func StartSampling%()
     FrontView(ctview%);
     
 	'create histogram windows if physiological experiment
-    if NTrodes% > 0 then
+    if tunNWavemarks% > 0 then
         HistTotal := HistPre + HistPost + StimLength[max(StimLength)];  'Maximum of StimLength should be the length of the longest stimulus
         HistBins% := HistTotal/HistBinWidth;
         ToolbarSet(10, "ClrRaster", ClearRasters%);  'create clear rasters button
         ToolbarEnable(10,1);  'enable clear rasters button
         
         if Interleaved% = 1 or Passive% = 0 or PassiveAndActive% = 1 then
-            hApsthS%:=SetPsth(configWaveMarkChannel%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerA%,3);
+            hApsthS%:=SetPsth(WavemarkPorts%[0],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerA%,3);
             WindowVisible(1);windowtitle$("Single");  'name gets changed later
             Window(75,30,100,65);
             FrontView(ctview%);
             if OverallPSTHType% = 0 then
-                hApsthA%:=SetPsth(configWaveMarkChannel%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerA%,3);
+                hApsthA%:=SetPsth(WavemarkPorts%[0],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerA%,3);
             else
-                hApsthA%:=SetPsth(configWaveMarkChannel%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerAGroup%,3);
+                hApsthA%:=SetPsth(WavemarkPorts%[0],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerAGroup%,3);
             endif;
             WindowVisible(1);windowtitle$("Overall-Active");
             Window(75,65,100,100);
         endif;
         if Interleaved% = 1 or Passive% = 1 or PassiveAndActive% = 1 then
-            hPpsthS%:=SetPsth(configWaveMarkChannel%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerP%,3);
+            hPpsthS%:=SetPsth(WavemarkPorts%[0],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerP%,3);
             WindowVisible(1);windowtitle$("Single");  'name gets changed later
             Window(75,30,100,65);
             FrontView(ctview%);
             if OverallPSTHType% = 0 then
-                hPpsthA%:=SetPsth(configWaveMarkChannel%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerP%,3);
+                hPpsthA%:=SetPsth(WavemarkPorts%[0],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerP%,3);
             else
-                hPpsthA%:=SetPsth(configWaveMarkChannel%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerPGroup%,3);
+                hPpsthA%:=SetPsth(WavemarkPorts%[0],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerPGroup%,3);
             endif;
             WindowVisible(1);windowtitle$("Overall-Passive");
             Window(75,65,100,100);	
         endif;
         
         'for multiple electrodes, the windows will overlap
-        if NTrodes% > 1 then
+        if tunNWavemarks% > 1 then
             if Interleaved% = 1 or Passive% = 0 or PassiveAndActive% = 1 then
-                hApsthS2%:=SetPsth(configWaveMarkChannel2%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerA%,3);
+                hApsthS2%:=SetPsth(WavemarkPorts%[1],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerA%,3);
                 WindowVisible(1);windowtitle$("Single");  'name gets changed later
                 Window(75,30,100,65);
                 FrontView(ctview%);
                 if OverallPSTHType% = 0 then
-                    hApsthA2%:=SetPsth(configWaveMarkChannel2%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerA%,3);
+                    hApsthA2%:=SetPsth(WavemarkPorts%[1],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerA%,3);
                 else
-                    hApsthA2%:=SetPsth(configWaveMarkChannel2%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerAGroup%,3);
+                    hApsthA2%:=SetPsth(WavemarkPorts%[1],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerAGroup%,3);
                 endif;
                 WindowVisible(1);windowtitle$("Overall2-Active");
                 Window(75,65,100,100);
             endif;
             if Interleaved% = 1 or Passive% = 1 or PassiveAndActive% = 1 then
-                hPpsthS2%:=SetPsth(configWaveMarkChannel2%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerP%,3);
+                hPpsthS2%:=SetPsth(WavemarkPorts%[1],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerP%,3);
                 WindowVisible(1);windowtitle$("Single");  'name gets changed later
                 Window(75,30,100,65);
                 FrontView(ctview%);
                 if OverallPSTHType% = 0 then
-                    hPpsthA2%:=SetPsth(configWaveMarkChannel2%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerP%,3);
+                    hPpsthA2%:=SetPsth(WavemarkPorts%[1],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerP%,3);
                 else
-                    hPpsthA2%:=SetPsth(configWaveMarkChannel2%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerPGroup%,3);
+                    hPpsthA2%:=SetPsth(WavemarkPorts%[1],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerPGroup%,3);
                 endif;
                 WindowVisible(1);windowtitle$("Overall2-Passive");
                 Window(75,65,100,100);	
             endif;
         endif
         
-        if NTrodes% > 2 then
+        if tunNWavemarks% > 2 then
             if Interleaved% = 1 or Passive% = 0 or PassiveAndActive% = 1 then
-                hApsthS3%:=SetPsth(configWaveMarkChannel3%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerA%,3);
+                hApsthS3%:=SetPsth(WavemarkPorts%[2],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerA%,3);
                 WindowVisible(1);windowtitle$("Single");  'name gets changed later
                 Window(75,30,100,65);
                 FrontView(ctview%);
                 if OverallPSTHType% = 0 then
-                    hApsthA3%:=SetPsth(configWaveMarkChannel3%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerA%,3);
+                    hApsthA3%:=SetPsth(WavemarkPorts%[2],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerA%,3);
                 else
-                    hApsthA3%:=SetPsth(configWaveMarkChannel3%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerAGroup%,3);
+                    hApsthA3%:=SetPsth(WavemarkPorts%[2],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerAGroup%,3);
                 endif;
                 WindowVisible(1);windowtitle$("Overall3-Active");
                 Window(75,65,100,100);
             endif;
             if Interleaved% = 1 or Passive% = 1 or PassiveAndActive% = 1 then
-                hPpsthS3%:=SetPsth(configWaveMarkChannel3%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerP%,3);
+                hPpsthS3%:=SetPsth(WavemarkPorts%[2],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerP%,3);
                 WindowVisible(1);windowtitle$("Single");  'name gets changed later
                 Window(75,30,100,65);
                 FrontView(ctview%);
                 if OverallPSTHType% = 0 then
-                    hPpsthA3%:=SetPsth(configWaveMarkChannel3%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerP%,3);
+                    hPpsthA3%:=SetPsth(WavemarkPorts%[2],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerP%,3);
                 else
-                    hPpsthA3%:=SetPsth(configWaveMarkChannel3%,HistBins%,HistBinWidth,HistPre,MemChanHistTriggerPGroup%,3);
+                    hPpsthA3%:=SetPsth(WavemarkPorts%[2],HistBins%,HistBinWidth,HistPre,MemChanHistTriggerPGroup%,3);
                 endif;
                 WindowVisible(1);windowtitle$("Overall3-Passive");
                 Window(75,65,100,100);	
@@ -2290,19 +2290,21 @@ func StartSampling%()
         endif
         
         if CollectEEG% = 1 then
-            powspec%:=SetPower(22,2048,1);  'set up a result view for an EEG power spectrum
-            WindowVisible(1);windowtitle$("EEG Power Spectrum");Window(40,60,75,100);
-            ProcessTriggered(60,0,MemChanHistTrigger%,1,1);  'Update power spectrum anytime there's a stimulus
+            'powspec%:=SetPower(22,2048,1);  'set up a result view for an EEG power spectrum
+            'WindowVisible(1);windowtitle$("EEG Power Spectrum");Window(40,60,75,100);
+            'ProcessTriggered(60,0,MemChanHistTrigger%,1,1);  'Update power spectrum anytime there's a stimulus
         else
             if Interleaved% = 1 or PassiveAndActive% = 1 then  'move Passive histograms into a nicer position so we can see all four
-                FrontView(hPpsthS%);
-                Window(50,30,75,65);
-                Frontview(hPpsthA%);
-                Window(50,65,75,100);
-                FrontView(ctview%);
+                if tunNWavemarks% > 0 then
+                    FrontView(hPpsthS%);
+                    Window(50,30,75,65);
+                    Frontview(hPpsthA%);
+                    Window(50,65,75,100);
+                    FrontView(ctview%);
+                endif;
                 
                 'for multiple electrodes, these will overlap, just as in original
-                if NTrodes% > 1 then
+                if tunNWavemarks% > 1 then
                     FrontView(hPpsthS2%);
                     Window(50,30,75,65);
                     Frontview(hPpsthA2%);
@@ -2310,7 +2312,7 @@ func StartSampling%()
                     FrontView(ctview%);
                 endif;
                 
-                if NTrodes% > 2 then
+                if tunNWavemarks% > 2 then
                     FrontView(hPpsthS3%);
                     Window(50,30,75,65);
                     Frontview(hPpsthA3%);
@@ -2630,7 +2632,7 @@ func Main%()
         endif;
         
         'Update eye position if in a fixation scenario
-        if DoFixation% > 0 then
+        'if DoFixation% > 0 then
             xEye := View(ctview%).ChanMeasure(configEyeXChannel%,2,Now-.006,Now-.001)*DegreesPerVoltX;
             yEye := View(ctview%).ChanMeasure(configEyeYChannel%,2,Now-.006,Now-.001)*DegreesPerVoltY;
             ' Don't update display every time. 
@@ -2638,7 +2640,7 @@ func Main%()
                 View(EyeXYWindow%).XYAddData(iEyePosChannel%, xEye, yEye);
                 tLastEyeUpdate := Now;
             endif
-        endif
+        'endif
         
         
         
@@ -4648,7 +4650,7 @@ proc UpdatePSTH()
     SPKappend();  'append SPK file
     SafeUpdate(UpdateSuccess%[]);  'update secondary files, if they're not in use
     'Update PSTHs if they exist   
-    if NTrodes% > 0 then
+    if tunNWavemarks% > 0 then
         if Passive% = 0 then
             MarkMask4(MemChanHistTriggerA%,StimCodes%[]); 'Set the marker filter for hist trigger channel to one specific StimCode 
             view(hApsthS%).process(PSTHBeginTime,view(-1).maxtime(),1,1,0,MemChanHistTriggerA%,HistTotal,HistPre);  'Update single-stim histogram, use marker filter instead of single code
@@ -4685,7 +4687,7 @@ proc UpdatePSTH()
             'view(hPpsthA%).process(PSTHBeginTime,view(-1).maxtime(),1,1,0,MemChanHistTriggerP%,HistTotal,HistPre);   'Update all spikes histogram, no gate
         endif;
         
-        if NTrodes% > 1 then
+        if tunNWavemarks% > 1 then
             if Passive% = 0 then
                 MarkMask4(MemChanHistTriggerA%,StimCodes%[]); 'Set the marker filter for hist trigger channel to one specific StimCode 
                 view(hApsthS2%).process(PSTHBeginTime,view(-1).maxtime(),1,1,0,MemChanHistTriggerA%,HistTotal,HistPre);  'Update single-stim histogram, use marker filter instead of single code
@@ -4725,7 +4727,7 @@ proc UpdatePSTH()
             endif;
         endif;
         
-        if NTrodes% > 2 then
+        if tunNWavemarks% > 2 then
             if Passive% = 0 then
                 MarkMask4(MemChanHistTriggerA%,StimCodes%[]); 'Set the marker filter for hist trigger channel to one specific StimCode 
                 view(hApsthS3%).process(PSTHBeginTime,view(-1).maxtime(),1,1,0,MemChanHistTriggerA%,HistTotal,HistPre);  'Update single-stim histogram, use marker filter instead of single code
@@ -11256,19 +11258,19 @@ func SafeUpdate(Success%[])
     if ok% > 0 then 'if the file is successfully deleted, run the online updater
 	 	'these IFs are not mutually exclusive
         if Success%[0] = 0 then
-            ok% := filecopy(OnlineDir$+dataCellName$+"a.idx",OnlineDir$+dataCellName$+"a_ma.idx",1);
+            ok% := filecopy(OnlineDir$+MyAutoName$+"a.idx",OnlineDir$+MyAutoName$+"a_ma.idx",1);
         endif;
         if Success%[1] = 0 then
-            ok% := filecopy(OnlineDir$+dataCellName$+"p.idx",OnlineDir$+dataCellName$+"p_ma.idx",1);
+            ok% := filecopy(OnlineDir$+MyAutoName$+"p.idx",OnlineDir$+MyAutoName$+"p_ma.idx",1);
         endif;
         if Success%[2] = 0 then
-            ok% := filecopy(OnlineDir$+dataCellName$+"m.idx",OnlineDir$+dataCellName$+"m_ma.idx",1);
+            ok% := filecopy(OnlineDir$+MyAutoName$+"m.idx",OnlineDir$+MyAutoName$+"m_ma.idx",1);
         endif;
         if Success%[3] = 0 then
-            ok% := filecopy(OnlineDir$+dataCellName$+"w.idx",OnlineDir$+dataCellName$+"w_ma.idx",1);
+            ok% := filecopy(OnlineDir$+MyAutoName$+"w.idx",OnlineDir$+MyAutoName$+"w_ma.idx",1);
         endif;
-        ok% := filecopy(OnlineDir$+dataCellName$+"all.idx",OnlineDir$+dataCellName$+"all_ma.idx",1);
-        ok% := filecopy(OnlineDir$+dataCellName$+".spk",OnlineDir$+dataCellName$+"_ma.spk",1);
+        ok% := filecopy(OnlineDir$+MyAutoName$+"all.idx",OnlineDir$+MyAutoName$+"all_ma.idx",1);
+        ok% := filecopy(OnlineDir$+MyAutoName$+".spk",OnlineDir$+MyAutoName$+"_ma.spk",1);
         ok% := filecopy(OnlineDir$+"empty_file.txt",OnlineDir$+"spike2_done.txt");
         arrconst(UpdateSuccess%[],1);  'Reset success for all (even if not all were updated - none failed)
     endif;
@@ -11289,12 +11291,12 @@ func IDXupdate(Type$)
     var a;   'will hold either trial-specific attenuation or fade attenuation as appropriate
     
 	'Try opening type-specific file.  File will not exist on first run of each type
-    fh%:=fileopen(OnlineDir$+dataCellName$+Type$+".idx",8,2);  
+    fh%:=fileopen(OnlineDir$+MyAutoName$+Type$+".idx",8,2);  
     
     
 	'If the type-specific file does not exist, create it
     if fh%<0 then
-        fh%:=fileopen(OnlineDir$+dataCellName$+Type$+".idx",8,3); 
+        fh%:=fileopen(OnlineDir$+MyAutoName$+Type$+".idx",8,3); 
         if NSpeakers% < 2 then
             view(fh%).print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t","Trial","S-Seq","T-Info","T-Name","Atten","S-Onset","T-Onset","S-Offset","T-Resp"); 'header tag1, split for length and looping
             'print("%s\t%s\t%s\t%s\t%s\n\n","Result",Date$(),"Parameter File: "+ParamFile$,"Trials File: "+TrialFile$,ThisVersion$); 'header tag2, old, pre-looping
@@ -11371,11 +11373,11 @@ func IDXupdate(Type$)
     
     
 	'Try opening overall file.  File will not exist on first run
-    fh2%:=fileopen(OnlineDir$+dataCellName$+".idx",8,2);
+    fh2%:=fileopen(OnlineDir$+MyAutoName$+".idx",8,2);
     
 	'If the overall file does not exist, create it
     if fh2%<0 then
-        fh2%:=fileopen(OnlineDir$+dataCellName$+".idx",8,3); 
+        fh2%:=fileopen(OnlineDir$+MyAutoName$+".idx",8,3); 
         if NSpeakers% < 2 then
             view(fh2%).print("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t","Trial","Type","S-Seq","T-Info","T-Name","Atten","S-Onset","T-Onset","S-Offset","T-Resp"); 'header tag1, split for length and looping
             'print("%s\t%s\t%s\t%s\t%s\n\n","Result",Date$(),"Parameter File: "+ParamFile$,"Trials File: "+TrialFile$,ThisVersion$); 'header tag2, old, pre-looping
@@ -11437,11 +11439,11 @@ func IDXupdate(Type$)
     
     
 	'Try opening log file.  File will not exist on first run
-    fhlog%:=fileopen(LogDir$+dataCellName$+".log",8,2);
+    fhlog%:=fileopen(LogDir$+MyAutoName$+".log",8,2);
     
 	'If the log file does not exist, create it
     if fhlog%<0 then
-        fhlog%:=fileopen(LogDir$+dataCellName$+".log",8,3); 
+        fhlog%:=fileopen(LogDir$+MyAutoName$+".log",8,3); 
         view(fhlog%).print("%s\t%s\t",Date$(),"Parameter File: "+ParamFile$); 'header tag 1
         for ii% := 0 to NTrialsFiles%-1 do
             view(fhlog%).print("%s\t","Trials File " + Str$(ii%+1) + ": " + TrialFileList$[ii%]); 'header tag 2
@@ -11475,10 +11477,10 @@ func SPKappend();
     view(ctview%);
     Now := maxtime();
     
-    for ii% := 1 to NTrodes% do
+    for ii% := 1 to tunNWavemarks% do
         
         'if there is only one electrode, maintain standard .spk file naming scheme
-        if NTrodes% = 1 then
+        if tunNWavemarks% = 1 then
             fileSuffix$ := ".spk";
         else 'if there are multiple electrodes, use the standard scheme, but add "_1", "_2", etc. designating the electrode number
             fileSuffix$ := "_" + Str$(ii%) + ".spk";
@@ -11489,11 +11491,11 @@ func SPKappend();
         
 
         'Try opening file.  File will not exist on first run
-        fh%:=fileopen(OnlineDir$+dataCellName$+fileSuffix$,8,2);
+        fh%:=fileopen(OnlineDir$+MyAutoName$+fileSuffix$,8,2);
         
         'If the file does not exist, create it
         if fh%<0 then
-            fh%:=fileopen(OnlineDir$+dataCellName$+fileSuffix$,8,3); 
+            fh%:=fileopen(OnlineDir$+MyAutoName$+fileSuffix$,8,3); 
             view(fh%).print("Header\t","Info\t","Here\n"); 'header tag
         endif;
         
@@ -11506,11 +11508,11 @@ func SPKappend();
         'Check for first spike, will be -1 if there are no more spikes 
         docase
         case ii% = 1 then
-            EventTime := NextTime(configWaveMarkChannel%,EventTime,Code%[]);
+            EventTime := NextTime(WavemarkPorts%[0],EventTime,Code%[]);
         case ii% = 2 then
-            EventTime := NextTime(configWaveMarkChannel2%,EventTime,Code%[]);    
+            EventTime := NextTime(WavemarkPorts%[1],EventTime,Code%[]);    
         case ii% = 3 then
-            EventTime := NextTime(configWaveMarkChannel3%,EventTime,Code%[]);
+            EventTime := NextTime(WavemarkPorts%[2],EventTime,Code%[]);
         endcase
         
         'Is current spike in a valid range
@@ -11521,11 +11523,11 @@ func SPKappend();
             'Check for next spike
             docase
             case ii% = 1 then
-                EventTime := NextTime(configWaveMarkChannel%,EventTime,Code%[]);
+                EventTime := NextTime(WavemarkPorts%[0],EventTime,Code%[]);
             case ii% = 2 then
-                EventTime := NextTime(configWaveMarkChannel2%,EventTime,Code%[]);    
+                EventTime := NextTime(WavemarkPorts%[1],EventTime,Code%[]);    
             case ii% = 3 then
-                EventTime := NextTime(configWaveMarkChannel3%,EventTime,Code%[]);
+                EventTime := NextTime(WavemarkPorts%[2],EventTime,Code%[]);
             endcase
         wend;
         
@@ -11551,11 +11553,11 @@ proc WriteLightLog()
     var ii%;  'looping
     
 	'Try opening light log file.  File will not exist on first run
-    fh%:=fileopen(OnlineDir$+dataCellName$+"lightlog.idx",8,2);  
+    fh%:=fileopen(OnlineDir$+MyAutoName$+"lightlog.idx",8,2);  
     
 	'If the light log file does not exist, create it
     if fh%<0 then
-        fh%:=fileopen(OnlineDir$+dataCellName$+"lightlog.idx",8,3); 
+        fh%:=fileopen(OnlineDir$+MyAutoName$+"lightlog.idx",8,3); 
         view(fh%).print("Action\t","Time\t",ThisVersion$+"\n"); 'header tag, note version here as well
     endif;
     
@@ -11705,11 +11707,11 @@ proc WriteTimingLog(id,wl,sp,sa,no)
     var ii%;  'looping
     
 	'Try opening light log file.  File will not exist on first run
-    fh%:=fileopen(OnlineDir$+dataCellName$+"timinglog.idx",8,2);  
+    fh%:=fileopen(OnlineDir$+MyAutoName$+"timinglog.idx",8,2);  
     
 	'If the light log file does not exist, create it
     if fh%<0 then
-        fh%:=fileopen(OnlineDir$+dataCellName$+"timinglog.idx",8,3); 
+        fh%:=fileopen(OnlineDir$+MyAutoName$+"timinglog.idx",8,3); 
         view(fh%).print("IDX\t","Lightlog\t","SPK\t","SafeUpdate\t","Total\t",ThisVersion$+"\n"); 'header tag, note version here as well
     endif;
     
@@ -12359,14 +12361,14 @@ var ii%;
             printlog("Begin the next session with trial number %d\n",CurrTrialIndex%+1);
             view(HiddenLogHandle%).print("Begin the next session with trial number %d\r",CurrTrialIndex%+1);
             'create TrialWrap file
-            fh%:=fileopen(OnlineDir$+dataCellName$+"trialwrap.idx",8,3); 
+            fh%:=fileopen(OnlineDir$+MyAutoName$+"trialwrap.idx",8,3); 
             view(fh%).print(CurrTrialIndex%+1);
             fileclose();   'Close fh%
         else
             printlog("Begin the next session with trial numbers ");
             view(HiddenLogHandle%).print("Begin the next session with trial numbers ");
             'create TrialWrap file
-            fh%:=fileopen(OnlineDir$+dataCellName$+"trialwrap.idx",8,3); 
+            fh%:=fileopen(OnlineDir$+MyAutoName$+"trialwrap.idx",8,3); 
             for ii% := 0 to NTrialsFiles%-1 do
                 printlog("%d ", FutureTrialIndexList%[ii%]+1);
                 view(HiddenLogHandle%).print("%d ", FutureTrialIndexList%[ii%]+1);
@@ -12483,12 +12485,12 @@ var ii%;
             view(ctview%).ChanShow(configJoyEventsChannel%,configTrialStartChannel%,configTestStimStartChannel%,configStimulusChannel%,configRewardChannel%);
         else
             view(ctview%).ChanShow(configJoyEventsChannel%,configTrialStartChannel%,configTestStimStartChannel%,configStimulusChannel%,configRewardChannel%);  'to get above memory channels to save to .smr file, they must be shown
-            view(ctview%).ChanShow(configWaveformChannel%);
-            if NTrodes% > 1 then
-                view(ctview%).ChanShow(configWaveformChannel2%);
+            view(ctview%).ChanShow(WavemarkPorts%[0]);
+            if tunNWavemarks% > 1 then
+                view(ctview%).ChanShow(WavemarkPorts%[1]);
             endif
-            if NTrodes% > 2 then
-                view(ctview%).ChanShow(configWaveformChannel3%);
+            if tunNWavemarks% > 2 then
+                view(ctview%).ChanShow(WavemarkPorts%[2]);
             endif 
         endif;
         'File will now autosave
@@ -12499,11 +12501,11 @@ var ii%;
     
     'do one last update of the output log file
 	'Try opening log file.  File will not exist on first run
-    fhlog%:=fileopen(LogDir$+dataCellName$+".log",8,2);
+    fhlog%:=fileopen(LogDir$+MyAutoName$+".log",8,2);
     
 	'If the log file does not exist, create it
     if fhlog%<0 then
-        fhlog%:=fileopen(LogDir$+dataCellName$+".log",8,3); 
+        fhlog%:=fileopen(LogDir$+MyAutoName$+".log",8,3); 
         view(fhlog%).print("%s\t%s\t%s\t%s\n\n",Date$(),"Parameter File: "+ParamFile$,"Trials File: "+TrialFile$,ThisVersion$); 'header tag
     endif;
     

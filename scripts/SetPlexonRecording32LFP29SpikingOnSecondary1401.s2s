@@ -15,7 +15,7 @@ var DataWindow%;
 var key$;
 var TimingChannel% := 50;  'Will be higher than any other channel
 
-SampleSequencer(script$ + "Dual1401Secondary.pls");  'this sequencer script does nothing but send the handshake pulse - all we need
+
 
 SampleClear();
 SampleChannels(64);  '32 does not work, we need more!
@@ -42,6 +42,7 @@ SampleAutoName$(dataCellName$ + "_" + GetStringRegistryValue$(key$, "pref", "") 
 SampleAutoFile(1);  
 SampleAutoComment(0); 'Prompt for comment after sampling
 SampleAutoCommit(60); 'Seconds between each file commit
+SampleSequencer(script$ + "Dual1401Secondary.pls");  'this sequencer script does nothing but send the handshake pulse - all we need
 SampleMode(1); 'Continuous sampling
 InitializeToolbar();  'puts the function into the toolbar
 
@@ -86,7 +87,7 @@ proc InitializeToolbar()
 end;
 
 func Start%()
-    
+    var startSecs := 100;
         
     SampleStart(1);  'set sampling to start on a trigger
     
@@ -95,7 +96,17 @@ func Start%()
 	ToolbarEnable(1,0);
 	ToolbarEnable(3,0);
 	View(DataWindow%);
-	Yield(.1);
+    Yield(.1);
+    while SampleStatus() <> 2 and startSecs > 0 do
+        yield(0.1);
+        startSecs := startSecs - 0.1;
+    wend
+    if startSecs <= 0 then
+        message("Sampling not started in 100 seconds!  Quitting!");
+        halt
+    endif
+    SampleKey("T");
+    Printlog("Sent Sample Key!\n");
     return 1;
     
     
