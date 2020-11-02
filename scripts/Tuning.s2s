@@ -53,6 +53,7 @@ var ButtonPort%;
 var StimulatorChannel%;
 var UtilityChannel%;
 var JoyChannel%;
+var TimingChannel%;
 
 ' xy windows for plotting (TuningWindow) and PSTH. 
 var TuningWindow%[16];	' one for each wavemark channel
@@ -276,6 +277,7 @@ StimChannel% := 43;
 OptoCopyChannel% := 49;
 StimulatorChannel% := 39;
 UtilityChannel% := 38;
+TimingChannel% := 37;
 
 ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
@@ -2314,8 +2316,16 @@ proc CreateSampleConfiguration()
     case RecordEyeTrackerOutputFile% = 1 then
         SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
         SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
+    case UseTwo1401s% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32
     endcase
     
+    if UseTwo1401s% = 1 then
+        SampleEvent(TimingChannel%, 7, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Stim");
+        SampleTitle$(TimingChannel%,"Stim");
+    endif;
     
     
     
@@ -2380,8 +2390,13 @@ proc CreateSampleConfiguration()
     '----Set up "spiking" Electrode Channels----
     'This function will set up standard sampling as well as various pre-set samplings including the Plexon setups
     SetUpElectrodeConfiguration(numWavemarkPorts%,ExcludedChans%[]);
-
-	SampleSequencer(script$ + "Tuning.pls");
+    
+    if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+    
     
     DoSampleOptimise();
 	
@@ -3150,7 +3165,7 @@ func Start%()
     var tempSeqVarValue%;
     var specFileName$;
     var specHandle%;
-    var startSecs := 45;
+    var startSecs := 5;
     
     specFileName$ := GetScriptDir$(0)+"..\\..\\TuningSpecFile.txt";
     
@@ -3158,17 +3173,25 @@ func Start%()
 	
 	'start sampling
     if UseTwo1401s% = 1 then
-        SampleStart(1);  'set sampling to start on a trigger
-        while SampleStatus() <> 2 and startSecs > 0 do
-            yield(1);
-            startSecs := startSecs - 1;
+        'SampleStart(1);  'set sampling to start on a trigger
+        'while SampleStatus() <> 2 and startSecs > 0 do
+        '    yield(1);
+        '    startSecs := startSecs - 1;
+        'wend
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        while pulseFound% < 1 and startSecs > 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
         wend
+        SafeSampleKey("T");
     else
     	SampleStart(0); 'Start sampling now
     endif;
 
     if startSecs <= 0 then
-        message("Sampling did not successfully start in 45 seconds!  Quitting!");
+        message("Handshake not found in 5 seconds!  Quitting!");
         halt
     endif
 

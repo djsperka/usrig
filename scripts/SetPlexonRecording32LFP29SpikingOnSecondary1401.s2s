@@ -13,9 +13,16 @@
 
 var DataWindow%;
 var key$;
+var TimingChannel% := 50;  'Will be higher than any other channel
+
+SampleSequencer(script$ + "Dual1401Secondary.pls");  'this sequencer script does nothing but send the handshake pulse - all we need
 
 SampleClear();
 SampleChannels(64);  '32 does not work, we need more!
+
+SampleEvent(TimingChannel%, 0, 2, 3600); 'Trigger channel, level
+SampleComment$(TimingChannel%,"Timing");
+SampleTitle$(TimingChannel%,"Timing");
 
 CreateElectrodeSamplingConfiguration32LFP29SpikingSecondary();
 
