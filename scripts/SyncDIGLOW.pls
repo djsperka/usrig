@@ -27,18 +27,14 @@
 0125            MOVI   V2,0            ;Log that sequencer is not in use
 0126            HALT   
 
-; PULSE DIGLOW BIT 0X8 
+; SET DIGLOW BIT 0X8 
 0157    'A  MOVI   V2,1            ;Log that sequencer is in use
-0158        DIGLOW [....1...]
-0144        DELAY  s(0.1) 
-0158        DIGLOW [....0...]
+0158        DIGLOW [...01...]
 0160            MOVI   V2,0            ;Log that sequencer is not in use
 0161            HALT   
 
 ; PULSE DIGLOW BIT 0X10 
 0157    'B  MOVI   V2,1            ;Log that sequencer is in use
-0158        DIGLOW [...1....]
-0144        DELAY  s(0.1) 
-0158        DIGLOW [...0....]
+0158        DIGLOW [...10...]
 0160            MOVI   V2,0            ;Log that sequencer is not in use
 0161            HALT   
