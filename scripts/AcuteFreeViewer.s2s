@@ -35,6 +35,7 @@ var OptoCopyChannel%;
 var SequencerPeriodMS;
 var StimulatorChannel%;
 var UtilityChannel%;
+var TimingChannel%;
 
 ' XY window stuff
 var iMonitorChannel%;	' channel number for monitor position display in xy window
@@ -168,6 +169,7 @@ StimulatorChannel% := 46;
 DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
 OptoCopyChannel% := 49;
 UtilityChannel% := 39;
+TimingChannel% := 42;
 
 ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
@@ -366,6 +368,14 @@ proc CreateSampleConfiguration()
     endif;
 
     
+    if UseTwo1401s% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32
+        
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+    endif
     
     
     
@@ -375,7 +385,12 @@ proc CreateSampleConfiguration()
         
 	
     
-	SampleSequencer(script$ + "tuning.pls");
+	if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+
 	DoSampleOptimise();
 	SampleMode(1); 'Continuous sampling
     
@@ -493,6 +508,7 @@ func Start%()
     var fh%;
     var readInputFile% := 1;
     var readTemp$;
+    var startSecs := 5;
     
     'For serial communications with Neuropixel, use the same values (I think??) but do not send initial message
     if fvDoNeuropixel% =  1 then
@@ -545,10 +561,25 @@ func Start%()
     
 	'start sampling
     if UseTwo1401s% = 1 then
-        SampleStart(1);  'set sampling to start on a trigger
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        'Send timing pulse
+        SafeSampleKey("T");
     else
     	SampleStart(0); 'Start sampling now
     endif;
+    
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
+
     
     'Set sequencer variable 5, this value is appropriate for no rivalry
     SampleSeqVar(5, 0);

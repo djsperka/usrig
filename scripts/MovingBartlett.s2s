@@ -7,6 +7,7 @@
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
+#include "../util/ChannelUtilities.s2s"
 #include "../util/UsreyUtil.s2s"
 #include "AttentionExtractFunctions.s2s"
 #include "UsreyFixationPoint.s2s"
@@ -69,6 +70,7 @@ var SynchChannel%;  'Currently unused
 var FixationPointChannel%;
 var ReadyChannel%;
 var UtilityChannel% ;
+var TimingChannel%;
 var XYWindow%;	
 
 ' Display stuff
@@ -246,8 +248,9 @@ StimChannel% := 27;
 StimChangeChannel% := 28;
 ReadyChannel% := 29;
 UtilityChannel% := 33;
+TimingChannel% := 34;
 ExcludedChans%[0] := 23;  'XChannel is lowest non-electrode channel used by this function
-ExcludedChans%[1] := 33;  'UtilityChannel% is highest non-electrode channel used by this function
+ExcludedChans%[1] := 34;  'TimingChannel% is highest non-electrode channel used by this function
 
 
 
@@ -423,6 +426,16 @@ proc CreateSampleConfiguration()
 	SampleTitle$(ReadyChannel%,"VSG Ready");
     
     
+    if UseTwo1401s% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32
+        
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+    endif;
+    
+    
     '----Analog, non-spiking electrode recording conditions
     ' Set up eye channels whether using Plexon or not, but do not set up eye channels if we are not checking fixation
     if alwaysLooking% = 0 then
@@ -462,8 +475,13 @@ proc CreateSampleConfiguration()
     
 	SampleTextMark(200);  'increase number of allowed characters, 1 is so stingy!
     
-    SampleSequencer(script$ + "Tuning.pls");  'tuning will work, for now just need fixon and fixoff
-    
+    'SampleSequencer(script$ + "Tuning.pls");  'tuning will work, for now just need fixon and fixoff
+    if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+
     DoSampleOptimise();
     
 '    docase
@@ -632,16 +650,35 @@ func Start%()
 	var Extras$;
     var i%;
     var actualSpecFileName$;
+    var startSecs := 5;
+    var pulseFound%;
+    var tRise;
+    var tFall;
     
     'hard code pReward to 1 (DefaultReward still uses this)
     pReward := 1;
     
     'start sampling
     if UseTwo1401s% = 1 then
-        SampleStart(1);  'set sampling to start on a trigger     
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        'Send timing pulse
+        SafeSampleKey("T");     
     else
     	SampleStart(0); 'Start sampling now
     endif;
+    
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
+
     
 	' Set Sequencer Variable #3 based on juicer type 
     SetJuicerSequencerVariable%();

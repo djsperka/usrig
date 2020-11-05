@@ -39,6 +39,7 @@ var OptoCopyChannel%;
 var SequencerPeriodMS;
 var StimulatorChannel%;
 var UtilityChannel%;
+var TimingChannel%;
 
 ' XY window stuff
 var XYWindow%;			' 
@@ -222,6 +223,7 @@ StimulatorChannel% := 46;
 DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
 OptoCopyChannel% := 49;
 UtilityChannel% := 39;
+TimingChannel% := 38;
 
 ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
@@ -542,10 +544,14 @@ proc CreateSampleConfiguration()
     'Add a digital marker channel for pulsing optogenetics
     'Do it for every opto, easy enough to add this into the wraparound calls in the PLS
     'Will record a '1' for laser on and a '0' for laser off
-    if fvDoOpto% = 1 then
+    docase
+    case fvDoOpto% = 1 then
         SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
         SampleTitle$(DigitalLaserChannel%,"Laser On");
-    endif
+    case UseTwo1401s% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32
+    endcase
     
     
     '----Analog, non-spiking electrode recording conditions
@@ -586,7 +592,12 @@ proc CreateSampleConfiguration()
     endif;
 
     
-    
+    if UseTwo1401s% = 1 then
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+    endif;
+
     
     
     '----Set up "spiking" Electrode Channels----
@@ -595,7 +606,12 @@ proc CreateSampleConfiguration()
         
 	
     
-	SampleSequencer(script$ + "tuning.pls");
+	if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+
 	DoSampleOptimise();
 	SampleMode(1); 'Continuous sampling
     
@@ -759,7 +775,7 @@ func Start%()
     var fh%;
     var readInputFile% := 1;
     var readTemp$;
-    
+    var startSecs := 5;
     
     'Get list of images, either from folder or from file, and create a randomized order (via list of indices),
     'write entire randomized trial-by-trial image list to text file for passing to VSG
@@ -805,10 +821,25 @@ func Start%()
     
 	'start sampling
     if UseTwo1401s% = 1 then
-        SampleStart(1);  'set sampling to start on a trigger
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        'Send timing pulse
+        SafeSampleKey("T");
     else
     	SampleStart(0); 'Start sampling now
     endif;
+    
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
+
     
     'Set sequencer variable 5, this value is appropriate for no rivalry
     SampleSeqVar(5, 0);

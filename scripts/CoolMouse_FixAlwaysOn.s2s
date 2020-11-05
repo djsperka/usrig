@@ -23,6 +23,7 @@ var cmUseGratingParametersFile% := 0;    ' only if remote is NOT 127.0.0.1
 var XChannel%,YChannel%;		' Channel number assigned to eye x and y
 var TriggerChannel%;			' Channel number assigned to vsg trigger input (i.e. trigger sent by vsg)
 var ReadyChannel%;			' channel number for VSG ready pulse signal
+var TimingChannel%;
 var DataWindow%;	' time view
 var XYWindow%;		' window with eye pos shown
 var iStimChannel%;	' channel number for stimulus in xy window
@@ -94,9 +95,10 @@ XChannel% := 21;
 YChannel% := 22;
 TriggerChannel% := 23;
 ReadyChannel% := 24;
+TimingChannel% := 25;
 
 ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
-ExcludedChans%[1] := 31;  'Keyboard (default) is highest non-electrode channel used by this function
+ExcludedChans%[1] := 32;  'Digmark (default) is highest non-electrode channel used by this function
 
 if UseTwo1401s% = 0 then
     CreateSampleConfiguration();
@@ -412,6 +414,16 @@ proc CreateSampleConfiguration()
 	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
 	SampleTitle$(YChannel%, "Eye Y");
     
+    if UseTwo1401s% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32
+        
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+    endif;
+
+    
     
     'Note: this has been stolen from Tuning - Henry is having crashing problems and he believes that using the
     'standard recording setup abolishes them
@@ -421,7 +433,13 @@ proc CreateSampleConfiguration()
     
     
     
-	SampleSequencer(script$ + "CoolMouse.pls");
+	'SampleSequencer(script$ + "CoolMouse.pls");
+    if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+
 	DoSampleOptimise();
 	SampleMode(1); 'Continuous sampling
 end;
@@ -548,14 +566,32 @@ func Start%()
     var RemoteArg$;
     var remoteExtras$;
     var i%;
+    var startSecs := 5;
+    var pulseFound%;
+    var tRise;
+    var tFall;
     
     if UseTwo1401s% = 1 then
-        SampleStart(1);  'set sampling to start on a trigger
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        'Send timing pulse
+        SafeSampleKey("T");
     else
         SampleStart(0); 'Start sampling now
     endif;
     
-	SampleStart(0); 'Start sampling
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
+    
+
     ' Set Sequencer Variable #3 based on juicer type 
     SetJuicerSequencerVariable%();
     ' Clear any trigger bits on digout lines.
@@ -631,7 +667,8 @@ func Stop%()
 	ToolbarSet(0,"");
 
 	' Tell stim app to shut down
-	SafeSampleKey("q");
+	'SafeSampleKey("q");
+    SafeSampleKey("Q");  'Changing to tuning.pls
 	Yield(.1);
 	SampleStop();
     

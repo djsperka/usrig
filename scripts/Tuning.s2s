@@ -2322,9 +2322,9 @@ proc CreateSampleConfiguration()
     endcase
     
     if UseTwo1401s% = 1 then
-        SampleEvent(TimingChannel%, 7, 2, 3600); 'Trigger channel, level
-        SampleComment$(TimingChannel%,"TChan");
-        SampleTitle$(TimingChannel%,"TChan");
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
     endif;
     
     
@@ -3180,21 +3180,22 @@ func Start%()
         'wend
         SampleStart(0);  'Set sampling to start immediately
         Yield(0.5);  'Wait half a second
-        while pulseFound% < 1 and startSecs > 0 do
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
             pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
             yield(0.1);
             startSecs := startSecs - 0.1;
         wend
+        'Send timing pulse
         SafeSampleKey("T");
     else
     	SampleStart(0); 'Start sampling now
     endif;
 
-'Handshake pulse is not coming through for unknwon reason, but otherwise all is good, so...comment this out until we figure out the handshake pulse problem
-'    if startSecs <= 0 then
-'        message("Handshake not found in 5 seconds!  Quitting!");
-'        halt
-'    endif
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
 
     ' djs Set sequencer variable 5 if this is rivalry
     if tunDoRivalry% = 1 then

@@ -16,6 +16,7 @@ var key$;
 var XChannel%;
 var YChannel%;
 var DigitalLaserChannel%;
+var TimingChannel%;
 var OptoCopyChannel%;
 var OptoUsePulse%;
 var ooNWavemarks% := 0;
@@ -101,8 +102,9 @@ func CreateSampleConfiguration()
     ' Assign necessary channel numbers
     XChannel% := 23;
     YChannel% := 24;
-    DigitalLaserChannel% := 25;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
+    DigitalLaserChannel% := 32;  'Digmark channel has to be 32
     OptoCopyChannel% := 26;
+    TimingChannel% := 27;
     ExcludedChans%[0] := 23;  'XChannel is lowest non-electrode channel used by this function
     ExcludedChans%[1] := 35;  'This parallels the current CuedAtten, though not all the dig in channels are created
     
@@ -131,6 +133,12 @@ func CreateSampleConfiguration()
         SampleTitle$(YChannel%,"Eye Y");
     endif;
     
+    if UseTwo1401s% = 1 then
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+    endif;
+
     
     GetElectrodeParameters();
     
@@ -142,7 +150,12 @@ func CreateSampleConfiguration()
     
     SampleTextMark(200);  'increase number of allowed characters, 1 is so stingy!
     
-    SampleSequencer(script$ + "Tuning.pls");  
+    if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+  
     
     DoSampleOptimise();
     
@@ -397,13 +410,32 @@ func Start%()
     var SequencerPeriodMS;
     var OneClockTick% := 1;
     var nPulsesFloat;
+    var startSecs := 5;
+    var pulseFound%;
+    var tRise;
+    var tFall;
     
 	'start sampling
     if UseTwo1401s% = 1 then
-        SampleStart(1);  'set sampling to start on a trigger
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        'Send timing pulse
+        SafeSampleKey("T");
     else
     	SampleStart(0); 'Start sampling now
     endif;
+    
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
+
     
     SampleSeqVar(5, 0);
 
