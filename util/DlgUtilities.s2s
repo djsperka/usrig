@@ -169,10 +169,11 @@ func WMCNPortDialog32%(title$, &wmports%[], &cnports%[], channame$[], &CustomLab
     DlgCheck((3*n%)+3, "Joe Plexon #1", 10, height%+2);
     DlgCheck((3*n%)+4, "Use Plexon 32/29", 30, height%+2);
     DlgCheck((3*n%)+5, "Use Custom Chan Labels", 49, height%+1);
-    DlgInteger((3*n%)+6, 6, 0, 40000, 75, height%+1); DlgText("Wavemark Sampling Rate",81,height%+1);
-    DlgInteger((3*n%)+7, 6, 0, 40000, 75, height%+2); DlgText("Continuous Sampling Rate",81,height%+2);
+    DlgCheck((3*n%)+6, "Ignore Handshake", 49, height%+2);
+    DlgInteger((3*n%)+7, 6, 0, 40000, 75, height%+1); DlgText("Wavemark Sampling Rate",81,height%+1);
+    DlgInteger((3*n%)+8, 6, 0, 40000, 75, height%+2); DlgText("Continuous Sampling Rate",81,height%+2);
     DlgAllow(0xffff, 0, WMCNPortDialogChanged32%);
-	i% := DlgShow(wmports%[0:n%],cnports%[0:n%],channame$[0:n%],UsePlexon15WF15WF2k%,UsePlexon24WF%,JoePlexon1%,UsePlexon32LFP29SpikingWF%,CustomLabel%,WavemarkSamplingRate%,WaveformSamplingRate%);
+	i% := DlgShow(wmports%[0:n%],cnports%[0:n%],channame$[0:n%],UsePlexon15WF15WF2k%,UsePlexon24WF%,JoePlexon1%,UsePlexon32LFP29SpikingWF%,CustomLabel%,Dual1401IgnoreHandshake%,WavemarkSamplingRate%,WaveformSamplingRate%);
     if i% = 1 then
         UseChanByChanSampRates% := 0;
         DlgValue$(14,"<--");
@@ -189,6 +190,12 @@ func WMCNPortDialogChanged32%(item%)
     var enableText%;
     
     GetDAQParameters();
+    
+    if dlgValue((3*dlguNPorts%)+4) = 1 then
+        DlgEnable(1,(3*dlguNPorts%)+6);
+    else
+        DlgEnable(0,(3*dlguNPorts%)+6);
+    endif;
     
     if DlgValue((3*dlguNPorts%)+1) = 1 or DlgValue((3*dlguNPorts%)+2) = 1 or DlgValue((3*dlguNPorts%)+3) = 1 or DlgValue((3*dlguNPorts%)+4) = 1 then
         enable% := 0;
@@ -399,10 +406,11 @@ func WMCNPortDialog32SetSampFreq%(title$, &wmports%[], &cnSampFreq%[], channame$
     DlgCheck((3*n%)+3, "Joe Plexon #1", 10, height%+2);
     DlgCheck((3*n%)+4, "Use Plexon 32/29", 30, height%+2);
     DlgCheck((3*n%)+5, "Use Custom Chan Labels", 49, height%+1);
-    DlgInteger((3*n%)+6, 6, 0, 40000, 75, height%+1); DlgText("Wavemark Sampling Rate",81,height%+1);
-    'DlgInteger((3*n%)+7, 6, 0, 40000, 75, height%+2); DlgText("Continuous Sampling Rate",81,height%+2);
+    DlgCheck((3*n%)+6, "Ignore Handshake", 49, height%+2);
+    DlgInteger((3*n%)+7, 6, 0, 40000, 75, height%+1); DlgText("Wavemark Sampling Rate",81,height%+1);
+    'DlgInteger((3*n%)+8, 6, 0, 40000, 75, height%+2); DlgText("Continuous Sampling Rate",81,height%+2);
     DlgAllow(0xffff, 0, WMCNPortDialogChanged32SetSampFreq%);
-	i% := DlgShow(wmports%[0:n%],cnSampFreq%[0:n%],channame$[0:n%],UsePlexon15WF15WF2k%,UsePlexon24WF%,JoePlexon1%,UsePlexon32LFP29SpikingWF%,CustomLabel%,WavemarkSamplingRate%);
+	i% := DlgShow(wmports%[0:n%],cnSampFreq%[0:n%],channame$[0:n%],UsePlexon15WF15WF2k%,UsePlexon24WF%,JoePlexon1%,UsePlexon32LFP29SpikingWF%,CustomLabel%,Dual1401IgnoreHandshake%,WavemarkSamplingRate%);
     if i% = 1 then
         UseChanByChanSampRates% := 1;
         DlgValue$(14,"");
@@ -421,6 +429,12 @@ func WMCNPortDialogChanged32SetSampFreq%(item%)
     var enableText%;
     
     GetDAQParameters();
+    
+    if dlgValue((3*dlguNPorts%)+4) = 1 then
+        DlgEnable(1,(3*dlguNPorts%)+6);
+    else
+        DlgEnable(0,(3*dlguNPorts%)+6);
+    endif;
     
     if DlgValue((3*dlguNPorts%)+1) = 1 or DlgValue((3*dlguNPorts%)+2) = 1 or DlgValue((3*dlguNPorts%)+3) = 1 or DlgValue((3*dlguNPorts%)+4) = 1 then
         enable% := 0;

@@ -43,6 +43,7 @@ var StimChannel%;
 var StimSlaveChannel%;
 var ReadyChannel%;
 var ReadySlaveChannel%;
+var TimingChannel%;
 var XYWindow%;
 var iStimChannel%;	' channel number for stimulus in xy window
 var iStimWindowChannel%;' channel number for stimulus window in xy window
@@ -52,6 +53,7 @@ var SequencerPeriodMS;
 ' Set standard channel positions
 XChannel% := 25;
 YChannel% := 26;
+TimingChannel% := 27;
 ReadyChannel% := 40;
 FrameChannel% := 41;
 FixationPointChannel% := 42;
@@ -61,7 +63,8 @@ FrameSlaveChannel% := 45;
 FixationPointSlaveChannel% := 46;
 StimSlaveChannel% := 47;
 
-
+ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 47;  'StimSlaveChannel% is highest non-electrode channel used by this function
 
 ' Display of animal's fixation
 var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
@@ -503,6 +506,16 @@ proc CreateSampleConfiguration()
 	SampleTitle$(StimSlaveChannel%,"Stim-Slave");
     
     
+    if UseTwo1401s% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32
+        
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+    endif;
+    
+    
     
     ' Set up channels for sampling electrodes.
     SetUpElectrodeConfiguration(qfNumWavemarks%,ExcludedChans%[]);
@@ -513,7 +526,12 @@ proc CreateSampleConfiguration()
 	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
 	SampleTitle$(YChannel%,"Eye Y");
     
-	SampleSequencer(script$ + "Tuning.pls");
+	if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+
 	DoSampleOptimise();
 	SampleMode(1); 'Continuous sampling
     
@@ -654,15 +672,31 @@ func Start%()
     var S2Values$:="";  'won't be used except for Box O' Donuts 
     var key$;
     var i%;
+    var startSecs := 5;
 
     
 	
 	'start sampling
     if UseTwo1401s% = 1 then
-        SampleStart(1);  'set sampling to start on a trigger
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        'Send timing pulse
+        SafeSampleKey("T");
     else
     	SampleStart(0); 'Start sampling now
     endif;
+    
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
+
     
     ' djs Set sequencer variable 5 if this is rivalry
     if qfDoRivalry% = 1 then

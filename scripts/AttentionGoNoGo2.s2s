@@ -1,5 +1,6 @@
 ' $Id$
 '
+#include "../util/ChannelUtilities.s2s"
 #include "../util/UsreyUtil.s2s"
 #include "AttentionExtractFunctions.s2s"
 #include "UsreyFixationPoint.s2s"
@@ -347,6 +348,7 @@ var DataWindow%;		'
 var XChannel%;
 var YChannel%;
 var JoyChannel%;
+var TimingChannel%;
 
 var FrameTriggerChannel%;
 var SynchChannel%;  '**disabled**
@@ -477,9 +479,10 @@ FixationPointChannel% := 26;
 StimChannel% := 27;
 StimChangeChannel% := 28;
 ReadyChannel% := 29;
-SynchChannel% := 32;  'note - this should be default be 32
+SynchChannel% := 36;
 PhotodiodeChannel% := 33;
 UtilityChannel% := 34;
+TimingChannel% := 35;
 OptoCopyChannel% := 49;
 
 
@@ -829,9 +832,17 @@ proc CreateSampleConfiguration()
     case RecordEyeTrackerOutputFile% = 1 then
         SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
         SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
+    case UseTwo1401s% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32    
     endcase
     
-    
+    if UseTwo1401s% = 1 then
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+    endif;
+
     
     
     
@@ -841,7 +852,12 @@ proc CreateSampleConfiguration()
     
 	SampleTextMark(200);  'increase number of allowed characters to 200
     
-    SampleSequencer(script$ + "Tuning.pls");
+    if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+
     DoSampleOptimise();
 	SampleMode(1); 'Continuous sampling
 end;
@@ -912,6 +928,10 @@ func Start%()
     var tempSeqVarValue;
     var tempSeqVarValue%;
     var ContrastFileWithFlag$;
+    var startSecs := 5;
+    var pulseFound%;
+    var tRise;
+    var tFall;
     
 	
     'hard code pReward to 1, per Henry
@@ -920,10 +940,25 @@ func Start%()
   
     'start sampling
     if UseTwo1401s% = 1 then
-        SampleStart(1);  'set sampling to start on a trigger     
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        'Send timing pulse
+        SafeSampleKey("T");     
     else
     	SampleStart(0); 'Start sampling now
     endif;
+    
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
+
     
     SequencerPeriodMS := SampleSeqClock(1);  'Get the clock period of the sequencer, in MS, must do this after starting sampling
     

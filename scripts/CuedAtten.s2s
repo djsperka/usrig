@@ -1,6 +1,7 @@
 
 
 'CuedAtten - a re-work of the AttenGoNoGo script to allow cue images and a few other changes
+#include "../util/ChannelUtilities.s2s"
 #include "../util/UsreyUtil.s2s"
 #include "AttentionExtractFunctions.s2s"
 #include "UsreyFixationPoint.s2s"
@@ -189,6 +190,7 @@ var StimChannel%;
 var StimChangeChannel%;
 var ReadyChannel%;
 var UtilityChannel%;
+var TimingChannel%;
 
 'Unic channels, ports
 var unicFileChannel%;   'This channel will register a pulse when the unic server notices the unic file has changed
@@ -345,11 +347,12 @@ unicFileChannel% := 33;
 unicCommandSuccessChannel% := 34;
 unicStimulatingChannel% := 35;
 UtilityChannel% := 36;
+TimingChannel% := 37;
 unicFilePort% := 5;
 unicCommandSuccessPort% := 6;
 unicStimulatingPort% := 7;
 ExcludedChans%[0] := 22;  'Joystick is lowest non-electrode channel used by this function
-ExcludedChans%[1] := 36;  'UtilityChannel% is highest non-electrode channel used by this function
+ExcludedChans%[1] := 37;  'TimingChannel% is highest non-electrode channel used by this function
 
 
 
@@ -1246,9 +1249,21 @@ proc CreateSampleConfiguration()
     SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
     SampleTitle$(32,"Heartbeat");  '32 is the default digital marker channel
     
+    
+    if UseTwo1401s% = 1 then
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+    endif;
 
-	'SampleSequencer(script$ + "Attention.pls");
-    SampleSequencer(script$ + "Tuning.pls");
+    
+
+	if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+
     DoSampleOptimise();
 	SampleMode(1); 'Continuous sampling
 end;
@@ -1415,6 +1430,11 @@ func Start%()
     var stimSpec$;
     var dist1Spec$;
     var Opener$;
+    var startSecs := 5;
+    var pulseFound%;
+    var tRise;
+    var tFall;
+    
     
     
     'leaving in Plexon-specific code in commented form just in case
@@ -1427,11 +1447,26 @@ func Start%()
     
     
     'start sampling
-    'if UseTwo1401s% = 1 then
-    '    SampleStart(1);  'set sampling to start on a trigger     
-    'else
-    SampleStart(0); 'Start sampling now
-    'endif;
+    if UseTwo1401s% = 1 then
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        'Send timing pulse
+        SafeSampleKey("T");     
+    else
+        SampleStart(0); 'Start sampling now
+    endif;
+    
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
+
     
 	' Set Sequencer Variable #3 based on juicer type 
     SetJuicerSequencerVariable%();
