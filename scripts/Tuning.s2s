@@ -1672,8 +1672,8 @@ proc CreateSampleConfiguration()
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
     
-    'read tuning file, if one is specified
-    if tunUseFile% = 1 and tunType$ <> tunTypeBakersDozen$ then
+    'read tuning file, if one is specified (but don't do this if we are using tunfile1/tunfile2)
+    if tunUseFile% = 1 and tunUseFile1% = 0 and tunType$ <> tunTypeBakersDozen$ then
         eof%:=1;
         readsetup(",","	 ","","","	");  'Standard read setup
         FileOpen(tunTuningFile$,8,0);  'open specified file
@@ -2109,7 +2109,7 @@ proc CreateSampleConfiguration()
         
         'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
         GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],tunBoxODonutsProgression%,tunBoxODonutsNRepeats%); 
-        
+
         'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
         tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun1Values[], tun1ValuesIndices%[]);
         tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun2Values[], tun2ValuesIndices%[]);
