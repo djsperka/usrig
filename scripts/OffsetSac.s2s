@@ -1,0 +1,1598 @@
+' $Id$
+' Update 11/8/11 Jeff, includes SafeSampleKey and multi-juicer updates
+
+const osCVSID$ := "$Id$";
+
+'This script is adapted from StarSac2, intended for the new Offset-Grating Saccade paradigm.  Optogenetics lines
+'have been commented but not excised in the hopes tht they might be easily returned if necessary, but the idle loop 
+'will certainly change a bit, so it might not be trivial.
+
+
+#include "../util/UsreyUtil.s2s"
+#include "../util/MiscUtilities.s2s"
+#include "../util/TrialBlockGen.s2s"
+#include "../util/ChannelUtilities.s2s"
+#include "../util/Directories.s2s"
+#include "UsreyGratings.s2s"
+#include "UsreyFixationPoint.s2s"
+#include "UsreyDAQ.s2s"
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+'	OffsetSaccade script parameters START
+'
+'	Vars that control the script. 
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+var osAlwaysLooking% := 0;    ' Leave = 0 for normal use, set to 1 for testing only!!!
+
+var osHoldTime;			        ' Time required to maintain fixation, seconds
+var osHoldTimeMin;		        ' Time required to maintain fixation, seconds (min of range)
+var osHoldTimeMax;		        ' Time required to maintain fixation, seconds (max of range)
+var osAcquisitionTime;			' Time allowed to acquire target before fail trial, seconds
+var osInterTrialTime;	        ' Blank time following a trial (defined here as a failed acquisition), seconds
+var osInterStimulusTime;        ' Blank time following a successful fixation/reward
+var osNumTargets%;				' Number of targets to use
+var osXOffset;                  ' Stim X offset from fixation target
+var osYOffset;                  ' Stim Y offset from fixation target
+var osGetOffsetFromStim%;       ' Do we take the offset position from the stimulus position?
+var osMinDistanceDeg;           ' Minimum distance for target to move, in degrees
+var osScreenBufferXMin;         ' Minimum X value for fixpt position, in degrees
+var osScreenBufferXMax;         ' Maximum X value for fixpt position, in degrees
+var osScreenBufferYMin;         ' Minimum Y value for fixpt position, in degrees
+var osScreenBufferYMax;         ' Maximum Y value for fixpt position, in degrees
+var osUseScreenAsBuffer%;       ' Do we use the screen size as the buffer?
+var osUseQuadAsBuffer%;         ' Do we use the equal quadrants as the buffer?
+var osEqualizeQuadrants%;       ' Do we equalize the number of fixations in each quadrant?
+
+const maxTargets% := 10000;
+var osFixLocX[maxtargets%];
+var osFixLocY[maxtargets%];
+
+var osNWavemarks% := 0;
+var osNContinuous% := 0;
+var osWavemarkPorts%[64];
+var osContinuousPorts%[64];
+
+var osTargetOrder%[5000];
+var osNTargetOrder% := 0;
+var osTrialCounter% := 0;
+var rewardThisStim%;
+
+
+' Optogenetics variables - since we will only be using wraparound and not pulsed (at least, that's my understanding) much of this might be unnecessary
+'var osPreStimOptoTime;
+'var osPostStimOptoTime;
+'var osMaxOptoTime;
+'var osOptoVoltageOut;
+'var osProbOfOpto;
+'var osDoOpto%;                     ' New, 1 if doing optogenetics
+'var voltageInteger%;
+'var osDoOptoThisTrial% ;  'will keep track of trial-by-trial opto
+'var optoIsOn%;  'Keeps track of if the laser is actually on
+'var osOptoOffMidStimTime;  'used to turn off the opto laser mid-stimulus, if required by the timing
+
+var HBCycle% := 1;
+
+
+
+UseTwo1401s% := DoWeUseTwo1401s%();
+GetPortsAndNumWMsWFs%(osNWavemarks%,osNContinuous%,osWavemarkPorts%[],osContinuousPorts%[]);
+
+
+proc GetOffsetSaccadeScriptParameters()
+	var key$;
+    key$ := GetRegistryKey$(1) + "\\Scripts\\OffsetSaccade";
+	osHoldTimeMin := GetFloatRegistryValue(key$, "HoldTimeMin", osHoldTimeMin);
+	osHoldTimeMax := GetFloatRegistryValue(key$, "HoldTimeMax", osHoldTimeMax);
+	osAcquisitionTime := GetFloatRegistryValue(key$, "AcquisitionTime", osAcquisitionTime);
+	osInterTrialTime := GetFloatRegistryValue(key$, "InterTrialTime", osInterTrialTime);
+    osInterStimulusTime := GetFloatRegistryValue(key$, "InterStimulusTime", osInterStimulusTime);
+    osNumTargets% := GetIntRegistryValue%(key$, "NumTargets", osNumTargets%);
+    osXOffset := GetFloatRegistryValue(key$, "XOffset", osXOffset);
+    osYOffset := GetFloatRegistryValue(key$, "YOffset", osYOffset);
+    osGetOffsetFromStim% := GetIntRegistryValue%(key$, "GetOffsetFromStim", osGetOffsetFromStim%);
+    osMinDistanceDeg := GetFloatRegistryValue(key$, "MinDistanceDeg", osMinDistanceDeg);
+    osScreenBufferXMin := GetFloatRegistryValue(key$, "ScreenBufferXMin", osScreenBufferXMin);
+    osScreenBufferXMax := GetFloatRegistryValue(key$, "ScreenBufferXMax", osScreenBufferXMax);
+    osScreenBufferYMin := GetFloatRegistryValue(key$, "ScreenBufferYMin", osScreenBufferYMin);
+    osScreenBufferYMax := GetFloatRegistryValue(key$, "ScreenBufferYMax", osScreenBufferYMax);
+    osUseScreenAsBuffer% := GetIntRegistryValue%(key$, "UseScreenAsBuffer", osUseScreenAsBuffer%);
+    osUseQuadAsBuffer% := GetIntRegistryValue%(key$, "UseQuadAsBuffer", osUseQuadAsBuffer%);
+    osEqualizeQuadrants% := GetIntRegistryValue%(key$, "EqualizeQuadrants", osEqualizeQuadrants%);
+    osAlwaysLooking% := GetIntRegistryValue%(key$, "AlwaysLooking", osAlwaysLooking%);
+    'osDoOpto% := GetIntRegistryValue%(key$, "DoOpto", osDoOpto%);
+    
+end;
+ 	
+proc SaveOffsetSaccadeScriptParameters()
+	var key$;
+    key$ := GetRegistryKey$(1) + "\\Scripts\\OffsetSaccade";
+	SetFloatRegistryValue(key$, "HoldTimeMin", osHoldTimeMin);
+	SetFloatRegistryValue(key$, "HoldTimeMax", osHoldTimeMax);
+	SetFloatRegistryValue(key$, "AcquisitionTime", osAcquisitionTime);
+	SetFloatRegistryValue(key$, "InterTrialTime", osInterTrialTime);
+    SetFloatRegistryValue(key$, "InterStimulusTime", osInterStimulusTime);
+    SetIntRegistryValue(key$, "NumTargets", osNumTargets%);
+    SetFloatRegistryValue(key$, "XOffset", osXOffset);
+    SetFloatRegistryValue(key$, "YOffset", osYOffset);
+    SetIntRegistryValue(key$, "GetOffsetFromStim", osGetOffsetFromStim%);
+    SetFloatRegistryValue(key$, "MinDistanceDeg", osMinDistanceDeg);
+    SetFloatRegistryValue(key$, "ScreenBufferXMin", osScreenBufferXMin);
+    SetFloatRegistryValue(key$, "ScreenBufferXMax", osScreenBufferXMax);
+    SetFloatRegistryValue(key$, "ScreenBufferYMin", osScreenBufferYMin);
+    SetFloatRegistryValue(key$, "ScreenBufferYMax", osScreenBufferYMax);
+    SetIntRegistryValue(key$, "UseScreenAsBuffer", osUseScreenAsBuffer%);
+    SetIntRegistryValue(key$, "UseQuadAsBuffer", osUseQuadAsBuffer%);
+    SetIntRegistryValue(key$, "EqualizeQuadrants", osEqualizeQuadrants%);
+    SetIntRegistryValue(key$, "AlwaysLooking", osAlwaysLooking%);
+    'SetIntRegistryValue(key$, "DoOpto", osDoOpto%);
+end;
+
+
+
+func OffsetSaccadeScriptDialog%()
+	var i%;
+    
+    'Get various parameters, in case we don't click on these buttons but still use the function
+	GetOffsetSaccadeScriptParameters();
+'    GetOffsetSaccadeOptoParameters();
+    
+	DlgCreate("OffsetSaccade Script Parameters");
+	DlgReal(1, "Fixation acquisition time(s):", .01, 10);
+    DlgReal(2, "Minimum fixation hold time(s):", .01, 10);
+    DlgReal(3, "Maximum fixation hold time(s):", .01, 10);
+	DlgReal(4, "Delay after successful trial(s):", .01, 10);
+    DlgReal(5, "Delay after failed trial(s):", .01, 10);
+	DlgInteger(6, "Number of targets:", 1, maxTargets%);
+    DlgReal(7, "Target X offset", -20.0, 20.0);
+    DlgReal(8, "Target Y offset", -20.0, 20.0);
+    DlgCheck(9, "Get offset from stim in config");
+    DlgReal(10, "Minimum distance from previous target (deg)", 0, 20.0);
+    DlgReal(11, "Fixpt location X min (deg)", -20.0, 20.0);
+    DlgReal(12, "Fixpt location X max (deg)", -20.0, 20.0);
+    DlgReal(13, "Fixpt location Y min (deg)", -20.0, 20.0);
+    DlgReal(14, "Fixpt location Y max (deg)", -20.0, 20.0);
+    DlgCheck(15, "Use screen size for max/min");
+    DlgCheck(16, "Use equal quadrants for max/min");
+    DlgCheck(17, "Equalize N fixpt in each quadrant");
+    DlgCheck(18, "Always Looking?");
+    
+    'DlgCheck(10, "Use opto?");
+    'DlgButton(102, "Opto Parameters", OffsetSaccadeOptoDialog%,20,23);
+    DlgAllow(0xffff, 0, OffsetSaccadeScriptDialogChanged%);  'not calling the DlgAllow right now, don't need it!
+	i%:=DlgShow(osAcquisitionTime, osHoldTimeMin, osHoldTimeMax, osInterStimulusTime, osInterTrialTime, osNumTargets%,
+    osXOffset, osYOffset, osGetOffsetFromStim%, osMinDistanceDeg, osScreenBufferXMin, osScreenBufferXMax, osScreenBufferYMin,  
+    osScreenBufferYMax, osUseScreenAsBuffer%, osUseQuadAsBuffer%, osEqualizeQuadrants%, osAlwaysLooking%);
+	if i% = 1 then
+        
+        SaveOffsetSaccadeScriptParameters();
+        
+        GenerateTrials%(4);  'the argument indicates how many sets of quadrants are blocked if we are doing EqualizeQuadrants - i.e. "2" means to repeat shuffles of quads [1 1 2 2 3 3 4 4].
+        
+        'Yeah, so this is totally working!
+        'printlog("X values are %1.2f\n",osFixLocX[0:20]);
+        'printlog("Y values are %1.2f\n",osFixLocY[0:20]);
+        'halt   'for now
+        
+        
+        'Adjust osPostStimOptoTime, which must not allow the opto time to go past the max time
+'        if (osPreStimOptoTime + osPostStimOptoTime + osAnswerTime) > osMaxOptoTime then
+'            osPostStimOptoTime := osMaxOptoTime - osAnswerTime - osPreStimOptoTime;
+'        endif;
+'        
+'        'Set osOptoOffMidStimTime, which will allow us to cut the opto off mid-trial if required
+'        if (osMaxOptoTime - osPreStimOptoTime) < osAnswerTime then
+'            osOptoOffMidStimTime := osMaxOptoTime - osPreStimOptoTime;
+'        else
+'            osOptoOffMidStimTime := osAnswerTime + .1;  'this will simply prevent osOptoOffMidStimTime from having any effect if the requested time is true wraparound
+'        endif;
+        
+        
+        
+        'Make sure that the pre-opto time is shorter than the min fixation time (if doing opto)
+        '(otherwise the request to turn on the opto might come before the fixation point)
+'        if osDoOpto% = 1 and osHoldTimeMin <= osPreStimOptoTime then
+'            message("The minimum fixation duration must be longer than the pre-stim opto time!  Quitting!");
+'            halt;
+'        endif;
+        
+        
+        
+	endif;
+	return i%;
+end;
+
+func OffsetSaccadeScriptDialogChanged%(item%)
+    var gr$;
+    var x, y, w, h;
+    var yHeight := 7;  'these are the size of the monitor, hard coded
+    var xWid := 9;
+    var xQuad;
+    var yQuad;
+    
+    'Grating parameters will be used in multiple situations, so just grab them for any case that uses them
+    if DlgValue(9) = 1 or DlgValue(15) = 1 or DlgValue(16) = 1 then
+        gr$ := GetGratingParameters$("Stimulus");
+        ParseGratingParametersBrief%(gr$, x, y, w, h);  'w, h are diameters
+    endif;
+    
+    
+    'Get value of X/Y offset from config stim if requested, disable entry
+    if DlgValue(9) = 1 then
+        DlgEnable(0,7);
+        DlgEnable(0,8);
+
+        DlgValue(7,x);
+        DlgValue(8,y);
+    else
+        DlgEnable(1,7);
+        DlgEnable(1,8);        
+    endif;
+    
+    
+    'Do not allow both "buffer" boxes to be checked    
+    if item% = 15 and DlgValue(15) = 1 and DlgValue(16) = 1 then
+        DlgValue(16,0);
+    endif;
+    if item% = 16 and DlgValue(16) = 1 and DlgValue(15) = 1 then
+        DlgValue(15,0);
+    endif;
+    
+    
+    'Set values of buffer to screen size or quadrant as requested, disable entry
+    docase
+    case DlgValue(15) = 1 then
+        DlgEnable(0,11);
+        DlgEnable(0,12);
+        DlgEnable(0,13);
+        DlgEnable(0,14);
+        
+        'Get min/max values allowed for fixation point - note that the fixation point width is NOT included in these calcs
+        DlgValue(11,max(-xWid,-xWid-(DlgValue(7)-(0.5*w))));  'Minimum x value is the greater value of -screenWidth and -screenWidth - (xoffset-0.5*stimWidthDiam)
+        DlgValue(12,min(xWid,xWid-(DlgValue(7)+(0.5*w))));  'Maximum x value is the lesser value of screenWidth and screenWidth - (xoffset+0.5*stimWidthDiam) 
+        DlgValue(13,max(-yHeight,-yHeight-(DlgValue(8)-(0.5*h))));  'Minimum y value is the greater value of -screenHeight and -screenHeight - (yoffset-0.5*stimHeightDiam)
+        DlgValue(14,min(yHeight,yHeight-(DlgValue(8)+(0.5*h))));  'Maximum y value is the lesser value of screenHeight and screenHeight - (yoffset+0.5*stimHeightDiam) 
+        
+    case DlgValue(16) = 1 then
+        DlgEnable(0,11);
+        DlgEnable(0,12);
+        DlgEnable(0,13);
+        DlgEnable(0,14);  
+        
+        xQuad := min(xWid-(DlgValue(7)+(0.5*w)),-(-xWid-(DlgValue(7)-(0.5*w))));
+        yQuad := min(yHeight-(DlgValue(8)+(0.5*h)),-(-yHeight-(DlgValue(8)-(0.5*h))));
+        DlgValue(11,-xQuad); 
+        DlgValue(12,xQuad); 
+        DlgValue(13,-yQuad);
+        DlgValue(14,yQuad);
+    else
+        DlgEnable(1,11);
+        DlgEnable(1,12);
+        DlgEnable(1,13);
+        DlgEnable(1,14);
+    endcase
+    
+    
+    'Do not allow equalizing quadrants unless equal-sized quadrants are used
+    DlgEnable(DlgValue(16),17);
+    
+    
+    
+    return 1;
+end
+
+
+
+'proc GetOffsetSaccadeOptoParameters()
+'	var stmp$;
+'	var key$;
+'	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\OffsetSaccade\\Opto";
+'    
+'    osPreStimOptoTime := GetFloatRegistryValue(key$, "PreStimOptoTime", osPreStimOptoTime);
+'    osPostStimOptoTime := GetFloatRegistryValue(key$, "PostStimOptoTime", osPostStimOptoTime);
+'    osOptoVoltageOut := GetFloatRegistryValue(key$, "OptoVoltageOut", osOptoVoltageOut);
+'    osMaxOptoTime := GetFloatRegistryValue(key$, "MaxOptoTime", osMaxOptoTime);
+'    osProbOfOpto := GetFloatRegistryValue(key$, "ProbOfOpto", osProbOfOpto);    
+'    
+'    
+'    'osRecOptoBox% := GetIntRegistryValue%(key$, "RecOptoBox", osRecOptoBox%);
+'    'osRecStimulator% := GetIntRegistryValue%(key$, "RecStimulator", osRecStimulator%);
+'
+'end;
+'
+'proc SaveOffsetSaccadeOptoParameters()
+'	var key$;
+'	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\OffsetSaccade\\Opto";
+'    SetFloatRegistryValue(key$, "PreStimOptoTime", osPreStimOptoTime);
+'    SetFloatRegistryValue(key$, "PostStimOptoTime", osPostStimOptoTime);
+'    SetFloatRegistryValue(key$, "OptoVoltageOut", osOptoVoltageOut);
+'    SetFloatRegistryValue(key$, "MaxOptoTime", osMaxOptoTime);
+'    SetFloatRegistryValue(key$, "ProbOfOpto", osProbOfOpto); 
+'    
+'    'SetIntRegistryValue(key$, "RecOptoBox", osRecOptoBox%);
+'    'SetIntRegistryValue(key$, "RecStimulator", osRecStimulator%);
+'end;
+
+
+'func OffsetSaccadeOptoDialog%()
+'	var iReturn% := 1;
+'	var i%;
+'    var labels$[4];
+'    var stimdur;
+'    var tempNPulses%;
+'    var tempCount%;
+'    stimdur := dlgvalue(4);  'get stimulus duration value from calling (main) dialog, limit opto period based on this
+'    
+'    labels$[0] := "Opto Off First";
+'    labels$[1] := "Opto On First";
+'    labels$[2] := "Random First";
+'    labels$[3] := "Opto On All Blocks";
+'	GetOffsetSaccadeOptoParameters();
+'	DlgCreate("Optogenetics Parameters");
+'    DlgReal(1, "Opto Voltage Out (V)",0.0002,5,50,1); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+'    DlgReal(2, "PreStimulus Opto On (s)",0,10,50,2);
+'    DlgReal(3, "PostStimulus Opto On (s)",0,10,50,3);
+'    DlgText("If max opto dur is less than post opto on, opto will turn off during stimulus",2,4);
+'    DlgReal(4, "Maximum Opto Duration (s)",0,10,50,5);
+'    DlgReal(5, "Probability of Opto on each trial (0-100)",0,100,50,7);
+'
+'    
+'    'DlgCheck(6, "Record control box voltage");
+'    'DlgCheck(7, "Record stimulator");
+'     
+'    
+'    i% := DlgShow(osOptoVoltageOut,osPreStimOptoTime,osPostStimOptoTime,osMaxOptoTime,osProbOfOpto);
+'    ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+'	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
+'
+'    'osMaximalDiam := osAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
+'	if i% = 1 then
+'		SaveOffsetSaccadeOptoParameters();    
+'	endif;
+'    
+'	return iReturn%;
+'end;
+
+
+
+
+' Window handles and channel numbers
+var XChannel%,YChannel%;		' Channel number assigned to eye x and y
+var FixationChannel%;
+var StimChannel%;
+'var ChangeChannel%;
+var ReadyChannel%;			' channel number for VSG ready pulse signal
+var TimingChannel%;
+var UtilityChannel%;
+var DataWindow%;	' time view
+var XYWindow%;		' window with eye pos shown -- this is for eye pos and fixpt only
+var iGratingLocationChannel%;' channel number for target window in xy window
+var iFixChannel%;	' channel number for fixpt in xy window
+var iFixWindowChannel%;' channel number for fixpt window in xy window
+var iMonitorChannel%;	' channel number for monitor position display in xy window
+var iEyePosChannel% := 1;   ' channel 1 is always used as eye position channel in xy windows
+var StimHandle%;	' handle for stimulus application
+' Experimental control
+var Pause%:=0;		' When 1, expt is paused - no idle processing done
+
+' Display stuff
+var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
+var GratingLocationX[36],GratingLocationY[36];	' points for displaying location of grating in xy view
+var windowX[36], windowY[36];
+
+' Stimulus location stuff (unused?)
+'var iStimX%[8];
+'var iStimY%[8];
+'var iStimIndex%;
+
+LogInit(1);
+
+' Check if always looking flag is set. If so, issue a warning. 
+GetOffsetSaccadeScriptParameters();
+if osAlwaysLooking% = 1 then
+    if Query("Always looking is SET. Unset?") = 1 then
+        osAlwaysLooking% := 0;
+        SaveOffsetSaccadeScriptParameters();
+    endif
+endif
+
+' Fetch electrode config
+osNWavemarks% := GetWavemarkPorts%(osWavemarkPorts%[]);
+osNContinuous% := GetContinuousPorts%(osContinuousPorts%[]);
+
+
+' Run dialog
+if OffsetSaccadeScriptDialog%() = 0 then
+    halt;
+endif
+
+' Assign channel numbers for eye X,Y and trigger. 
+XChannel% := 21;
+YChannel% := 22;
+ReadyChannel% := 23;
+FixationChannel% := 24;
+StimChannel% := 25;
+'ChangeChannel% := 26;
+UtilityChannel% := 27;
+TimingChannel% := 28;
+
+ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 32;  'Digmark (default) is highest non-electrode channel used by this function
+
+
+if UseTwo1401s% = 0 then
+    CreateSampleConfiguration();
+    
+    ' Get display windows ready
+    InitializeWindows();
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+else
+    InitializeToolbar();
+endif;
+
+
+const stateStartTrial%				:= 0;
+const stateWaitForFixPtOn%			:= 1;
+const stateWaitForAcquisition%	    := 2;
+const stateHoldFixation%			:= 3;
+const stateShowStim%				:= 4;
+const stateWaitForStimOn%			:= 5;
+const stateWaitForAnswer%			:= 6;
+const stateSuccess%					:= 7;
+const stateWaitForFixPtOff%		    := 8;
+const stateAbort%			        := 9;
+const stateWaitForStimOff%			:= 10;
+const stateFailure%					:= 11;
+const stateAbortTime%				:= 12;
+const stateInterTrialSuccess%	    := 13;
+const stateInterTrialFail%          := 19;
+
+const stateVSGWait%					:= 14;		' wait for vsg to send ready signal #1
+const stateVSGWaitConfirm%			:= 15;		' wait for vsg to send ready signal #2
+const stateWaitThroughPreOpto%      := 16;      ' wait for pre-opto to finish, if opto trial
+const stateWaitForPostOpto%         := 17;      ' wait for post-opto to finish, and turn off laser
+const stateHoldAnswer%              := 18;
+
+
+var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
+var tLast:=-1;		' last time we checked for a trigger. 
+var xEye, yEye;		' eye positions
+var tLastUpdate:=-1;	' last time view was updated
+var iState%:=stateVSGWait%;		' present state
+var vTrigger;		' set by NextTime to indicate trigger transition
+var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
+var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
+var tTrigger:=-1;	' temp var for newly discovered trigger times
+var nTrialsStarted%:=0;
+var nTrialsSuccess%:=0;
+var nTrialsFail%:=0;
+var nTrialsAbort% := 0;
+var whichTarget% := 0;
+var tStimOn;  'tLast does not work to find stim off if we have intervening steps in the state logic, which we do.
+var tPostStimStart;  'will be useful for turning off "wraparound" opto after reward
+
+' for variable small reward
+var fixBrokenThisTrial% := 0;   '  not being used, not culling it for...reasons?
+
+
+
+' Run real time analysis here. 
+func IdleProcessing%()
+	var iStatus% := 1;	' this is return value. value of 1 (0) continues (stops) processing
+    var tOpt;
+    
+    
+	tNow := View(DataWindow%).MaxTime();
+
+	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+	yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+
+	' Don't update display every time. 
+	' Note that this stim displays eye continuously, without erasing... 
+	if tNow-tLastUpdate > .005 then
+		View(XYWindow%).XYAddData(iEyePosChannel%, xEye, yEye);
+		tLastUpdate := tNow;
+	endif
+
+	' What state are we in? 
+	docase 
+
+    case iState% = stateVSGWait% then
+        
+        if View(DataWindow%).FindPulseUp%(ReadyChannel%, -1, tTrigger, tLastTrigger) = 1 then
+            LogStatus("VSGWait", "Got ready pulse at " + str$(tTrigger));
+            ChangeStateTo(stateStartTrial%, tNow);
+            if RecordEyeTrackerOutputFile% = 1 then
+                'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+            endif;
+        endif
+
+    case iState% = stateStartTrial% then
+        
+        'put timing marker in both eyetracker file, smr file
+        if RecordEyeTrackerOutputFile% = 1 then
+            docase
+            case HBCycle% = 1 then
+                SafeSampleKey("1");
+            case HBCycle% = 2 then
+                SafeSampleKey("2");
+            case HBCycle% = 3 then
+                SafeSampleKey("3");
+            case HBCycle% = 4 then
+                SafeSampleKey("4");
+            case HBCycle% = 5 then
+                SafeSampleKey("5");
+            case HBCycle% = 6 then
+                SafeSampleKey("6");
+            case HBCycle% = 7 then
+                SafeSampleKey("7");
+            endcase
+            HBCycle% += 1;  'increment HBCycle%
+            if HBCycle% = 8 then  'and cycle when necessary
+                HBCycle% := 1;
+            endif
+            yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
+        endif;
+        
+        FixationX := osFixLocX[nTrialsStarted%];
+        FixationY := osFixLocY[nTrialsStarted%];
+
+        
+        nTrialsStarted% += 1;
+        osHoldTime := Rand(osHoldTimeMax-osHoldTimeMin, osHoldTimeMin);
+        LogStatus("StartTrial", "Start trial " + str$(nTrialsStarted%) + ", Hold time = " + str$(osHoldTime));
+        'SafeSampleKey("F");
+        'SafeSampleKey("S");  'Do we want a NEW entry in the PLS that will turn on both at once?
+        SafeSampleKey("C");  'Sure, let's try that.
+        
+        SampleText("T," + str$(FixationX) + ",T2," + str$(FixationY),tNow);
+        
+        'determine if we are doing opto on this trial
+        'See, in some ways opto doesn't make any sense here because normally we start opto before the stim comes on...if Henry asks we'll have to get parameters
+'        if osDoOpto% = 1 then
+'            if rand(100,0) < osProbOfOpto then
+'                osDoOptoThisTrial% := 1;
+'                osHoldTime := osHoldTime - osPreStimOptoTime;  'update fixation duration to not include pre-opto time
+'                SampleText("Opto This Trial",tNow+.01)
+'            else
+'                osDoOptoThisTrial% := 0;
+'                SampleText("No Opto This Trial",tNow+.01)
+'            endif;
+'        endif;
+        
+        ChangeStateTo(stateWaitForFixPtOn%, tNow);
+
+    case iState% = stateWaitForFixPtOn% then
+        
+        if View(DataWindow%).FindRisingEdge%(FixationChannel%, tLast, tTrigger) = 0 then
+            ' Stimulus has been presented. Display stim location and window. Enter state 2
+            DrawFix(1);
+            DrawGrating(1);
+            ChangeStateTo(stateWaitForAcquisition%, tNow);
+        endif
+
+    case iState% = stateWaitForAcquisition% then
+
+        if tNow-tStateStart < osAcquisitionTime then
+            
+            ' Acquisition happens when the eye falls within the fixation window.
+            if InFixationWindow%(xEye, yEye) > 0 then
+                
+                ChangeStateTo(stateHoldFixation%, tNow);
+                
+                fixBrokenThisTrial% := 0;
+                
+            endif
+            
+        else
+
+            ' Failed. Turn off stim and try again.
+            LogStatus("WaitForAcquisition", "Time out.");
+            ChangeStateTo(stateFailure%, tNow);
+
+        endif
+
+'    case iState% = stateAbort% then
+'        
+'        nTrialsAbort% += 1;
+'        DrawFix(0);
+'        DrawGrating(0);
+'        SafeSampleKey("X");
+'        
+'        'There are multiple places that can lead to an abort with opto laser still on
+''        if optoIsOn% = 1 then
+''            'turn off opto
+''            SafeSampleKey("o");  'turn it off
+''            tOpt := View(DataWindow%).MaxTime();
+''            'printlog("OptoOff at %f\n",tOpt);
+''            SampleText("OptoOff",tOpt);
+''            optoIsOn% := 0;
+''        endif;
+'        
+'        
+'        ChangeStateTo(stateWaitForFixPtOff%, tNow);
+'
+'    case iState% = stateWaitForFixPtOff% then
+'        
+'        if View(DataWindow%).FindFallingEdge%(FixationChannel%, tLast, tTrigger) = 1 then
+'            
+'            ChangeStateTo(stateInterTrialFail%, tNow);
+'            
+'        endif
+        
+    case iState% = stateHoldFixation% then
+
+        if InFixationWindow%(xEye, yEye) <= 0 then
+            
+            LogStatus("HoldFixation", "Broken fixation at " + str$(tNow));
+            ChangeStateTo(stateFailure%, tNow);
+            fixBrokenThisTrial% := 1;
+
+        else
+            
+            if tNow - tStateStart >= osHoldTime then
+'                if osDoOptoThisTrial% = 0 then
+                    LogStatus("HoldFixation", "Success at " + str$(tNow));
+                    ChangeStateTo(stateSuccess%, tNow);
+'                else
+'                    LogStatus("HoldFixation", "Request opto on at " + str$(tNow));
+'                    ChangeStateTo(stateWaitThroughPreOpto%, tNow);
+'                    
+'                    SafeSampleKey("O");  'turn on opto
+'                    tOpt := View(DataWindow%).MaxTime();
+'                    'printlog("OptoOn at %f\n",tOpt);
+'                    SampleText("OptoOn",tOpt);
+'                    optoIsOn% := 1;
+'                    
+'                endif;
+
+            endif
+
+        endif
+        
+        
+'    case iState% = stateWaitThroughPreOpto% then
+'        
+'        if InFixationWindow%(xEye, yEye) <= 0 then
+'            
+'            LogStatus("HoldFixation", "Broken fixation at " + str$(tNow));
+'            ChangeStateTo(stateAbort%, tNow);
+'            fixBrokenThisTrial% := 1;
+'
+'        else
+'            
+'            if tNow - tStateStart >= osPreStimOptoTime then
+'                LogStatus("HoldFixation", "Request target at " + str$(tNow));
+'                ChangeStateTo(stateShowStim%, tNow);
+'            endif;
+'        endif;
+        
+       
+        
+        
+        
+    case iState% = stateSuccess% then
+
+        nTrialsSuccess% += 1;
+        SampleText("+");
+        SafeSampleKey("X");
+        Yield();
+        if rewardThisStim% = 1 then
+            Reward%();
+        endif;
+        
+'        if optoIsOn% = 1 then
+'            ChangeStateTo(stateWaitForPostOpto%, tNow);
+'        else
+            ChangeStateTo(stateWaitForStimOff%, tNow);
+            Yield(0.05);
+            SafeSampleKey("a");
+'        endif;
+        
+        rewardThisStim% := 1;  'Always reward a stimulus after a success
+
+    case iState% = stateFailure% then
+
+        nTrialsFail% += 1;
+        SampleText("-");
+            SafeSampleKey("X");
+'        if optoIsOn% = 1 then
+'            ChangeStateTo(stateWaitForPostOpto%, tNow);
+'        else
+            ChangeStateTo(stateWaitForStimOff%, tNow);
+            Yield(0.05);
+            SafeSampleKey("a");
+'        endif;
+        rewardThisStim% := 0;  'Do not reward the next stimulus after a failure
+        
+'    case iState% = stateWaitForPostOpto% then
+'        if tNow - tPostStimStart > osPostStimOptoTime then
+'            'turn off opto
+'            SafeSampleKey("o");  'turn it off
+'            tOpt := View(DataWindow%).MaxTime();
+'            'printlog("OptoOff at %f\n",tOpt);
+'            SampleText("OptoOff",tOpt);
+'            optoIsOn% := 0;
+'            Yield(0.05);
+'            AdvanceTarget();  'must do this here, didn't get done in previous state (wanted to avoid the yield, get opto off promptly...)
+'            ChangeStateTo(stateWaitForStimOff%, tNow);
+'        endif;
+        
+        
+
+    case iState% = stateWaitForStimOff% then
+        
+        ' Wait for stim to be off
+        if View(DataWindow%).FindFallingEdge%(StimChannel%, tStimOn, tTrigger) = 1 then
+            
+            
+            'Think about how we advance, though
+'            if osKeepFixptOn% = 1 and fixBrokenThisTrial% = 0 then
+'                DrawGrating(0);
+'                ChangeStateTo(stateShowStim%, tNow);
+'            else
+                DrawGrating(0);
+                DrawFix(0);
+                UpdateToolbarText();
+                if nTrialsStarted% >= osNumTargets% then
+                    Stop%();
+                endif;
+                if rewardThisStim% = 1 then
+                    ChangeStateTo(stateInterTrialSuccess%, tNow);
+                else
+                    ChangeStateTo(stateInterTrialFail%, tNow);
+                endif;
+'            endif
+            
+            
+            ' Stimulus has been turned off by vsg.
+            
+
+        endif
+
+    case iState% = stateInterTrialSuccess% then
+        
+        if (tNow - tStateStart >= osInterStimulusTime) then  'use InterStimulusTime following a success
+            ChangeStateTo(stateStartTrial%, tNow);
+        endif;
+        
+    case iState% = stateInterTrialFail% then
+        
+        if (tNow - tStateStart >= osInterTrialTime) then  'use InterTrialTime following a failure
+            ChangeStateTo(stateStartTrial%, tNow);
+        endif;
+
+    else 
+
+        ' Unknown state!
+        Message("Unknown state=" + str$(iState%));
+        
+        'If the eyetracker is recording an output file, stop recording and close the file
+        if RecordEyeTrackerOutputFile% = 1 then
+            SafeSampleKey("w");  'Stop recording
+            yield(0.1);
+            SafeSampleKey("i");  'Close the file
+            SafeSampleKey("Z");  'zero the DIGLOWs
+        endif
+        
+        halt;
+
+	endcase;
+
+	tLast := tNow;
+	
+	return iStatus%;
+
+end;
+
+
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+	if tStart > 0 then tStateStart := tStart; endif;
+end;
+
+proc UpdateToolbarText()
+    var s$;
+    
+    's$ := Print$("Ntrials/Success/Fail/Abort %d/%d/%d/%d", nTrialsStarted%, nTrialsSuccess%, nTrialsFail%, nTrialsAbort%);
+    s$ := Print$("Ntrials/Success/Fail %d/%d/%d", nTrialsStarted%, nTrialsSuccess%, nTrialsFail%);  'There's no abort
+    ToolbarText(s$);
+    return;
+end
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc CreateSampleConfiguration()
+	var i%;
+    var key$;
+    var primaryTxt$;
+    var secondaryTxt$;
+    
+	SampleClear(); 'Set standard sampling state
+    SampleChannels(64);  '32 does not work, we need more!
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    
+	' Set path for new data files
+	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3, 1);
+	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1, 1);
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
+	DoSampleAutoName(key$,"offsacc","os",primaryTxt$,secondaryTxt$);
+	SampleAutoFile(1);
+    
+    ' Text marks make extraction easier
+    SampleTextMark(200);
+    
+	'----Event Channel recording definitions----
+	SampleEvent(FixationChannel%, 2, 2, 3600);
+	SampleComment$(FixationChannel%, "FixPt");
+	SampleTitle$(FixationChannel%, "FixPt");
+
+	SampleEvent(StimChannel%, 3, 2, 3600);
+	SampleComment$(StimChannel%, "Stim");
+	SampleTitle$(StimChannel%, "Stim");
+
+'	SampleEvent(ChangeChannel%, 4, 2, 3600); 'Trigger channel, level
+'	SampleComment$(ChangeChannel%, "Advance");
+'	SampleTitle$(ChangeChannel%, "Advance");
+
+
+	' channel to look for ready signal from vsg
+	SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+	SampleComment$(ReadyChannel%,"Ready");
+	SampleTitle$(ReadyChannel%,"Ready");
+    
+    
+    'Digmark channel for eyetracker timing pulses
+    docase
+    case UseTwo1401s% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32
+        
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+'    'Add a digital marker channel for pulsing optogenetics
+'    'Do it for every opto, easy enough to add this into the wraparound calls in the PLS
+'    'Will record a '1' for laser on and a '0' for laser off
+'    case osDoOpto% = 1 then
+'        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+'        SampleTitle$(DigitalLaserChannel%,"Laser On");
+    case RecordEyeTrackerOutputFile% = 1 then  'if both eyetracker and dual-1401 are in use, digmark channel will be called "Timing"
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
+    endcase
+    
+    
+    '----Analog, non-spiking electrode recording conditions
+    'EYE COIL CHANNELS. Last # is sampling freq in Hz. 
+    if osAlwaysLooking% = 0 then
+        SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+        SampleTitle$(XChannel%,EyeXPortLabel$);
+        SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+        SampleTitle$(YChannel%,EyeYPortLabel$);
+    endif
+    
+    
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);         
+        SampleTitle$(UtilityChannel%,UtilityPortLabel$);
+    endif;
+    
+    
+    
+    
+    
+    
+    '----Set up "spiking" Electrode Channels----
+    SetUpElectrodeConfiguration(osNWavemarks%,ExcludedChans%[]);
+
+
+	
+
+	if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+
+	DoSampleOptimise();
+	SampleMode(1); 'Continuous sampling
+    
+    
+
+    
+    
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawGrating
+' 
+' Draws grating location in xy window (iDraw%==1) or blanks it (0). 
+proc DrawGrating(iDraw%)
+
+
+	if iDraw% > 0 then
+	
+		' draw grating location
+		ArrConst(windowX[], GratingLocationX[]);
+		ArrAdd(windowX[], FixationX + osXOffset);
+		ArrConst(windowY[], GratingLocationY[]);
+		ArrAdd(windowY[], FixationY + osYOffset);
+
+		View(XYWindow%).XYAddData(iGratingLocationChannel%, windowX[], windowY[]);
+
+	else 
+		' erase the grating location from xy view
+		View(XYWindow%).XYDelete(iGratingLocationChannel%);
+	endif
+
+end;
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawFix
+' 
+' Draws fixpt in xy window (iDraw%==1) or blanks it (0). 
+proc DrawFix(iDraw%)
+
+	if iDraw% > 0 then
+
+		' Draw stimulus in xy window
+		View(XYWindow%).XYAddData(iFixChannel%, FixationX, FixationY);
+	
+		' draw fixation window
+		ArrConst(windowX[], FixWindowX[]);
+		ArrAdd(windowX[], FixationX);
+		ArrConst(windowY[], FixWindowY[]);
+		ArrAdd(windowY[], FixationY);
+
+		View(XYWindow%).XYAddData(iFixWindowChannel%, windowX[], windowY[]);		
+	else 
+		' erase the stim and the window from xy view
+		View(XYWindow%).XYDelete(iFixChannel%);
+		View(XYWindow%).XYDelete(iFixWindowChannel%);
+	endif
+
+end;
+
+
+proc InitializeWindows()
+
+	'Open the data sampling window
+	DataWindow% := FileNew(0,4);
+    if DataWindow% < 0 then
+        PrintLog("FileNew Error: %s\n", Error$(DataWindow%));
+    endif
+	Window(0, 50, 100, 100);
+    XRange(0, 30);
+	View(DataWindow%).WindowVisible(1);
+    
+	' Channel 1 is eye pos. Set size of this channel's data to 0 - expands as needed. Join points, too. 
+	XYSize(iEyePosChannel%, 0);
+	XYJoin(iEyePosChannel%, 1);
+	XYDrawMode(1, 2, 1);	' dot size is 1
+    
+    
+	'Open an XY view to display eye position
+	XYWindow% := FileNew(12);
+	XRange(-15,15);
+	YRange(-2,-15,15);
+	XYDrawMode(0,5,0);
+	WindowVisible(1);
+	Window(0, 0, 50, 50);
+	XYSize(iEyePosChannel%, -1);
+	XYColour(iEyePosChannel%, 16);
+    
+
+	'Calcuate the fixation window - this is calculated one time, and the fixpt position is added to it
+	var index%;
+	var twopi;
+	twopi := 2.0*4.0*ATan(1.0);
+	
+	for index% := 0 to 35 do
+		FixWindowX[index%] := WindowRadius * Cos(index% * twopi/36.0);
+		FixWindowY[index%] := WindowRadius * Sin(index% * twopi/36.0);
+	next;
+    
+    
+    
+    'Calcuate the grating location - this is calculated one time, and the grating position is added to it
+    'Unlike the fixation window, this is tight around the grating, as we are not using it as an actual
+    'fixation target, it is only for informational purposes.
+    var gr$;
+    var x, y, w, h;
+    gr$ := GetGratingParameters$("Stimulus");
+    ParseGratingParametersBrief%(gr$, x, y, w, h);  'w, h are diameters
+    for index% := 0 to 35 do
+		GratingLocationX[index%] := (w/2) * Cos(index% * twopi/36.0);  'calculate in radius
+		GratingLocationY[index%] := (h/2) * Sin(index% * twopi/36.0);
+	next;
+    
+    
+
+	'Create a new channel in the XY view to display the fixation window
+	iFixWindowChannel% := XYSetChan(0);
+	XYColour(iFixWindowChannel%, 13);  'make fixation window blue
+	XYDrawMode(iFixWindowChannel%, 2, 1);
+	XYJoin(iFixWindowChannel%, 1);
+
+	'Create a new channel in the XY view to display the fixation point
+	iFixChannel% := XYSetChan(0);
+
+	'Create a new channel in the XY view to display the location of the grating
+	iGratingLocationChannel% := XYSetChan(0);
+	XYColour(iGratingLocationChannel%, 16);  'make grating location red, this is not the target
+	XYDrawMode(iGratingLocationChannel%, 2, 1);
+	XYJoin(iGratingLocationChannel%, 1);
+
+
+
+
+	'Create a new channel in the XY view to show the monitor's location
+	iMonitorChannel% := XYSetChan(0);
+	XYColour(iMonitorChannel%, 0);  'make monitor size black
+	XYDrawMode(iMonitorChannel%, 3, 1);
+	XYJoin(iMonitorChannel%, 2);
+	XYAddData(iMonitorChannel%, -9, -7);
+	XYAddData(iMonitorChannel%, 9, -7);
+	XYAddData(iMonitorChannel%, 9, 7);
+	XYAddData(iMonitorChannel%, -9, 7);
+
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitilizeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+    if UseTwo1401s% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
+        ToolbarSet(1,"Sample start",Start%);
+    endif;
+	ToolbarSet(2,"Sample stop", Stop%);
+	ToolbarSet(3,"Juice", Juice%);
+	ToolbarSet(4,"Quit", Quit%);
+	ToolbarEnable(2,0);
+	Toolbar("Go", 0x3ff);
+
+end;
+
+
+' Used to hard-quit from toolbar. This will close data files without saving!!! 
+' It is important that this function be disabled once sampling is started!!!
+
+func Quit%()
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
+    endif
+    
+	FileClose(-1,-1);
+	return 0;
+end;
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+	var CommandLine$;
+	var FixationPoint$;
+	var Extras$;
+	var tmp$;
+	var FixLocArg$;
+    var GratingLocArg$;
+    var tempstr$;
+    var progName$;
+    var targx, targy, w, h;
+    var count% := 0;
+    var vec[2], targetvec[2];
+    var length;
+    var angstep;
+    var i%;
+    var startSecs := 5;
+    var pulseFound%;
+    var tRise;
+    var tFall;
+    var specFileName$;
+    
+    specFileName$ := GetScriptDir$(0)+"..\\..\\OffsetSacSpecFile.txt";
+    
+    
+
+       
+    ' assign program name
+    progName$ := " fixstim ";  'use FIXSTIM
+    
+    
+    ' Print out target order
+    ' Trials are generated in the dialog function
+    ' With the presumed length of the command line, we will need to do this with a file.
+    ' I think we will be able to do this "Baker's Dozen" style, where for each trial we
+    ' specify the x,y location of the grating and the x,y location of the fixation point.
+    ' We have osFixLocX(Y)[] and osX(Y)Offset and osNumTargets% and that should be all we
+    ' need here.
+    
+    FixLocArg$ := " -y ";
+    GratingLocArg$ := " -Z ";
+    var LastComma$;
+    LastComma$ := ",";
+    for i% := 0 to osNumTargets%-1 do
+        if i% = osNumTargets%-1 then 'blank out last comma for the last stimulus
+            LastComma$ := "";
+        endif;
+        FixLocArg$ := FixLocArg$ + Str$(osFixLocX[i%]) + "," + Str$(osFixLocY[i%]) + LastComma$;
+        GratingLocArg$ := GratingLocArg$ + Str$(osFixLocX[i%]+osXOffset) + "," + Str$(osFixLocY[i%]+osYOffset) + LastComma$;
+    next
+    
+    
+
+    
+    ' Remaining command line args
+	Extras$ += GetFixationArg$() + " -p 2 -b gray -d " + GetDistanceToScreenMM$();
+    
+    'Create "baker's dozen" style spec file
+    'Open file for writing
+    FileOpen(specFileName$,8,1);
+    
+    'Reuse tempstr$ to hold arguments
+    tempstr$ := Extras$ + " -s " + GetGratingParameters$("Stimulus") + FixLocArg$ + GratingLocArg$;  'Master grating only, tuning curve values are in the file
+    
+    'Print to the new file
+    print("%s",tempstr$);
+    
+    FileClose();
+    
+    
+    'Start sampling
+    if UseTwo1401s% = 1 then
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        'Send timing pulse
+        SafeSampleKey("T");
+    else
+        SampleStart(0); 'Start sampling now
+    endif;
+    
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
+
+    ' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");      
+    
+    'Create command line, referencing "baker's dozen" style spec file
+	CommandLine$ := "cmd /k " + GetBinDir$(1) + "remote " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() +  progName$ + " -F " + specFileName$;
+    
+    
+    
+'    if osDoOpto% = 1 then
+'        'set sequencer variable 4 for opto voltage
+'        'Please note that the input for this has to be a 32-bit variable. Use vdac32% to get the right value.
+'        voltageInteger% := vdac32%(osOptoVoltageOut, 1, 0);
+'        SampleSeqVar(4,voltageInteger%);
+'        printlog("Voltage integer is %d\n",voltageInteger%);
+'    endif;
+        
+    
+    
+    ' Record initial text marks
+    SampleText("OffsetSaccade,1");
+    SampleText(osCVSID$);
+    SampleText(CommandLine$);
+
+    'Could textmark the whole list of fixpt positions
+'    for i% := 0 to osNTargetPositions%-1 do
+'        tmp$ := Print$("%d,%f,%f", i%, osTargetPositions[i%][0], osTargetPositions[i%][1]);
+'        SampleText(tmp$);
+'    next
+    
+	'Begin the stimulus program.
+	PrintLog(CommandLine$+"\n");
+	StimHandle% := ProgRun(CommandLine$,1);
+	if StimHandle% <0 then Message("Could not start stimulus."); halt; endif
+    
+    
+   'If we are asking the eyetracker to record an output file, open the file and start recording
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("I");  'Open the file (this is done by setting a DIGLOW bit), file name will be saved in a sampletext
+        yield(0.5);
+        SafeSampleKey("W");  'Begin recording the file
+        yield(0.5);
+    endif
+    
+
+	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);
+	ToolbarEnable(1,0);
+	View(DataWindow%);
+	Yield(.1);
+	return 1;
+end;
+
+
+
+func StartPlexon%()
+    
+    var fp$;  'to hold current file path
+    fp$ := SetPathToScriptDirectory$();
+    CreateSampleConfiguration();    
+    
+    StartSecondInstanceOfSpike2();
+    
+    FilePathSet(fp$);  'change the file path back to what it was
+    fp$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp$); 'and tell the world to verify
+    
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+    ' Get display windows ready
+    InitializeWindows();    
+    
+    return 1; 'stay in toolbar    
+    
+end
+
+
+
+func GenerateTrials%(nperblock%)
+    var status% := 0;
+    var prevX := 1000;  'allows the first presentation to be anywhere
+    var prevY := 1000;
+    var i%, index%;
+    var result%;
+    var nblocks%;
+    
+    
+    'These are the values we need to play with here
+    'osNumTargets%,
+    'osXOffset, osYOffset, osMinDistanceDeg, osScreenBufferXMin, osScreenBufferXMax, osScreenBufferYMin,  
+    'osScreenBufferYMax, osUseQuadAsBuffer%, osEqualizeQuadrants%
+    'osFixLocX[], osFixLocY[];
+    
+    if osEqualizeQuadrants% = 0 or osUseQuadAsBuffer% = 0 then  'if we are not doing quadrant buffering, don't allow quadrant equalization
+        for i% := 0 to osNumTargets% - 1 do
+            result% := RandomMinimumDistance(osFixLocX[i%],osFixLocY[i%],osMinDistanceDeg,prevX,prevY,osScreenBufferXMin,osScreenBufferXMax,osScreenBufferYMin,osScreenBufferYMax,100);
+            if result% < 0 then
+                message("Did not find legal random location in 100 attempts, reduce minimum distance or increase screen buffer size!");
+                halt
+            endif;
+            prevX := osFixLocX[i%];
+            prevY := osFixLocY[i%];
+        next;
+    else  'do quadrant-equivalence
+        'NOTE: recommendation for this option is that the minimum distance be no more than 1/2 the "radius"
+        '(or 1/4 the "diameter") of the short axis of the screen bounds.  "Radius"/"Diameter" are not correct
+        'terms for a rectangular region, but whatever.  For instance, let's imagine a square screen region of
+        '+/- 6 degrees in both X/Y (it's 12x12).  This means we have 4 quadrants, each of which are 6x6 degrees.  
+        'If a trial is located directly in the middle of a quadrant, and the subsequent trial is also requested
+        'to fall in that quadrant, then a 3-degree (1/2 the "radius") minimum jump blocks out a circle with the
+        'same radius as the quadrant, but leaves the corners of the quadrant legal, leaving almost 25% [1-(pi/4)]
+        'of the area of the quadrant as legal locations for the next trial.  Note that if we multiply this 
+        'largest recommended value by sqrt(2), then we can find cases where no legal space can be found - you may
+        'get lucky and not break it on a small number of trials, but over the long run it will break.
+        
+        'first, make list of quadrants, let's block these
+        nblocks% := osNumTargets%/(nperblock%*4);
+        nblocks% += 1;  'increment by one - does an extra block since they won't always fill exactly
+        tbgInit(4, nperblock%, nblocks%);
+        for i% := 0 to osNumTargets% - 1 do
+            tbgGetTrialIndex%(index%);
+            'printlog("Value is %d\n",index%);
+            'Here we have to make four different calls to RandomMinimumDistance based on the four quadrants [0,1,2,3]
+            docase 'which quadrant is which is pretty arbitrary
+            case index% = 0 then
+                result% := RandomMinimumDistance(osFixLocX[i%],osFixLocY[i%],osMinDistanceDeg,prevX,prevY,0,osScreenBufferXMax,0,osScreenBufferYMax,100);
+            case index% = 1 then
+                result% := RandomMinimumDistance(osFixLocX[i%],osFixLocY[i%],osMinDistanceDeg,prevX,prevY,0,osScreenBufferXMax,osScreenBufferYMin,0,100);
+            case index% = 2 then
+                result% := RandomMinimumDistance(osFixLocX[i%],osFixLocY[i%],osMinDistanceDeg,prevX,prevY,osScreenBufferXMin,0,0,osScreenBufferYMax,100);
+            case index% = 3 then
+                result% := RandomMinimumDistance(osFixLocX[i%],osFixLocY[i%],osMinDistanceDeg,prevX,prevY,osScreenBufferXMin,0,osScreenBufferYMin,0,100);
+            else
+                printlog("Found unexpected index (%d) in quadrant-equivalence blocking, quitting!\n",index%);
+                message("Problem in creating quadrant-equivalent blocking, quitting");
+                halt
+            endcase
+            
+            if result% < 0 then
+                message("Did not find legal random location in 100 attempts, reduce minimum distance or increase screen buffer size!");
+                halt
+            endif;
+            prevX := osFixLocX[i%];
+            prevY := osFixLocY[i%];
+            
+            tbgTrialIndexCompleted(index%);  'I'm not tracking down what this monstrosity does, but this line is mandatory to make the blocking work right
+        next;
+        
+    endif
+    
+    return 0;
+end
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+
+	' Disable idle process func
+	ToolbarSet(0,"");
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
+    endif
+
+	' Tell stim app to shut down
+	SafeSampleKey("Q");
+	Yield(.1);
+	SampleStop();
+	ProgKill(StimHandle%);
+	while ProgStatus(StimHandle%) > 0 do
+		Yield();
+	wend
+    
+    'turn off opto just in case it might be on (it shouldn't, but...)
+'    if osDoOpto% = 1 then
+'        SafeSampleKey("o");
+'    endif;
+
+	WriteParameterFile();
+
+'	ProgRun(bin$ + "\\ClearTrigger",0);
+
+	' Increment daily totals and save then
+	TotalTrials% += nTrialsStarted%;
+	TotalRewards% += nTrialsSuccess%;
+	SaveDailyTotals();
+
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func PauseStimuli%();
+Pause% :=1;
+ToolbarEnable(4,0);
+ToolbarEnable(5,1);
+return 1;
+end
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func ResumeStimuli%();
+Pause% :=0;
+ToolbarEnable(4,1);
+ToolbarEnable(5,0);
+return 1;
+end
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func InFixationWindow%(EyePosX,EyePosY)
+	var i% := 0;
+	'Determine if the eye position is within the fixation window
+	if osAlwaysLooking% = 1 or (Pow(EyePosX-FixationX, 2) + Pow(EyePosY-FixationY, 2)) <= Pow(WindowRadius,2) then 
+		i% := 1;
+	endif
+	return i%;
+end;
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'func InTargetWindow%(EyePosX,EyePosY)
+'	var i% := 0;
+'	var x, y;
+'    
+'    'These need to be updated, but currently we are NOT checking to see if the animal (incorrectly) saccades to the stimulus
+'	'x := osTargetPositions[osTargetOrder%[whichTarget%]][0];
+'	'y := osTargetPositions[osTargetOrder%[whichTarget%]][1];
+'	'Determine if the eye position is within the answer window
+'	if osAlwaysLooking% = 1 or (Pow(EyePosX-x, 2) + Pow(EyePosY-y, 2)) <= Pow(WindowRadius,2) then 
+'		i% := 1;
+'	endif
+'	return i%;
+'end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'This function will calculate and return (in X,Y arguments) a new x,y position that is
+'at least MINDIST from the point at PREVX,PREVY.  Minimum and maximum legal x,y values
+'must also be entered.  This function will attempt to make MAXTRIES% random draws within
+'the legal x,y space (defined by MINX, MAXX, MINY, MAXY), and will return a status of -1
+'upon failure to generate a random value that is sufficiently distant in that number of 
+'tries (filling X,Y with most recent attempted result), or 0 on success.
+func RandomMinimumDistance(&x,&y,minDist,prevX,prevY,minX,maxX,minY,maxY,maxTries%)
+    var status% := -1;
+    var n% := 0;
+    
+    
+    while n% < maxTries% and status% = -1 do
+        n% += 1;
+        x := rand(maxX-minX,minX);
+        y := rand(maxY-minY,minY);
+        if (Pow(prevX-x, 2) + Pow(prevY-y, 2)) >= Pow(minDist,2) then
+            status% := 0;
+        endif;
+    wend;
+    
+    
+    
+    return status%;
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' With new ability for multiple juicers, there is no ability to specify the juice per reward
+'    because it would be a pain in the butt to code and would take up a lot of space on the
+'    dialog boxes.  Instead I have arbitrarily decided that for each hit, the
+'    "timed" juicer will deliver 200 ms of reward.  That value can be changed right here.
+
+func Juice%()
+    Reward%();
+	return 1;
+end;
+
+func Reward%()
+    'Check juicer type and deliver reward
+    if JuicerType% = 1 then  'open-high juicer, dispense based on ms
+        DeliverRewardMS(GetJuicePerReward%()*GetJuiceRewardMS%());
+    else
+        if JuicerType% = 2 then  'open-low juicer, dispense based on number of hits
+            DeliverRewardNumber();
+        endif;
+    endif;
+	return 1;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc WriteParameterFile()
+	var parFileName$;
+	var parFileBase$;
+	var parHandle%;
+
+	' get filename for parfile (data file + "par" extension) and open it
+	View(DataWindow%);
+	parFileBase$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
+	parFileName$ := parFileBase$ + ".par";
+	PrintLog("par filename is " + parFileName$ + "\n");
+	parHandle% := FileOpen(parFileName$, 8, 1);
+
+	' write general info - eye coil gains, dist to screen
+	Print("Stim parameters for %s\n\n", parFileBase$);
+
+	Print("General information\n");
+	Print("-------------------\n\n");
+	Print("Distance to screen (MM)    : %s\n", GetDistanceToScreenMM$());
+	Print("Eye coil software gain (X) : %f\n", DegreesPerVoltX);
+	Print("Eye coil software gain (Y) : %f\n", DegreesPerVoltY);
+	Print("Eye coil sampling freq (Hz): %d\n", EyeCoilSamplingFrequency%);
+'	Print("Number of electrodes       : %d\n", NumberOfElectrodes%);
+'	Print("Reward size (ms)           : %d\n", GetJuiceRewardMS%());
+
+	' write fixpoint parameters
+	Print("\nFixation point\n");
+	Print("-------------------\n\n");
+	Print("Window radius              : %f\n", WindowRadius);
+	'Print("Position (x, degrees)      : %f\n", FixationX);
+	'Print("Position (y, degrees)      : %f\n", FixationY);
+	Print("Diameter (degrees)         : %f\n", FixationDiameter);
+	Print("Color                      : %s\n", FixationColor$);
+
+	' write stimulus parameters
+	'Print("\nTargets\n");
+	'Print("-------------------\n\n");
+	'Print("Number of Targets          : %d\n", osNTargetPositions%);
+
+
+	Print("\nExperimental parameters\n");
+	Print("-------------------------\n\n");
+
+	Print("Acquisition time (s)   : %f\n", osAcquisitionTime);
+	Print("Min fixation hold time(s)  : %f\n", osHoldTimeMin);
+    Print("Max fixation hold time(s)  : %f\n", osHoldTimeMax);
+    Print("Inter trial time, success (s)   : %f\n", osInterStimulusTime);
+	Print("Inter trial time, failure (s)   : %f\n", osInterTrialTime);
+    Print("Number of targets   : %d\n", osNumTargets%);
+    Print("Grating X offset (deg)   : %f\n", osXOffset);
+    Print("Grating Y offset (deg)   : %f\n", osYOffset);
+    Print("Minimum change distance (deg)   : %f\n", osMinDistanceDeg);
+    Print("Fixation point X range (deg)   : %f,%f\n", osScreenBufferXMin, osScreenBufferXMax);
+    Print("Fixation point Y range (deg)   : %f,%f\n", osScreenBufferYMin, osScreenBufferYMax);
+    Print("Equalize quadrants   : %d\n", osUseQuadAsBuffer%*osEqualizeQuadrants%);  'This is a logical AND, essentially   
+    
+    
+'    if osDoOpto% = 1 then
+'        Print("\nOptogenetics parameters\n");
+'        Print("-------------------------\n\n");
+''        if tunLaserDiode% = 1 then
+''            Print("Laser Diode recorded\n");
+''        endif;
+'        Print("Opto Voltage Out: %f\n", osOptoVoltageOut);
+'        Print("Pre Stim Opto Time: %f\n", osPreStimOptoTime);
+'        Print("Post Stim Opto Time: %f\n", osPostStimOptoTime);
+'        Print("Max Opto Time: %f\n", osMaxOptoTime);
+'        Print("Probability Of Opto: %f\n", osProbOfOpto);
+'        
+'    endif;    
+    
+    
+    
+	' close parfile
+	FileClose(0);
+
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' The vdac32% function converts a value in user DAC units into an integer value
+'  (the result of the function) suitable for passing into a sequencer variable
+'  for use in the DAC, ADDAC, RAMP and OFFSET sequencer instructions. It mimics
+'  the vdac32() expression in the text sequence compiler.
+'
+' out     is the output value that you want to generate, in user DAC units.
+' scale   is the user DAC units corresponding to one volt on the actual DAC
+'         (or two volts for a ten-volt system). This is exactly the same as
+'         the DACscale field used with the SET or SDAC directives.
+' offset  is the user DAC units corresponding to zero volts output. This is
+'         exactly the same as the DACOffset field in SET or SDAC.
+'
+' If you want to use this function to calculate the slope for a ramp, use
+'  vdac32%(volts/sticks%(time)) for maximum accuracy.
+'
+func vdac32%(out, scale, offset)
+var v32;                                ' Real variable for the calculation
+out := out - offset;                    ' First compensate for offset
+v32 := ((out * (6553.6 / scale)) * 65536.0);   ' Floating point result
+var v32%;                               ' Integer value for the result
+if v32 > 2147483647.0 then              ' 2147483647 is the largest positive
+    v32% := 2147483647;                 '  integer value
+else
+    if v32 < -2147483647.0 then         ' -2147483648 is the lowest negative value
+        v32% := -2147483647;            '  but we have to stay one above that
+    else
+        v32% := round(v32);             ' We can be sure this will not overflow
+    endif;
+endif;
+return v32%;
+end
+
+

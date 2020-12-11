@@ -44,6 +44,12 @@
 0023            MOVI   V2,0            ;Log that sequencer is not in use
 0024            HALT                   ;End of this sequence section
 
+0000 FXSTIMON: 'C MOVI   V2,1          ;Log that sequencer is in use
+0017            DIGOUT [.....11.]      ;Signals the stimulus and fixpt on
+0018            BEQ    V5,1,VWAIT
+0019            MOVI   V2,0            ;Log that sequencer is not in use
+0020            HALT
+
 0025 STIMADV: 'a MOVI  V2,1            ;Log that sequencer is in use
 0026            DIGOUT [....i...]      ;Signals the tuned parameter to advance
 ;                BEQ    V5,1,VWAIT     ;no branch for triggering, cmdline to fixstim should 
