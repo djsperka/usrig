@@ -2780,7 +2780,7 @@ func AttentionScriptDialog%()
     DlgButton(5, "Optogenetics Parameters", AttOptoDialog%, 36, 18);
     
     DlgCheck(27,"Use Joystick",2,19);
-    DlgButton(6, "Joystick Dialog", CallJoystickConfigDialog%,36-14,19);
+    DlgButton(7, "Joystick Dialog", CallJoystickConfigDialog%,36-14,19);
     DlgButton(2, "Colors", ColorsDialog%, 2+36, 19);
     DlgButton(3, "Timing", TimingDialog%, 11+36, 19);  
     DlgButton(4, "Flashers", CallDlgGratingFlashers%, 21+36, 19);  
@@ -3434,9 +3434,16 @@ func ColorsDialog%()
         
         'Test output within colors dialog, allows me to test without crashing on a non-1401 computer
         'Problem is that this does not respect the dialog value for the number of gratings, hard to test...
-        var AString$;
-        AString$ := CreateCueCircleColorSetsLite$();  'Lite version only creates one set of cue circles, no rotation
-        printlog("Cue circles list is: %s\n",AString$);
+        'This test can crash stuff if attUseCueCircles% is 0 - note that this value is not UPDATED until OK is 
+        'pressed on the main dialog, so testing at this point in the dialog is totally nonideal and only
+        'intended for specific purposes, make sure you've got a reasonable attUseCueCircles% value saved, and 
+        'disable this testing when done with it!
+        
+        'if attUseCueCircles% > 0 then
+            'var AString$;
+            'AString$ := CreateCueCircleColorSetsLite$();  'Lite version only creates one set of cue circles, no rotation
+            'printlog("Cue circles list is: %s\n",AString$);
+        'endif;
         
 	endif
     
