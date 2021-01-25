@@ -1565,6 +1565,9 @@ proc TuningCurveLabels(iport%)
         case tunType1$ = tunTypeXPos$ then
             XUnits$("X Position");
             XRange(tunXPosMinXPos, tunXPosMaxXPos);
+        case tunType1$ = tunTypeNullTest$ then
+            XUnits$("Phase/Null");
+            XRange(tunNullTestMinPhase, tunNullTestMaxPhase);
         endcase
         ChanTitle$(1, "Chan 1");
         
@@ -1630,7 +1633,7 @@ proc TuningCurveLabels(iport%)
         
         'myTitle$ := s$ + " - Phase = ";  'these may not apply to tuning
         'myTitle2$ := " - Phase = ";
-        WindowTitle$("Null Test Counterphase Tuning - " + s$);
+        WindowTitle$("Null Test Phase Tuning - " + s$);
         XUnits$("Phase (degrees)");
         ChanTitle$(1, "Chan 1");
         XRange(tunNullTestMinPhase, tunNullTestMaxPhase);   
@@ -2038,6 +2041,15 @@ proc CreateSampleConfiguration()
                 tun1NValues% := (tunLagNSteps%+1);
             endif;
             temp1$ := "_lag";
+        case tuntype1$ = tunTypeNullTest$ then
+            if tunUseFile1% = 1 then
+                ShuffleAndExpand(tun1FileLen%,1,tun1ValuesIndices%[],0);
+                tun1NValues% := tun1FileLen%;
+            else                
+                GetRepeatedParameterProgression%(tunNullTestNSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunNullTestMinPhase, tunNullTestMaxPhase, 0, 0);
+                tun1NValues% := (tunNullTestNSteps%+1);
+            endif;
+            temp1$ := "_null";
         endcase;
         
         docase
@@ -2099,6 +2111,15 @@ proc CreateSampleConfiguration()
                 tun2NValues% := (tunLagNSteps%+1); 
             endif;
             temp2$ := "_lag";
+        case tuntype2$ = tunTypeNullTest$ then
+            if tunUseFile2% = 1 then
+                ShuffleAndExpand(tun2FileLen%,1,tun2ValuesIndices%[],0);
+                tun2NValues% := tun2FileLen%;
+            else                
+                GetRepeatedParameterProgression%(tunNullTestNSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunNullTestMinPhase, tunNullTestMaxPhase, 0, 0);
+                tun2NValues% := (tunNullTestNSteps%+1);
+            endif;
+            temp2$ := "_null";
         endcase;
               
         DoSampleAutoName(key$,"boxodonuts" + temp1$ + temp2$,"boxodonuts" + temp1$ + temp2$,primaryTxt$,secondaryTxt$);  'Note that this does not reflect the correct number of characters...it may not work properly?
@@ -2730,7 +2751,7 @@ proc WriteParameterFile()
         
         case tunType$ = tunTypeNullTest$ then
 
-			Print("Type:                  : Null Test Counterphase Gratings\n");
+			Print("Type:                  : Null Test Phase Tuning\n");
 			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunNullTestMinPhase, tunNullTestMaxPhase, tunNullTestNSteps%, tunNullTestNRepeats%);
 			Print("Values: " + tunValuesStringified$ + "\n");
             Print("\n");
@@ -2821,6 +2842,13 @@ proc WriteParameterFile()
                 Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunXPosMinXPos, tunXPosMaxXPos, tunXPosNSteps%, tunXPosNRepeats%);
                 Print("Values: " + tun1ValuesStringified$ + "\n");
                 Print("\n");
+            
+                case tunType1$ = tunTypeNullTest$ then
+            
+                Print("Type 1:                  : Null/Phase\n");
+                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunNullTestMinPhase, tunNullTestMaxPhase, tunNullTestNSteps%, tunNullTestNRepeats%);
+                Print("Values: " + tun1ValuesStringified$ + "\n");
+                Print("\n");
             endcase
         
             docase 
@@ -2864,6 +2892,13 @@ proc WriteParameterFile()
             
                 Print("Type 2:                  : X Position\n");
                 Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunXPosMinXPos, tunXPosMaxXPos, tunXPosNSteps%, tunXPosNRepeats%);
+                Print("Values: " + tun2ValuesStringified$ + "\n");
+                Print("\n");
+            
+                case tunType2$ = tunTypeNullTest$ then
+            
+                Print("Type 2:                  : Null/Phase\n");
+                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunNullTestMinPhase, tunNullTestMaxPhase, tunNullTestNSteps%, tunNullTestNRepeats%);
                 Print("Values: " + tun2ValuesStringified$ + "\n");
                 Print("\n");
             endcase
@@ -3023,16 +3058,23 @@ end;
 
 func GetStimulusTF()
     var gr$;
-    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var x, y, w, h, iw, ih, sf, tf, ori, phase, ctf;
     var contrast%;
     var cv$, pattern$, aperture$;
     
-	if tunType$ = tunTypeNullTest$ then 'get the temporal frequency of the counterphase shift, grating does not drift
-        tf := tunNullTestTF;
-    else  'get the temporal frequency of the grating
-    	gr$ := GetGratingParameters$("Stimulus");
-        ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
-    endif;
+	'if tunType$ = tunTypeNullTest$ then 'get the temporal frequency of the counterphase shift, grating does not drift
+    '    tf := tunNullTestTF;
+    'else  'get the temporal frequency of the grating
+    '	 gr$ := GetGratingParameters$("Stimulus");
+    '    ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    'endif;
+    
+    'if CTF is nonzero, return CTF, otherwise return TF
+    gr$ := GetGratingParameters$("Stimulus");
+    ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
+    if ctf > 0 then
+        tf := ctf;
+    endif
     
     LogStatus("GetStimulusTF", "TF=" + str$(tf));
     return tf;
@@ -3047,11 +3089,11 @@ end
 
 func GetDonutOD()
     var gr$;
-    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var x, y, w, h, iw, ih, sf, tf, ori, phase, ctf;
     var contrast%;
     var cv$, pattern$, aperture$;
 	gr$ := GetGratingParameters$("Distractor1");
-    ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
     LogStatus("GetDonutOD", "OD=" + str$(w));
     return w;
 end
@@ -3777,11 +3819,12 @@ func Start%()
         DGratParam$ := GetGratingParameters$("Distractor1");  'the donut - this goes FIRST    
         
     case tunType$ = tunTypeNullTest$ then
-        if tunNullTestStepFunc% = 0 then
-            TunCurveMArg$ := " -P " + Str$(tunNullTestTF) + ",s,";
-        else
-            TunCurveMArg$ := " -P " + Str$(tunNullTestTF) + ",q,";
-        endif;  
+        'if tunNullTestStepFunc% = 0 then
+        '   TunCurveMArg$ := " -P " + Str$(tunNullTestTF) + ",s,";
+        'else
+        '    TunCurveMArg$ := " -P " + Str$(tunNullTestTF) + ",q,";
+        'endif;
+        TunCurveMArg$ := " -P ";  'New syntax turns null test into "phase tuning"      
         
     case tunType$ = tunTypeBakersDozen$ then
         'Do nothing here, file has been specified
@@ -3807,6 +3850,7 @@ func Start%()
         'Spatial Freq   -S      [0.01 100], cyc/deg
         'Contrast       -C      [0.1 100], percent contrast
         'Area           -A      [0.1 100], degrees diameter
+        'Phase          -P      [0 360], degrees phase 
         'XYPosition     -Z      [-14 14], degrees from center. For XYPos args are paired and comma separated: x1,y1,x2,y2,...xN,yN
         'XPosition      -X      [-14 14], degrees from center
         'DonutHole      -M      [0 100], degrees diameter of center hole

@@ -4902,7 +4902,7 @@ end
 
 func GetStimulusTF(stim%)
     var gr$;
-    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var x, y, w, h, iw, ih, sf, tf, ori, phase, ctf;
     var contrast%;
     var cv$, pattern$, aperture$;
     docase
@@ -4917,7 +4917,7 @@ func GetStimulusTF(stim%)
     case stim% = 5 then
         gr$ := GetGratingParameters$("Distractor4");  
     endcase;    
-    ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
     LogStatus("GetStimulusTF", "TF=" + str$(tf));
     return tf;
 end
@@ -4925,7 +4925,7 @@ end
 
 func GetStimulusPhase(stim%)
     var gr$;
-    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var x, y, w, h, iw, ih, sf, tf, ori, phase, ctf;
     var contrast%;
     var cv$, pattern$, aperture$;
     docase
@@ -4940,7 +4940,7 @@ func GetStimulusPhase(stim%)
     case stim% = 5 then
         gr$ := GetGratingParameters$("Distractor4");  
     endcase;    
-    ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
     LogStatus("GetStimulusPhase", "phase=" + str$(phase));
     return phase;
 end
@@ -5450,14 +5450,14 @@ end
 
 func CallDlgGratingFlashers%()
     
-    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var x, y, w, h, iw, ih, sf, tf, ori, phase, ctf;
     var contrast%;
     var param$, cv$, pattern$, aperture$;
     var label$;
     var i%;
     
     attFlasherGratingParams$ := GetGratingParameters$("Flasher");
-    i% := GratingParametersDialogFlashers%(label$, attFlasherGratingParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    i% := GratingParametersDialogFlashers%(label$, attFlasherGratingParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
     if i% = 1 then
         SaveGratingParameters("Flasher", attFlasherGratingParams$);
     endif
@@ -5466,9 +5466,9 @@ func CallDlgGratingFlashers%()
 end;
 
 
-func GratingParametersDialogFlashers%(label$, &param$, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$)
+func GratingParametersDialogFlashers%(label$, &param$, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$, &ctf)
     
-	var i% := 50;  'That's right, 15, which is the button that we want to use for copying parameters over
+	var i% := 50;  'That's right, 50, which is the button that we want to use for copying parameters over
     
 	var ColorVectorList$[5];
 	var cvl$[5];
@@ -5483,12 +5483,13 @@ func GratingParametersDialogFlashers%(label$, &param$, &x, &y, &w, &h, &iw, &ih,
 	'ColorVectorList$[3]:="S cone";		cvl$[3]:="s";
 	ColorVectorList$[4]:="Custom";		cvl$[4]:="custom";
     
-	var PatternList$[2];
-	var pl$[2];
+	var PatternList$[4];
+	var pl$[4];
 	var ipl% := 0;
-    var iplS% := 0;
-	PatternList$[0]:="Sine";	pl$[0]:="s";
-	PatternList$[1]:="Square";	pl$[1]:="q";
+	PatternList$[0]:="Gr Sine; Cp Sine";	pl$[0]:="ss";
+	PatternList$[1]:="Gr Square; Cp Sine";	pl$[1]:="qs";
+    PatternList$[2]:="Gr Sine; Cp Square";	pl$[2]:="sq";
+	PatternList$[3]:="Gr Square; Cp Square";	pl$[3]:="qq";
     
 	var ApertureList$[2];
 	var al$[2];
@@ -5503,10 +5504,10 @@ func GratingParametersDialogFlashers%(label$, &param$, &x, &y, &w, &h, &iw, &ih,
         
         ' If the passed param$ is non-empty, then parse it before opening the dialog. 
         if Len(param$)>0 then
-            if ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$) = 0 then
-                icvl% := FindMatchedStringIndex%(cv$, cvl$[], 2, 0);
-                ipl% := FindMatchedStringIndex%(pattern$, pl$[], 2, 0);
-                ial% := FindMatchedStringIndex%(aperture$, al$, 3, 0);
+            if ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf) = 0 then
+                icvl% := FindMatchedStringIndex%(cv$, cvl$[], 5, 0);
+                ipl% := FindMatchedStringIndex%(pattern$, pl$[], 4, 0);
+                ial% := FindMatchedStringIndex%(aperture$, al$, 2, 0);
             endif
         endif
         
@@ -5524,16 +5525,17 @@ func GratingParametersDialogFlashers%(label$, &param$, &x, &y, &w, &h, &iw, &ih,
         DlgReal(8, "Orientation (degrees):", -360, 360);
         DlgReal(9, "Initial Phase (deg, 0 = white at center)", 0, 360);
         DlgList(10, "Color:", ColorVectorList$[]);
-        DlgList(11, "Pattern:", PatternList$[]);
+        DlgList(11, "Pattern (Grating/Counterphase):", PatternList$[]);
         DlgList(12, "Aperture:", ApertureList$[]);
-        DlgButton(50, "Copy from Master", TunCopyMasterVals%(param$), 2, 13); 'after the button, use x/y values so button can offset grating params from flasher params
-        DlgReal(13, "Flasher Duration (s):", .01, 3, 42, 14);
-        DlgReal(14, "Temporal Buffer (s):", .01, 3, 42, 15);
-        DlgReal(15, "Spatial Buffer (deg):", .01, 10, 42, 16);
-        DlgReal(16, "Max distance from main grating (deg):", 1, 30, 42, 17);
-        DlgReal(17, "Hazard Value (s/flasher):", .01, 1000, 42, 18);  'don't know what reasonable values for this will be yet
+        DlgReal(13, "Counterphase Transition Freq:", 0, 10);
+        DlgButton(50, "Copy from Master", TunCopyMasterVals%(param$), 2, 14); 'after the button, use x/y values so button can offset grating params from flasher params
+        DlgReal(14, "Flasher Duration (s):", .01, 3, 42, 15);
+        DlgReal(15, "Temporal Buffer (s):", .01, 3, 42, 16);
+        DlgReal(16, "Spatial Buffer (deg):", .01, 10, 42, 17);
+        DlgReal(17, "Max distance from main grating (deg):", 1, 30, 42, 18);
+        DlgReal(18, "Hazard Value (s/flasher):", .01, 1000, 42, 19);  'don't know what reasonable values for this will be yet
         
-        i% := DlgShow(attFlasherWidth, attFlasherHeight, iw, ih, contrast%, sf, tf, ori, phase, icvl%, ipl%, ial%, attFlasherDur, attFlasherTemporalBuffer, attFlasherSpatialBuffer, attFlasherMaxDist, attFlasherHazardValue);
+        i% := DlgShow(attFlasherWidth, attFlasherHeight, iw, ih, contrast%, sf, tf, ori, phase, icvl%, ipl%, ial%, ctf, attFlasherDur, attFlasherTemporalBuffer, attFlasherSpatialBuffer, attFlasherMaxDist, attFlasherHazardValue);
         Convert180(phase);
         
     wend;
@@ -5544,7 +5546,7 @@ func GratingParametersDialogFlashers%(label$, &param$, &x, &y, &w, &h, &iw, &ih,
 		aperture$ := al$[ial%];
         if attFlasherWidth > iw and attFlasherHeight > ih then  'don't let inner dimensions of donut be larger than outer
             ' save parameters
-            param$ := EncodeGratingParameters$(x, y, attFlasherWidth, attFlasherHeight, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+            param$ := EncodeGratingParameters$(x, y, attFlasherWidth, attFlasherHeight, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
         else
             message("Inner diameters cannot be greater than outer diameters!  Try Again!");
         endif;

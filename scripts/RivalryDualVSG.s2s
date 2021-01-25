@@ -1393,7 +1393,7 @@ func Start%()
     var cmdLine$;
     var offsetFilename$ := "unknown";
     var key$;
-    var h, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$;
+    var h, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf, iw, ih;
     var stmp$;
     var xhair$;
     
@@ -1403,8 +1403,8 @@ func Start%()
 
     
     ' Parse the grating coordinates for display in the xy window
-    ParseGratingParameters%(rivLeftGrating$, rivLeftGratingX, rivLeftGratingY, rivLeftGratingD, h, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
-    ParseGratingParameters%(rivRightGrating$, rivRightGratingX, rivRightGratingY, rivRightGratingD, h, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    ParseGratingParameters%(rivLeftGrating$, rivLeftGratingX, rivLeftGratingY, rivLeftGratingD, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
+    ParseGratingParameters%(rivRightGrating$, rivRightGratingX, rivRightGratingY, rivRightGratingD, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
     GetFixationPointParameterValues(rivFixationX, rivFixationY, rivFixationD, rivFixationWindowD);
     
     ' Start sampling
@@ -2024,13 +2024,13 @@ func DoGratingDialog%(label$, &param$)
     var status%;
     var disable%[1];
     var ndisable% := 0;
-    var x, y, w, h, sf, tf, orientation, phase;
+    var x, y, w, h, sf, tf, orientation, phase, ctf, iw, ih;
     var contrast%;
     var cv$, pattern$, aperture$;
     
     status% := GratingParametersDialog%(label$, param$,
                                         disable%[], ndisable%, 
-                                        x, y, w, h, contrast%, sf, tf, orientation, phase, cv$, pattern$, aperture$);                                       
+                                        x, y, w, h, iw, ih, contrast%, sf, tf, orientation, phase, cv$, pattern$, aperture$, ctf);                                       
     return status%;
 end
 

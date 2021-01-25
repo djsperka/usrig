@@ -65,14 +65,15 @@ proc GratingDialog(type$)
 	var sf:=1;
 	var tf:=1;
 	var cv$:="b";
-	var p$:="s";	' pattern
+	var p$:="ss";	' pattern
 	var ap$:="e";	' aperture 
+    var ctf:=0;  'counterphase transition frequency
     var disable%[1];
     var ndisable% := 0;
     
 	gr$ := GetGratingParameters$(type$);
 	if gr$ <> "" then
-        if GratingParametersDialog%(type$, gr$, disable%, ndisable%, x, y, w, h, iw, ih, contrast%, sf, tf, orientation, phase, cv$, p$, ap$) = 1 then
+        if GratingParametersDialog%(type$, gr$, disable%, ndisable%, x, y, w, h, iw, ih, contrast%, sf, tf, orientation, phase, cv$, p$, ap$, ctf) = 1 then
             SaveGratingParameters(type$, gr$);
         endif
     else
@@ -83,13 +84,13 @@ proc GratingDialog(type$)
         message("Warning!|No grating parameters are defined for " + type$ + "!\nTaking initial parameters from the Stimulus grating!");
         gr$ := GetGratingParameters$("Stimulus");
         if gr$ <> "" then
-            if GratingParametersDialog%(type$, gr$, disable%, ndisable%, x, y, w, h, iw, ih, contrast%, sf, tf, orientation, phase, cv$, p$, ap$) = 1 then
+            if GratingParametersDialog%(type$, gr$, disable%, ndisable%, x, y, w, h, iw, ih, contrast%, sf, tf, orientation, phase, cv$, p$, ap$, ctf) = 1 then
                 SaveGratingParameters(type$, gr$);
             endif
         else
             'since we can no longer populate a Stimulus grating in a new configuration using Tuning, we have to just take the default value.
             gr$ := GetDefaultGratingParameters$("Stimulus");
-            if GratingParametersDialog%(type$, gr$, disable%, ndisable%, x, y, w, h, iw, ih, contrast%, sf, tf, orientation, phase, cv$, p$, ap$) = 1 then
+            if GratingParametersDialog%(type$, gr$, disable%, ndisable%, x, y, w, h, iw, ih, contrast%, sf, tf, orientation, phase, cv$, p$, ap$, ctf) = 1 then
                 SaveGratingParameters(type$, gr$);
             endif
             'message("Warning!|No grating parameters are defined for Stimulus grating!\nYou can set initial parameters from Tuning!");

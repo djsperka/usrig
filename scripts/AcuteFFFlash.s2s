@@ -37,6 +37,10 @@ var ffOri := 90;
 var ffCV$ := "b";
 var ffPattern$ := "s";
 var ffAperture$ := "e";
+var ffctf := 0;
+var ffiw := 0;
+var ffih := 0;
+var ffPhase := 0;
 
 
 '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -51,7 +55,7 @@ ffDisabled%[2] := 9;
 ffDisabled%[3] := 10;
 ffDisabled%[4] := 11;
 
-' TODO This will be replaced
+' TODO This will be replaced (hmm...good, because it doesn't work!  Probably hasn't worked for a decade! jj 01-22-2021)
 if FetchExperimentInfo%(FilePathRoot$, ScreenDistanceMM%, CellName$) < 0 then
     Message("Experiment info incorrect. Check log window. You may need to re-run NewExp and/or NewCell");
     halt;
@@ -116,7 +120,7 @@ func FFDialog%()
 
     if status% = 1 then
         if ffUseGrating% = 1 then
-            ffGratingParam$ := EncodeGratingParameters$(ffX, ffY, ffW, ffH, ffContrast%, ffSF, ffTF, ffOri, ffCV$, ffPattern$, ffAperture$);
+            ffGratingParam$ := EncodeGratingParameters$(ffX, ffY, ffW, ffH, ffiw, ffih, ffContrast%, ffSF, ffTF, ffOri, ffPhase, ffCV$, ffPattern$, ffAperture$, ffctf);
             PrintLog("Grating params: " + ffGratingParam$ + "\n");
         else
             PrintLog("Grating " + str$(i%) + " NOT USED \n");
@@ -131,9 +135,9 @@ end
 func GratingParamsDialog%()
     var status%;
     status% := GratingParametersDialog%("Grating Parameters ", ffGratingParam$, ffDisabled%[], ffNDisabled%,
-                                        ffX, ffY, ffW, ffH, 
+                                        ffX, ffY, ffW, ffH, ffiw, ffih,
                                         ffContrast%, ffSF, ffTF, 
-                                        ffOri, ffCV$, ffPattern$, ffAperture$);
+                                        ffOri, ffPhase, ffCV$, ffPattern$, ffAperture$, ffctf);
     return status%;
 end
 

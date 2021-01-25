@@ -1395,7 +1395,7 @@ proc TuningCurveLabels(iport%)
         
         myTitle$ := s$ + " - Phase = ";
         myTitle2$ := " - Phase = ";
-        WindowTitle$("Null Test Counterphase Tuning - " + s$);
+        WindowTitle$("Null Test Phase Tuning - " + s$);
         XUnits$("Phase (degrees)");
         ChanTitle$(1, "Chan 1");
         XRange(tunNullTestMinPhase, tunNullTestMaxPhase);
@@ -2388,7 +2388,7 @@ proc WriteParameterFile()
         
     case tunType$ = tunTypeNullTest$ then
         
-        Print("Type:                  : Null Test Counterphase Gratings\n");
+        Print("Type:                  : Null Test Phase Tuning\n");
         Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunNullTestMinPhase, tunNullTestMaxPhase, tunNullTestNSteps%, tunNullTestNRepeats%);
         Print("Values: " + tunValuesStringified$ + "\n");
         Print("\n");
@@ -2478,16 +2478,24 @@ end;
 
 func GetStimulusTF()
     var gr$;
-    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var x, y, w, h, iw, ih, sf, tf, ori, phase, ctf;
     var contrast%;
     var cv$, pattern$, aperture$;
     
-    if tunType$ = tunTypeNullTest$ then 'get the temporal frequency of the counterphase shift, grating does not drift
-        tf := tunNullTestTF;
-    else  'get the temporal frequency of the grating
-    	gr$ := GetGratingParameters$("Stimulus");
-        ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    'if tunType$ = tunTypeNullTest$ then 'get the temporal frequency of the counterphase shift, grating does not drift
+    '    tf := tunNullTestTF;
+    'else  'get the temporal frequency of the grating
+    '	gr$ := GetGratingParameters$("Stimulus");
+    '    ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    'endif;
+    
+    'return CTF if non-zero, otherwise return tf
+    gr$ := GetGratingParameters$("Stimulus");
+    ParseGratingParameters%(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
+    if ctf > 0 then
+        tf := ctf;
     endif;
+    
     
     LogStatus("GetStimulusTF", "TF=" + str$(tf));
     return tf;
@@ -2542,6 +2550,7 @@ func Start%()
     var Tcv$; 
     var Tpattern$; 
     var Taperture$;
+    var Tctf;
     var specFileName$;
     var specHandle%;
     
@@ -2658,8 +2667,8 @@ func Start%()
         
         if tunPlaidUseTwoGratings% = 1 then  'if two gratings, take both at face value, make sure TF is same
             'Get Distractor1 first so that Tx/Ty/Tw/Th/Tcontrast% come from Stimulus
-            ParseGratingParameters%(GetGratingParameters$("Distractor1"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf2, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
-            ParseGratingParameters%(GetGratingParameters$("Stimulus"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori2, Tphase, Tcv$, Tpattern$, Taperture$);
+            ParseGratingParameters%(GetGratingParameters$("Distractor1"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf2, Tori, Tphase, Tcv$, Tpattern$, Taperture$, Tctf);
+            ParseGratingParameters%(GetGratingParameters$("Stimulus"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori2, Tphase, Tcv$, Tpattern$, Taperture$, Tctf);
             if Ttf = Ttf2 then 'Stim$ already has GetGratingParameters$("Stimulus") in it
                 Stim$ := Stim$ + " -s " + GetGratingParameters$("Distractor1");
             else
@@ -2673,7 +2682,7 @@ func Start%()
                 Halt;  'nothing has really happened yet, so we should be able to stop gracefully (test this)
             endif;
         else 'if one grating, use plaidAngle to adjust orientation so that the plaid is "zero degrees" (moves rightward)
-            ParseGratingParameters%(GetGratingParameters$("Stimulus"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
+            ParseGratingParameters%(GetGratingParameters$("Stimulus"), Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$, Tctf);
             'Assign orientations
             Tori := 360 - (tunPlaidAngle/2);
             if Tori < 0 then
@@ -2687,8 +2696,8 @@ func Start%()
             'Stim$ := "-s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
             'Stim$ := Stim$ + " -s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, Tcontrast%, Tsf, Ttf, Tori2, Tphase, Tcv$, Tpattern$, Taperture$);
             'Force contrast to 100 if using one grating
-            Stim$ := " -s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, 100, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$);
-            Stim$ := Stim$ + " -s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, 100, Tsf, Ttf, Tori2, Tphase, Tcv$, Tpattern$, Taperture$);
+            Stim$ := " -s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, 100, Tsf, Ttf, Tori, Tphase, Tcv$, Tpattern$, Taperture$, Tctf);
+            Stim$ := Stim$ + " -s " + EncodeGratingParameters$(Tx, Ty, Tw, Th, Tiw, Tih, 100, Tsf, Ttf, Tori2, Tphase, Tcv$, Tpattern$, Taperture$, Tctf);
         endif;
         
         'Have to change the Values$ variable because the default does not give us what we want, tunValuesStringified$ is OK, but there's more!
@@ -2728,12 +2737,14 @@ func Start%()
         
     case tunType$ = tunTypeNullTest$ then
         
-        Tune$ := " -P " + Str$(tunNullTestTF) + ",";
-        if tunNullTestStepFunc% = 0 then
-            Tune$ += "q," + Values$;
-        else
-            Tune$ += "s," + Values$;
-        endif;
+        Tune$ := " -P ";  'New syntax turns Null Test into "phase tuning"
+        
+        'Tune$ := " -P " + Str$(tunNullTestTF) + ",";
+        'if tunNullTestStepFunc% = 0 then
+        '    Tune$ += "q," + Values$;
+        'else
+        '    Tune$ += "s," + Values$;
+        'endif;
         
     case tunType$ = tunTypeDriftingBar$ then
         

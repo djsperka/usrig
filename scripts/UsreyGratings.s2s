@@ -72,19 +72,20 @@ end;
 '   4: Outer Height
 '   5: Inner Width  'Distinction between outer and inner width added 1-20-12, jj
 '   6: Inner Height
-'   5: Contrast %
-'   6: Spatial freq
-'   7: Temporal freq
-'   8: Orientation (degrees)
-'   9: Phase (degrees)
-'   10: Color
-'   11: Pattern (sine, square wave)
-'   12: Aperture (oval, rectangular)
+'   7: Contrast %
+'   8: Spatial freq
+'   9: Temporal freq
+'   10: Orientation (degrees)
+'   11: Phase (degrees)
+'   12: Color
+'   13: Pattern (sine/square wave for spatial and counterphase, if applicable)
+'   14: Aperture (oval, rectangular)
+'   15: Counterphase Temporal Frequency (if 0, no counterphase temporal drift)
 '
 ' Returns 1 (0) if the user hits OK (Cancel). 
 
 
-func GratingParametersDialog%(label$, &param$, disable%[], ndisable%, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$)
+func GratingParametersDialog%(label$, &param$, disable%[], ndisable%, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$, &ctf)
 
 	var i%;
 
@@ -100,11 +101,13 @@ func GratingParametersDialog%(label$, &param$, disable%[], ndisable%, &x, &y, &w
 	'ColorVectorList$[3]:="S cone";		cvl$[3]:="s";
 	ColorVectorList$[4]:="Custom";		cvl$[4]:="custom";
 
-	var PatternList$[2];
-	var pl$[2];
+	var PatternList$[4];
+	var pl$[4];
 	var ipl% := 0;
-	PatternList$[0]:="Sine";	pl$[0]:="s";
-	PatternList$[1]:="Square";	pl$[1]:="q";
+	PatternList$[0]:="Gr Sine; Cp Sine";	pl$[0]:="ss";
+	PatternList$[1]:="Gr Square; Cp Sine";	pl$[1]:="qs";
+    PatternList$[2]:="Gr Sine; Cp Square";	pl$[2]:="sq";
+	PatternList$[3]:="Gr Square; Cp Square";	pl$[3]:="qq";
 
 	var ApertureList$[2];
 	var al$[2];
@@ -116,9 +119,9 @@ func GratingParametersDialog%(label$, &param$, disable%[], ndisable%, &x, &y, &w
     if Len(param$)>0 then
         ' Check for presence of cv$/pattern$/aperture$, if present find index...but no return?
         ' Updated to allow FindMatchedString to output to icvl% etc. 9/21/11 JJ
-        if ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$) = 0 then
+        if ParseGratingParameters%(param$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf) = 0 then
             icvl% := FindMatchedStringIndex%(cv$, cvl$[], 5, 4);
-            ipl% := FindMatchedStringIndex%(pattern$, pl$[], 2, 0);
+            ipl% := FindMatchedStringIndex%(pattern$, pl$[], 4, 0);
             ial% := FindMatchedStringIndex%(aperture$, al$, 2, 0);
         endif
     endif
@@ -144,9 +147,10 @@ func GratingParametersDialog%(label$, &param$, disable%[], ndisable%, &x, &y, &w
 	DlgReal(10, "Orientation (degrees):", 0, 360);
     DlgReal(11, "Initial Phase (deg, 0 = white at center)", -360, 360);
 	DlgList(12, "Color:", ColorVectorList$[]);
-	DlgList(13, "Pattern:", PatternList$[]);
+	DlgList(13, "Pattern (Grating/Counterphase):", PatternList$[]);
 	DlgList(14, "Aperture:", ApertureList$[]);
-	i% := DlgShow(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, icvl%, ipl%, ial%);
+    DlgReal(15, "Counterphase Transition Freq:", 0, 10);
+	i% := DlgShow(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, icvl%, ipl%, ial%, ctf);
     Convert180(phase);
 	if i%=1 then
 		cv$ := cvl$[icvl%];
@@ -154,7 +158,7 @@ func GratingParametersDialog%(label$, &param$, disable%[], ndisable%, &x, &y, &w
 		aperture$ := al$[ial%];
         if w > iw and h > ih then  'don't let inner dimensions of donut be larger than outer
             ' save parameters
-            param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+            param$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
         else
             message("Inner diameters cannot be greater than outer diameters!  Try Again!");
         endif;
@@ -187,19 +191,19 @@ end
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
-' ParseGratingParameters%(gr$, &x, &y, &w, &h, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$)
+' ParseGratingParameters%(gr$, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$, &ctf)
 ' 
 ' Given a grating parameter list, parse the individual values in to the given variable list. 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-func ParseGratingParameters%(gr$, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$)
+func ParseGratingParameters%(gr$, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf, &ori, &phase, &cv$, &pattern$, &aperture$, &ctf)
     var status% := 0;
     var n%;
     var str1$, str2$, str3$, str4$, str5$, str6$, str7$, str8$;
-    var str9$, str10$, str11$, str12$, str13$, str14$;
+    var str9$, str10$, str11$, str12$, str13$, str14$, str15$;
 	ReadSetup("", "", "", "", ",");
     'Do initial read to determine how many variables are present
-    n% := ReadStr(gr$, str1$, str2$, str3$, str4$, str5$, str6$, str7$, str8$, str9$, str10$, str11$, str12$, str13$, str14$);
+    n% := ReadStr(gr$, str1$, str2$, str3$, str4$, str5$, str6$, str7$, str8$, str9$, str10$, str11$, str12$, str13$, str14$, str15$);
     
     docase
     case n% = 8 or n% = 9 or n% = 12 then
@@ -211,13 +215,16 @@ func ParseGratingParameters%(gr$, &x, &y, &w, &h, &iw, &ih, &contrast%, &sf, &tf
     case n% = 14 then
         'If 14 parameters are present, inner width and outer width are set
         n% := ReadStr(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    case n% = 15 then
+        'If 15 parameters are present, counterphase transition freq is set
+        n% := ReadStr(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
     else
         
     endcase; 
     ReadSetup();
     if n% < 11 then 'Return -1 as status if there is no cv$/pattern$/aperture$
         status% := -1; 'otherwise return 0 if cv$/pattern$/aperture$ are present
-                       'there is currently no return scheme to indicate that phase is present
+                       'there is currently no return scheme to indicate that phase/iw/ih/ctf is present
     endif;
     return status%;
 end
@@ -245,7 +252,7 @@ end
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
-' EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$)
+' EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf)
 '
 ' Form a parameter string for a grating with the given parameters. The resulting string
 ' is suitable for feeding to a VSG application as a parameter arg for a grating. 
@@ -254,10 +261,12 @@ end
 ' possible grating specs, but the encode version is not (nor has it ever been).  Once you encode, you're
 ' in the new format.
 '
+' Added ctf 1-22-21.
+'
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-func EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$)
-    return Print$("%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%d,%.2f,%.2f,%.1f,%.1f,%s,%s,%s", x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+func EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf)
+    return Print$("%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%d,%.2f,%.2f,%.1f,%.1f,%s,%s,%s,%.2f", x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
 end;
  
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
