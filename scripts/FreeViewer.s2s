@@ -1199,7 +1199,7 @@ func IdleProcessing%()
             Yield(1.0);
             tLastTrigger := tFall;
             fvAdvance% := 0;  'Ensure value is 0 on first run
-            if fvDoOpto% > 0 then
+            if fvFixScreen% = 0 then
                 ChangeStateTo(statePrepareOpto%, tFall);
             else
                 ChangeStateTo(stateFixptUp%, tFall);
@@ -1223,8 +1223,13 @@ func IdleProcessing%()
             ' Fixation point is up
             LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
             tLastTrigger := tTrigger;
-            ChangeStateTo(stateWaitForAcquisition%, tTrigger);
-            'DrawStim(1);	' actually this draws the location of the fixpt.
+            if fvDoOpto% = 0 then
+                ChangeStateTo(stateWaitForAcquisition%, tTrigger);
+                DrawFix(1);	' this draws the location of the fixpt on the Spike2 window
+            else
+                ChangeStateTo(statePrepareOpto%, tTrigger);
+            endif;
+            
         endif
         
     case iState% = statePrepareOpto% then
@@ -1260,7 +1265,7 @@ func IdleProcessing%()
                 ChangeStateTo(stateWaitForStimOn%, tNow);
             case tNow - tStateStart > fvAcquisitionTime then
                 LogStatus("WaitForAcquisition", "Acquisition window timed out at " + str$(tNow));
-                if fvDoOpto% > 0 then
+                if fvFixScreen% = 1 then
                     ChangeStateTo(stateAcquisitionTO%, tNow);
                 else
                     'request fixpt down
@@ -1525,7 +1530,7 @@ func IdleProcessing%()
         
         if tNow > tStateStart + fvTrialISI then
             LogStatus("InterStimulusInterval", "InterStimulusInterval ended at " + str$(tNow));
-            if fvDoOpto% = 0 then
+            if fvFixScreen% = 0 then
                 ChangeStateTo(stateFixptUp%,tNow);
             else
                 ChangeStateTo(statePrepareOpto%, tNow);
@@ -1541,7 +1546,7 @@ func IdleProcessing%()
         
         if tNow > tStateStart + fvLookAwayTO + fvTrialISI then  'this state just encompasses the ISI as well
             LogStatus("LookAwayTO", "Timeout for looking away ended at " + str$(tNow));
-            if fvDoOpto% > 0 then
+            if fvFixScreen% > 0 then
                 ChangeStateTo(statePrepareOpto%, tNow);
             else
                 ChangeStateTo(stateFixptUp%, tNow);
