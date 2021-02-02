@@ -35,13 +35,13 @@ var osInterStimulusTime;        ' Blank time following a successful fixation/rew
 var osNumTargets%;				' Number of targets to use
 var osXOffset;                  ' Stim X offset from fixation target
 var osYOffset;                  ' Stim Y offset from fixation target
-var osGetOffsetFromStim%;       ' Do we take the offset position from the stimulus position?
+var osGetOffsetFromStim%;       ' Do we take the offset position from the stimulus position?  Note that the variable itself is unused in the script, we use the dialog-changed function to check its value directly.
 var osMinDistanceDeg;           ' Minimum distance for target to move, in degrees
 var osScreenBufferXMin;         ' Minimum X value for fixpt position, in degrees
 var osScreenBufferXMax;         ' Maximum X value for fixpt position, in degrees
 var osScreenBufferYMin;         ' Minimum Y value for fixpt position, in degrees
 var osScreenBufferYMax;         ' Maximum Y value for fixpt position, in degrees
-var osUseScreenAsBuffer%;       ' Do we use the screen size as the buffer?
+var osUseScreenAsBuffer%;       ' Do we use the screen size as the buffer?  Note that the variable itself is unused in the script, we use the dialog-changed function to check its value directly.
 var osUseQuadAsBuffer%;         ' Do we use the equal quadrants as the buffer?
 var osEqualizeQuadrants%;       ' Do we equalize the number of fixations in each quadrant?
 
@@ -170,6 +170,8 @@ func OffsetSaccadeScriptDialog%()
         
         GenerateTrials%(4);  'the argument indicates how many sets of quadrants are blocked if we are doing EqualizeQuadrants - i.e. "2" means to repeat shuffles of quads [1 1 2 2 3 3 4 4].
         
+        
+        
         'Yeah, so this is totally working!
         'printlog("X values are %1.2f\n",osFixLocX[0:20]);
         'printlog("Y values are %1.2f\n",osFixLocY[0:20]);
@@ -217,14 +219,18 @@ func OffsetSaccadeScriptDialogChanged%(item%)
         ParseGratingParametersBrief%(gr$, x, y, w, h);  'w, h are diameters
     endif;
     
+    'Prior fixation point parameters (the most recent set by Coolmouse) will be used if we are automatically setting the offset
+    if DlgValue(9) = 1 then
+        GetFixationPointParameters();  'FixationX/Y hold the location of the fixation point in Coolmouse (may not be 0,0)
+    endif; 
     
     'Get value of X/Y offset from config stim if requested, disable entry
     if DlgValue(9) = 1 then
         DlgEnable(0,7);
         DlgEnable(0,8);
 
-        DlgValue(7,x);
-        DlgValue(8,y);
+        DlgValue(7,x - FixationX);  'x/y are in screen coordinates but the fixation point used to determine x/y might not be at 0,0
+        DlgValue(8,y - FixationY);
     else
         DlgEnable(1,7);
         DlgEnable(1,8);        

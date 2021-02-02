@@ -10,6 +10,7 @@ const fvCVSID$ := "$Id$";
 #include "../util/LogUtilities.s2s"
 #include "../util/MiscUtilities.s2s"
 #include "UsreyDAQ.s2s"
+#include "UsreyFixationPoint.s2s"
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
@@ -27,6 +28,7 @@ var StimHandle%;			' handle for stimulus application
 var DataWindow%;		
 var XChannel%;
 var YChannel%;
+var iStimChannel%;
 
 var FrameChannel%;
 var FrameSlaveChannel%;
@@ -40,6 +42,7 @@ var SequencerPeriodMS;
 var StimulatorChannel%;
 var UtilityChannel%;
 var TimingChannel%;
+var FixationPointChannel%;
 
 ' XY window stuff
 var XYWindow%;			' 
@@ -67,6 +70,7 @@ var tInterTrialTime := 0;	' Time spent waiting between trials (i.e. after screen
 var tRise, tFall;
 var tKludge := 0.06;    ' Add to Fixation time to account for stim sequence. Ugly hack, admittedly, but one does what one must. 
 var fvFixationWasBroken% := 0;  'this allows us to monitor fixation through the individual image "periods"
+var fvFixWaitState%;
 
 ' Constants for states
 
@@ -86,6 +90,9 @@ const stateOptoOff%:=12;
 const stateNoOptoPeriod%:=13;
 const stateRewardPeriod%:=14;
 const stateWaitReward%:=15;
+const stateFixptUp%:=16;
+const stateWaitForFixptUp%:=17;
+const stateWaitForBlank%:=18;
 
 
 var iState% := stateVSGWait%;	' present state
@@ -153,7 +160,7 @@ var fvMinViewPeriodsForAdvance%;
 var fvLookAwayTO;
 var fvScreenMMX;  'we will assume that the 0,0 coordinate of fixation is at the center of the screen, and calculate the screen size from there
 var fvScreenMMY;
-var fvScreenXDeg;  'Defined as the distance from the center of the screen to the edge, for ease with creating the LookingAtScreen%() function
+var fvScreenXDeg;  'Defined as the distance from the center of the screen to the edge, for ease with creating the LookingAtScreenOrFixpt%() function
 var fvScreenYDeg;
 var fvGiveLookingTO%;
 var fvAdvance%;
@@ -162,6 +169,7 @@ var fvNAdvances%;
 var fvXPos;
 var fvYPos;
 var fvUseStimLocation%;
+var fvFixScreen%;
 
 
 'Deprecated variables
@@ -217,13 +225,14 @@ ReadyChannel% := 40;
 FrameChannel% := 41;
 StimChannel% := 43;
 ReadySlaveChannel% := 44;
-'FrameSlaveChannel% := 45;
+'FrameSlaveChannel% := 45;  'replaced by fixation point channel
 StimulatorChannel% := 46;
 'StimSlaveChannel% := 47;
 DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
 OptoCopyChannel% := 49;
 UtilityChannel% := 39;
 TimingChannel% := 38;
+FixationPointChannel% := 45;
 
 ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
@@ -275,7 +284,15 @@ func FreeViewerScriptDialog%()
 	var iReturn%;
     var screenMMPerDegree;
     var pi := 3.141592653589793;  'There is a pre-defined constant "_pi", but only on 8.03 and beyond, explicitly defining pi for back-compatibility
-
+    var fixscreen$[2];
+    fixscreen$[0] := "Use Fixation Point";
+    fixscreen$[1] := "Use Screen";
+    var exptype$[3];
+    exptype$[0] := "Standard Image";
+    exptype$[1] := "Opto (blocked)";
+    exptype$[2] := "No Opto (blocked)";
+    
+    
     'Since the opto is incorporated into this dialog (for now) we don't have to do a separate parameter grab for opto
     GetFreeViewerScriptParameters();
     
@@ -296,37 +313,39 @@ func FreeViewerScriptDialog%()
     
         
     DlgCreate("FreeViewer Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
-    DlgGroup("Stimulus and Fixation", 1, 1, 50, 14);
+    DlgGroup("Stimulus and Fixation", 1, 1, 50, 16);
     DlgInteger(1, "Number of repeats", 1, 1000, 0, 2);
     DlgCheck(2, "Random Progression?", 0, 3);
-    DlgReal(3, "Period Duration, s", 0.05, 100, 0, 4);
-    DlgInteger(4, "Number of periods per block", 1, 1000, 0, 5);
-    DlgInteger(5, "Minimum Viewed Periods To Advance", 1, 1000, 0, 6);
-    DlgReal(6, "Interstimulus Interval, s", 0.05, 100, 0, 7);
-    DlgReal(7, "Fixation Acquisition Time, s", 0.1, 100, 0, 8);
-    DlgReal(8, "Acquisition Time Out, s", 0, 100, 0, 9);
-    DlgReal(9, "Look Away Time Out, s", 0, 100, 0, 10);
-    DlgCheck(10, "Always Looking?", 0, 11);
-    DlgCheck(11, "Use Stimulus Location From Config?", 0, 12);
-    DlgReal(12, "Image X Position (deg)", -20, 20, 0, 13);
-    DlgReal(13, "Image Y Position (deg)", -20, 20, 0, 14);
+    DlgList(3, "View/Opto Condition: ", exptype$, 3, 32, 4);
+    DlgReal(4, "Period Duration, s", 0.05, 100, 0, 5);
+    DlgInteger(5, "Number of periods per block", 1, 1000, 0, 6);
+    DlgInteger(6, "Minimum Viewed Periods To Advance", 0, 1000, 0, 7);
+    DlgReal(7, "Interstimulus Interval, s", 0.05, 100, 0, 8);
+    DlgReal(8, "Fixation Acquisition Time, s", 0.1, 100, 0, 9);
+    DlgReal(9, "Acquisition Time Out, s", 0, 100, 0, 10);
+    DlgReal(10, "Look Away Time Out, s", 0, 100, 0, 11);
+    DlgList(11, "Fixation: ", fixscreen$, 2, 32, 12);
+    DlgCheck(12, "Always Looking?", 0, 13);
+    DlgCheck(13, "Use Stimulus Location From Config?", 0, 14);
+    DlgReal(14, "Image X Position (deg)", -20, 20, 0, 15);
+    DlgReal(15, "Image Y Position (deg)", -20, 20, 0, 16);
     
-    DlgGroup("Screen", 1, 15, 50, 3);
-    DlgReal(14, "Screen Width, mm", 10, 3000, 0, 16);
-    DlgReal(15, "Screen Height, mm", 10, 3000, 0, 17);
+    DlgGroup("Screen", 1, 17, 50, 3);
+    DlgReal(16, "Screen Width, mm", 10, 3000, 0, 18);
+    DlgReal(17, "Screen Height, mm", 10, 3000, 0, 19);
     
-    DlgGroup("Reward", 1, 18, 50, 2);
-    DlgReal(16, "Prob of reward each period", 0, 1, 0, 19);
+    DlgGroup("Reward", 1, 20, 50, 2);
+    DlgReal(18, "Prob of reward each period", 0, 1, 0, 21);
     
-    DlgGroup("Optogenetics", 1, 20, 50, 7);
-    DlgCheck(17, "Use Opto", 0, 21);
-    DlgReal(18, "Opto Voltage Out (V)", 0.0002, 5, 0, 22); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+    DlgGroup("Optogenetics", 1, 22, 50, 2);
+    'DlgCheck(18, "Use Opto", 0, 22);
+    DlgReal(19, "Opto Voltage Out (V)", 0.0002, 5, 0, 23); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
     
     
-    DlgGroup("Images", 1, 23, 50, 3);
-    fvdlgTextItem% := DlgText(fvDialogText$, 3, 24, 40);
-    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 25);
-    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 23, 25);
+    DlgGroup("Images", 1, 24, 50, 3);
+    fvdlgTextItem% := DlgText(fvDialogText$, 3, 25, 40);
+    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 26);
+    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 23, 26);
    
     'these have been removed from the dialog before ever being used, just a guide
     'DlgReal(4, "Maximum Image Display Time, s", 0.1, 1000, 0, 5);  
@@ -343,9 +362,9 @@ func FreeViewerScriptDialog%()
     'Right now we don't seem to need a callback, it's ready directly below if we do 
     DlgAllow(0xffff, 0, FreeViewerScriptDialogChanged%);
 
-    i%:=DlgShow(fvNRepeats%, fvRandomProgression%, fvPeriodDuration, fvNumPeriodsPerBlock%, fvMinViewPeriodsForAdvance%, 
-    fvTrialISI, fvAcquisitionTime, fvAcquisitionTO, fvLookAwayTO, fvAlwaysLooking%, fvUseStimLocation%, fvXPos, fvYPos, 
-    fvScreenMMX, fvScreenMMY, fvProbRewardEachPeriod, fvDoOpto%,fvOptoVoltageOut);
+    i%:=DlgShow(fvNRepeats%, fvRandomProgression%, fvDoOpto%, fvPeriodDuration, fvNumPeriodsPerBlock%, fvMinViewPeriodsForAdvance%, 
+    fvTrialISI, fvAcquisitionTime, fvAcquisitionTO, fvLookAwayTO, fvFixScreen%, fvAlwaysLooking%, fvUseStimLocation%, fvXPos, fvYPos, 
+    fvScreenMMX, fvScreenMMY, fvProbRewardEachPeriod, fvOptoVoltageOut);
     
     if i% = 1 then
 		SaveFreeViewerScriptParameters();
@@ -354,19 +373,27 @@ func FreeViewerScriptDialog%()
         fvScreenXDeg := (fvScreenMMX/2)/screenMMPerDegree;  'we are defining fvScreenX(Y)Deg as HALF the screen so it is the distance from fixation to the edge
         fvScreenYDeg := (fvScreenMMY/2)/screenMMPerDegree;
         
-        
-        fvNumPeriods% := fvNumPeriodsPerBlock%*2;   'always two "blocks"
+        'If we are doing the opto blocking (or pseudo-opto blocking) 
+        if fvDoOpto% > 0 then
+            fvNumPeriods% := fvNumPeriodsPerBlock%*2;   'two "blocks" per image
+        else
+            fvNumPeriods% := 1;  'only one period
+            if fvMinViewPeriodsForAdvance% > 1 then
+                fvMinViewPeriodsForAdvance% := 1;
+            endif;
+        endif;
         
 '        if fvRewardMinDelay > fvRewardMaxDelay then
 '            fvRewardMinDelay := fvRewardMaxDelay;
 '            message("Reward min delay was greater than max delay!\nBoth values set to max delay!");
 '        endif;
         
-        if fvUseStimLocation% = 1 then
-            var temp1;
-            var temp2;
-            ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"),fvXPos,fvYPos,temp1,temp2);
-        endif
+        'This is now done in the dialog-changed function
+        'if fvUseStimLocation% = 1 then
+        '    var temp1;
+        '    var temp2;
+        '    ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"),fvXPos,fvYPos,temp1,temp2);
+        'endif
         
         
         iReturn% := 1;  'set return value to success, otherwise we'll just quit.
@@ -376,14 +403,54 @@ func FreeViewerScriptDialog%()
 	return iReturn%;
 end;
 
-func FreeViewerScriptDialogChanged%(item%)  
-    if DlgValue(11) = 0 then  
-        DlgEnable(1,12);
-        DlgEnable(1,13);
-    else
-        DlgEnable(0,12);
-        DlgEnable(0,13);
+func FreeViewerScriptDialogChanged%(item%) 
+    var gr$;
+    var x, y, w, h;
+    
+    
+    'Grating parameters will be used to set stimulus location
+    if DlgValue(13) = 1 then
+        gr$ := GetGratingParameters$("Stimulus");
+        ParseGratingParametersBrief%(gr$, x, y, w, h);  'w, h are diameters
     endif;
+    
+    'Enable/disable screen size entries based on using screen/fixation point for fixation
+    if DlgValue(13) = 0 then  
+        DlgEnable(1,14);
+        DlgEnable(1,15);
+    else
+        DlgEnable(0,14);
+        DlgEnable(0,15);
+        DlgValue(14,x);
+        DlgValue(15,y);
+    endif;
+    
+    'Enable/disable screen size entries based on use of fixpt
+    DlgEnable(DlgValue(11),16);
+    DlgEnable(DlgValue(11),17);
+    
+    'Enable/disable opto voltage based on using opto
+    if DlgValue(3) = 1 then
+        DlgEnable(1,19);
+    else
+        DlgEnable(0,19);
+    endif;
+    
+    'Change labeling/enable based on using opto-style vs, regular style
+    if DlgValue(3) = 0 then
+        DlgValue$(1004,"Image Duration, s");
+        DlgEnable(0,5);
+        DlgValue$(1006,"New Image On Fix Break? (0/1)");
+        DlgValue$(1018,"Prob of reward each image");
+    else
+        DlgValue$(1004,"Period Duration, s");
+        DlgEnable(1,5);
+        DlgValue$(1006,"Minimum Viewed Periods To Advance");
+        DlgValue$(1018,"Prob of reward each period");
+    endif;
+    
+    
+    
     return 1;
 end
 
@@ -415,7 +482,7 @@ proc GetFreeViewerScriptParameters()
     fvUseStimLocation% := GetIntRegistryValue%(key$, "UseStimLocation", fvUseStimLocation%);
     fvXPos := GetFloatRegistryValue(key$, "XPos", fvXPos);
     fvYPos := GetFloatRegistryValue(key$, "YPos", fvYPos);
-    
+    fvFixScreen% := GetIntRegistryValue%(key$, "FixScreen", fvFixScreen%);
     
     'from an older conception, not used
     'fvMinTimeForAdvance := GetFloatRegistryValue(key$, "MinTimeForAdvance", fvMinTimeForAdvance);
@@ -456,6 +523,7 @@ proc SaveFreeViewerScriptParameters()
     SetIntRegistryValue(key$, "UseStimLocation", fvUseStimLocation%);
     SetFloatRegistryValue(key$, "XPos", fvXPos);
     SetFloatRegistryValue(key$, "YPos", fvYPos);
+    SetIntRegistryValue(key$, "FixScreen", fvFixScreen%);
     
     'From an older conception, not used
     'SetFloatRegistryValue(key$, "MinTimeForAdvance", fvMinTimeForAdvance);
@@ -518,6 +586,10 @@ proc CreateSampleConfiguration()
 	SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
 	SampleComment$(ReadyChannel%,"Ready");
 	SampleTitle$(ReadyChannel%,"Ready");
+    
+    SampleEvent(FixationPointChannel%, 2, 2, 3600); 'Trigger channel, level
+	SampleComment$(FixationPointChannel%,"Fixpt");
+	SampleTitle$(FixationPointChannel%,"Fixpt");
 	
 	SampleEvent(StimChannel%, 3, 2, 3600); 'Trigger channel, level
 	SampleComment$(StimChannel%,"Stim");
@@ -651,22 +723,22 @@ proc InitializeWindows()
 
 
 	'Calcuate the fixation window
-'	var index%;
-'	var twopi;
-'	twopi := 2.0*4.0*ATan(1.0);
+	var index%;
+	var twopi;
+	twopi := 2.0*4.0*ATan(1.0);
 	
-'	for index% := 0 to 35 do
-'		FixWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
-'		FixWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
-'	next;
+	for index% := 0 to 35 do
+		FixWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
+		FixWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
+	next;
 
-'	'Create a new channel in the XY view to display the fixation window
-'	iStimWindowChannel% := XYSetChan(0);
-'	XYColour(2,13);
-'	XYDrawMode(2,2,1);
-'	XYJoin(2,1);
-'	'Draw the fixation window
-'	XYAddData(2, FixWindowX[], FixWindowY[]);
+	'Create a new channel in the XY view to display the fixation window
+	iStimChannel% := XYSetChan(0);
+	XYColour(2,13);
+	XYDrawMode(2,2,1);
+	XYJoin(2,1);
+	'Draw the fixation window
+	XYAddData(2, FixWindowX[], FixWindowY[]);
 
 
 	'Create a new channel in the XY view to show the monitor's location
@@ -889,9 +961,9 @@ func Start%()
     'Turn on verbose
     Verbose$ := " -v ";
     
-    'For now, explicitly no fixation
-    FixationArg$ := "";
-    'FixationArg$ := "-f 0,0,1,red";  'this is a sample, if we want fixation later
+    'For now, explicitly no fixation.  For no longer.  Optional fixation point has been requested.
+    'FixationArg$ := "";  'Blank out fixation point, we won't do this, we just won't put it up if we aren't using it
+    'FixationArg$ is automatically filled by #including UsreyFixationPoint.s2s
     
     ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvXPos) + "," + Str$(fvYPos) + ",0,0";
     
@@ -1127,13 +1199,33 @@ func IdleProcessing%()
             Yield(1.0);
             tLastTrigger := tFall;
             fvAdvance% := 0;  'Ensure value is 0 on first run
-            ChangeStateTo(statePrepareOpto%, tFall);
+            if fvDoOpto% > 0 then
+                ChangeStateTo(statePrepareOpto%, tFall);
+            else
+                ChangeStateTo(stateFixptUp%, tFall);
+            endif;
         else
             if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                 LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
                 tLastTrigger := tFall;
             endif;
         endif;
+        
+    case iState% = stateFixptUp% then
+        LogStatus("RequestFixpt", "Request fixpt");
+        SafeSampleKey("F");
+        fvPeriodCount% := 0; 'Also reset period count
+        fvGiveLookingTO% := 0;  'Also reset looking TO
+        ChangeStateTo(stateWaitForFixptUp%, tNow);
+        
+    case iState% = stateWaitForFixptUp% then
+        if View(DataWindow%).FindRisingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 0 then
+            ' Fixation point is up
+            LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateWaitForAcquisition%, tTrigger);
+            'DrawStim(1);	' actually this draws the location of the fixpt.
+        endif
         
     case iState% = statePrepareOpto% then
         if fvDoOpto% = 1 then
@@ -1156,24 +1248,52 @@ func IdleProcessing%()
         ' If experiment is paused, this is where we should wait 
         if Pause% = 0 then
             if stateBegin% = 1 then
-                LogStatus("WaitForAcquisition", "Begin waiting for screen acquisition at " + str$(tNow));
+                LogStatus("WaitForAcquisition", "Begin waiting for screen/fixpt acquisition at " + str$(tNow));
                 stateBegin% := 0;
             endif
             
             docase
-            case LookingAtScreen%(xEye,yEye) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
+            case LookingAtScreenOrFixpt%(xEye,yEye) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
                 SafeSampleKey("S");  'request stimulus
                 sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tNow);
                 LogStatus("WaitForAcquisition", "Request stimulus at " + str$(tNow));
                 ChangeStateTo(stateWaitForStimOn%, tNow);
             case tNow - tStateStart > fvAcquisitionTime then
                 LogStatus("WaitForAcquisition", "Acquisition window timed out at " + str$(tNow));
-                ChangeStateTo(stateAcquisitionTO%, tNow);
+                if fvDoOpto% > 0 then
+                    ChangeStateTo(stateAcquisitionTO%, tNow);
+                else
+                    'request fixpt down
+                    SafeSampleKey("X");
+                    fvFixWaitState% := 0;  'indicate to go to acquisition TO
+                    ChangeStateTo(stateWaitForBlank%,tNow);
+                endif
             endcase
         else 'if we are paused, reset tStateStart so that when pause comes off there is a full acquisition window
             tStateStart := tNow;
         endif
         
+        
+    case iState% = stateWaitForBlank% then
+
+        if View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 1 then
+            ' Fixation point is off
+            tLastTrigger := tTrigger;
+            DrawFix(0);	' actually this draws the location of the fixpt.
+            docase
+            case fvFixWaitState% = 0 then
+                ChangeStateTo(stateAcquisitionTO%, tTrigger);
+            case fvFixWaitState% = 1 then
+                if fvMinViewPeriodsForAdvance% = 0 then
+                    ChangeStateTo(stateTrialCompleted%, tTrigger);
+                else
+                    ChangeStateTo(stateLookAwayTO%, tTrigger);
+                endif;
+            case fvFixWaitState% = 2 then
+                ChangeStateTo(stateWaitReward%, tTrigger);                
+            endcase
+            
+        endif    
         
         
     case iState% = stateAcquisitionTO% then
@@ -1185,7 +1305,11 @@ func IdleProcessing%()
         
         if tNow - tStateStart > fvAcquisitionTO then
             LogStatus("AcquisitionTO", "End acquisition timeout at " + str$(tNow));
-            ChangeStateTo(stateWaitForAcquisition%, tNow); 
+            if fvDoOpto% = 0 then
+                ChangeStateTo(stateFixptUp%,tNow);
+            else
+                ChangeStateTo(stateWaitForAcquisition%, tNow); 
+            endif;
         endif
         
         
@@ -1233,7 +1357,7 @@ func IdleProcessing%()
             fvGiveLookingTO% := 0;  'no timeout on successful fixation
             ChangeStateTo(stateWaitForStimOff%, tNow);
             
-        case fvPeriodCount% >= fvMinViewPeriodsForAdvance% and (LookingAtScreen%(xEye,yEye) = 0 or fvFixationWasBroken% = 1) then 'if fixation is held through enough periods to advance, then broken
+        case fvPeriodCount% >= fvMinViewPeriodsForAdvance% and (LookingAtScreenOrFixpt%(xEye,yEye) = 0 or fvFixationWasBroken% = 1) and fvDoOpto% > 0 then 'if fixation is held through enough periods to advance, then broken
             ' turn off stimulus, get ready to advance
             SafeSampleKey("X");  'Turn off all
             SampleText("+");  'indicates successful trial  TODO - check to see if that's what Henry wants
@@ -1258,7 +1382,7 @@ func IdleProcessing%()
             fvFixationWasBroken% := 0;  'Reset, in case there was a break.  Benevolence!
             ChangeStateTo(stateWaitForStimOff%, tNow); 
             
-        case LookingAtScreen%(xEye,yEye) = 0 or fvFixationWasBroken% = 1 then
+        case LookingAtScreenOrFixpt%(xEye,yEye) = 0 or fvFixationWasBroken% = 1 then
             'If animal breaks fixation, turn off image and penalize, do not advance
             SafeSampleKey("X");  'Turn off all, do not advance
             LogStatus("HoldImage", "Fixation broken, aborting trial at " + str$(tNow));
@@ -1269,7 +1393,12 @@ func IdleProcessing%()
             fvFixationWasBroken% := 0;  'Reset, we got this fixation break
             
             ' Now wait until stim is off
-            ChangeStateTo(stateWaitForStimOff%, tNow); 
+            if fvDoOpto% = 0 then
+                fvFixWaitState% := 1;
+                ChangeStateTo(stateWaitForBlank%, tNow);  'This is both stim and fixpt
+            else
+                ChangeStateTo(stateWaitForStimOff%, tNow); 
+            endif;
   
         else
             'If no other cases are met, begin next image period
@@ -1280,7 +1409,7 @@ func IdleProcessing%()
         tNow := View(DataWindow%).MaxTime();  'update tNow so the duration of the period is as precise as possible
         'Determine if we are in the opto half or no-opto half of the image
         docase
-        case fvDoOpto% = 0 then 'we are not doing opto, it is not an opto period
+        case fvDoOpto% <> 1 then 'we are not doing opto, it is not an opto period
             ChangeStateTo(stateNoOptoPeriod%,tNow);
         case (fvPeriodCount% < fvNumPeriodsPerBlock% and fvOptoOrderThisTrial% = 1) or (fvPeriodCount% >= fvNumPeriodsPerBlock% and fvOptoOrderThisTrial% = 2) then
             'If we are in an opto block
@@ -1304,7 +1433,12 @@ func IdleProcessing%()
         docase
         case tNow >= tStateStart + fvPeriodDuration then
             ChangeStateTo(stateRewardPeriod%,tNow);
-        case LookingAtScreen%(xEye,yEye) = 0 then
+        case LookingAtScreenOrFixpt%(xEye,yEye) = 0 and fvDoOpto% = 0 then 'end image if this is the only image
+            SafeSampleKey("X");  'Request everything down
+            fvFixWaitState% := 1;  'will go to hold TO if no advance
+            fvGiveLookingTO% := 1;  'will go to hold TO if advance
+            ChangeStateTo(stateWaitForBlank%, tNow);
+        case LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
             fvFixationWasBroken% := 1;  'but don't end the period, wait it out
         endcase
 
@@ -1319,7 +1453,7 @@ func IdleProcessing%()
             tOpt := View(DataWindow%).MaxTime();
             SampleText("OptoOff",tOpt);
             ChangeStateTo(stateRewardPeriod%,tNow);
-        case LookingAtScreen%(xEye,yEye) = 0 then
+        case LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
             fvFixationWasBroken% := 1;  'but don't end the period, wait it out, turn off the opto once we're done
         endcase
 
@@ -1328,7 +1462,15 @@ func IdleProcessing%()
     case iState% = stateRewardPeriod% then
         fvPeriodCount% += 1;  'increment number of periods
         'Determine if reward should be given (random, or if all periods finished)
-        if fvPeriodCount% >= fvNumPeriods% or (Rand() < fvProbRewardEachPeriod) then
+        docase
+        case fvDoOpto% = 0 then  'If just doing an image, take down image and reward
+            SafeSampleKey("X");
+            DefaultReward();
+            tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
+            TotalRewards% += 1;
+            fvFixWaitState% := 2;
+            ChangeStateTo(stateWaitForBlank%,tNow);
+        case fvPeriodCount% >= fvNumPeriods% or (Rand() < fvProbRewardEachPeriod) then
             'Give reward if appropriate
             DefaultReward();
             tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
@@ -1337,12 +1479,16 @@ func IdleProcessing%()
             'wait for reward to be done
         else
             ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
-        endif;
+        endcase;
         
         
     case iState% = stateWaitReward% then
         if tNow > tStateStart + fvRewardDurSec then
-            ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
+            if fvDoOpto% = 0 then
+                ChangeStateTo(stateTrialCompleted%,tNow);
+            else
+                ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
+            endif;
         endif;
         
         
@@ -1379,7 +1525,11 @@ func IdleProcessing%()
         
         if tNow > tStateStart + fvTrialISI then
             LogStatus("InterStimulusInterval", "InterStimulusInterval ended at " + str$(tNow));
-            ChangeStateTo(statePrepareOpto%, tNow);
+            if fvDoOpto% = 0 then
+                ChangeStateTo(stateFixptUp%,tNow);
+            else
+                ChangeStateTo(statePrepareOpto%, tNow);
+            endif;
         endif
         
         
@@ -1391,7 +1541,11 @@ func IdleProcessing%()
         
         if tNow > tStateStart + fvLookAwayTO + fvTrialISI then  'this state just encompasses the ISI as well
             LogStatus("LookAwayTO", "Timeout for looking away ended at " + str$(tNow));
-            ChangeStateTo(statePrepareOpto%, tNow);
+            if fvDoOpto% > 0 then
+                ChangeStateTo(statePrepareOpto%, tNow);
+            else
+                ChangeStateTo(stateFixptUp%, tNow);
+            endif;
         endif   
         
         
@@ -1450,19 +1604,28 @@ end;
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-func LookingAtScreen%(EyePosX,EyePosY)
+func LookingAtScreenOrFixpt%(EyePosX,EyePosY)
 	'Determine if the eye position is within the fixation window
     'Here the fixation window is defined as the entire screen, function is adapted from Looking%()
     if fvAlwaysLooking% = 1 then 
         return 1; 
     endif;
     
-    'The center of the screen is [0,0].  fvScreenX(Y)Deg is the distance from the center of the screen to the edge. 
-    if Abs(EyePosX) <= fvScreenXDeg and Abs(EyePosY) <= fvScreenYDeg then
-        return 1;
-    else
-        return 0;
-    endif;
+    if fvFixScreen% = 1 then
+        'The center of the screen is [0,0].  fvScreenX(Y)Deg is the distance from the center of the screen to the edge. 
+        if Abs(EyePosX) <= fvScreenXDeg and Abs(EyePosY) <= fvScreenYDeg then
+            return 1;
+        else
+            return 0;
+        endif;
+    else 'regular old fixation point 
+        if (Pow(EyePosX-FixationX,2) + Pow(EyePosY-FixationY,2)) <= Pow(WindowRadius,2) then 
+            return 1; 
+        else 
+            return 0; 
+        endif
+    endif
+    
     
 end;
 
@@ -1598,3 +1761,26 @@ func SelectStimFile%()
     
     return 1; 'dialog remains open
 end
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawFix
+' 
+' Draws Fixation in xy window (iDraw%==1) or blanks it (0). 
+proc DrawFix(iDraw%)
+
+	if iDraw% > 0 then
+		var xstim, ystim;
+		xstim := FixationX;
+		ystim := FixationY;
+
+		' Draw stimulus in xy window
+		View(XYWindow%).XYAddData(iStimChannel%, xstim, ystim);
+	else 
+		' erase the stim and the window from xy view
+		View(XYWindow%).XYDelete(iStimChannel%);
+	endif
+
+end;
