@@ -80,6 +80,7 @@ var attTrainingContrastPct%:=0; '**disabled**
 var attCuedLocationChangePct%;
 var attUncuedLocationChangePct%;
 var attLockUncuedToCued%;
+var attNoCuesMatchFixpt%;
 
 'Variables for colors dialog
 var attendRGB%[3];
@@ -87,8 +88,8 @@ var ignore1RGB%[3];
 var ignore2RGB%[3];
 var ignore3RGB%[3];
 var ignore4RGB%[3];
-var noattenRGB%[3];
-var noinfoRGB%[3];  'This was deprecated before it was ever used, but I'm not pulling it out of the dialog box because
+var cueallRGB%[3];
+var nomatchRGB%[3];  'This was deprecated before it was ever used, but I'm not pulling it out of the dialog box because
                     'A) it will be a pain and B) as soon as I do it will be asked for again.  So it's just sitting
                     'there kind of orphaned.  Won't hurt anything.
 var attCueCircleContrastAttend%;
@@ -99,7 +100,7 @@ var attCueCircleContrastIgnore3%;
 var attCueCircleContrastIgnore4%;
 
 var attStartBlock%;
-var attNoInfoCondition%;  'not being used, replaced by cue-all
+'var attNoInfoCondition%;  'not being used, replaced by cue-all, now completely deprecated
 var attSwapCueCircle%;
 var attCueCircleStrokeWidth%;
 var attUseFlashers%;  'flashers are currently disabled, could be enabled later
@@ -227,12 +228,12 @@ var attcolorsdlgCueCircleColorIgnore3B% := 34;
 var attcolorsdlgCueCircleColorIgnore4R% := 35;
 var attcolorsdlgCueCircleColorIgnore4G% := 36;
 var attcolorsdlgCueCircleColorIgnore4B% := 37;
-var attcolorsdlgCueCircleColorNoAttenR% := 38;
-var attcolorsdlgCueCircleColorNoAttenG% := 39;
-var attcolorsdlgCueCircleColorNoAttenB% := 40;
-var attcolorsdlgCueCircleColorNoInfoR% := 41;
-var attcolorsdlgCueCircleColorNoInfoG% := 42;
-var attcolorsdlgCueCircleColorNoInfoB% := 43;
+var attcolorsdlgCueCircleColorCueAllR% := 38;
+var attcolorsdlgCueCircleColorCueAllG% := 39;
+var attcolorsdlgCueCircleColorCueAllB% := 40;
+var attcolorsdlgCueCircleColorNoMatchR% := 41;
+var attcolorsdlgCueCircleColorNoMatchG% := 42;
+var attcolorsdlgCueCircleColorNoMatchB% := 43;
 var attcolorsdlgAllCueCirclesMatchFix% := 44;
 
 'variables for Henry's tuning curve version
@@ -2332,13 +2333,17 @@ proc PrepareTrial()
     
     'Determine if contrast is changing (target) or not (nontarget)
     'Under the new scheme, if any contrast changes, it is a target, otherwise it is a nontarget
-    if trialIsCueAll% then
+    docase
+    case trialIsCueAll% = -1 then
+        trialIsTarget% := 0;  'for no-cue-matches trials, the correct response is ALWAYS no-go, regardless of whether there is a contrast change
+        'We do not need to set trialAttendLoc as the CASE where it is used cannot be entered when trialIsTarget% is 0
+    case trialIsCueAll% = 1 then
         trialIsTarget% := attCuedLocChangesList%[attCurrTrialIndex%] or attUncuedLocChangesList%[attCurrTrialIndex%];  'This logical operation works in a simple test
         trialAttendLoc% := 100;  'Arbitrary indicator of cue-all
     else
         trialIsTarget% := attCuedLocChangesList%[attCurrTrialIndex%];  
         trialAttendLoc% := attCuedLocList%[attCurrTrialIndex%];  'this is the attend location
-    endif;
+    endcase;
     fixColor$ := masterColorList$[attFixColor%[attCurrTrialIndex%]-1];
     
     'Record actual contrast level on this trial, is -1 if contrast does not change
@@ -2349,7 +2354,7 @@ proc PrepareTrial()
     'Calculate expected answer,  a bit complicated but this should hit all conditions
     docase
     case trialIsTarget% = 0 then
-        expectedAnswer% := 0;  'cued grating does not change (or, if cue-all, no grating changes)
+        expectedAnswer% := 0;  'cued grating does not change (or, if cue-all, no grating changes, or no cue matches)
         expectedAnswerUncued% := 0;  'even if uncued grating changes, it's not a target
     'For remainder of cases, trialIsTarget% must be 1    
     case trialAttendLoc% < 100 then 'this is single cue
@@ -2462,7 +2467,7 @@ proc GetAttentionScriptParameters()
     attCuedLocationChangePct% := GetIntRegistryValue%(key$, "CuedLocationChangePct", 1); ''
     attUncuedLocationChangePct% := GetIntRegistryValue%(key$, "UncuedLocationChangePct", 1); ''
     attRequireJoystickResponse% := GetIntRegistryValue%(key$, "RequireJoystickResponse", 0);
-    
+    attNoCuesMatchFixpt% := GetIntRegistryValue%(key$, "NoCuesMatchFixpt", 0);
    
 end;
 
@@ -2501,6 +2506,7 @@ proc SaveAttentionScriptParameters()
     SetIntRegistryValue(key$, "CuedLocationChangePct", attCuedLocationChangePct%);
     SetIntRegistryValue(key$, "UncuedLocationChangePct", attUncuedLocationChangePct%);
     SetIntRegistryValue(key$, "RequireJoystickResponse", attRequireJoystickResponse%);
+    SetIntRegistryValue(key$, "NoCuesMatchFixpt", attNoCuesMatchFixpt%);
     
 end;
 
@@ -2619,12 +2625,12 @@ proc GetColorsDialogParameters()
     ignore4RGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorIgnore4R", 0);
     ignore4RGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorIgnore4G", 0);
     ignore4RGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorIgnore4B", 0);
-    noattenRGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorNoAttenR", 0);
-    noattenRGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorNoAttenG", 0);
-    noattenRGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorNoAttenB", 0);
-    noinfoRGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorNoInfoR", 0);
-    noinfoRGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorNoInfoG", 0);
-    noinfoRGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorNoInfoB", 0);
+    cueallRGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorNoAttenR", 0);  'registry key does not match due to Spike2-side nomenclature change
+    cueallRGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorNoAttenG", 0);  'registry key does not match due to Spike2-side nomenclature change
+    cueallRGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorNoAttenB", 0);  'registry key does not match due to Spike2-side nomenclature change
+    nomatchRGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorNoMatchR", 0);
+    nomatchRGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorNoMatchG", 0);
+    nomatchRGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorNoMatchB", 0);
     
 end;
 
@@ -2669,12 +2675,12 @@ proc SaveColorsDialogParameters()
     SetIntRegistryValue(key$, "CueCircleColorIgnore4R", ignore4RGB%[0]);
     SetIntRegistryValue(key$, "CueCircleColorIgnore4G", ignore4RGB%[1]);
     SetIntRegistryValue(key$, "CueCircleColorIgnore4B", ignore4RGB%[2]);
-    SetIntRegistryValue(key$, "CueCircleColorNoAttenR", noattenRGB%[0]);
-    SetIntRegistryValue(key$, "CueCircleColorNoAttenG", noattenRGB%[1]);
-    SetIntRegistryValue(key$, "CueCircleColorNoAttenB", noattenRGB%[2]);
-    SetIntRegistryValue(key$, "CueCircleColorNoInfoR", noinfoRGB%[0]);
-    SetIntRegistryValue(key$, "CueCircleColorNoInfoG", noinfoRGB%[1]);
-    SetIntRegistryValue(key$, "CueCircleColorNoInfoB", noinfoRGB%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorNoAttenR", cueallRGB%[0]);  'registry key does not match due to Spike2-side nomenclature change
+    SetIntRegistryValue(key$, "CueCircleColorNoAttenG", cueallRGB%[1]);  'registry key does not match due to Spike2-side nomenclature change
+    SetIntRegistryValue(key$, "CueCircleColorNoAttenB", cueallRGB%[2]);  'registry key does not match due to Spike2-side nomenclature change
+    SetIntRegistryValue(key$, "CueCircleColorNoMatchR", nomatchRGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorNoMatchG", nomatchRGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorNoMatchB", nomatchRGB%[2]);
 
     
 end;
@@ -2733,16 +2739,15 @@ func AttentionScriptDialog%()
 
     
 	DlgCreate("Attention Training Parameters",31,10);   'on Spike2 v6, must extend height, on v8, will auto-extend height
-    DlgGroup("Blocks", 1, 1, 34, 8);
+    DlgGroup("Blocks", 1, 1, 34, 9);
 	DlgInteger(1, 7, 1, 1000, 27, 2);  DlgText("Number of SETS of blocks:",2,2);
 	DlgInteger(2, 7, 1, 1000, 27, 3);  DlgText("Regular Trials per block:",2,3);
     DlgInteger(3, 7, 0, 1000, 27, 4);  DlgText("Easy Trials per block:",2,4);
     DlgCheck(4, "Distracter Off for Easy Trials", 2, 5);
-    'DlgInteger(5, "CuedLoc Chg% (0-100)", 0, 100, 22, 6);
-    'DlgInteger(6, "UncuedLoc Chg% (0-100)", 0, 100, 22, 7);
     DlgInteger(5, 7, 0, 100, 27, 6); DlgText("Cued Loc Chg% (0-100)",2,6);
     DlgInteger(6, 7, 0, 100, 27, 7); DlgText("Uncued Loc Chg% (0-100)",2,7);
-    DlgButton(6, "Block Cues To Use", AttCuesToUseDialog%, 2, 8);  
+    DlgInteger(28, 7, 0, 100, 27, 8); DlgText("No Cues Match Fix% (0-100)",2,8);
+    DlgButton(1, "Block Cues To Use", AttCuesToUseDialog%, 2, 9);  
     
     
     'Moving this group to the right, so we have to use DlgText because otherwise CED justifies the text all the way left
@@ -2757,41 +2762,41 @@ func AttentionScriptDialog%()
     DlgCheck(14, "Random contrast by trial (not block)", 37, 9);  '"Do NOT randomize by block", position WAS 2,10 now swapped 
     'DlgCheck(14, "Select random contrast each trial", 37, 9);  'This is just the old phrasing
     
-    DlgGroup("Phase", 1, 9, 34, 3);
-    DlgCheck(15, "Set phase at contrast change", 2, 10);
-	DlgInteger(16, 7, 0, 360, 27, 11);  DlgText("Phase at cc (deg, 0 = white)",2,11);
+    DlgGroup("Phase", 1, 10, 34, 3);
+    DlgCheck(15, "Set phase at contrast change", 2, 11);
+	DlgInteger(16, 7, 0, 360, 27, 12);  DlgText("Phase at cc (deg, 0 = white)",2,12);
     
     DlgGroup("Stimuli", 36, 10, 34, 4);
     DlgInteger(17, 10, 1, 5, 58, 11); DlgText("Num of grating patches",37,11);
     DlgCheck(18, "Get distracter params from main stim", 37, 12);
     DlgCheck(19, "Use Flashers", 37, 13);
     
-    DlgGroup("Cue Circles", 1, 12, 34, 5);
-    DlgList(20, 30, cueCircleList$[], 4, 4, 13);
-    DlgCheck(21, "Swap Cue Circles (if used)", 2, 14);
-	DlgReal(22, "Cue extra radius (deg)", 0, 5, 21, 15);
-    DlgInteger(23, 4, 0, 20, 30, 16); DlgText("Cue Circle Stroke Width(integer)",2,16);
+    DlgGroup("Cue Circles", 1, 13, 34, 5);
+    DlgList(20, 30, cueCircleList$[], 4, 4, 14);
+    DlgCheck(21, "Swap Cue Circles (if used)", 2, 15);
+	DlgReal(22, "Cue extra radius (deg)", 0, 5, 21, 16);
+    DlgInteger(23, 4, 0, 20, 30, 17); DlgText("Cue Circle Stroke Width(integer)",2,17);
     
     
     DlgGroup("Reward", 36, 14, 34, 3);
     DlgCheck(24, "Use Low Reward For No-Change Trls", 37, 15);
     DlgInteger(25, 10, 1, 1000, 58, 16); DlgText("Low Reward (ms)",37,16);
     
-    DlgGroup("Optogenetics", 1, 17, 68, 2);
-    DlgCheck(26,"Opto On",2,18);
-    DlgButton(5, "Optogenetics Parameters", AttOptoDialog%, 36, 18);
+    DlgGroup("Optogenetics", 1, 18, 68, 2);
+    DlgCheck(26,"Opto On",2,19);
+    DlgButton(2, "Optogenetics Parameters", AttOptoDialog%, 36, 19);
     
-    DlgCheck(27,"Use Joystick",2,19);
-    DlgButton(7, "Joystick Dialog", CallJoystickConfigDialog%,36-14,19);
-    DlgButton(2, "Colors", ColorsDialog%, 2+36, 19);
-    DlgButton(3, "Timing", TimingDialog%, 11+36, 19);  
-    DlgButton(4, "Flashers", CallDlgGratingFlashers%, 21+36, 19);  
+    DlgCheck(27,"Use Joystick",2,20);
+    DlgButton(3, "Joystick Dialog", CallJoystickConfigDialog%,36-14,20);
+    DlgButton(4, "Colors", ColorsDialog%, 2+36, 20);
+    DlgButton(5, "Timing", TimingDialog%, 11+36, 20);  
+    DlgButton(6, "Flashers", CallDlgGratingFlashers%, 21+36, 20);  
 
     DlgAllow(0, 0, AttentionScriptDialogChanged%);
     
 	i%:=DlgShow(attNumberOfSetsOfBlocks%, attTrialsPerBlock%, attEasyTrialsPerBlock%, distracterOffForEasy%, attCuedLocationChangePct%, attUncuedLocationChangePct%,
     attContrastBase%, attMaxContChange, attMinContChange, attNContLevels%, attAnswerPointWindowRadius, tenints%[], 
-    attCueCircleExtraRadius, attCueCircleStrokeWidth%, attUseLowReward%, attLowReward%, attDoOpto%, attRequireJoystickResponse%);
+    attCueCircleExtraRadius, attCueCircleStrokeWidth%, attUseLowReward%, attLowReward%, attDoOpto%, attRequireJoystickResponse%, attNoCuesMatchFixpt%);
     
     
 	if i% = 1 then
@@ -3099,14 +3104,14 @@ func AttentionScriptDialogChanged%(item%)
     'DlgEnable(DlgValue(21), 22);  'allow cue circle radius based on use of cue circles  'these two appear to be from a prior syntax and no longer
     'DlgEnable(DlgValue(21), 23);  'allow cue circle width based on use of cue circles   'apply to the current syntax
     DlgEnable(DlgValue(24), 25);  'allow low reward value based on use of low reward
-    DlgEnable(DlgValue(19), -4);  'allow flashers button based on use of flashers
-    DlgEnable(DlgValue(26), -5);  'allow opto button based on use of opto
+    DlgEnable(DlgValue(19), -6);  'allow flashers button based on use of flashers
+    DlgEnable(DlgValue(26), -2);  'allow opto button based on use of opto
     
     DlgEnable(0,24);  'Completely disable low reward, may never use this again
     DlgEnable(0,25);  'etc.
     
     DlgEnable(0,19);  'Completely disable flashers, at least for now
-    DlgEnable(0,-4);  'Also disable flashers dialog button
+    DlgEnable(0,-6);  'Also disable flashers dialog button
     
     DlgEnable(0,12);  'Training contrast currently doesn't DO anything!
     DlgEnable(0,13);  'etc.
@@ -3273,12 +3278,12 @@ func ColorsDialog%()
     twentyoneints%[12] := ignore4RGB%[0];
     twentyoneints%[13] := ignore4RGB%[1];
     twentyoneints%[14] := ignore4RGB%[2];
-    twentyoneints%[15] := noattenRGB%[0];
-    twentyoneints%[16] := noattenRGB%[1];
-    twentyoneints%[17] := noattenRGB%[2];
-    twentyoneints%[18] := noinfoRGB%[0];
-    twentyoneints%[19] := noinfoRGB%[1];
-    twentyoneints%[20] := noinfoRGB%[2];
+    twentyoneints%[15] := cueallRGB%[0];
+    twentyoneints%[16] := cueallRGB%[1];
+    twentyoneints%[17] := cueallRGB%[2];
+    twentyoneints%[18] := nomatchRGB%[0];
+    twentyoneints%[19] := nomatchRGB%[1];
+    twentyoneints%[20] := nomatchRGB%[2];
 
     
 	GetAttentionScriptParameters();
@@ -3319,7 +3324,7 @@ func ColorsDialog%()
     DlgText("FixPt 4",47,10);
     DlgText("FixPt 5",47,11);
     DlgText("Cue All FixPt",41,12);  'no cue circles will match this color if not multiply defined
-    DlgText("Deprecated!!",41,13);  'no cue circles will match this color if not multiply defined
+    DlgText("No-Match FixPt",41,13);  'no cue circles will match this color
     DlgInteger(attcolorsdlgCueCircleColorAttendR%, 5, 0, 255, 55, 7);
     DlgInteger(attcolorsdlgCueCircleColorAttendG%, 5, 0, 255, 61, 7);
     DlgInteger(attcolorsdlgCueCircleColorAttendB%, 5, 0, 255, 67, 7);
@@ -3335,12 +3340,12 @@ func ColorsDialog%()
     DlgInteger(attcolorsdlgCueCircleColorIgnore4R%, 5, 0, 255, 55, 11);
     DlgInteger(attcolorsdlgCueCircleColorIgnore4G%, 5, 0, 255, 61, 11);
     DlgInteger(attcolorsdlgCueCircleColorIgnore4B%, 5, 0, 255, 67, 11);
-    DlgInteger(attcolorsdlgCueCircleColorNoAttenR%, 5, 0, 255, 55, 12);
-    DlgInteger(attcolorsdlgCueCircleColorNoAttenG%, 5, 0, 255, 61, 12);
-    DlgInteger(attcolorsdlgCueCircleColorNoAttenB%, 5, 0, 255, 67, 12);
-    DlgInteger(attcolorsdlgCueCircleColorNoInfoR%, 5, 0, 255, 55, 13);
-    DlgInteger(attcolorsdlgCueCircleColorNoInfoG%, 5, 0, 255, 61, 13);
-    DlgInteger(attcolorsdlgCueCircleColorNoInfoB%, 5, 0, 255, 67, 13);
+    DlgInteger(attcolorsdlgCueCircleColorCueAllR%, 5, 0, 255, 55, 12);
+    DlgInteger(attcolorsdlgCueCircleColorCueAllG%, 5, 0, 255, 61, 12);
+    DlgInteger(attcolorsdlgCueCircleColorCueAllB%, 5, 0, 255, 67, 12);
+    DlgInteger(attcolorsdlgCueCircleColorNoMatchR%, 5, 0, 255, 55, 13);
+    DlgInteger(attcolorsdlgCueCircleColorNoMatchG%, 5, 0, 255, 61, 13);
+    DlgInteger(attcolorsdlgCueCircleColorNoMatchB%, 5, 0, 255, 67, 13);
     
     
     DlgCheck(attcolorsdlgCustomGratingColorCheck%, "Custom grating colors",2,14);
@@ -3408,12 +3413,12 @@ func ColorsDialog%()
         ignore4RGB%[0] := twentyoneints%[12];
         ignore4RGB%[1] := twentyoneints%[13];
         ignore4RGB%[2] := twentyoneints%[14];
-        noattenRGB%[0] := twentyoneints%[15];
-        noattenRGB%[1] := twentyoneints%[16];
-        noattenRGB%[2] := twentyoneints%[17];
-        noinfoRGB%[0] := twentyoneints%[18];
-        noinfoRGB%[1] := twentyoneints%[19];
-        noinfoRGB%[2] := twentyoneints%[20];
+        cueallRGB%[0] := twentyoneints%[15];
+        cueallRGB%[1] := twentyoneints%[16];
+        cueallRGB%[2] := twentyoneints%[17];
+        nomatchRGB%[0] := twentyoneints%[18];
+        nomatchRGB%[1] := twentyoneints%[19];
+        nomatchRGB%[2] := twentyoneints%[20];
         
         
         'masterColorList$ and masterColorListVSG$ define fixation colors and should have the same progression as cue circle colors
@@ -3461,10 +3466,10 @@ func ColorsDialogChanged%(item%)
     'DlgValue(attcolorsdlgCueContrastIgnore3%,constantContrast%);
     'DlgValue(attcolorsdlgCueContrastIgnore4%,constantContrast%);
     
-    'I'm keeping this around in case things change, but it was deprecated before usage
-    DlgEnable(0,attcolorsdlgCueCircleColorNoInfoR%);
-    DlgEnable(0,attcolorsdlgCueCircleColorNoInfoG%);
-    DlgEnable(0,attcolorsdlgCueCircleColorNoInfoB%);
+    'I'm keeping this around in case things change, but it was deprecated before usage -- Update, this dialog space now been used for the No-Match color, and is again active
+    'DlgEnable(0,attcolorsdlgCueCircleColorNoMatchR%);
+    'DlgEnable(0,attcolorsdlgCueCircleColorNoMatchG%);
+    'DlgEnable(0,attcolorsdlgCueCircleColorNoMatchB%);
     
     if item% = 0 or item% = attcolorsdlgBackgroundColor% then
         docase
@@ -4245,7 +4250,7 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                     endif;
                     'This is the time the contrast would change, get time that trial would end (was: contrast would RETURN), use this
                     trialEnd[ind%] := trialEnd[ind%] + attResponseWindow;  ' was: attContrastChangeDuration;
-                case isCueAll%[ind%] = 1 then 'if this trial is cue-all, the trial ends when the SECOND contrast change closes
+                case isCueAll%[ind%] <> 0 then 'if this trial is cue-all or no-cues-match, the trial ends when all contrast changes are done
                     if cuedLocReturnTime[ind%] > uncuedLocReturnTime[ind%] then  'if cued is later (or uncued is -1!)
                         trialEnd[ind%] := cuedLocCCTime[ind%] + attResponseWindow;  'was cuedLocReturnTime[ind%];
                     else  'if uncued is later (or cued is -1!)
@@ -4279,17 +4284,28 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 endif;
                 
                 
+                
+                'Determine if this trial should be a no-cues-match trial
+                'If so, update isCueAll%[] to -1, this will be useful during the experiment as well
+                if floor(rand(100,0)) < attNoCuesMatchFixpt% then 'these are currently designed as 0-100 integers, could change that if necessary
+                    isCueAll%[ind%] := -1;
+                endif
+                
+                
                 ''' Set color of fixation point
                 'For now, we are not varying the fixation point or cue circle color 
                 'Assigning to one should set color to the specified "attend" color from the colors dialog
                 'fixColor%[ind%] := 1;
                 
                 'This will allow changing the fixpt with the cue color
-                if isCueAll%[ind%] then
+                docase
+                case isCueAll%[ind%] = 1 then
                     fixColor%[ind%] := 6;  'hardcode, 5 is the correct index for cue-all, but all subsequent calls will subtract 1
+                case isCueAll%[ind%] = -1 then
+                    fixColor%[ind%] := 7;  'hardcode, 6 is the correct index for no-cues-match, but all subsequent calls will subtract 1
                 else
                     fixColor%[ind%] := cuedLoc%[ind%];
-                endif;
+                endcase;
                 
                 
                 ''' Set color of cue circles (placeholder, trial-by-trial cue circle color is not supported as of yet)
@@ -4306,7 +4322,6 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
 '                endif
                 
                 ''' Set offList, assuming that offList determines which CUES appear
-                'if easyList%[ind%] = 1 or isCueAll%[ind%] <> 1 then  'logic seems wrong???
                 if easyList%[ind%] = 1 then
                     offList%[ind%] := alloff% - Pow(2,cuedLoc%[ind%]-1);  'turn off all cues but the intended one
                 else
@@ -4865,7 +4880,7 @@ proc WriteParameterFile()
     Print("Distracter off for easy trials?   : %d\n", distracterOffForEasy%);
     Print("Cued Location Change Percentage   : %d\n", attCuedLocationChangePct%);
     Print("Uncued Location Change Percentage   : %d\n", attUncuedLocationChangePct%);
-    
+    Print("No Cues Match Fixpt Percentage   : %d\n", attNoCuesMatchFixpt%);
     
     
     Print("Select Random Contrast Each Trial   : %d\n", attSelectRandomContrastEachTrial%);
@@ -4892,10 +4907,10 @@ proc WriteParameterFile()
     'Print("Start Block     : %d (%s)\n", attStartBlock%,blockStartList$[attStartBlock%]);
     'Print("No Change Condition    : %d\n", attNoChangeCondition%);  'TODO something logical here
     'if attNoChangeCondition% > 0 then
-    '    Print("No Change Cue Circle Color (r/g/b) : %d %d %d\n", noattenRGB%[0], noattenRGB%[1], noattenRGB%[2]);
+    '    Print("No Change Cue Circle Color (r/g/b) : %d %d %d\n", cueallRGB%[0], cueallRGB%[1], cueallRGB%[2]);
     'endif;
     'Print("No Info Condition     : %d\n", attNoInfoCondition%);
-    'if attNoInfoCondition% > 0 then
+    'if attNoInfoCondition% > 0 then  'NoInfo condition has been deprecated
     '    Print("No Info Cue Circle Color (r/g/b) : %d %d %d\n", noinfoRGB%[0], noinfoRGB%[1], noinfoRGB%[2]);
     'endif;
     'Print("Swap Cue Circle    : %d\n", attSwapCueCircle%);  
@@ -5301,40 +5316,41 @@ func CreateCueCircleColorSets$()
     next
     
     'add NoInfo at the end if we have one - this is actually doing what I want, first try!!
-    conIdx% := 0;  'Reset contrast index
-    if attNoInfoCondition% = 1 then
-        for i% := 0 to attNumPatches%-1 do 'loop through outer rotations
-            for j% := 0 to attNumPatches%-1 do 'loop through inner rotations
-                for k% := 0 to attNumPatches%-1 do 'loop through contrasts
-                    CueCircLocal$ := CueCircLocal$ + ",";  'always insert comma for this
-                    CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
-                    'get index of correct color - here we don't mod based on k%, all the same color!
-                    colIdx% := (j%) mod attNumPatches%;
-                    
-                    tempCol%[0] := RGBList%[colIdx%][0];
-                    tempCol%[1] := RGBList%[colIdx%][1];
-                    tempCol%[2] := RGBList%[colIdx%][2];
-                    
-                    'put in correct color/contrast, which starts on the very first list as index zero and then is very complicatedly updated to behave as desired
-                    'CueCircLocal$ := CueCircLocal$ + FadeColorToGray$(tempCol%[],ContrastList%[conIdx%]);
-                    CueCircLocal$ := CueCircLocal$ + FadeColorToGray$(tempCol%[],ContrastList%[0]);  'Henry is asking for no-info trials to have *all* cues take the contrast value of the attend stimulus
-                    
-                    'update index of correct contrast
-                    'for each cue circle in an individual set, advance the contrast index, and reset to zero if we go past the end
-                    conIdx% += 1;
-                    if conIdx% = attNumPatches% then
-                        conIdx% := 0;
-                    endif
-                next
-                'update index of correct contrast
-                'for each new cue circle set, back the index up once, which makes the high contrast come one position later, reset to the end if go go lower than zero
-                conIdx% -= 1;
-                if conIdx% = -1 then
-                    conIdx% := attNumPatches%-1;
-                endif
-            next
-        next
-    endif;
+    'NoInfo condition has now been deprecated, no real plans to bring it back, but the code stays for now
+'    conIdx% := 0;  'Reset contrast index
+'    if attNoInfoCondition% = 1 then
+'        for i% := 0 to attNumPatches%-1 do 'loop through outer rotations
+'            for j% := 0 to attNumPatches%-1 do 'loop through inner rotations
+'                for k% := 0 to attNumPatches%-1 do 'loop through contrasts
+'                    CueCircLocal$ := CueCircLocal$ + ",";  'always insert comma for this
+'                    CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
+'                    'get index of correct color - here we don't mod based on k%, all the same color!
+'                    colIdx% := (j%) mod attNumPatches%;
+'                    
+'                    tempCol%[0] := RGBList%[colIdx%][0];
+'                    tempCol%[1] := RGBList%[colIdx%][1];
+'                    tempCol%[2] := RGBList%[colIdx%][2];
+'                    
+'                    'put in correct color/contrast, which starts on the very first list as index zero and then is very complicatedly updated to behave as desired
+'                    'CueCircLocal$ := CueCircLocal$ + FadeColorToGray$(tempCol%[],ContrastList%[conIdx%]);
+'                    CueCircLocal$ := CueCircLocal$ + FadeColorToGray$(tempCol%[],ContrastList%[0]);  'Henry is asking for no-info trials to have *all* cues take the contrast value of the attend stimulus
+'                    
+'                    'update index of correct contrast
+'                    'for each cue circle in an individual set, advance the contrast index, and reset to zero if we go past the end
+'                    conIdx% += 1;
+'                    if conIdx% = attNumPatches% then
+'                        conIdx% := 0;
+'                    endif
+'                next
+'                'update index of correct contrast
+'                'for each new cue circle set, back the index up once, which makes the high contrast come one position later, reset to the end if go go lower than zero
+'                conIdx% -= 1;
+'                if conIdx% = -1 then
+'                    conIdx% := attNumPatches%-1;
+'                endif
+'            next
+'        next
+'    endif;
     
     
     
@@ -5428,9 +5444,9 @@ func CreateCueCircleColorSetsLite$()
             CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
             
             'This is cue-all fixation color
-            tempCol%[0] := noattenRGB%[0];
-            tempCol%[1] := noattenRGB%[1];
-            tempCol%[2] := noattenRGB%[2];
+            tempCol%[0] := cueallRGB%[0];
+            tempCol%[1] := cueallRGB%[1];
+            tempCol%[2] := cueallRGB%[2];
             
             'put in correct color/contrast of cue-all fixation point
             CueCircLocal$ := CueCircLocal$ + FadeColorToGray$(tempCol%[],ContrastList%[0]);
@@ -5765,34 +5781,58 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
         SampleText("Grating On",triggerTime); 
     case minLoc% = 5 and bothCuesAreLocked% = 0 then 'this is a contrast change in the cued location
         cc% += 1;  'Increment cc% by 1
-        SampleText("Cued Location CC, window open",triggerTime); 
+        if isCueAll% = -1 then
+            SampleText("Cued Location CC, window open, no cues match",triggerTime);
+        else    
+            SampleText("Cued Location CC, window open",triggerTime);
+        endif
     case minLoc% = 5 and bothCuesAreLocked% = 1 then 'this is a contrast change in BOTH locations simultaneously
         cc% += 1;  'Increment cc% by 1
-        SampleText("BOTH Locations CC, window open",triggerTime); 
+        if isCueAll% = -1 then
+            SampleText("BOTH Locations CC, window open, no cues match",triggerTime);
+        else 
+            SampleText("BOTH Locations CC, window open",triggerTime); 
+        endif
     case minLoc% = 6 then 'this is a contrast change in the uncued location
-        if isCueAll% = 1 then
+        docase
+        case isCueAll% = -1 then
+            cc% += 10;  'Increment cc% by 10
+            SampleText("Uncued Location CC, window open, no cues match",triggerTime);
+        case isCueAll% = 1 then
             cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location CC, window open",triggerTime);
         else
             'do NOT increment CC, this contrast change is not a target, NO!  We need to know the change happened, not a target is dealt with by caller
             cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location CC, not a target",triggerTime);
-        endif;
+        endcase;
     case minLoc% = 7 and bothCuesAreLocked% = 0 then 'this is a contrast return in the cued location
         cc% += 1;  'Increment cc% by 1
-        SampleText("Cued Location return to baseline, window closed",triggerTime); 
+        if isCueAll% = -1 then
+            SampleText("Cued Location return to baseline, window closed, no cues match",triggerTime);
+        else
+            SampleText("Cued Location return to baseline, window closed",triggerTime); 
+        endif
     case minLoc% = 7 and bothCuesAreLocked% = 1 then 'this is a contrast return in BOTH locations simultaneously
         cc% += 1;  'Increment cc% by 1
-        SampleText("BOTH Locations return to baseline, window closed",triggerTime);
+        if isCueAll% = -1 then
+            SampleText("BOTH locations return to baseline, window closed, no cues match",triggerTime);
+        else
+            SampleText("BOTH locations return to baseline, window closed",triggerTime); 
+        endif
     case minLoc% = 8 then 'this is a contrast return in the uncued location
-        if isCueAll% = 1 then
+        docase
+        case isCueAll% = -1 then
+            cc% += 10;  'Increment cc% by 10
+            SampleText("Uncued Location return to baseline, window closed, no cues match",triggerTime);
+        case isCueAll% = 1 then
             cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location return to baseline, window closed",triggerTime);
         else
             'do NOT increment CC, this contrast change is not a target, NO!  We need to know the change happened, not a target is dealt with by caller
             cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location return to baseline, not a target",triggerTime);
-        endif;    
+        endcase;    
     case minLoc% = 9 then 'this is a flasher (not currently in use)
         SampleText("Flasher X = " + Str$(flasherX[trialCount%][flasherCount%]) + " Y = " + Str$(flasherY[trialCount%][flasherCount%]) + " Note, trigger time more than 2ms off!",triggerTime);
         flasherCount% += 1;
@@ -5833,12 +5873,12 @@ proc CreateMasterColorLists()
     temp%[0][4] := ignore4RGB%[0];
     temp%[1][4] := ignore4RGB%[1];
     temp%[2][4] := ignore4RGB%[2];
-    temp%[0][5] := noattenRGB%[0];
-    temp%[1][5] := noattenRGB%[1];
-    temp%[2][5] := noattenRGB%[2];
-    temp%[0][6] := noinfoRGB%[0];
-    temp%[1][6] := noinfoRGB%[1];
-    temp%[2][6] := noinfoRGB%[2];
+    temp%[0][5] := cueallRGB%[0];
+    temp%[1][5] := cueallRGB%[1];
+    temp%[2][5] := cueallRGB%[2];
+    temp%[0][6] := nomatchRGB%[0];
+    temp%[1][6] := nomatchRGB%[1];
+    temp%[2][6] := nomatchRGB%[2];
     
     'not ready to do this yet
     for i% := 0 to 6 do
