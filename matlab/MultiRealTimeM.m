@@ -7,7 +7,20 @@ svr = actxserver ('ucdavis.msg.handler');
 
 NumberOfSlides=16;
 
-load('d:\\work\\AcuteRig\\MatlabScripts\\rfcolor.mat');
+% assume that rfcolor.mat is in the matlab path - right now its in the same
+% folder that this script is in. 
+rfcolorfile = which('rfcolor.mat');
+if isempty(rfcolorfile)
+    error('Cannot find rfcolor.mat on matlab path.');
+end
+load(rfcolorfile);
+
+Mseqfile=which('Big_M.mat');
+if isempty(Mseqfile)
+    error('Cannot find Big_M.mat on matlab path.');
+end
+load(Mseqfile) %loads a 32767x256 M sequence. it's x256 to represent the msequence of each pixel
+
 row=0;
 for findex=1:NumberOfChannels
     fig(findex)=figure;
@@ -35,8 +48,6 @@ for findex=1:NumberOfChannels
     end        
 end
     
-Mseqfile='d:\\work\\AcuteRig\\MatlabScripts\\Big_M';
-load(Mseqfile) %loads a 32767x256 M sequence. it's x256 to represent the msequence of each pixel
 
 disp('Waiting for StartM message...')
 msg='';
@@ -76,6 +87,8 @@ TermsProcessed=zeros(1,NumberOfChannels);
 BlockSize=0;
 ProcessAll=0;
 Channel=0;
+
+DanHack = 0;
 while(strcmp(msg,'StopM')~=1)
     %msg=NextMessage;
     msg=invoke(svr, 'getNextMessage');
@@ -95,15 +108,15 @@ while(strcmp(msg,'StopM')~=1)
             response(index,:,Channel)=[response(index-1,2:32767,Channel) 0];
         end
         if TermsProcessed(Channel)+BlockSize-16 > 32767
-            %disp(['Processing ' num2str(TermsProcessed(Channel)+1-16) ' to 32767']);
+            disp(['Processing ' num2str(TermsProcessed(Channel)+1-16) ' to 32767']);
             corr(:,:,Channel)=corr(:,:,Channel)+response(:,TermsProcessed(Channel)+1-16:32767,Channel)*mseq(TermsProcessed(Channel)+1-16:32767,:);
             ProcessAll=1;
         elseif ( (TermsProcessed(Channel)-16 <=0) || (ProcessAll==1) )
-            %disp(['Processing 1 to ' num2str(TermsProcessed(Channel)+BlockSize - 16)]);
+            disp(['Processing 1 to ' num2str(TermsProcessed(Channel)+BlockSize - 16)]);
             corr(:,:,Channel)=corr(:,:,Channel)+response(:,1:TermsProcessed(Channel)+BlockSize - 16,Channel)*mseq(1:TermsProcessed(Channel)+BlockSize - 16,:);
             ProcessAll=0;
         else
-            %disp(['Processing ' num2str(TermsProcessed(Channel)+1 - 16) ' to ' num2str(TermsProcessed(Channel)+BlockSize - 16)]);
+            disp(['Processing ' num2str(TermsProcessed(Channel)+1 - 16) ' to ' num2str(TermsProcessed(Channel)+BlockSize - 16)]);
             corr(:,:,Channel)=corr(:,:,Channel)+response(:,TermsProcessed(Channel)+1 -16 :TermsProcessed(Channel)+BlockSize -16,Channel )*mseq(TermsProcessed(Channel)+1 -16:TermsProcessed(Channel)+BlockSize-16,:);
         end
         for index=1:16
@@ -126,7 +139,6 @@ while(strcmp(msg,'StopM')~=1)
     else
         pause(.01);
     end
-    
 end
 disp('StopM received.');
 return
