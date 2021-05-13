@@ -277,7 +277,8 @@ proc CreateSampleConfiguration()
     
     
 	SampleSequencer(script$ + "Tuning.pls");
-    SampleOptimise(2, 2, 2, 2, 50);  'Set optimise mode (do this last)
+    ' djs set 3rd arg (type%) to 7 = 1401 mk 2
+    SampleOptimise(2, 2, Get1401Type%(), 2, 50);  'Set optimise mode (do this last)
     SampleMode(1); 'Continuous sampling
     
 end;
@@ -348,6 +349,7 @@ func Start%()
     
     ' Start message server
     amsHandleMsgSvr:=ProgRun(GetBinDir$(1) + "MsgSvr.exe", 0);
+    PrintLog("Start prog: " + GetBinDir$(1) + "MsgSvr.exe" + " result " + str$(amsHandleMsgSvr));
     Yield();    ' Make sure server can start
     
     ' If the message server was already running (because of some failure or error) it will still have messages in it. We must
@@ -449,6 +451,7 @@ func Stop%()
     SampleStop();
     
     ' better let matlab know we've stopped
+    PrintLog("SendMessage StopM\n");
     ProgRun(GetBinDir$(1) + "SendMessage StopM");
     Yield(1);
 
@@ -700,6 +703,7 @@ func CountSpikesWithDelay%(msFromLastCheck%)
                     'PrintLog("SendData: %d %d(>100) %d(>128)\n", status%, BlockIndex, Len(BlockData$[0]));
                     for ichannel% := 1 to amsNWavemarks% do 
                         SendMessage(BlockData$[ichannel%-1]);
+                        PrintLog("SendMessage at trig number " + str$(TriggerNumber) + "\n");
                         BlockData$[ichannel%-1]:=str$(ichannel%);
                     next
                     PercentComplete:=TriggerNumber/(32768*amsRepeats%);  'This line and the following line removed from
