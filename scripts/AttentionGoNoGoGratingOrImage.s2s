@@ -15,8 +15,10 @@
 '
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-'	Vars that control the Attention script 
 
+
+'	Vars that control the Attention script 
+const attMaxTrl% := 1000;
 var attNumberOfSetsOfBlocks%;
 var attBlocksPerSet%;
 var attTrialsPerBlock%;
@@ -32,7 +34,7 @@ var attNumRandomWithCACues%;
 var cuesToUseNGratings%;  'this is total number of gratings being used - SEEMS redundant with attNumPatches but IS NOT, is actually dialog value which will BECOME attNumPatches, available for use in subdialogs
 var distracterOffForEasy%;
 var attNumPatches%;  'how many stimulus patches on the screen?
-var attGetGPFromMainStim%;  'check box variable, should we get the distractor grating parameters (except for XY position) from the main stimulus?
+var attGetGPFromMainStim% := 0;  'check box variable, should we get the distractor grating parameters (except for XY position) from the main stimulus?
 var attUseCueCircles%;
 var attCueCircleExtraRadius;
 var attBackgroundColor$;
@@ -54,11 +56,15 @@ var attMinContChange;
 var attNContLevels%;
 var attContrastList[20];        'max of 20 (10 up, 10 down) contrast levels
 var attFixationTime;
+var attFixOff[attMaxTrl%];
 var attFixationCueMinTime;      
-var attFixationCueMaxTime;      
-var attCueOnsetTime;
+var attFixationCueMaxTime;  
+var attCueOnsetTime;  'keep a scalar (gratings) and a vector (images) version for various timing variables
+var attCueOnsetTimes[attMaxTrl%];
 var attCueOffsetTime;
+var attCueOffsetTimes[attMaxTrl%];
 var attStimOnsetTime;
+var attAllOff[attmaxTrl%];
 var attHazardMinTime;
 var attHazardExpMeanTime;
 var attHazardCutoffTime;
@@ -81,6 +87,21 @@ var attCuedLocationChangePct%;
 var attUncuedLocationChangePct%;
 var attLockUncuedToCued%;
 var attNoCuesMatchFixpt%;
+
+var mainTime[attMaxTrl%][10];  'For image version, keep track of time of onsets, changes, offsets
+var mainImage%[attMaxTrl%][10];  'and the image number presented at each
+var dist1Time[attMaxTrl%][10];
+var dist1Image%[attMaxTrl%][10];
+var dist2Time[attMaxTrl%][10];
+var dist2Image%[attMaxTrl%][10];
+var dist3Time[attMaxTrl%][10];
+var dist3Image%[attMaxTrl%][10];
+var dist4Time[attMaxTrl%][10];
+var dist4Image%[attMaxTrl%][10];
+var attCuedLocImage%[attMaxTrl%][10];
+var attCuedLocImageTime[attMaxTrl%][10];
+var attUncuedLocImage%[attMaxTrl%][10];
+var attUncuedLocImageTime[attMaxTrl%][10];
 
 'Variables for colors dialog
 var attendRGB%[3];
@@ -237,7 +258,6 @@ var attcolorsdlgCueCircleColorNoMatchB% := 43;
 var attcolorsdlgAllCueCirclesMatchFix% := 44;
 
 'variables for Henry's tuning curve version
-const attMaxTrl% := 1000;
 var attTrialOrder%[attMaxTrl%]; 'this variable will hold the index to attContrastList[] to get contrast of the grating on each trial
 var attTrial2Order%[attMaxTrl%]; 'this variable will hold the index to attContrastList[] to get contrast of the second grating on each trial
 var attTrial[attMaxTrl%];       'this variable is really only here because GetRepeatedParameterProgression wants to fill it; we will ignore it
@@ -253,6 +273,7 @@ var attCuedLocCCTime[attMaxTrl%];     'holds hazard times, now pre-calculated
 var attUncuedLocCCTime[attMaxTrl%];     'holds second hazard times, pre-calculated
 var attOffBitsList%[attMaxTrl%];  'A list of which stimulus patches are off for this trial, in a bit sum, 1 = main, 2 = dist1, 4 = dist2, etc.
 var attFixColor%[attMaxTrl%];     'A list of which color fixation point (as a number) is being used for this trial
+var attFixColor$[attMaxTrl%];     'actual color spec, used for images version (only no-cue-matches, easily could be used for the whole images shebang)
 var attCueCircleColor%[5][attMaxTrl%];  '5 possible stimulus locations (main, 4 distractors) per trial
 var attBlockList%[attMaxTrl%];    'A list of which block a trial comes in
 var attSetList%[attMaxTrl%];    'A list of which set a trial comes in
@@ -263,6 +284,7 @@ var attTrialEndTime[attMaxTrl%];  'The time the trial ends
 var attCueOnsetList[attMaxTrl%];  'A list of the cue onset time for each trial  - note that for now this is not a variable time, but it might be someday
 var attCueOffsetList[attMaxTrl%];  'A list of the cue offset time for each trial  - note that for now this is not a variable time, but it might be someday
 var attStimOnsetList[attMaxTrl%];  'A list of the stimulus onset time for each trial  - note that for now this is not a variable time, but it might be someday
+var attOptoThisImageTrial%[attMaxTrl%];
 var thisContrastCued%;                 'for sampletexty stuff
 var thisContrastUncued%;
 var fixColor$;                  'more sampletexty stuff
@@ -271,7 +293,7 @@ var FAIsResponse%;              'if 1, use "response abort", otherwise use regul
 var expectedAnswer%;            'keeps track of expected answer, saves a bunch of redundant code
 var expectedAnswerUncued%;      'we need this for cue-all trials
 'For fixation/cue colors, use a master list so we don't get a bunch of values redefined, and have to change them all if a change is made
-var masterColorList$[7];  'human readable, updated to hold 6 (1 on-RF, 4 distractor, 1 No-change)
+var masterColorList$[7];  'human readable, updated to hold 6 (1 on-RF, 4 distractor, 1 Cue-all, 1 No-Match)
 var masterColorListVSG$[7];  'VSG readable
 const attMaxFlashers% := 30;  'use a maximum of 30 flashers per trial
 var flasherTimes[attMaxTrl%][attMaxFlashers%];  'hold flasher times, this is 2-d because we can have multiple per trial
@@ -286,7 +308,6 @@ var cuedResponseWindowCloseTime;
 var uncuedResponseWindowCloseTime;
 var trialIsCRForDelayBasedReward%;  'This variable is needed because delay-based reward is treated differently for CRs
 var ActualRewardDuration%;  'we need to keep track of this
-var attFixationOffAtCC%;  'do we want to turn the fixation off early, when the contrast change happens?
 var attRequireJoystickResponse%;
 var attJoyValue;
 var attJoyPos%;
@@ -372,6 +393,10 @@ var iAnswerWindowChannelDist4%;  'channel number for distracter 4 answer window 
 ' Display stuff
 var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
 
+' Variables for Image version
+var attImagesTrialsFile$;
+
+
 
 ' dummy vars
 var iScript%;
@@ -438,88 +463,97 @@ var attNumContinuous%;
 var attWavemarkPorts%[64];
 var attContinuousPorts%[64];
 
-UseTwo1401s% := DoWeUseTwo1401s%();
-GetPortsAndNumWMsWFs%(attNumWavemarks%,attNumContinuous%,attWavemarkPorts%[],attContinuousPorts%[]);
 
-
-
-' Check for valid data file path
-if Len(dataDataSet$) = 0 then
-	Message("No data set is selected! Edit Data parameters...");
-	' Might be nice to open the dialog here....
-	halt;
-endif
-
-'we're going to muck with reward so that Henry can have a "high reward" and a "low reward"
-'I hate to do it this way, but I think that the alternative of doing it in the config is even
-'worse.  This way, we simply override the config value, but only for the low-reward state. 
-'For the high-reward state we still use the config value.  It's not pretty, but it keeps
-'everything from cascading into a comedy of errors in other scripts.
-'get original reward value from config
-origRewardMS% := GetJuiceRewardMS%();
-
-'Joystick channel/port must be set before the main script
-JoyChannel% := 35;
-InitJoystick2(JoyChannel%,GetJoystickPort%()); 'now calls InitJoystick2 - we must do this BEFORE calling the main dialog
-printlog("joystick channel is %d\n",jsChannelNumber%);
-
-' run main script dialog
-iScript% := AttentionScriptDialog%();
-if iScript% <> 1 then
-	PrintLog("User cancel - exit gracefully\n");
-	Halt;
-endif;
-
-
-
-' Assign channel numbers for eye X,Y and trigger. 
-XChannel% := 23;
-YChannel% := 24;
-FrameTriggerChannel% := 25;
-FixationPointChannel% := 26;
-StimChannel% := 27;
-StimChangeChannel% := 28;
-ReadyChannel% := 29;
-SynchChannel% := 36;
-PhotodiodeChannel% := 33;
-UtilityChannel% := 34;
-TimingChannel% := 35;
-OptoCopyChannel% := 49;
-
-
-
-
-ExcludedChans%[0] := 23;  'XChannel is lowest non-electrode channel used by this function
-ExcludedChans%[1] := 49;  'OptoCopyChannel is highest non-electrode channel used by this function
-
-
-
-
-'If we are not using the Plexon (and thus linking the two 1401s together, just use the standard order of operations:
-'1) create sampling configuration, 2) Initialize windows, 3) Initialize/run toolbar.
-'However, if we are linking the 1401s we have to do this in a different order, because we have to open up the second
-'instance of Spike 2 BEFORE setting up the sampling configuration/windows on the first instance.  Doing this in the
-'wrong order results in a non-fatal error in the second Spike2 instance indicating that the file which is preparing
-'to be recorded in the first instance cannot be accessed, despite no explicit attempt to access any such thing.
-'Hence, for the Plexon setups, we first initialize the toolbar, which has a specialty button "Start Plexon".  StartPlexon%()
-'launches the second instance and the associated script, and both scripts move forward independently to create their own
-'sampling configuration, initialize their own windows and are ready to have sampling started.  Note well that sampling
-'must be started on the POWER 1401 (the second, non-dominant instance of Spike2) FIRST and on the MICRO 1401 (the first, 
-'dominant instance of Spike 2) SECOND.  Starting sampling on the Micro will run the VSG program (Fixstim) which gives
-'the sampling trigger and sets the experiment in motion.
-if UseTwo1401s% = 0 then
-    CreateSampleConfiguration();
-
-    ' Get display windows ready
-    InitializeWindows();
-
-    ' Prepare the toolbar buttons
-    InitializeToolbar();
-else
-    InitializeToolbar();
-endif;
-
-
+proc AttentionGNGGratingOrImage()
+    
+    UseTwo1401s% := DoWeUseTwo1401s%();
+    GetPortsAndNumWMsWFs%(attNumWavemarks%,attNumContinuous%,attWavemarkPorts%[],attContinuousPorts%[]);
+    
+    
+    
+    ' Check for valid data file path
+    if Len(dataDataSet$) = 0 then
+        Message("No data set is selected! Edit Data parameters...");
+        ' Might be nice to open the dialog here....
+        halt;
+    endif
+    
+    'we're going to muck with reward so that Henry can have a "high reward" and a "low reward"
+    'I hate to do it this way, but I think that the alternative of doing it in the config is even
+    'worse.  This way, we simply override the config value, but only for the low-reward state. 
+    'For the high-reward state we still use the config value.  It's not pretty, but it keeps
+    'everything from cascading into a comedy of errors in other scripts.
+    'get original reward value from config
+    origRewardMS% := GetJuiceRewardMS%();
+    
+    'Joystick channel/port must be set before the main script
+    JoyChannel% := 35;
+    InitJoystick2(JoyChannel%,GetJoystickPort%()); 'now calls InitJoystick2 - we must do this BEFORE calling the main dialog
+    printlog("joystick channel is %d\n",jsChannelNumber%);
+    
+    ' run main script dialog - run correct dialog based on whether this is grating- or image-based
+    
+    if isGrating% = 1 then
+        iScript% := AttentionScriptDialog%();
+    else
+        iScript% := AttentionScriptImagesDialog%();
+    endif;
+    if iScript% <> 1 then
+        PrintLog("User cancel - exit gracefully\n");
+        Halt;
+    endif;
+    
+    
+    
+    ' Assign channel numbers for eye X,Y and trigger. 
+    XChannel% := 23;
+    YChannel% := 24;
+    FrameTriggerChannel% := 25;
+    FixationPointChannel% := 26;
+    StimChannel% := 27;
+    StimChangeChannel% := 28;
+    ReadyChannel% := 29;
+    SynchChannel% := 36;
+    PhotodiodeChannel% := 33;
+    UtilityChannel% := 34;
+    TimingChannel% := 35;
+    OptoCopyChannel% := 49;
+    
+    
+    
+    
+    ExcludedChans%[0] := 23;  'XChannel is lowest non-electrode channel used by this function
+    ExcludedChans%[1] := 49;  'OptoCopyChannel is highest non-electrode channel used by this function
+    
+    
+    
+    
+    'If we are not using the Plexon (and thus linking the two 1401s together, just use the standard order of operations:
+    '1) create sampling configuration, 2) Initialize windows, 3) Initialize/run toolbar.
+    'However, if we are linking the 1401s we have to do this in a different order, because we have to open up the second
+    'instance of Spike 2 BEFORE setting up the sampling configuration/windows on the first instance.  Doing this in the
+    'wrong order results in a non-fatal error in the second Spike2 instance indicating that the file which is preparing
+    'to be recorded in the first instance cannot be accessed, despite no explicit attempt to access any such thing.
+    'Hence, for the Plexon setups, we first initialize the toolbar, which has a specialty button "Start Plexon".  StartPlexon%()
+    'launches the second instance and the associated script, and both scripts move forward independently to create their own
+    'sampling configuration, initialize their own windows and are ready to have sampling started.  Note well that sampling
+    'must be started on the POWER 1401 (the second, non-dominant instance of Spike2) FIRST and on the MICRO 1401 (the first, 
+    'dominant instance of Spike 2) SECOND.  Starting sampling on the Micro will run the VSG program (Fixstim) which gives
+    'the sampling trigger and sets the experiment in motion.
+    if UseTwo1401s% = 0 then
+        CreateSampleConfiguration();
+        
+        ' Get display windows ready
+        InitializeWindows();
+        
+        ' Prepare the toolbar buttons
+        InitializeToolbar();
+    else
+        InitializeToolbar();
+    endif;
+    
+end;
+''''''End main proc AttentionGNGGratingOrImage
 
 
 
@@ -614,12 +648,15 @@ proc InitializeWindows()
 	XYAddData(iFixationWindowChannel%, FixWindowX[], FixWindowY[]);
     
     
-    'get locations of stimuli so that answer windows overlap them
-    ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"),mainX,mainY,mainW,mainH); 
-    ParseGratingParametersBrief%(GetGratingParameters$("Distractor1"),dist1X,dist1Y,dist1W,dist1H);
-    ParseGratingParametersBrief%(GetGratingParameters$("Distractor2"),dist2X,dist2Y,dist2W,dist2H); 
-    ParseGratingParametersBrief%(GetGratingParameters$("Distractor3"),dist3X,dist3Y,dist3W,dist3H); 
-    ParseGratingParametersBrief%(GetGratingParameters$("Distractor4"),dist4X,dist4Y,dist4W,dist4H);     
+    'get locations of stimuli so that answer windows overlap them, do not do this for images version, which pulls these values from the input file at the time of dialog run
+    if isGrating% = 1 then
+        ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"),mainX,mainY,mainW,mainH); 
+        ParseGratingParametersBrief%(GetGratingParameters$("Distractor1"),dist1X,dist1Y,dist1W,dist1H);
+        ParseGratingParametersBrief%(GetGratingParameters$("Distractor2"),dist2X,dist2Y,dist2W,dist2H); 
+        ParseGratingParametersBrief%(GetGratingParameters$("Distractor3"),dist3X,dist3Y,dist3W,dist3H); 
+        ParseGratingParametersBrief%(GetGratingParameters$("Distractor4"),dist4X,dist4Y,dist4W,dist4H); 
+    endif;
+    
     
     'Not sure if Henry wants this feature
     'If we are getting our grating parameters from the main stimulus, get ONLY the X and Y position and NOT the width/height, match W/H to main grating
@@ -634,19 +671,19 @@ proc InitializeWindows()
         dist4H := mainH;
     endif;
     
-    'And finally, override answer window size if specified answer window is positive
-    'if attAnswerPointWindowRadius > 0 then
-    '    mainW := attAnswerPointWindowRadius;
-    '    mainH := attAnswerPointWindowRadius;
-    '    dist1W := attAnswerPointWindowRadius;
-    '    dist1H := attAnswerPointWindowRadius;
-    '    dist2W := attAnswerPointWindowRadius;
-    '    dist2H := attAnswerPointWindowRadius;
-    '    dist3W := attAnswerPointWindowRadius;
-    '    dist3H := attAnswerPointWindowRadius;
-    '    dist4W := attAnswerPointWindowRadius;
-    '    dist4H := attAnswerPointWindowRadius;
-    'endif;
+    'And finally, override answer window size during images experiment
+    if isGrating% = 0 then
+        mainW := attAnswerPointWindowRadius;
+        mainH := attAnswerPointWindowRadius;
+        dist1W := attAnswerPointWindowRadius;
+        dist1H := attAnswerPointWindowRadius;
+        dist2W := attAnswerPointWindowRadius;
+        dist2H := attAnswerPointWindowRadius;
+        dist3W := attAnswerPointWindowRadius;
+        dist3H := attAnswerPointWindowRadius;
+        dist4W := attAnswerPointWindowRadius;
+        dist4H := attAnswerPointWindowRadius;
+    endif;
     
     
     'Create new channels in the XY view to display the answer windows
@@ -1042,117 +1079,123 @@ func Start%()
     
     
     if attUseCueCircles% > 0 then
-        'CueCirc$ := CreateCueCircleColorSets$();
-        CueCirc$ := CreateCueCircleColorSetsLite$();  'Lite version only creates one set of cue circles, no rotation
+        'CueCirc$ := CreateCueCircleColorSets$();  'This is NOT updated to work for images version, caveat codechange-or
+        CueCirc$ := CreateCueCircleColorSetsLite$();  'Lite version only creates one set of cue circles, no rotation, this is updated to work for image version
         'printlog("Cue circles list is: %s\n",CueCirc$);
     endif;
     
-    'get all these grating parameters
-    stimSpec$ := GetGratingParameters$("Stimulus");
-    ParseGratingParametersBrief%(stimSpec$, xT, yT, wT, hT);  'we may as well just do this every time - 90+% of the time we will anyway, and why put it in the if statements four times?
-    if attNumPatches% > 1 then
-        if attGetGPFromMainStim% = 1 then
-            ParseGratingParametersBrief%(GetGratingParameters$("Distractor1"), xT, yT, wT, hT);
-            dist1Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
-            ParseGratingParametersBrief%(dist1Spec$, xD1, yD1, wD1, hD1);  'for helping placement of flashers, etc.
-        else
-            dist1Spec$ := GetGratingParameters$("Distractor1");
-            ParseGratingParametersBrief%(dist1Spec$, xD1, yD1, wD1, hD1);
-        endif;
-    endif;
-    if attNumPatches% > 2 then
-        if attGetGPFromMainStim% = 1 then
-            ParseGratingParametersBrief%(GetGratingParameters$("Distractor2"), xT, yT, wT, hT);
-            dist2Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
-            ParseGratingParametersBrief%(dist2Spec$, xD2, yD2, wD2, hD2);  
-        else
-            dist2Spec$ := GetGratingParameters$("Distractor2");
-            ParseGratingParametersBrief%(dist2Spec$, xD2, yD2, wD2, hD2);
-        endif;
-    endif;
-    if attNumPatches% > 3 then
-        if attGetGPFromMainStim% = 1 then
-            ParseGratingParametersBrief%(GetGratingParameters$("Distractor3"), xT, yT, wT, hT);
-            dist3Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
-            ParseGratingParametersBrief%(dist3Spec$, xD3, yD3, wD3, hD3); 
-        else
-            dist3Spec$ := GetGratingParameters$("Distractor3");
-            ParseGratingParametersBrief%(dist3Spec$, xD3, yD3, wD3, hD3);
-        endif;
-    endif;
-    if attNumPatches% > 4 then
-        if attGetGPFromMainStim% = 1 then
-            ParseGratingParametersBrief%(GetGratingParameters$("Distractor4"), xT, yT, wT, hT);
-            dist4Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
-            ParseGratingParametersBrief%(dist4Spec$, xD4, yD4, wD4, hD4); 
-        else
-            dist4Spec$ := GetGratingParameters$("Distractor4");
-            ParseGratingParametersBrief%(dist4Spec$, xD4, yD4, wD4, hD4);
-        endif;
-    endif;
-
     
-    
-    if attCustomGratingColorCheck% = 1 then
-        var f$, t$;
-        f$ := EncodeColor$(attCustomGratingColorStimFrom%[0], attCustomGratingColorStimFrom%[1], attCustomGratingColorStimFrom%[2]);
-        t$ := EncodeColor$(attCustomGratingColorStimTo%[0], attCustomGratingColorStimTo%[1], attCustomGratingColorStimTo%[2]);
-        stimSpec$ := ReplaceGratingColorVector$(stimSpec$, f$ + "-" + t$);
-        f$ := EncodeColor$(attCustomGratingColorDistractorFrom%[0], attCustomGratingColorDistractorFrom%[1], attCustomGratingColorDistractorFrom%[2]);
-        t$ := EncodeColor$(attCustomGratingColorDistractorTo%[0], attCustomGratingColorDistractorTo%[1], attCustomGratingColorDistractorTo%[2]);
+    if isGrating% = 1 then
+        'get all these grating parameters
+        stimSpec$ := GetGratingParameters$("Stimulus");
+        ParseGratingParametersBrief%(stimSpec$, xT, yT, wT, hT);  'we may as well just do this every time - 90+% of the time we will anyway, and why put it in the if statements four times?
         if attNumPatches% > 1 then
-            dist1Spec$ := ReplaceGratingColorVector$(dist1Spec$, f$ + "-" + t$);
+            if attGetGPFromMainStim% = 1 then
+                ParseGratingParametersBrief%(GetGratingParameters$("Distractor1"), xT, yT, wT, hT);
+                dist1Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
+                ParseGratingParametersBrief%(dist1Spec$, xD1, yD1, wD1, hD1);  'for helping placement of flashers, etc.
+            else
+                dist1Spec$ := GetGratingParameters$("Distractor1");
+                ParseGratingParametersBrief%(dist1Spec$, xD1, yD1, wD1, hD1);
+            endif;
         endif;
         if attNumPatches% > 2 then
-            dist2Spec$ := ReplaceGratingColorVector$(dist2Spec$, f$ + "-" + t$);
+            if attGetGPFromMainStim% = 1 then
+                ParseGratingParametersBrief%(GetGratingParameters$("Distractor2"), xT, yT, wT, hT);
+                dist2Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
+                ParseGratingParametersBrief%(dist2Spec$, xD2, yD2, wD2, hD2);  
+            else
+                dist2Spec$ := GetGratingParameters$("Distractor2");
+                ParseGratingParametersBrief%(dist2Spec$, xD2, yD2, wD2, hD2);
+            endif;
         endif;
         if attNumPatches% > 3 then
-            dist3Spec$ := ReplaceGratingColorVector$(dist3Spec$, f$ + "-" + t$);
+            if attGetGPFromMainStim% = 1 then
+                ParseGratingParametersBrief%(GetGratingParameters$("Distractor3"), xT, yT, wT, hT);
+                dist3Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
+                ParseGratingParametersBrief%(dist3Spec$, xD3, yD3, wD3, hD3); 
+            else
+                dist3Spec$ := GetGratingParameters$("Distractor3");
+                ParseGratingParametersBrief%(dist3Spec$, xD3, yD3, wD3, hD3);
+            endif;
         endif;
         if attNumPatches% > 4 then
-            dist4Spec$ := ReplaceGratingColorVector$(dist4Spec$, f$ + "-" + t$);
+            if attGetGPFromMainStim% = 1 then
+                ParseGratingParametersBrief%(GetGratingParameters$("Distractor4"), xT, yT, wT, hT);
+                dist4Spec$ := ReplaceGratingXY$(stimSpec$,xT,yT);
+                ParseGratingParametersBrief%(dist4Spec$, xD4, yD4, wD4, hD4); 
+            else
+                dist4Spec$ := GetGratingParameters$("Distractor4");
+                ParseGratingParametersBrief%(dist4Spec$, xD4, yD4, wD4, hD4);
+            endif;
         endif;
-    endif
-
-    
-	Stim$ := " -s " + stimSpec$;  
-    if attNumPatches% > 1 then
+        
+        
+        
+        if attCustomGratingColorCheck% = 1 then
+            var f$, t$;
+            f$ := EncodeColor$(attCustomGratingColorStimFrom%[0], attCustomGratingColorStimFrom%[1], attCustomGratingColorStimFrom%[2]);
+            t$ := EncodeColor$(attCustomGratingColorStimTo%[0], attCustomGratingColorStimTo%[1], attCustomGratingColorStimTo%[2]);
+            stimSpec$ := ReplaceGratingColorVector$(stimSpec$, f$ + "-" + t$);
+            f$ := EncodeColor$(attCustomGratingColorDistractorFrom%[0], attCustomGratingColorDistractorFrom%[1], attCustomGratingColorDistractorFrom%[2]);
+            t$ := EncodeColor$(attCustomGratingColorDistractorTo%[0], attCustomGratingColorDistractorTo%[1], attCustomGratingColorDistractorTo%[2]);
+            if attNumPatches% > 1 then
+                dist1Spec$ := ReplaceGratingColorVector$(dist1Spec$, f$ + "-" + t$);
+            endif;
+            if attNumPatches% > 2 then
+                dist2Spec$ := ReplaceGratingColorVector$(dist2Spec$, f$ + "-" + t$);
+            endif;
+            if attNumPatches% > 3 then
+                dist3Spec$ := ReplaceGratingColorVector$(dist3Spec$, f$ + "-" + t$);
+            endif;
+            if attNumPatches% > 4 then
+                dist4Spec$ := ReplaceGratingColorVector$(dist4Spec$, f$ + "-" + t$);
+            endif;
+        endif
+        
+        
+        Stim$ := " -s " + stimSpec$;  
+        if attNumPatches% > 1 then
             Stim$ := Stim$ + " -s " + dist1Spec$;
-    endif;
-    if attNumPatches% > 2 then
+        endif;
+        if attNumPatches% > 2 then
             Stim$ := Stim$ + " -s " + dist2Spec$;
-    endif;
-    if attNumPatches% > 3 then
+        endif;
+        if attNumPatches% > 3 then
             Stim$ := Stim$ + " -s " + dist3Spec$;
-    endif;
-    if attNumPatches% > 4 then
+        endif;
+        if attNumPatches% > 4 then
             Stim$ := Stim$ + " -s " + dist4Spec$;
-    endif;
-    
-    if attUseFlashers% = 1 then
-        flasherSpec$ := GetGratingParameters$("Flasher");
-        ParseGratingParametersBrief%(flasherSpec$, xF1, yF1, wF1, hF1);
-        Stim$ := Stim$ + " -k " + flasherSpec$;  'This specifies flasher #0, the VSG side software allows more flasher gratings to be spec'ed but as of now we will only use one
-    endif;
-    
-    
-    'run ScreenBounds to get max size of x/y on screen, to be used to make flashers in random locations
-    ScreenBounds(screenXmm,screenYmm,screenXmax,screenYmax);
-      
-
-    CreateContrastList(c$,Flashers$,attIsCueAll%[],attCuedLocList%[],attCuedLocChangesList%[],attContrastCuedList%[],attCuedLocCCTime[],
+        endif;
+        
+        if attUseFlashers% = 1 then
+            flasherSpec$ := GetGratingParameters$("Flasher");
+            ParseGratingParametersBrief%(flasherSpec$, xF1, yF1, wF1, hF1);
+            Stim$ := Stim$ + " -k " + flasherSpec$;  'This specifies flasher #0, the VSG side software allows more flasher gratings to be spec'ed but as of now we will only use one
+        endif;
+        
+        
+        'run ScreenBounds to get max size of x/y on screen, to be used to make flashers in random locations
+        ScreenBounds(screenXmm,screenYmm,screenXmax,screenYmax);
+        
+        
+        CreateContrastList(c$,Flashers$,attIsCueAll%[],attCuedLocList%[],attCuedLocChangesList%[],attContrastCuedList%[],attCuedLocCCTime[],
         attCuedLocReturnTime[],attUncuedLocList%[],attUncuedLocChangesList%[],attContrastUncuedList%[],attUncuedLocCCTime[],attUncuedLocReturnTime[],
         attTrialEndTime[],attFixColor%[],attCueCircleColor%[][],attOffBitsList%[],attBlockList%[],attSetList%[],attEasyList%[]);',
         'flasherTimes[][],flasherX[][],flasherY[][],flasherCount%[])  
+        
+        'Write contrast file, pulling this out of CreateContrastList so we only have to write once
+        contrastHandle% := FileOpen(ContrastFile$, 8, 1);
+        'print constructed contrast string to file
+        Print("%s",c$);
+        'close contrast file
+        FileClose(0);
+        
+        ContrastFileWithFlag$ := " -n " + ContrastFile$; 'add flag to string containing loc of ContrastFile
+    else
+        ContrastFileWithFlag$ := " -n " + attImagesTrialsFile$;  'we can still hold this in the ContrastFile variable, so it prints in the right place in the command line
+    endif
     
-    'Write contrast file, pulling this out of CreateContrastList so we only have to write once
-    contrastHandle% := FileOpen(ContrastFile$, 8, 1);
-    'print constructed contrast string to file
-    Print("%s",c$);
-    'close contrast file
-	FileClose(0);
-    
-    ContrastFileWithFlag$ := " -n " + ContrastFile$; 'add flag to string containing loc of ContrastFile
     
     
     'Extras$ := " -b " + attBackgroundColor$ + " -d " + GetDistanceToScreenMM$() + " -A " + str$(attAnswerPointOffset) + " -D " + str$(attAnswerPointDiameter) + lolSpec$;  'answer points on
@@ -1182,6 +1225,9 @@ func Start%()
         Print("%s %s %s %s %s %s",FixationArg$,Extras$,Stim$,CueCirc$,Flashers$,ContrastFileWithFlag$);  'file should be everything starting from FixationArg$ on, use flashers, Flashers$ must come before ContrastFile$!
     else
         Print("%s %s %s %s %s",FixationArg$,Extras$,Stim$,CueCirc$,ContrastFileWithFlag$);  'file should be everything starting from FixationArg$ on
+                                                                                            'in the images case, Stim$ is empty, and the ContrastFile holds
+                                                                                            'the Images/Trials file location, CueCirc$ is constructed from
+                                                                                            'the Images/Trials file, the rest is identical
     endif;    
     'close spec file
 	FileClose(0);
@@ -1203,12 +1249,21 @@ func Start%()
         Print("%s %s %s %s %s %s",FixationArg$,Extras$,Stim$,CueCirc$,Flashers$,ContrastFileWithFlag$);  'file should be everything starting from FixationArg$ on, use flashers
     else
         Print("%s %s %s %s %s",FixationArg$,Extras$,Stim$,CueCirc$,ContrastFileWithFlag$);  'file should be everything starting from FixationArg$ on
+                                                                                            'in the images case, Stim$ is empty, and the ContrastFile holds
+                                                                                            'the Images/Trials file location, CueCirc$ is constructed from
+                                                                                            'the Images/Trials file, the rest is identical
     endif; 
     'Close specfile
     FileClose(0);
-    'And copy contrast file to new location
-    spec2FileName$ := spec2FileBase$ + ".con";
-	PrintLog("contrast filename is " + ContrastFile$ + "\n");
+    
+    'And copy contrast/images file to new location
+    if isGrating% = 1 then
+        spec2FileName$ := spec2FileBase$ + ".con";
+        PrintLog("contrast filename is " + ContrastFile$ + "\n");
+    else
+        spec2FileName$ := spec2FileBase$ + ".img";
+        PrintLog("Images/Trials filename is " + ContrastFile$ + "\n");
+    endif
     FileCopy(ContrastFile$,spec2FileName$);
     
 	
@@ -1411,7 +1466,10 @@ func IdleProcessing%()
         
     case iState% = stateStartBlock% then
         
-        PrepareBlock();  'PrepareBlock() does not do much now, it simply printlogs that a block is starting
+        'Since there are no "blocks" created, we can skip PrepareBlock() in the images version
+        if isGrating% = 1 then
+            PrepareBlock();  'PrepareBlock() does not do much now, it simply printlogs that a block is starting
+        endif;
         ChangeStateTo(stateStartTrial%, tNow);
         
     case iState% = stateStartTrial% then
@@ -1592,8 +1650,15 @@ func IdleProcessing%()
                 tLastTrigger := tTrigger;
                 ChangeStateTo(stateCheckForAnswerThroughAnimation%, tTrigger);
                 'In below sampletext, can change hazard time (currently relative to grating onset) to relative to animation onset with simple uncomment in PrepareTrial()
-                SampleText("Animation on, Fixation color " + fixColor$ + ", Base contrast " + Str$(attContrastBase%) + ", hazard dur " + Str$(trialHazardFunctionTimeCued) + ", hazard dur2 " + Str$(trialHazardFunctionTimeUncued)
-                + ", attend location " + Str$(trialAttendLoc%) + ", change location " + Str$(expectedAnswer%) + ", change contrast " + Str$(thisContrastCued%) + ", is Cue-All trial: " + Str$(trialIsCueAll%),tTrigger);
+                if isGrating% = 1 then
+                    SampleText("Animation on, Fixation color " + fixColor$ + ", Base contrast " + Str$(attContrastBase%) + ", hazard dur " + Str$(trialHazardFunctionTimeCued) + ", hazard dur2 " + Str$(trialHazardFunctionTimeUncued)
+                    + ", attend location " + Str$(trialAttendLoc%) + ", change location " + Str$(expectedAnswer%) + ", change contrast " + Str$(thisContrastCued%) + ", is Cue-All trial: " + Str$(trialIsCueAll%),tTrigger);
+                else
+                    SampleText("Animation on, Fixation color " + fixColor$ + ", hazard dur " + Str$(trialHazardFunctionTimeCued) + ", hazard dur2 " + Str$(trialHazardFunctionTimeUncued)
+                    + ", attend location " + Str$(trialAttendLoc%) + ", change location " + Str$(expectedAnswer%) + ", is Cue-All trial: " + Str$(trialIsCueAll%),tTrigger);
+                endif
+                
+                
                 
                 'If there should be no response, change fixation window now?
                 if trialIsTarget% = 0 then
@@ -1722,7 +1787,11 @@ func IdleProcessing%()
                 'when the uncued target window opens and by 10 when the uncued target window closes.  Concomitantly, the local
                 'code will also do these increments, which allows for us to keep track of when fixation windows have been updated.
                 'It's a mess.  But it should work.
-                TagTriggerWithSampletext(tLastTrigger,tAnimationOn,attCurrTrialIndex%,flasherCountThisTrial%,CCHappened%,trialIsCueAll%);
+                if isGrating% = 1 then
+                    TagTriggerWithSampletext(tLastTrigger,tAnimationOn,attCurrTrialIndex%,flasherCountThisTrial%,CCHappened%,trialIsCueAll%);
+                else
+                    TagTriggerWithSampletextImages(tLastTrigger,tAnimationOn,attCurrTrialIndex%,CCHappened%,trialIsCueAll%);
+                endif;
             else
                 updateTLast% := 0;  'waiting for sampling to catch up
             endif;
@@ -1732,10 +1801,6 @@ func IdleProcessing%()
         'Check to see if we need to change the colors on the display, cued location
         docase
         case CCHappened% = 1 or CCHappened% = 21 or CCHappened% = 41 then  'This means the cued target window just opened
-            'request fixation point off, if requested - Henry reneging before implementation due to inability to change to different contrast fixpt
-            'if attFixationOffAtCC% = 1 then
-            '    SafeSampleKey("f");
-            'endif;
             'change display colors, if cued target window has just opened
             view(XYWindow%).XYColour(iFixationWindowChannel%,13);  'Change fixation window to blue
             docase  'expectedAnswer% gives cued location
@@ -1815,7 +1880,7 @@ func IdleProcessing%()
         docase  
         'if fixation is broken and no contrast change has happened, begin abort procedure            
         case Looking%(xEye, yEye) = 0 and CCHappened% = 0 then  
-            PrintLog("stateCheckForAnswerThroughAnimation: fixation lost before contrast change.\n");
+            PrintLog("stateCheckForAnswerThroughAnimation: fixation lost before contrast/image change.\n");
             ChangeStateTo(stateAbort%, tNow);
             
         'if we want a joystick response and fixation is broken, begin abort procedure            
@@ -1825,7 +1890,7 @@ func IdleProcessing%()
             
         'if joystick is up (response) and no contrast change has happened, begin abort procedure    
         case (attJoyPos% = JSCenter% or attJoyPos% = JSHalfUp% or attJoyPos% = JSUp%) and CCHappened% = 0 then  
-            PrintLog("stateCheckForAnswerThroughAnimation: joystick up before contrast change.\n");
+            PrintLog("stateCheckForAnswerThroughAnimation: joystick up before contrast/image change.\n");
             ChangeStateTo(stateAbort%, tNow);
             
         'there is a saccade response, answer is to cued window, and cued window is a legal answer (expected answer is 0 if cued location does not change)    
@@ -1894,7 +1959,7 @@ func IdleProcessing%()
             CCHappened% := 0;
             ChangeStateTo(stateCheckTurnOffOpto%, tNow);
             
-        'there is a joystick response (joystick is not down), and any legal-to-respond contrast change has happened, hit
+        'there is a joystick response (joystick is not down), and any legal-to-respond contrast/image change has happened, hit
         case attRequireJoystickResponse% = 1 and (attJoyPos% = JSCenter% or attJoyPos% = JSHalfUp% or attJoyPos% = JSUp%) and expectedAnswer%+expectedAnswerUncued% > 0 then
             queueReward% := 1;                   
             attCountAllTrialsCorrect% += 1;
@@ -1903,7 +1968,7 @@ func IdleProcessing%()
             CCHappened% := 0;
             ChangeStateTo(stateCheckTurnOffOpto%, tNow);
             
-        'there is a joystick response (joystick is not down), contrast change has happened, but should not be responded to, FA
+        'there is a joystick response (joystick is not down), contrast/image change has happened, but should not be responded to, FA
         case attRequireJoystickResponse% = 1 and (attJoyPos% = JSCenter% or attJoyPos% = JSHalfUp% or attJoyPos% = JSUp%) and expectedAnswer%+expectedAnswerUncued% = 0 then
             queueReward% := -1;                   
             attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
@@ -1928,101 +1993,13 @@ func IdleProcessing%()
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over 
             endif;   
-            
-        'else 'This means the trial is not over, the animal has not aborted, and the animal has not responded.  Keep checking for these events.    
-            
-            
-            'Below commented code was a prior attempt, but it wouldn't work when we extended the response window
-            'beyond the duration of the contrast change, above code now seems simpler, should cover all the bases
-'        'if the first case does not trigger, either we are still looking, or something has happened, or both    
-'        'case CCHappened% = 2 or CCHappened% = 22 or CCHappened% = 42 then  'This means the cued target window is open
-'        case tNow <= cuedResponseWindowCloseTime then  'This means the cued target window is open  
-'            
-'            'Check to see if there is a response - if there is no response, we keep checking
-'            docase
-'            case iAnswer% = expectedAnswer% then  'A hit!  Set up reward 
-'                queueReward% := 1;                   
-'                attCountAllTrialsCorrect% += 1;
-'                attInterTrialTimeThisTrial := attInterTrialTime;
-'                SampleText("Correct",tNow);
-'                CCHappened% := 0;
-'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-'            case iAnswer% = expectedAnswerUncued% and CCHappened% = 22 then  'A hit on the uncued target while window open!  Set up reward 
-'                queueReward% := 1;                   
-'                attCountAllTrialsCorrect% += 1;
-'                attInterTrialTimeThisTrial := attInterTrialTime;
-'                SampleText("Correct",tNow);
-'                CCHappened% := 0;
-'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-'            case iAnswer% > 0 then  'A saccade to a wrong location (false alarm, I guess)
-'                queueReward% := -1;                   
-'                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-'                SampleText("Incorrect",tNow);
-'                CCHappened% := 0;
-'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-'            endcase
-'            
-'        'case CCHappened% = 4 or CCHappened% = 24 or CCHappened% = 44 then  'This means the cued target window is closed
-'        case (CCHappened% = 4 or CCHappened% = 24 or CCHappened% = 44) and tNow > cuedResponseWindowCloseTime and tNow > uncuedResponseWindowCloseTime then
-'            
-'            'Check for response, if no response, keep checking
-'            docase
-'            case iAnswer% > 0  and (CCHappened% = 4 or CCHappened% = 44) then  'A saccade to any location if no response window open is a false alarm
-'                queueReward% := -1;                   
-'                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-'                SampleText("Incorrect",tNow);
-'                CCHappened% := 0;
-'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-'            case iAnswer% = expectedAnswerUncued% and CCHappened% = 24 then  'This is a saccade to the uncued location while its window is open - a hit!
-'                queueReward% := 1;                   
-'                attCountAllTrialsCorrect% += 1;
-'                attInterTrialTimeThisTrial := attInterTrialTime;
-'                SampleText("Correct",tNow);
-'                CCHappened% := 0;
-'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-'            endcase
-'            
-'        case CCHappened% = 20 then  'This means the uncued target window is open  'cannot get to CCHappened% = 22 or CCHappened% = 24, those are covered above  
-'
-'            'Check to see if there is a response - if there is no response, we keep checking
-'            docase
-'            case iAnswer% = expectedAnswerUncued% then  'A hit!  Set up reward 
-'                queueReward% := 1;                   
-'                attCountAllTrialsCorrect% += 1;
-'                attInterTrialTimeThisTrial := attInterTrialTime;
-'                SampleText("Correct",tNow);
-'                CCHappened% := 0;
-'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-'            case iAnswer% > 0 then  'A saccade to a wrong location (false alarm, I guess)
-'                queueReward% := -1;                   
-'                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-'                SampleText("Incorrect",tNow);
-'                CCHappened% := 0;
-'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-'            endcase
-'            
-'        case CCHappened% = 40 then 'This means the uncued target window is closed  'cannot get to CCHappened% = 42 or CCHappened% = 44, those are covered above  
-'  
-'            'Check for response, if no response, keep checking
-'            if iAnswer% > 0 then  'A saccade to any location if no response window open is a false alarm
-'                queueReward% := -1;                   
-'                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-'                SampleText("Incorrect",tNow);
-'                CCHappened% := 0;
-'                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-'            endif
-'            
-'            
-'        
-'            
+          
             
         endcase 
 
         
         
     case iState% = stateCheckTurnOffOpto% then
-        'nTrialsThisBlockCompleted% += 1;  'trial is complete, change of count here makes logic easier 
-        'attCurrTrialIndex% += 1;
         docase
         case attDoOpto% = 0 or attOptoStarted% = 0 then 'if this is not an opto trial, trial is complete
             if queueReward% = -1 then 'on a miss, go to miss penalty, otherwise we are done
@@ -2037,6 +2014,7 @@ func IdleProcessing%()
             if queueReward% = 1 then
                 if attUseHazardForReward% = 1 then 
                     if trialIsCRForDelayBasedReward% = 0 then
+                        'when updating sampletext, remember that trialHazardFunctionTimeCued does not exist for images
                         ActualRewardDuration% := DelayBasedReward%(attHazardMinTime,attHazardCutoffTime,trialHazardFunctionTimeCued);  'this only makes sense for stimulus-change trials
                         SampleText("Delay-based reward, reward duration is " + Str$(ActualRewardDuration%) + " ms",tNow);
                     else
@@ -2069,6 +2047,7 @@ func IdleProcessing%()
             if queueReward% = 1 then
                 if attUseHazardForReward% = 1 then 
                     if trialIsCRForDelayBasedReward% = 0 then
+                        'when updating sampletext, remember that trialHazardFunctionTimeCued does not exist for images
                         ActualRewardDuration% := DelayBasedReward%(attHazardMinTime,attHazardCutoffTime,trialHazardFunctionTimeCued);  'this only makes sense for stimulus-change trials
                         SampleText("Delay-based reward, reward duration is " + Str$(ActualRewardDuration%) + " ms",tNow);
                     else
@@ -2096,22 +2075,23 @@ func IdleProcessing%()
         attOptoStarted% := 0;  'opto is now off
         SafeSampleKey("X");  'not done in stateCheckTurnOffOpto if we are actually turning off opto
         'give out reward, if necessary, was not given out in previous state if opto was not off
-            if queueReward% = 1 then
-                if attUseHazardForReward% = 1 then 
-                    if trialIsCRForDelayBasedReward% = 0 then
-                        ActualRewardDuration% := DelayBasedReward%(attHazardMinTime,attHazardCutoffTime,trialHazardFunctionTimeCued);  'this only makes sense for stimulus-change trials
-                        SampleText("Delay-based reward, reward duration is " + Str$(ActualRewardDuration%) + " ms",tNow);
-                    else
-                        ActualRewardDuration% := DelayBasedReward%(attHazardMinTime,attHazardCutoffTime,attHazardMinTime); 
-                        SampleText("Delay-based reward, for CR reward duration is minimum of " + Str$(ActualRewardDuration%) + " ms",tNow);                        'Artificially, set this to be the minimum reward
-                        trialIsCRForDelayBasedReward% := 0;  'reset
-                    endif
+        if queueReward% = 1 then
+            if attUseHazardForReward% = 1 then 
+                if trialIsCRForDelayBasedReward% = 0 then
+                    'when updating sampletext, remember that trialHazardFunctionTimeCued does not exist for images
+                    ActualRewardDuration% := DelayBasedReward%(attHazardMinTime,attHazardCutoffTime,trialHazardFunctionTimeCued);  'this only makes sense for stimulus-change trials
+                    SampleText("Delay-based reward, reward duration is " + Str$(ActualRewardDuration%) + " ms",tNow);
                 else
-                    Reward%();
-                endif;
-                nTrialsRewarded% += 1;
-                queueReward% := 0;  'reset reward
+                    ActualRewardDuration% := DelayBasedReward%(attHazardMinTime,attHazardCutoffTime,attHazardMinTime); 
+                    SampleText("Delay-based reward, for CR reward duration is minimum of " + Str$(ActualRewardDuration%) + " ms",tNow);                        'Artificially, set this to be the minimum reward
+                    trialIsCRForDelayBasedReward% := 0;  'reset
+                endif
+            else
+                Reward%();
             endif;
+            nTrialsRewarded% += 1;
+            queueReward% := 0;  'reset reward
+        endif;
         ChangeStateTo(stateTrialCompletedWaitForBlank%,tNow);
         
         
@@ -2179,6 +2159,8 @@ func IdleProcessing%()
         'Advance
         SafeSampleKey("a");
         docase
+        case isGrating% = 0 then 'don't check block counts in image case
+            ChangeStateTo(stateStartTrial%, tNow);
         case nTrialsThisBlockCompleted% = nTrialsThisBlock% then
             ChangeStateTo(stateBlockCompleted%, tNow);
         case nTrialsThisBlockCompleted% > nTrialsThisBlock% then 'This shouldn't happen, but I just can't be sure
@@ -2238,7 +2220,6 @@ end;
 proc PrepareTrial()
     
     var stimTimeRemaining;
-    stimTimeRemaining := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attTrialEndTime[attCurrTrialIndex%];
     var tempNPulses%;
     var tempCount%;
     var tempSeqVarValue;
@@ -2259,28 +2240,58 @@ proc PrepareTrial()
 
     ' Fixation time is a random number between attFixationMinTime and attFixationMaxTime. 
     ' This is how long the animal must fixate before we start the opto (if applicable) and animation
-    attFixationTime := Rand(attFixationCueMaxTime - attFixationCueMinTime, attFixationCueMinTime);
+    if isGrating% = 1 then
+        attFixationTime := Rand(attFixationCueMaxTime - attFixationCueMinTime, attFixationCueMinTime);  'calculate value
+    else
+        attFixationTime := attFixOff[attCurrTrialIndex%];  'get value as read from file
+    endif
     PrintLog("Fixation time " + str$(attFixationTime) + "\n");
     
     ' Set hazard function time and time to answer per trial
     ' These two values are only used for sampletexting, so the fact they are relative to grating onset is OK (I hope)
-    trialHazardFunctionTimeCued := attCuedLocCCTime[attCurrTrialIndex%];  'hazard time has been pre-calculated for all trials
-    trialHazardFunctionTimeUncued := attUncuedLocCCTime[attCurrTrialIndex%];
-    'trialHazardFunctionTimeCued := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attCuedLocCCTime[attCurrTrialIndex%];  'these are measured from the start of the animation, if that's what we need 
-    'trialHazardFunctionTimeUncued := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attUncuedLocCCTime[attCurrTrialIndex%];
+    if isGrating% = 1 then
+        trialHazardFunctionTimeCued := attCuedLocCCTime[attCurrTrialIndex%];  'hazard time has been pre-calculated for all trials
+        trialHazardFunctionTimeUncued := attUncuedLocCCTime[attCurrTrialIndex%];
+        'trialHazardFunctionTimeCued := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attCuedLocCCTime[attCurrTrialIndex%];  'these are measured from the start of the animation, if that's what we need 
+        'trialHazardFunctionTimeUncued := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attUncuedLocCCTime[attCurrTrialIndex%];
+    else
+        trialHazardFunctionTimeCued := attCuedLocImageTime[attCurrTrialIndex%][1] - attCuedLocImageTime[attCurrTrialIndex%][0];  'hazard time has been pre-calculated for all trials
+        trialHazardFunctionTimeUncued := attUncuedLocImageTime[attCurrTrialIndex%][1] - attUncuedLocImageTime[attCurrTrialIndex%][0];
+    endif
+    
     
     ' This value needs to be the time from the point the animation is up until the time the trial ends, now not moving to separate answer window for no-go trials
     ' This is: attCueOffsetTime+attStimOnsetList[trialCount%]+attTrialEndTime[trialCount%]-attContrastChangeDuration
-    attTimeTrialEnds := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attTrialEndTime[attCurrTrialIndex%];  'Time to answer is different on every trial
-    cuedResponseWindowCloseTime := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attCuedLocCCTime[attCurrTrialIndex%]+attResponseWindow;
-    uncuedResponseWindowCloseTime := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attUncuedLocCCTime[attCurrTrialIndex%]+attResponseWindow;
+    if isGrating% = 1 then
+        attTimeTrialEnds := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attTrialEndTime[attCurrTrialIndex%];  'Time to answer is different on every trial
+        cuedResponseWindowCloseTime := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attCuedLocCCTime[attCurrTrialIndex%]+attResponseWindow;
+        uncuedResponseWindowCloseTime := attCueOffsetTime+attStimOnsetList[attCurrTrialIndex%]+attUncuedLocCCTime[attCurrTrialIndex%]+attResponseWindow;
+    else
+        'attTimeTrialEnds := attCueOffsetTimes[attCurrTrialIndex%]+attStimOnsetList[attCurrTrialIndex%]+attTrialEndTime[attCurrTrialIndex%];  'Time to answer is different on every trial
+        'cuedResponseWindowCloseTime := attCueOffsetTimes[attCurrTrialIndex%]+attStimOnsetList[attCurrTrialIndex%]+attCuedLocCCTime[attCurrTrialIndex%]+attResponseWindow;
+        'uncuedResponseWindowCloseTime := attCueOffsetTimes[attCurrTrialIndex%]+attStimOnsetList[attCurrTrialIndex%]+attUncuedLocCCTime[attCurrTrialIndex%]+attResponseWindow; 
+        attTimeTrialEnds := attTrialEndTime[attCurrTrialIndex%];  'Updated assignment of attTrialEndTime for images to make this easier
+        if attCuedLocChangesList%[attCurrTrialIndex%] = 1 then
+            cuedResponseWindowCloseTime := attCuedLocImageTime[attCurrTrialIndex%][1] + attResponseWindow;  'The second (index 1) "image time" is the time the image changes, add the response window
+        else
+            cuedResponseWindowCloseTime := 0;
+        endif
+        if attUncuedLocChangesList%[attCurrTrialIndex%] = 1 then
+            uncuedResponseWindowCloseTime := attUncuedLocImageTime[attCurrTrialIndex%][1] + attResponseWindow;  'The second (index 1) "image time" is the time the image changes, add the response window
+        else
+            uncuedResponseWindowCloseTime := 0;
+        endif
+    endif;
+    stimTimeRemaining := attTimeTrialEnds;  'We modify stimTimeRemaining, so we can't just use attTimeTrialEnds
     
-    'Record if this trial is Cue-All
-    trialIsCueAll% := attIsCueAll%[attCurrTrialIndex%];
+    
        
     'Determine if opto should be on
     if attDoOpto% = 1 then  'if there can be opto
-        if nTrialsThisBlockCompleted% >= attEasyTrialsPerBlock% then  'if it's not an easy trial
+        docase
+        case isGrating% = 0 then  'for images, take attOptoState% directly from the variable read in off the Images/Trials file
+            attOptoState% := attOptoThisImageTrial%[attCurrTrialIndex%];
+        case nTrialsThisBlockCompleted% >= attEasyTrialsPerBlock% then  'if it's not an easy trial
             if Rand(1,0) <= attOptoPropOpto then
                 attOptoState% := 1;  'opto on (random)
                 
@@ -2323,13 +2334,14 @@ proc PrepareTrial()
             endif;
         else
             attOptoState% := 0;  'if it's an easy trial, set opto off
-        endif;
+        endcase;
     else
         attOptoState% := 0;  'if no opto at all, set opto off
     endif;
     
 
-    
+    'Record if this trial is Cue-All
+    trialIsCueAll% := attIsCueAll%[attCurrTrialIndex%];
     
     'Determine if contrast is changing (target) or not (nontarget)
     'Under the new scheme, if any contrast changes, it is a target, otherwise it is a nontarget
@@ -2344,11 +2356,17 @@ proc PrepareTrial()
         trialIsTarget% := attCuedLocChangesList%[attCurrTrialIndex%];  
         trialAttendLoc% := attCuedLocList%[attCurrTrialIndex%];  'this is the attend location
     endcase;
-    fixColor$ := masterColorList$[attFixColor%[attCurrTrialIndex%]-1];
     
-    'Record actual contrast level on this trial, is -1 if contrast does not change
-    thisContrastCued% := attContrastCuedList%[attCurrTrialIndex%];
-    thisContrastUncued% := attContrastUncuedList%[attCurrTrialIndex%];
+    if isGrating% = 1 or trialIsCueAll% >= 0 then
+        fixColor$ := masterColorList$[attFixColor%[attCurrTrialIndex%]-1];
+    else 'in images case, if there is no matching cue, attFixColor%[] will be -1, that won't fly, get actual fixation color (in principle could use this for all trials in image case)
+        fixColor$ := attFixColor$[attCurrTrialIndex%];
+    endif
+    
+    
+    'Record actual contrast level on this trial, is -1 if contrast does not change (won't be used in images version)
+    thisContrastCued% := attContrastCuedList%[attCurrTrialIndex%];  'This is only used in a sampletext
+    thisContrastUncued% := attContrastUncuedList%[attCurrTrialIndex%];  'This is completely unused
     
     
     'Calculate expected answer,  a bit complicated but this should hit all conditions
@@ -2512,6 +2530,40 @@ end;
 
 
 
+proc GetAttentionScriptImagesParameters()
+	var stmp$;
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG2Images";
+
+    attUseCueCircles% := GetIntRegistryValue%(key$, "UseCueCircles", 1); ''
+    attCueCircleExtraRadius := GetFloatRegistryValue(key$, "CueCircleExtraRadius", 0.0); ''
+	attAnswerPointWindowRadius := GetFloatRegistryValue(key$, "AnswerPointWindowRadius", 2.0); ''
+    attCueCircleStrokeWidth% := GetIntRegistryValue%(key$, "CueCircleStrokeWidth", 0); ''
+    attDoOpto% := GetIntRegistryValue%(key$, "DoOpto", 0); ''
+    attRequireJoystickResponse% := GetIntRegistryValue%(key$, "RequireJoystickResponse", 0);
+    
+    attImagesTrialsFile$ := GetStringRegistryValue$(key$, "ImagesTrialsFile", "");
+   
+end;
+
+proc SaveAttentionScriptImagesParameters()
+	var key$;
+	var stmp$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG2Images";
+    
+    SetIntRegistryValue(key$, "UseCueCircles", attUseCueCircles%);
+    SetFloatRegistryValue(key$, "CueCircleExtraRadius", attCueCircleExtraRadius);
+	SetFloatRegistryValue(key$, "AnswerPointWindowRadius", attAnswerPointWindowRadius);  
+    SetIntRegistryValue(key$, "CueCircleStrokeWidth", attCueCircleStrokeWidth%);    
+    SetIntRegistryValue(key$, "DoOpto", attDoOpto%);
+    SetIntRegistryValue(key$, "RequireJoystickResponse", attRequireJoystickResponse%);
+    
+    SetStringRegistryValue(key$, "ImagesTrialsFile", attImagesTrialsFile$);    
+    
+end;
+
+
+
 proc GetTimingDialogParameters()
 	var stmp$;
 	var key$;
@@ -2528,8 +2580,8 @@ proc GetTimingDialogParameters()
 	attAbortPenaltyTime := GetFloatRegistryValue(key$, "AbortPenaltyTime", 1.0);
     attContrastChangeDuration := GetFloatRegistryValue(key$, "ContrastChangeDuration", 1.0);
     attResponseWindow := GetFloatRegistryValue(key$, "ResponseWindow", 1.0);
-    attMissPenaltyTime := GetFloatRegistryValue(key$, "MissPenalty", 1.0);
-    attFalseAlarmPenaltyTime := GetFloatRegistryValue(key$, "FalseAlarmPenaltyTime", 1.0);
+    'attMissPenaltyTime := GetFloatRegistryValue(key$, "MissPenalty", 1.0);  'Miss/FA penalty time being overwritten for now, only one penalty time exists
+    'attFalseAlarmPenaltyTime := GetFloatRegistryValue(key$, "FalseAlarmPenaltyTime", 1.0);
     
     attCueOnsetTime := GetFloatRegistryValue(key$, "CueOnsetTime", 1.0);
     attCueOffsetTime := GetFloatRegistryValue(key$, "CueOffsetTime", 2.0);
@@ -2539,7 +2591,6 @@ proc GetTimingDialogParameters()
     attUseHazardForReward% := GetIntRegistryValue%(key$, "UseHazardForReward", 0);
     attHazRewardMin% := GetIntRegistryValue%(key$, "HazRewardMin", 100);
     attHazRewardMax% := GetIntRegistryValue%(key$, "HazRewardMax", 200);
-    attFixationOffAtCC% := GetIntRegistryValue%(key$, "FixationOffAtCC", 0);
     
     
 end;
@@ -2558,8 +2609,8 @@ proc SaveTimingDialogParameters()
 	SetFloatRegistryValue(key$, "AbortPenaltyTime", attAbortPenaltyTime);
     SetFloatRegistryValue(key$, "ContrastChangeDuration", attContrastChangeDuration);
     SetFloatRegistryValue(key$, "ResponseWindow", attResponseWindow);
-    SetFloatRegistryValue(key$, "MissPenalty", attMissPenaltyTime);
-    SetFloatRegistryValue(key$, "FalseAlarmPenaltyTime", attFalseAlarmPenaltyTime);
+    'SetFloatRegistryValue(key$, "MissPenalty", attMissPenaltyTime);
+    'SetFloatRegistryValue(key$, "FalseAlarmPenaltyTime", attFalseAlarmPenaltyTime);
 	SetFloatRegistryValue(key$, "InterTrialTime", attInterTrialTime);
     
     SetFloatRegistryValue(key$, "CueOnsetTime", attCueOnsetTime);
@@ -2570,7 +2621,51 @@ proc SaveTimingDialogParameters()
     SetIntRegistryValue(key$, "UseHazardForReward", attUseHazardForReward%);
     SetIntRegistryValue(key$, "HazRewardMin", attHazRewardMin%);
     SetIntRegistryValue(key$, "HazRewardMax", attHazRewardMax%);
-    SetIntRegistryValue(key$, "FixationOffAtCC", attFixationOffAtCC%);
+   
+    
+end;
+
+
+proc GetTimingDialogImagesParameters()
+	var stmp$;
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG2Images";
+    
+    
+	attFixationCueMinTime := GetFloatRegistryValue(key$, "FixationCueMinTime", 1.0);
+	attFixationCueMaxTime := GetFloatRegistryValue(key$, "FixationCueMaxTime", 1.0);
+	attAcquisitionTime := GetFloatRegistryValue(key$, "AcquisitionTime", 1.0);
+	attInterTrialTime := GetFloatRegistryValue(key$, "InterTrialTime", 1.0);
+	attAbortPenaltyTime := GetFloatRegistryValue(key$, "AbortPenaltyTime", 1.0);
+    attResponseWindow := GetFloatRegistryValue(key$, "ResponseWindow", 1.0);
+    'attMissPenaltyTime := GetFloatRegistryValue(key$, "MissPenalty", 1.0);  'Miss/FA penalty time being overwritten for now, only one penalty time exists
+    'attFalseAlarmPenaltyTime := GetFloatRegistryValue(key$, "FalseAlarmPenaltyTime", 1.0);
+
+    
+    attUseHazardForReward% := GetIntRegistryValue%(key$, "UseHazardForReward", 0);
+    attHazRewardMin% := GetIntRegistryValue%(key$, "HazRewardMin", 100);
+    attHazRewardMax% := GetIntRegistryValue%(key$, "HazRewardMax", 200);
+    
+    
+end;
+
+proc SaveTimingDialogImagesParameters()
+	var key$;
+	var stmp$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG2Images";
+    
+	SetFloatRegistryValue(key$, "FixationCueMinTime", attFixationCueMinTime);
+	SetFloatRegistryValue(key$, "FixationCueMaxTime", attFixationCueMaxTime);
+	SetFloatRegistryValue(key$, "AcquisitionTime", attAcquisitionTime);
+	SetFloatRegistryValue(key$, "AbortPenaltyTime", attAbortPenaltyTime);
+    SetFloatRegistryValue(key$, "ResponseWindow", attResponseWindow);
+    'SetFloatRegistryValue(key$, "MissPenalty", attMissPenaltyTime);
+    'SetFloatRegistryValue(key$, "FalseAlarmPenaltyTime", attFalseAlarmPenaltyTime);
+	SetFloatRegistryValue(key$, "InterTrialTime", attInterTrialTime);
+    
+    SetIntRegistryValue(key$, "UseHazardForReward", attUseHazardForReward%);
+    SetIntRegistryValue(key$, "HazRewardMin", attHazRewardMin%);
+    SetIntRegistryValue(key$, "HazRewardMax", attHazRewardMax%);
    
     
 end;
@@ -2688,6 +2783,117 @@ end;
 
 
 
+proc GetColorsDialogImagesParameters()
+	var stmp$;
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG2Images";
+    
+
+	attBackgroundColor$ := GetStringRegistryValue$(key$, "BackgroundColor", "gray");
+    
+    if InStr(attBackgroundColor$, "(") = 1 then
+        if ParseColor%(attBackgroundColor$, attBackgroundRed%, attBackgroundGreen%, attBackgroundBlue%) <> 0 then
+            attBackgroundColor$ := "gray";
+        endif
+    endif
+    
+    attCueCircleContrastAttend% := GetIntRegistryValue%(key$, "CueCircleContrastStim", 0);
+    attCueCircleContrastIgnore1% := GetIntRegistryValue%(key$, "CueCircleContrastD1", 0);
+    attCueCircleContrastIgnore2% := GetIntRegistryValue%(key$, "CueCircleContrastD2", 0);
+    attCueCircleContrastIgnore3% := GetIntRegistryValue%(key$, "CueCircleContrastD3", 0);
+    attCueCircleContrastIgnore4% := GetIntRegistryValue%(key$, "CueCircleContrastD4", 0);
+    attCueCirclesMatchCueAllFixpt% := GetIntRegistryValue%(key$, "CueCirclesMatchCueAllFixpt", 0); 
+    attCustomGratingColorCheck% := GetIntRegistryValue%(key$, "CustomGratingColorsCheck", 0);
+    attCustomGratingColorStimFrom%[0] := GetIntRegistryValue%(key$, "CustomGratingColorsStimFromRed", 0);
+    attCustomGratingColorStimFrom%[1] := GetIntRegistryValue%(key$, "CustomGratingColorsStimFromGreen", 0);
+    attCustomGratingColorStimFrom%[2] := GetIntRegistryValue%(key$, "CustomGratingColorsStimFromBlue", 0);
+    attCustomGratingColorStimTo%[0] := GetIntRegistryValue%(key$, "CustomGratingColorsStimToRed", 255);
+    attCustomGratingColorStimTo%[1] := GetIntRegistryValue%(key$, "CustomGratingColorsStimToGreen", 255);
+    attCustomGratingColorStimTo%[2] := GetIntRegistryValue%(key$, "CustomGratingColorsStimToBlue", 255);
+    attCustomGratingColorDistractorFrom%[0] := GetIntRegistryValue%(key$, "CustomGratingColorsDistractorFromRed", 0);
+    attCustomGratingColorDistractorFrom%[1] := GetIntRegistryValue%(key$, "CustomGratingColorsDistractorFromGreen", 0);
+    attCustomGratingColorDistractorFrom%[2] := GetIntRegistryValue%(key$, "CustomGratingColorsDistractorFromBlue", 0);
+    attCustomGratingColorDistractorTo%[0] := GetIntRegistryValue%(key$, "CustomGratingColorsDistractorToRed", 255);
+    attCustomGratingColorDistractorTo%[1] := GetIntRegistryValue%(key$, "CustomGratingColorsDistractorToGreen", 255);
+    attCustomGratingColorDistractorTo%[2] := GetIntRegistryValue%(key$, "CustomGratingColorsDistractorToBlue", 255);
+    attendRGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorAttendR", 0);
+    attendRGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorAttendG", 0);
+    attendRGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorAttendB", 0);
+    ignore1RGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorIgnore1R", 0);
+    ignore1RGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorIgnore1G", 0);
+    ignore1RGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorIgnore1B", 0);
+    ignore2RGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorIgnore2R", 0);
+    ignore2RGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorIgnore2G", 0);
+    ignore2RGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorIgnore2B", 0);
+    ignore3RGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorIgnore3R", 0);
+    ignore3RGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorIgnore3G", 0);
+    ignore3RGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorIgnore3B", 0);
+    ignore4RGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorIgnore4R", 0);
+    ignore4RGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorIgnore4G", 0);
+    ignore4RGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorIgnore4B", 0);
+    cueallRGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorNoAttenR", 0);  'registry key does not match due to Spike2-side nomenclature change
+    cueallRGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorNoAttenG", 0);  'registry key does not match due to Spike2-side nomenclature change
+    cueallRGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorNoAttenB", 0);  'registry key does not match due to Spike2-side nomenclature change
+    nomatchRGB%[0] := GetIntRegistryValue%(key$, "CueCircleColorNoMatchR", 0);
+    nomatchRGB%[1] := GetIntRegistryValue%(key$, "CueCircleColorNoMatchG", 0);
+    nomatchRGB%[2] := GetIntRegistryValue%(key$, "CueCircleColorNoMatchB", 0);
+    
+end;
+
+proc SaveColorsDialogImagesParameters()
+	var key$;
+	var stmp$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG2Images";
+    
+
+	SetStringRegistryValue(key$, "BackgroundColor", attBackgroundColor$);
+    SetIntRegistryValue(key$, "CueCircleContrastStim", attCueCircleContrastAttend%);
+    SetIntRegistryValue(key$, "CueCircleContrastD1", attCueCircleContrastIgnore1%);
+    SetIntRegistryValue(key$, "CueCircleContrastD2", attCueCircleContrastIgnore2%);
+    SetIntRegistryValue(key$, "CueCircleContrastD3", attCueCircleContrastIgnore3%);
+    SetIntRegistryValue(key$, "CueCircleContrastD4", attCueCircleContrastIgnore4%); 
+    SetIntRegistryValue(key$, "CueCirclesMatchCueAllFixpt", attCueCirclesMatchCueAllFixpt%);    
+    SetIntRegistryValue(key$, "CustomGratingColorsCheck", attCustomGratingColorCheck%);
+    SetIntRegistryValue(key$, "CustomGratingColorsStimFromRed", attCustomGratingColorStimFrom%[0]);
+    SetIntRegistryValue(key$, "CustomGratingColorsStimFromGreen", attCustomGratingColorStimFrom%[1]);
+    SetIntRegistryValue(key$, "CustomGratingColorsStimFromBlue", attCustomGratingColorStimFrom%[2]);
+    SetIntRegistryValue(key$, "CustomGratingColorsStimToRed", attCustomGratingColorStimTo%[0]);
+    SetIntRegistryValue(key$, "CustomGratingColorsStimToGreen", attCustomGratingColorStimTo%[1]);
+    SetIntRegistryValue(key$, "CustomGratingColorsStimToBlue", attCustomGratingColorStimTo%[2]);
+    SetIntRegistryValue(key$, "CustomGratingColorsDistractorFromRed", attCustomGratingColorDistractorFrom%[0]);
+    SetIntRegistryValue(key$, "CustomGratingColorsDistractorFromGreen", attCustomGratingColorDistractorFrom%[1]);
+    SetIntRegistryValue(key$, "CustomGratingColorsDistractorFromBlue", attCustomGratingColorDistractorFrom%[2]);
+    SetIntRegistryValue(key$, "CustomGratingColorsDistractorToRed", attCustomGratingColorDistractorTo%[0]);
+    SetIntRegistryValue(key$, "CustomGratingColorsDistractorToGreen", attCustomGratingColorDistractorTo%[1]);
+    SetIntRegistryValue(key$, "CustomGratingColorsDistractorToBlue", attCustomGratingColorDistractorTo%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorAttendR", attendRGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorAttendG", attendRGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorAttendB", attendRGB%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore1R", ignore1RGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore1G", ignore1RGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore1B", ignore1RGB%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore2R", ignore2RGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore2G", ignore2RGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore2B", ignore2RGB%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore3R", ignore3RGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore3G", ignore3RGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore3B", ignore3RGB%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore4R", ignore4RGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore4G", ignore4RGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorIgnore4B", ignore4RGB%[2]);
+    SetIntRegistryValue(key$, "CueCircleColorNoAttenR", cueallRGB%[0]);  'registry key does not match due to Spike2-side nomenclature change
+    SetIntRegistryValue(key$, "CueCircleColorNoAttenG", cueallRGB%[1]);  'registry key does not match due to Spike2-side nomenclature change
+    SetIntRegistryValue(key$, "CueCircleColorNoAttenB", cueallRGB%[2]);  'registry key does not match due to Spike2-side nomenclature change
+    SetIntRegistryValue(key$, "CueCircleColorNoMatchR", nomatchRGB%[0]);
+    SetIntRegistryValue(key$, "CueCircleColorNoMatchG", nomatchRGB%[1]);
+    SetIntRegistryValue(key$, "CueCircleColorNoMatchB", nomatchRGB%[2]);
+
+    
+end;
+
+
+
+
 
 func AttentionScriptDialog%() 
 	var i%;
@@ -2718,7 +2924,7 @@ func AttentionScriptDialog%()
         JuiceRewardMSMin% := attHazRewardMin%;
         JuiceRewardMSMax% := attHazRewardMax%;
     endif;
-    GetFlasherDialogParameters(); 'and this...
+    'GetFlasherDialogParameters(); 'and this...disabled for now
     GetAttOptoParameters();  'and this...
     GetAttCuesToUseParameters();  'and this...
     CreateMasterColorLists();  'and this...
@@ -3126,6 +3332,117 @@ end
 
 
 
+func AttentionScriptImagesDialog%() 
+	var i%;
+    var tempTrialsPerContrast%;
+    var tempTotal;  'friggin integer math
+    var tempWhoops;
+    var cueCircleList$[4];
+    var success%;
+  
+    cueCircleList$[0] := "No Cue Circles";
+    'cueCircleList$[1] := "Cue Circles";
+    cueCircleList$[1] := "Cue Squares (not working)";
+    cueCircleList$[2] := "Cue Circles + Cue Points";
+    cueCircleList$[3] := "Cue Points Only";  'should be ready to go
+    
+	GetAttentionScriptImagesParameters();
+    'GetColorsDialogImagesParameters();  'we need to GET the parameters here, or the user will need to open each dialog
+    GetTimingDialogImagesParameters();  'this too...
+    'Override JuiceRewardMSMin%/JuiceRewardMSMax% with values from dialog, if using hazard for reward
+    'The problem is that if Henry doesn't run the Timing dialog box, this calculation isn't done and the
+    'values from Config pertain, and they may not be good values.  So we have to calculate them here in case
+    'Henry doesn't run the Timing dialog, which, once his values are set, he wouldn't.
+    'This really isn't great policy and these numbers really should probably be set from within Config/DAQ as
+    'that's where they live, but I guess if Henry complains enough he gets what he wants.  Note that any call
+    'to GetDAQParameters() subsequent to this section will restore the values to the state from Config/DAQ, I
+    'am NOT saving the values written here to the DAQ registry.  Only overriding values if hazard function used.
+    if attUseHazardForReward% = 1 then
+        JuiceRewardMSMin% := attHazRewardMin%;
+        JuiceRewardMSMax% := attHazRewardMax%;
+    endif;
+    GetAttOptoImagesParameters();  'and this...
+    'GetAttCuesToUseImagesParameters();  'and this...this will be set by the user who creates the images/trials file
+    'CreateMasterColorLists();  'and this...
+    
+    attUseLowReward% := 0;  'Disabling low reward, not being used.  Set check box to 0, disabled changing check box in dialog-changed function
+    attUseFlashers% := 0;  'Disabling using flashers, for now, may reinstate.  So, setting check box to 0, disabling check box and flashers dialog button
+    
+
+    
+	DlgCreate("Attention-Images Parameters");   'on Spike2 v6, must extend height, on v8, will auto-extend height
+    
+    DlgGroup("Cues", 1, 1, 43, 5);
+    DlgReal(1, "Answer Window Radius (deg)", 0, 20, 20, 2);
+    DlgList(2, 30, cueCircleList$[], 4, 3, 3);
+	DlgReal(3, "Cue extra radius (deg)", 0, 5, 20, 4);
+    DlgInteger(4, "Cue Circle Stroke Width(integer)", 0, 20, 20, 5);
+    'DlgInteger(23, 4, 0, 20, 30, 17); DlgText("Cue Circle Stroke Width(integer)",2,17);
+    
+    DlgGroup("Opto", 1, 6, 43, 3);
+    DlgCheck(5,"Opto On",2,7);
+    DlgButton(2, "Optogenetics Parameters", AttOptoDialog%, 2, 8);
+    
+    DlgGroup("Joystick", 1, 9, 43, 3);
+    DlgCheck(6,"Use Joystick",2,10);
+    DlgButton(3, "Joystick Dialog", CallJoystickConfigDialog%,2,11);
+    
+    DlgGroup("Timing", 1, 12, 43, 2);
+    'DlgButton(4, "Colors", ColorsDialog%, 2,12);
+    DlgButton(4, "Timing", TimingDialog%, 2,13);  
+    
+    DlgGroup("File", 1, 14, 43, 3);
+    DlgString(7,40,255,"",3,15);  'for visual confirmation of selected seq file
+    DlgButton(5, " Select Images File ", SelectImagesTrialsFile%, 2, 16);    
+
+    DlgAllow(0, 0, AttentionScriptImagesDialogChanged%);
+    
+	i%:=DlgShow(attAnswerPointWindowRadius, attUseCueCircles%, attCueCircleExtraRadius, 
+    attCueCircleStrokeWidth%, attDoOpto%, attRequireJoystickResponse%, attImagesTrialsFile$);
+    
+    
+	if i% = 1 then   
+        
+		SaveAttentionScriptImagesParameters(); 
+        
+        'Read the Images/Trials file, extract required variables
+        success% := ReadImagesTrialsFile%(attImagesTrialsFile$,mainX,mainY,dist1X,dist1Y,dist2X,dist2Y,dist3X,dist3Y,dist4X,dist4Y,
+        attNumPatches%,attOffBitsList%[],attOptoThisImageTrial%[],attCueOnsetTimes[],attCueOffsetTimes[],attFixOff[],mainTime[][],mainImage%[][],dist1Time[][],dist1Image%[][],
+        dist2Time[][],dist2Image%[][],dist3Time[][],dist3Image%[][],dist4Time[][],dist4Image%[][],attAllOff[],
+        attHazardMinTime,attHazardCutoffTime,attIsCueAll%[],attCuedLocList%[],attCuedLocChangesList%[],
+        attCuedLocImage%[][],attCuedLocImageTime[][],attUncuedLocList%[],attUncuedLocChangesList%[],attUncuedLocImage%[][],
+        attUncuedLocImageTime[][],attTrialEndTime[],attFixColor%[],masterColorListVSG$[],attFixColor$[]);
+
+        printlog("ReadImagesTrialsFile returned %d\n",success%);
+        
+        
+        
+                
+	endif;
+    
+	return i%;
+end;
+
+
+' Called when items in attention script dialog change. WARNING: The item #s are coded as constants
+' If format of dialog changes then those constants should be changed. 
+
+func AttentionScriptImagesDialogChanged%(item%)
+    var status% := 1;
+    
+    DlgEnable(DlgValue(5), -2);  'allow opto button based on use of opto
+    
+    DlgEnable(DlgValue(6), -3);  'allow joystick button based on use of joystick
+    
+    return status%;
+end
+
+
+
+
+
+
+
 func ParseColor%(s$, &r%, &g%, &b%)
     var status% := -1;
     var n;
@@ -3149,7 +3466,11 @@ end
 func TimingDialog%()
     var i%;
     
-    GetTimingDialogParameters();
+    if isGrating% = 1 then
+        GetTimingDialogParameters();
+    else
+        GetTimingDialogImagesParameters();
+    endif;
     
 	DlgCreate("Attention timing", 25, 10);
 	DlgReal(atttimingdlgAcquisitionTime%, "Acquisition time(s):", .01, 10);
@@ -3175,7 +3496,7 @@ func TimingDialog%()
     DlgAllow(0, 0, TimingDialogChanged%);
     i%:=DlgShow(attAcquisitionTime, attFixationCueMinTime, attFixationCueMaxTime, attCueOnsetTime, attCueOffsetTime, attStimOnsetTime,
     attHazardMinTime, attHazardExpMeanTime, attHazardCutoffTime, attUseHazardForReward%, attHazRewardMin%, attHazRewardMax%,
-    attContrastChangeDuration, attResponseWindow, attInterTrialTime, attAbortPenaltyTime, attLockUncuedToCued%);   ', attFixationOffAtCC%
+    attContrastChangeDuration, attResponseWindow, attInterTrialTime, attAbortPenaltyTime, attLockUncuedToCued%); 
     if i% = 1 then
         attFalseAlarmPenaltyTime := attAbortPenaltyTime;
         attMissPenaltyTime := attAbortPenaltyTime;
@@ -3190,8 +3511,11 @@ func TimingDialog%()
             JuiceRewardMSMax% := attHazRewardMax%;
         endif;
         
-        
-        SaveTimingDialogParameters();
+        if isGrating% = 1 then
+            SaveTimingDialogParameters();
+        else
+            SaveTimingDialogImagesParameters();
+        endif;
         
     endif;
     return 1;
@@ -3203,6 +3527,22 @@ func TimingDialogChanged%(item%)
     
     DlgEnable(DlgValue(atttimingdlgUseHazardForReward%), atttimingdlgHazRewardMin%);  'allow hazard min reward time based on using hazard function
     DlgEnable(DlgValue(atttimingdlgUseHazardForReward%), atttimingdlgHazRewardMax%);  'allow hazard max reward time based on using hazard function
+    
+    'turn off unused timing elements in images version
+    if isGrating% = 0 then
+        'Values we're just skipping out on
+        DlgEnable(0,atttimingdlgHazardExpMeanTime%);  'only used to generate hazard distribution, that is done offline and written in the images/trials file from the get-go
+        DlgEnable(0,atttimingdlgContrastChangeDuration%);
+        DlgEnable(0,atttimingdlgLockUncued%);
+        
+        'Values we're getting somewhere else
+        DlgEnable(0,atttimingdlgCueOnsetTime%);  'read from image/trial file
+        DlgEnable(0,atttimingdlgCueOffsetTime%);  'read from image/trial file
+        DlgEnable(0,atttimingdlgStimOnsetTime%);  'read from image/trial file
+        DlgEnable(0,atttimingdlgHazardMinTime%);  'read from image/trial file
+        DlgEnable(0,atttimingdlgHazardCutoffTime%);  'read from image/trial file
+    endif
+    
     
     docase
     case item% = atttimingdlgFixationCueMinTime% or item% = atttimingdlgFixationCueMaxTime% then
@@ -3222,7 +3562,7 @@ func TimingDialogChanged%(item%)
             status% := 0;
             Message("Cue onset time must be < Cue offset time");
         endif;    
-    case item% = atttimingdlgContrastChangeDuration% or item% = atttimingdlgResponseWindow% then
+    case (item% = atttimingdlgContrastChangeDuration% or item% = atttimingdlgResponseWindow%) and isGrating% = 1 then
         if DlgValue(atttimingdlgContrastChangeDuration%) > DlgValue(atttimingdlgResponseWindow%) then
             status% := 0;
             Message("Response window cannot be < contrast change duration");
@@ -3253,7 +3593,11 @@ func ColorsDialog%()
     var fiveints%[5];
     var twentyoneints%[21];
     
-    GetColorsDialogParameters();
+    if isGrating% = 1 then
+        GetColorsDialogParameters();
+    else
+        GetColorsDialogImagesParameters();
+    endif
     
     'put defaults into fiveints%[]
     fiveints%[0] := attCueCircleContrastAttend%;
@@ -3436,8 +3780,11 @@ func ColorsDialog%()
             attCueCircleContrastIgnore4% := 100;
         endif
         
-        
-        SaveColorsDialogParameters();
+        if isGrating% = 1 then
+            SaveColorsDialogParameters();
+        else
+            SaveColorsDialogImagesParameters();
+        endif
         
         'Test output within colors dialog, allows me to test without crashing on a non-1401 computer
         'Problem is that this does not respect the dialog value for the number of gratings, hard to test...
@@ -3550,13 +3897,21 @@ func AttOptoDialog%()
     var stimdur;
     var tempNPulses%;
     var tempCount%;
-    stimdur := attFixationCueMaxTime + attHazardCutoffTime + attContrastChangeDuration;  'get stimulus duration value from calling (main) dialog, limit opto period based on this
+    
     
 '    labels$[0] := "Opto Off First";
 '    labels$[1] := "Opto On First";
 '    labels$[2] := "Random First";
 '    labels$[3] := "Opto On All Blocks";
-	GetAttOptoParameters();
+    
+    if isGrating% = 1 then
+        stimdur := attFixationCueMaxTime + attHazardCutoffTime + attContrastChangeDuration;  'get stimulus duration value from calling (main) dialog, limit opto period based on this
+        GetAttOptoParameters();
+    else
+        stimdur := 10;  'for images, we don't know this value yet, set to large enough value to allow dialog to take any valid value
+        GetAttOptoImagesParameters();
+    endif;
+    
 	DlgCreate("Optogenetics Parameters");
     DlgGroup("Common Parameters", 1, 1, 38, 5);
     DlgReal(1, "Opto Voltage Out (V)",0.0002,5,20,2); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
@@ -3590,35 +3945,41 @@ func AttOptoDialog%()
     ' before things proceed. 
 
 	if i% = 1 then
-		SaveAttOptoParameters();
+        if isGrating% = 1 then
+            SaveAttOptoParameters();
+        else
+            SaveAttOptoImagesParameters();
+        endif;
         
         'do temporary calculation to make sure all pulses will occur during the stimulus
         'unfortunately we will have to do this AGAIN once the script starts because the user could change the stimulus duration after the opto parameters
         'fortunately, the calculation is the same and it all worked on the first try
-        if attOptoUsePulse% = 1 then
-            stimdur := stimdur - attPulsedOptoOnset;  'duration of stimulus after onset delay
-            stimdur := stimdur - attPulsedOptoWidth;  'duration of stimulus after first opto pulse
-            if stimdur < 0 then  'if first pulse will extend beyond stimulus duration
-                attOptoNPulses% := 0;  'turn off opto by using no pulses
-                'tell user to try again
-                Message("The first opto pulse will extend beyond the stimulus!  There will be no pulses!  Please try again!");
-            else
-                tempNPulses% := attOptoNPulses% - 1;  'how many more pulses are left?
-                tempCount% := 1;  'temporary successful pulse count
-                while tempNPulses% > 0 do
-                    stimdur := stimdur - attPulsedOptoWidth - attPulsedOptoIPI;  'subtract duration of one more pulse+IPI
-                    if stimdur < 0 then  'if this pulse will extend beyond stimulus duration
-                        Message("Due to stimulus length, only " + Str$(tempCount%) + " pulses can be completed!  You may try again!");
-                        attOptoNPulses% := tempCount%;  'only use this many pulses if user does not recalculate
-                        tempNPulses% := 0;  'break while
-                    else  'if this pulse is OK
-                        tempCount% += 1;  'increment temporary successful pulse count
-                    endif;
-                    tempNPulses% -= 1;  'decrement temporary pulse count remaining
-                wend
+        if isGrating% = 1 then  'we can't do this calculation in the dialog box in the images version because the value of STIMDUR must be determined by reading the input file
+            if attOptoUsePulse% = 1 then
+                stimdur := stimdur - attPulsedOptoOnset;  'duration of stimulus after onset delay
+                stimdur := stimdur - attPulsedOptoWidth;  'duration of stimulus after first opto pulse
+                if stimdur < 0 then  'if first pulse will extend beyond stimulus duration
+                    attOptoNPulses% := 0;  'turn off opto by using no pulses
+                    'tell user to try again
+                    Message("The first opto pulse will extend beyond the stimulus!  There will be no pulses!  Please try again!");
+                else
+                    tempNPulses% := attOptoNPulses% - 1;  'how many more pulses are left?
+                    tempCount% := 1;  'temporary successful pulse count
+                    while tempNPulses% > 0 do
+                        stimdur := stimdur - attPulsedOptoWidth - attPulsedOptoIPI;  'subtract duration of one more pulse+IPI
+                        if stimdur < 0 then  'if this pulse will extend beyond stimulus duration
+                            Message("Due to stimulus length, only " + Str$(tempCount%) + " pulses can be completed!  You may try again!");
+                            attOptoNPulses% := tempCount%;  'only use this many pulses if user does not recalculate
+                            tempNPulses% := 0;  'break while
+                        else  'if this pulse is OK
+                            tempCount% += 1;  'increment temporary successful pulse count
+                        endif;
+                        tempNPulses% -= 1;  'decrement temporary pulse count remaining
+                    wend
+                    
+                endif;
                 
             endif;
-            
         endif;
         
         
@@ -3694,6 +4055,44 @@ end;
 
 
 
+proc GetAttOptoImagesParameters()
+	var stmp$;
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG\\OptoImages";
+    
+    attPreStimOptoTime := GetFloatRegistryValue(key$, "PreStimOptoTime", attPreStimOptoTime);
+    attPostStimOptoTime := GetFloatRegistryValue(key$, "PostStimOptoTime", attPostStimOptoTime);
+    attOptoVoltageOut := GetFloatRegistryValue(key$, "OptoVoltageOut", attOptoVoltageOut);
+    attOptoPropOpto := GetFloatRegistryValue(key$, "OptoPctOpto", attOptoPropOpto);
+    attOptoUsePulse% := GetIntRegistryValue%(key$, "OptoUsePulse", attOptoUsePulse%);
+    attLaserDiode% := GetIntRegistryValue%(key$, "LaserDiode", attLaserDiode%);
+    attOptoNPulses% := GetIntRegistryValue%(key$, "OptoNPulses", attOptoNPulses%);
+    attPulsedOptoOnset := GetFloatRegistryValue(key$, "PulsedOptoOnset", attPulsedOptoOnset);
+    attPulsedOptoWidth := GetFloatRegistryValue(key$, "PulsedOptoWidth", attPulsedOptoWidth);
+    attPulsedOptoIPI := GetFloatRegistryValue(key$, "PulsedOptoIPI", attPulsedOptoIPI);
+    attInterBlockTime := GetFloatRegistryValue(key$, "InterBlockTime", attInterBlockTime);
+
+end;
+
+proc SaveAttOptoImagesParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG\\OptoImages";
+    SetFloatRegistryValue(key$, "PreStimOptoTime", attPreStimOptoTime);
+    SetFloatRegistryValue(key$, "PostStimOptoTime", attPostStimOptoTime);
+    SetFloatRegistryValue(key$, "OptoVoltageOut", attOptoVoltageOut);
+    SetFloatRegistryValue(key$, "OptoPctOpto", attOptoPropOpto);
+    SetIntRegistryValue(key$, "OptoUsePulse", attOptoUsePulse%);
+    SetIntRegistryValue(key$, "LaserDiode", attLaserDiode%);
+    SetIntRegistryValue(key$, "OptoNPulses", attOptoNPulses%);
+    SetFloatRegistryValue(key$, "PulsedOptoOnset", attPulsedOptoOnset);
+    SetFloatRegistryValue(key$, "PulsedOptoWidth", attPulsedOptoWidth);
+    SetFloatRegistryValue(key$, "PulsedOptoIPI", attPulsedOptoIPI);
+    SetFloatRegistryValue(key$, "InterBlockTime", attInterBlockTime);
+    
+
+end;
+
+
 func AttCuesToUseDialog%()
 	var iReturn% := 1;
 	var i%;
@@ -3714,8 +4113,13 @@ func AttCuesToUseDialog%()
     blockStartList$[6] := "Start Block: Cue All";
     blockStartList$[7] := "Start Block: Cue Random, No Cue All";
     blockStartList$[8] := "Start Block: Cue Random, WITH Cue All";    
-
-	GetAttCuesToUseParameters();
+    
+    if isGrating% = 1 then
+        GetAttCuesToUseParameters();
+    else
+        GetAttCuesToUseImagesParameters();
+    endif;
+    
     
 	DlgCreate("Select Blocks Of Cues To Use");
     DlgInteger(1, "Cue Main Stimulus (# blocks)",0,100);
@@ -3781,8 +4185,11 @@ func AttCuesToUseDialog%()
             Message("Requested to start with distracter 1 but fewer than 2 gratings requested in main dialog!");
         endcase
         
-        
-		SaveAttCuesToUseParameters();
+        if isGrating% = 1 then
+            SaveAttCuesToUseParameters();
+        else
+            SaveAttCuesToUseImagesParameters();
+        endif;
 
         
         
@@ -3863,6 +4270,36 @@ proc SaveAttCuesToUseParameters()
    
 end;
 
+
+proc GetAttCuesToUseImagesParameters()
+	var stmp$;
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG\\CuesImages";
+    
+    attNumMainCues% := GetIntRegistryValue%(key$, "NumMainCues", attNumMainCues%);
+    attNumDistracter1Cues% := GetIntRegistryValue%(key$, "NumDistracter1Cues", attNumDistracter1Cues%);
+    attNumDistracter2Cues% := GetIntRegistryValue%(key$, "NumDistracter2Cues", attNumDistracter2Cues%);
+    attNumDistracter3Cues% := GetIntRegistryValue%(key$, "NumDistracter3Cues", attNumDistracter3Cues%);
+    attNumDistracter4Cues% := GetIntRegistryValue%(key$, "NumDistracter4Cues", attNumDistracter4Cues%);
+    attNumCueAllCues% := GetIntRegistryValue%(key$, "NumCueAllCues", attNumCueAllCues%);
+    attNumRandomNoCACues% := GetIntRegistryValue%(key$, "NumRandomNoCACues", attNumRandomNoCACues%);
+    attNumRandomWithCACues% := GetIntRegistryValue%(key$, "NumRandomWithCACues", attNumRandomWithCACues%);
+    
+end;
+
+proc SaveAttCuesToUseImagesParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\AttentionGNG\\CuesImages";
+    SetIntRegistryValue(key$, "NumMainCues", attNumMainCues%);
+    SetIntRegistryValue(key$, "NumDistracter1Cues", attNumDistracter1Cues%);
+    SetIntRegistryValue(key$, "NumDistracter2Cues", attNumDistracter2Cues%);
+    SetIntRegistryValue(key$, "NumDistracter3Cues", attNumDistracter3Cues%);
+    SetIntRegistryValue(key$, "NumDistracter4Cues", attNumDistracter4Cues%);
+    SetIntRegistryValue(key$, "NumCueAllCues", attNumCueAllCues%);
+    SetIntRegistryValue(key$, "NumRandomNoCACues", attNumRandomNoCACues%);
+    SetIntRegistryValue(key$, "NumRandomWithCACues", attNumRandomWithCACues%);
+   
+end;
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -4356,6 +4793,7 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                     initPhase%[L%-1] := GetStimulusPhase(L%);
                 next;
                 'Then, overwrite values for stimuli that have a contrast change, if PhaseCheck% is set
+                'This only occurs for gratings, so we can leave attCueOffsetTime as a scalar
                 if attPhaseCheck% = 1 then
                     if cuedLocChanges%[ind%] = 1 then
                         'Do not subtract 1 in call to GetStimulusTF, that expects 1-based indexing, just as cuedLoc/uncuedLoc are set in
@@ -4538,8 +4976,6 @@ end;
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Answer%(EyePosX, EyePosY)
     var ans% := 0;
-    var ansptRadius;
-    'ansptRadius := Pow(attAnswerPointWindowRadius,2);  'answer point radius is now the size of the grating
     
     'note that in the case statement, we will not consider grating patches that don't exist - see how smart we are!
     docase
@@ -4563,7 +4999,6 @@ end;
 func LookingAtCuePoint%(EyePosX, EyePosY, windowRadius)
     'this function is essentially Answer% except with a variable window radius
     var ans% := 0;
-    'ansptRadius := Pow(attAnswerPointWindowRadius,2);  'answer point radius is now the size of the grating
     
     'note that in the case statement, we will not consider grating patches that don't exist - see how smart we are!
     docase
@@ -4636,7 +5071,8 @@ proc WriteParameterFile()
     'creating some lists for output, same as from dialog
     var cueCircleList$[4];
     cueCircleList$[0] := "No Cue Circles";
-    cueCircleList$[1] := "Cue Circles";
+    'cueCircleList$[1] := "Cue Circles";
+    cueCircleList$[1] := "Cue Squares (not working)";
     cueCircleList$[2] := "Cue Circles + Cue Points";
     cueCircleList$[3] := "Cue Points Only";  'should be ready to go
     
@@ -4682,6 +5118,7 @@ proc WriteParameterFile()
 	Print("Diameter (degrees)         : %f\n", FixationDiameter);
 	Print("Color                      : %s\n", FixationColor$);
     
+    
 	' write stimulus parameters
 	var Tstimstr$;
 	var Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$;
@@ -4690,24 +5127,29 @@ proc WriteParameterFile()
     var phase;
     Print("\nStimulus\n");  'Master grating
 	Print("-------------------\n\n");
-	Tstimstr$ := GetGratingParameters$("Stimulus");
-	ReadSetup(",",",",",",",",",");
-	i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
-	Print("Position (x, degrees)           : %s\n", Tstimx$);
-	Print("Position (y, degrees)           : %s\n", Tstimy$);
-	Print("Width (degrees)                 : %s\n", Tstimw$);
-	Print("Height (degrees)                : %s\n", Tstimh$);
-    Print("Inner Width (degrees)           : %s\n", Tstimiw$);
-	Print("Inner Height (degrees)          : %s\n", Tstimih$);
-	Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", Tstimcv$);
-    Print("Temporal frequency              : %s\n", Tstimtf$);
-	Print("Spatial frequency               : %s\n", Tstimsf$);
-	Print("Orientation (degrees)           : %s\n", Tstimorientation$);
-    'Print("Initial Phase (degrees)         : %f\n", phase);  'WTF?
-    Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
-	Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
-	Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
-	Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
+    if isGrating% = 1 then
+        Tstimstr$ := GetGratingParameters$("Stimulus");
+        ReadSetup(",",",",",",",",",");
+        i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
+        Print("Position (x, degrees)           : %s\n", Tstimx$);
+        Print("Position (y, degrees)           : %s\n", Tstimy$);
+        Print("Width (degrees)                 : %s\n", Tstimw$);
+        Print("Height (degrees)                : %s\n", Tstimh$);
+        Print("Inner Width (degrees)           : %s\n", Tstimiw$);
+        Print("Inner Height (degrees)          : %s\n", Tstimih$);
+        Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", Tstimcv$);
+        Print("Temporal frequency              : %s\n", Tstimtf$);
+        Print("Spatial frequency               : %s\n", Tstimsf$);
+        Print("Orientation (degrees)           : %s\n", Tstimorientation$);
+        Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
+        Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
+        Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
+        Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
+    else
+        Print("Position (x, degrees)           : %f\n", mainX);
+        Print("Position (y, degrees)           : %f\n", mainY);
+    endif
+    
     
     if attUseCueCircles% > 0 then
         Print("Attend Cue Circle Contrast        : %d\n", attCueCircleContrastAttend%);
@@ -4720,25 +5162,29 @@ proc WriteParameterFile()
     if attNumPatches% > 1 then
         Print("\nDistractor1\n");  'Distractor grating
         Print("-------------------\n\n");
-        Tstimstr$ := GetGratingParameters$("Distractor1");
-        ReadSetup(",",",",",",",",",");
-        i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
-        Print("Position (x, degrees)           : %s\n", Tstimx$);
-        Print("Position (y, degrees)           : %s\n", Tstimy$);
-        if attGetGPFromMainStim% = 0 then
-            Print("Width (degrees)                 : %s\n", Tstimw$);
-            Print("Height (degrees)                : %s\n", Tstimh$);
-            Print("Inner Width (degrees)           : %s\n", Tstimiw$);
-            Print("Inner Height (degrees)          : %s\n", Tstimih$);
-            Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", Tstimcv$);
-            Print("Temporal frequency              : %s\n", Tstimtf$);
-            Print("Spatial frequency               : %s\n", Tstimsf$);
-            Print("Orientation (degrees)           : %s\n", Tstimorientation$);
-            'Print("Initial Phase (degrees)         : %f\n", phase);  'WTF?
-            Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
-            Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
-            Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
-            Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
+        if isGrating% = 1 then
+            Tstimstr$ := GetGratingParameters$("Distractor1");
+            ReadSetup(",",",",",",",",",");
+            i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
+            Print("Position (x, degrees)           : %s\n", Tstimx$);
+            Print("Position (y, degrees)           : %s\n", Tstimy$);
+            if attGetGPFromMainStim% = 0 then
+                Print("Width (degrees)                 : %s\n", Tstimw$);
+                Print("Height (degrees)                : %s\n", Tstimh$);
+                Print("Inner Width (degrees)           : %s\n", Tstimiw$);
+                Print("Inner Height (degrees)          : %s\n", Tstimih$);
+                Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", Tstimcv$);
+                Print("Temporal frequency              : %s\n", Tstimtf$);
+                Print("Spatial frequency               : %s\n", Tstimsf$);
+                Print("Orientation (degrees)           : %s\n", Tstimorientation$);
+                Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
+                Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
+                Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
+                Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
+            endif;
+        else
+            Print("Position (x, degrees)           : %f\n", dist1X);
+            Print("Position (y, degrees)           : %f\n", dist1Y);
         endif;
         
         if attUseCueCircles% > 0 then
@@ -4747,28 +5193,35 @@ proc WriteParameterFile()
         endif;        
         
     endif;
+    
+    
     if attNumPatches% > 2 then
         Print("\nDistractor2\n");  'Distractor grating
         Print("-------------------\n\n");
-        Tstimstr$ := GetGratingParameters$("Distractor2");
-        ReadSetup(",",",",",",",",",");
-        i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
-        Print("Position (x, degrees)           : %s\n", Tstimx$);
-        Print("Position (y, degrees)           : %s\n", Tstimy$);
-        if attGetGPFromMainStim% = 0 then
-            Print("Width (degrees)                 : %s\n", Tstimw$);
-            Print("Height (degrees)                : %s\n", Tstimh$);
-            Print("Inner Width (degrees)           : %s\n", Tstimiw$);
-            Print("Inner Height (degrees)          : %s\n", Tstimih$);
-            Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", Tstimcv$);
-            Print("Temporal frequency              : %s\n", Tstimtf$);
-            Print("Spatial frequency               : %s\n", Tstimsf$);
-            Print("Orientation (degrees)           : %s\n", Tstimorientation$);
-            'Print("Initial Phase (degrees)         : %f\n", phase);  'WTF?
-            Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
-            Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
-            Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
-            Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
+        if isGrating% = 1 then
+            Tstimstr$ := GetGratingParameters$("Distractor2");
+            ReadSetup(",",",",",",",",",");
+            i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
+            Print("Position (x, degrees)           : %s\n", Tstimx$);
+            Print("Position (y, degrees)           : %s\n", Tstimy$);
+            if attGetGPFromMainStim% = 0 then
+                Print("Width (degrees)                 : %s\n", Tstimw$);
+                Print("Height (degrees)                : %s\n", Tstimh$);
+                Print("Inner Width (degrees)           : %s\n", Tstimiw$);
+                Print("Inner Height (degrees)          : %s\n", Tstimih$);
+                Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", Tstimcv$);
+                Print("Temporal frequency              : %s\n", Tstimtf$);
+                Print("Spatial frequency               : %s\n", Tstimsf$);
+                Print("Orientation (degrees)           : %s\n", Tstimorientation$);
+                'Print("Initial Phase (degrees)         : %f\n", phase);  'WTF?
+                Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
+                Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
+                Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
+                Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
+            endif;
+        else
+            Print("Position (x, degrees)           : %f\n", dist2X);
+            Print("Position (y, degrees)           : %f\n", dist2Y);
         endif;
         
         if attUseCueCircles% > 0 then
@@ -4777,28 +5230,34 @@ proc WriteParameterFile()
         endif;
         
     endif;
+    
+    
     if attNumPatches% > 3 then
         Print("\nDistractor3\n");  'Distractor grating
         Print("-------------------\n\n");
-        Tstimstr$ := GetGratingParameters$("Distractor3");
-        ReadSetup(",",",",",",",",",");
-        i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
-        Print("Position (x, degrees)           : %s\n", Tstimx$);
-        Print("Position (y, degrees)           : %s\n", Tstimy$);
-        if attGetGPFromMainStim% = 0 then
-            Print("Width (degrees)                 : %s\n", Tstimw$);
-            Print("Height (degrees)                : %s\n", Tstimh$);
-            Print("Inner Width (degrees)           : %s\n", Tstimiw$);
-            Print("Inner Height (degrees)          : %s\n", Tstimih$);
-            Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", Tstimcv$);
-            Print("Temporal frequency              : %s\n", Tstimtf$);
-            Print("Spatial frequency               : %s\n", Tstimsf$);
-            Print("Orientation (degrees)           : %s\n", Tstimorientation$);
-            'Print("Initial Phase (degrees)         : %f\n", phase);  'WTF?
-            Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
-            Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
-            Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
-            Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
+        if isGrating% = 1 then
+            Tstimstr$ := GetGratingParameters$("Distractor3");
+            ReadSetup(",",",",",",",",",");
+            i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
+            Print("Position (x, degrees)           : %s\n", Tstimx$);
+            Print("Position (y, degrees)           : %s\n", Tstimy$);
+            if attGetGPFromMainStim% = 0 then
+                Print("Width (degrees)                 : %s\n", Tstimw$);
+                Print("Height (degrees)                : %s\n", Tstimh$);
+                Print("Inner Width (degrees)           : %s\n", Tstimiw$);
+                Print("Inner Height (degrees)          : %s\n", Tstimih$);
+                Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", Tstimcv$);
+                Print("Temporal frequency              : %s\n", Tstimtf$);
+                Print("Spatial frequency               : %s\n", Tstimsf$);
+                Print("Orientation (degrees)           : %s\n", Tstimorientation$);
+                Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
+                Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
+                Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
+                Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
+            endif;
+        else
+            Print("Position (x, degrees)           : %f\n", dist3X);
+            Print("Position (y, degrees)           : %f\n", dist3Y);
         endif;
         
         if attUseCueCircles% > 0 then
@@ -4807,28 +5266,34 @@ proc WriteParameterFile()
         endif;
         
     endif;
+    
+    
     if attNumPatches% > 4 then
         Print("\nDistractor4\n");  'Distractor grating
         Print("-------------------\n\n");
-        Tstimstr$ := GetGratingParameters$("Distractor4");
-        ReadSetup(",",",",",",",",",");
-        i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
-        Print("Position (x, degrees)           : %s\n", Tstimx$);
-        Print("Position (y, degrees)           : %s\n", Tstimy$);
-        if attGetGPFromMainStim% = 0 then
-            Print("Width (degrees)                 : %s\n", Tstimw$);
-            Print("Height (degrees)                : %s\n", Tstimh$);
-            Print("Inner Width (degrees)           : %s\n", Tstimiw$);
-            Print("Inner Height (degrees)          : %s\n", Tstimih$);
-            Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", Tstimcv$);
-            Print("Temporal frequency              : %s\n", Tstimtf$);
-            Print("Spatial frequency               : %s\n", Tstimsf$);
-            Print("Orientation (degrees)           : %s\n", Tstimorientation$);
-            'Print("Initial Phase (degrees)         : %f\n", phase);  'WTF?
-            Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
-            Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
-            Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
-            Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
+        if isGrating% = 1 then
+            Tstimstr$ := GetGratingParameters$("Distractor4");
+            ReadSetup(",",",",",",",",",");
+            i% := ReadStr(Tstimstr$, Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$);
+            Print("Position (x, degrees)           : %s\n", Tstimx$);
+            Print("Position (y, degrees)           : %s\n", Tstimy$);
+            if attGetGPFromMainStim% = 0 then
+                Print("Width (degrees)                 : %s\n", Tstimw$);
+                Print("Height (degrees)                : %s\n", Tstimh$);
+                Print("Inner Width (degrees)           : %s\n", Tstimiw$);
+                Print("Inner Height (degrees)          : %s\n", Tstimih$);
+                Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", Tstimcv$);
+                Print("Temporal frequency              : %s\n", Tstimtf$);
+                Print("Spatial frequency               : %s\n", Tstimsf$);
+                Print("Orientation (degrees)           : %s\n", Tstimorientation$);
+                Print("Initial Phase (degrees)         : %s\n", Tstimphase$);
+                Print("Contrast (%%)                    : %s\n", Tstimcontrast$);
+                Print("Aperture: ellipse(e)/square(q)  : %s\n", Tstimap$);
+                Print("Type: sine (s)/square (q)       : %s\n", Tstimp$);
+            endif;
+        else
+            Print("Position (x, degrees)           : %f\n", dist4X);
+            Print("Position (y, degrees)           : %f\n", dist4Y);
         endif;
         
         if attUseCueCircles% > 0 then
@@ -4845,17 +5310,27 @@ proc WriteParameterFile()
 	Print("Acquisition time (s)   : %f\n", attAcquisitionTime);
     Print("Min fixation cue time (s)   : %f\n", attFixationCueMinTime);
     Print("Max fixation cue time (s)   : %f\n", attFixationCueMaxTime);
-    Print("Cue onset time (s)   : %f\n", attCueOnsetTime);
-    Print("Cue offset time (s)   : %f\n", attCueOffsetTime);
-    Print("Grating onset time (rel. to cue offset) (s)   : %f\n", attStimOnsetTime);
-    Print("Min Hazard time (s)   : %f\n", attHazardMinTime);
-    Print("Mean Hazard time (s)   : %f\n", attHazardExpMeanTime);
-    Print("Hazard Cutoff time (s)   : %f\n", attHazardCutoffTime);
-    Print("Contrast Change dur (s)   : %f\n", attContrastChangeDuration);
+    if isGrating% = 1 then
+        Print("Cue onset time (s)   : %f\n", attCueOnsetTime);
+        Print("Cue offset time (s)   : %f\n", attCueOffsetTime);
+        Print("Grating onset time (rel. to cue offset) (s)   : %f\n", attStimOnsetTime);
+        Print("Min Hazard time (s)   : %f\n", attHazardMinTime);
+        Print("Mean Hazard time (s)   : %f\n", attHazardExpMeanTime);
+        Print("Hazard Cutoff time (s)   : %f\n", attHazardCutoffTime);
+        Print("Contrast Change dur (s)   : %f\n", attContrastChangeDuration);
+        Print("Uncued CC locked to Cued?: %d\n", attLockUncuedToCued%);
+    else
+        Print("First cue onset time (s)   : %f\n", attCueOnsetTimes[0]);  'These can vary by trial, we're not going to write out the whole list
+        Print("First cue offset time (s)   : %f\n", attCueOffsetTimes[0]);
+        Print("First grating onset time (rel. to cue offset) (s)   : %f\n", attStimOnsetList[0]);
+        Print("Min Hazard time found (s)   : %f\n", attHazardMinTime);
+        Print("Hazard Cutoff time found (s)   : %f\n", attHazardCutoffTime);
+    endif;
+    
+    
     Print("Time to answer (s)   : %f\n", attResponseWindow);
     Print("Intertrial time (s)   : %f\n", attInterTrialTime);
     Print("Abort/miss/FA penalty time (s)   : %f\n", attAbortPenaltyTime);
-    Print("Uncued CC locked to Cued?: %d\n", attLockUncuedToCued%);
     Print("Use Joystick for response?: %d\n", attRequireJoystickResponse%);
     
     
@@ -4870,54 +5345,63 @@ proc WriteParameterFile()
     endif;
     
     
-    
-	Print("\nTuning parameters\n");
-	Print("-------------------\n\n");    
-    
-    Print("Number of sets of blocks   : %d\n", attNumberOfSetsOfBlocks%);
-    Print("Trials per block   : %d\n", attTrialsPerBlock%);
-    Print("Easy trials per block   : %d\n", attEasyTrialsPerBlock%);
-    Print("Distracter off for easy trials?   : %d\n", distracterOffForEasy%);
-    Print("Cued Location Change Percentage   : %d\n", attCuedLocationChangePct%);
-    Print("Uncued Location Change Percentage   : %d\n", attUncuedLocationChangePct%);
-    Print("No Cues Match Fixpt Percentage   : %d\n", attNoCuesMatchFixpt%);
-    
-    
-    Print("Select Random Contrast Each Trial   : %d\n", attSelectRandomContrastEachTrial%);
-    Print("Base Contrast   : %d\n", attContrastBase%);
-    Print("Max contrast change   : %f\n", attMaxContChange);
-    Print("Min contrast change   : %f\n", attMinContChange);
-    Print("N Contrast levels   : %d\n", attNContLevels%);
-    'if attAnswerPointWindowRadius > 0 then
-    '    Print("Answer point window radius   : %f\n", attAnswerPointWindowRadius);  
-    'else
+    if isGrating% = 1 then
+        Print("\nTuning parameters\n");
+        Print("-------------------\n\n");    
+        
+        Print("Number of sets of blocks   : %d\n", attNumberOfSetsOfBlocks%);
+        Print("Trials per block   : %d\n", attTrialsPerBlock%);
+        Print("Easy trials per block   : %d\n", attEasyTrialsPerBlock%);
+        Print("Distracter off for easy trials?   : %d\n", distracterOffForEasy%);
+        Print("Cued Location Change Percentage   : %d\n", attCuedLocationChangePct%);
+        Print("Uncued Location Change Percentage   : %d\n", attUncuedLocationChangePct%);
+        Print("No Cues Match Fixpt Percentage   : %d\n", attNoCuesMatchFixpt%);
+        
+        
+        Print("Select Random Contrast Each Trial   : %d\n", attSelectRandomContrastEachTrial%);
+        Print("Base Contrast   : %d\n", attContrastBase%);
+        Print("Max contrast change   : %f\n", attMaxContChange);
+        Print("Min contrast change   : %f\n", attMinContChange);
+        Print("N Contrast levels   : %d\n", attNContLevels%);
         Print("Answer point window radius   : Matches Stimulus\n");  
-    'endif;
-    'Print("Use Training Contrast?   : %d\n", attTrainingContrastCheck%);
-    'Print("Training contrast   : %d\n", attTrainingContrastPct%);
-    Print("Set phase at contrast change?   : %d\n", attPhaseCheck%);
-    Print("Phase at contrast change   : %d\n", attPhaseDeg% );
-    Print("Number of Distractors     : %d\n", attNumPatches%);
-    Print("Get distractor params from main stim?     : %d\n", attGetGPFromMainStim%);
-    Print("Use cue circles?    : %d\n", attUseCueCircles%);
-    if attUseCueCircles% > 0 then
-        Print("\tUsing: %s\n",cueCircleList$[attUseCueCircles%]);
+        'Print("Use Training Contrast?   : %d\n", attTrainingContrastCheck%);
+        'Print("Training contrast   : %d\n", attTrainingContrastPct%);
+        Print("Set phase at contrast change?   : %d\n", attPhaseCheck%);
+        Print("Phase at contrast change   : %d\n", attPhaseDeg% );
+        Print("Number of Distractors     : %d\n", attNumPatches%);
+        Print("Get distractor params from main stim?     : %d\n", attGetGPFromMainStim%);
+        Print("Use cue circles?    : %d\n", attUseCueCircles%);
+        if attUseCueCircles% > 0 then
+            Print("\tUsing: %s\n",cueCircleList$[attUseCueCircles%]);
+        endif;
+        Print("Cue Circle extra radius    : %f\n", attCueCircleExtraRadius);
+        'Print("Start Block     : %d (%s)\n", attStartBlock%,blockStartList$[attStartBlock%]);
+        'Print("No Change Condition    : %d\n", attNoChangeCondition%);  'TODO something logical here
+        'if attNoChangeCondition% > 0 then
+        '    Print("No Change Cue Circle Color (r/g/b) : %d %d %d\n", cueallRGB%[0], cueallRGB%[1], cueallRGB%[2]);
+        'endif;
+        'Print("No Info Condition     : %d\n", attNoInfoCondition%);
+        'if attNoInfoCondition% > 0 then  'NoInfo condition has been deprecated
+        '    Print("No Info Cue Circle Color (r/g/b) : %d %d %d\n", noinfoRGB%[0], noinfoRGB%[1], noinfoRGB%[2]);
+        'endif;
+        'Print("Swap Cue Circle    : %d\n", attSwapCueCircle%);  
+    else
+        Print("Answer point window radius   : %f\n", attAnswerPointWindowRadius);
+        Print("Number of Distractors     : %d\n", attNumPatches%);
+        Print("Use cue circles?    : %d\n", attUseCueCircles%);
+        if attUseCueCircles% > 0 then
+            Print("\tUsing: %s\n",cueCircleList$[attUseCueCircles%]);
+        endif;
+        Print("Cue Circle extra radius    : %f\n", attCueCircleExtraRadius);
+    endif
+    
+    
+    
+    if isGrating% = 0 then
+        Print("\n\nImage/Trial file   : %s\n", attImagesTrialsFile$);
+    else
+        Print("\n\nContrast File: " + ContrastFile$ + "\n");
     endif;
-    Print("Cue Circle extra radius    : %f\n", attCueCircleExtraRadius);
-    'Print("Start Block     : %d (%s)\n", attStartBlock%,blockStartList$[attStartBlock%]);
-    'Print("No Change Condition    : %d\n", attNoChangeCondition%);  'TODO something logical here
-    'if attNoChangeCondition% > 0 then
-    '    Print("No Change Cue Circle Color (r/g/b) : %d %d %d\n", cueallRGB%[0], cueallRGB%[1], cueallRGB%[2]);
-    'endif;
-    'Print("No Info Condition     : %d\n", attNoInfoCondition%);
-    'if attNoInfoCondition% > 0 then  'NoInfo condition has been deprecated
-    '    Print("No Info Cue Circle Color (r/g/b) : %d %d %d\n", noinfoRGB%[0], noinfoRGB%[1], noinfoRGB%[2]);
-    'endif;
-    'Print("Swap Cue Circle    : %d\n", attSwapCueCircle%);  
-    
-    
-    
-    Print("Contrast File: " + ContrastFile$ + "\n");
     Print("\n");
     
     
@@ -5428,28 +5912,44 @@ func CreateCueCircleColorSetsLite$()
         endif
         CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
         
-        tempCol%[0] := RGBList%[i%][0];
-        tempCol%[1] := RGBList%[i%][1];
-        tempCol%[2] := RGBList%[i%][2];
+        'Here build of CueCircLocal$ varies depending on if we are using the grating or images version
+        if isGrating% = 1 then
+            tempCol%[0] := RGBList%[i%][0];
+            tempCol%[1] := RGBList%[i%][1];
+            tempCol%[2] := RGBList%[i%][2];
         
-        'put in correct color/contrast, which starts on the very first list as index zero and then is very complicatedly updated to behave as desired
-        CueCircLocal$ := CueCircLocal$ + FadeColorToGray$(tempCol%[],ContrastList%[i%]);
+            'put in correct color/contrast, which starts on the very first list as index zero and then is very complicatedly updated to behave as desired
+            CueCircLocal$ := CueCircLocal$ + FadeColorToGray$(tempCol%[],ContrastList%[i%]);
+        else
+            'For images version masterColorListVSG$[] will hold the value read in from the ImagesTrials file, any "fade" will be done by Henry
+            CueCircLocal$ := CueCircLocal$ + masterColorListVSG$[i%];
+        endif;
+        
+            
 
     next
     
-    'If cue circles match fixpt for Cue-All, write second set of specs
-    if attCueCirclesMatchCueAllFixpt% = 1 then
+    'If cue circles match fixpt for Cue-All, write second set of specs.  Note that for images version the colors dialog has been
+    'disabled, so we'll want to just do this no matter what, Henry can set the OffBits appropriately to access (256) or not
+    'access (0) these cue circles colors as he desires
+    if attCueCirclesMatchCueAllFixpt% = 1 or isGrating% = 0 then
         for i% := 0 to attNumPatches%-1 do 'loop through each patch
             CueCircLocal$ := CueCircLocal$ + ",";  'insert comma in all cases
             CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
             
-            'This is cue-all fixation color
-            tempCol%[0] := cueallRGB%[0];
-            tempCol%[1] := cueallRGB%[1];
-            tempCol%[2] := cueallRGB%[2];
+            if isGrating% = 1 then
+                'This is cue-all fixation color
+                tempCol%[0] := cueallRGB%[0];
+                tempCol%[1] := cueallRGB%[1];
+                tempCol%[2] := cueallRGB%[2];
             
-            'put in correct color/contrast of cue-all fixation point
-            CueCircLocal$ := CueCircLocal$ + FadeColorToGray$(tempCol%[],ContrastList%[0]);
+                'put in correct color/contrast of cue-all fixation point
+                CueCircLocal$ := CueCircLocal$ + FadeColorToGray$(tempCol%[],ContrastList%[0]);
+            else
+                'For images version masterColorListVSG$[] will hold the value read in from the ImagesTrials file in the sixth location
+                CueCircLocal$ := CueCircLocal$ + masterColorListVSG$[5];
+            endif
+            
         next
     endif;
     
@@ -5846,6 +6346,212 @@ end
 
 
 
+'This function places a SampleText to indicate the time of the image changes
+'Since these are on the same channel, it just looks for the nearest expected time to the known trigger.
+'Since there is a buffer of 100 ms between any onset, there should be no difficulty, but I will have the
+'SampleText indicate a possible problem if the timing is off by more than, say, 2ms
+'This function has been changed to a PROC, it does not return a value, but will update the value in cc%
+'This function was built from the original TagTriggerWithSampleText and as such uses the "CC" convention
+'to refer to events, even though the events here are NOT contrast changes but rather image changes.
+proc TagTriggerWithSampletextImages(triggerTime,tAnimationOn,trialCount%,&cc%,isCueAll%)
+    var ccTime; 'expected time of cued location image change
+    var ccTimeU; 'expected time of uncued location image change
+    var cuedLocOffTime; 
+    var uncuedLocOffTime; 
+    var cueOnTime;
+    var cueOffTime;
+    var cuedLocOnTime;
+    var uncuedLocOnTime;
+    var allOffTime;
+    var diffArray[10];
+    var minLoc%;
+    var minVal;
+    var onsetsAreLocked%;
+    var changesAreLocked%;
+    var offsetsAreLocked%;
+    
+        
+    'OK, so with the images version we need an at least minor overhaul of this function.  Note that since the
+    'values we are reading from the file are literal values instead of additive values, these times are found
+    'somewhat differently than in TagTriggerWithSampletext()
+    'We now expect to find the following triggers:
+    '   Trigger                 Literal Time
+    '1) Animation Onset:        tAnimationOn
+    '2) Cue Onset:              tAnimationOn+attCueOnsetTimes[trialCount%]
+    '3) Cue Offset:             tAnimationOn+attCueOffsetTimes[trialCount%]
+    '4) Cued Loc Onset:         tAnimationOn+attCuedLocImageTime[trialCount%][0]
+    '5) Uncued Loc Onset:       tAnimationOn+attUncuedLocImageTime[trialCount%][0]
+    '6) Image Changes:          tAnimationOn+attCuedLocImageTime[trialCount%][1]  (if value is not 0 and attCuedLocImage%[trialCount][1] is not -1)
+    '                           tAnimationOn+attUncuedLocImageTime[trialCount%][1]  (if value is not 0 and attUncuedLocImage%[trialCount][1] is not -1)
+    '7) Image Offsets:          tAnimationOn+attCuedLocImageTime[trialCount%][1/2]  (if attCuedLocImage%[trialCount][1/2] is -1)
+    '                           tAnimationOn+attUncuedLocImageTime[trialCount%][1/2]  (if attUncuedLocImage%[trialCount][1/2] is -1)
+    '8) All Offset:             tAnimationOn+attTrialEndTime[trialCount%]
+   
+    
+    'If this trigger is the very first trigger that coincides with the animation onset, do not tag it, just return before doing any other work
+    if triggerTime - tAnimationOn < 0.015 then
+        return;  'instead return
+    endif;
+    
+    
+    
+    'For simplicity, we should calculate these values locally first
+    cueOnTime := tAnimationOn + attCueOnsetTime;  'Cue onset time is now constant
+    cueOffTime := tAnimationOn + attCueOffsetTime;  'Cue offset time is now constant
+    if attCuedLocImageTime[trialCount%][0] > 0 then
+        cuedLocOnTime := tAnimationOn + attCuedLocImageTime[trialCount%][0];  'Stim onset (and following timing) is now referenced to cue offset
+    else
+        cuedLocOnTime := 9999999;
+    endif;
+    if attUncuedLocImageTime[trialCount%][0] > 0 then
+        uncuedLocOnTime := tAnimationOn + attUncuedLocImageTime[trialCount%][0];  'Stim onset (and following timing) is now referenced to cue offset
+    else
+        uncuedLocOnTime := 9999999;
+    endif;
+    if attCuedLocImage%[trialCount%][1] > -1 and attCuedLocImageTime[trialCount%][1] > 0 then  
+        ccTime := tAnimationOn + attCuedLocImageTime[trialCount%][1];
+    else
+        ccTime := 9999999;  'Place time corresponding to nonexistent contrast change safely into the future
+    endif;
+    if attUncuedLocImage%[trialCount%][1] > -1 and attUncuedLocImageTime[trialCount%][1] > 0 then   
+        ccTimeU := tAnimationOn + attUncuedLocImageTime[trialCount%][1];
+    else
+        ccTimeU := 9999999;  'Place time corresponding to nonexistent contrast change safely into the future
+    endif;
+    docase
+    case attCuedLocImage%[trialCount%][1] = -1 then
+        cuedLocOffTime := tAnimationOn + attCuedLocImageTime[trialCount%][1];
+    case attCuedLocImage%[trialCount%][2] = -1 then
+        cuedLocOffTime := tAnimationOn + attCuedLocImageTime[trialCount%][2];
+    else
+        cuedLocOffTime := 9999999;  'Place time corresponding to nonexistent contrast change safely into the future
+    endcase;
+    docase
+    case attUncuedLocImage%[trialCount%][1] = -1 then
+        uncuedLocOffTime := tAnimationOn + attUncuedLocImageTime[trialCount%][1];
+    case attUncuedLocImage%[trialCount%][2] = -1 then
+        uncuedLocOffTime := tAnimationOn + attUncuedLocImageTime[trialCount%][2];
+    else
+        uncuedLocOffTime := 9999999;  'Place time corresponding to nonexistent contrast change safely into the future
+    endcase;
+    allOffTime := tAnimationOn + attTrialEndTime[trialCount%];
+    'All times are now locally calculated
+    'One last fix, if uncued is locked to cued and they both change, eliminate the uncued time, indicate both cues are locked
+    if cuedLocOnTime = uncuedLocOnTime then
+        uncuedLocOnTime := 9999999;
+        onsetsAreLocked% := 1;
+    endif;
+    if ccTime = ccTimeU then
+        ccTimeU := 9999999;
+        changesAreLocked% := 1;
+    endif;
+    if cuedLocOffTime = uncuedLocOffTime then
+        uncuedLocOffTime := 9999999;
+        offsetsAreLocked% := 1;
+    endif;   
+    
+    
+    'Fill diffArray with differences between time of current trigger and known event times
+    diffArray[0] := abs(tAnimationOn - triggerTime);  'for now we are short circuiting and not tagging tAnimationOn, but this will allow easy tagging if desired
+    diffArray[1] := abs(allOffTime - triggerTime);
+    diffArray[2] := abs(cueOnTime - triggerTime);
+    diffArray[3] := abs(cueOffTime - triggerTime);
+    diffArray[4] := abs(cuedLocOnTime - triggerTime);
+    diffArray[5] := abs(uncuedLocOnTime - triggerTime);
+    diffArray[6] := abs(ccTime - triggerTime);  'contrast change time goes first, because this has priority, if there is a tie, min will take the first value
+    diffArray[7] := abs(ccTimeU - triggerTime);
+    diffArray[8] := abs(cuedLocOffTime - triggerTime);
+    diffArray[9] := abs(uncuedLocOffTime - triggerTime);
+    
+    minLoc% := min(diffArray);  'find index of smallest difference
+    minVal := diffArray[minLoc%];
+       
+    
+    
+    docase
+    case minVal > 0.05 then 'trigger is not within 50 ms of any expected time
+        if diffArray[1] < 0.1 then 'use big tolerance for end of window 
+            SampleText("End of animation",triggerTime);
+        else
+            SampleText("Error - trigger time not recognized!",triggerTime);
+        endif;
+    case minLoc% = 1 then 'This is stimulus offset, moved to top, because it may coincide with image offsets, want this to take priority
+        SampleText("End of animation",triggerTime);
+    case minLoc% = 2 then 'this is cue on
+        SampleText("Cue On",triggerTime);
+    case minLoc% = 3 then 'this is cue off
+        SampleText("Cue Off",triggerTime);
+    case minLoc% = 4 and onsetsAreLocked% = 0 then 'this is cued location on
+        SampleText("Cued Location On, Image "+Str$(attCuedLocImage%[trialCount%][0]),triggerTime);
+    case minLoc% = 4 and onsetsAreLocked% = 1 then 'this is cued+uncued location on
+        SampleText("BOTH Locations On, Cued Loc Image "+Str$(attCuedLocImage%[trialCount%][0])+", Uncued Loc Image "+Str$(attUncuedLocImage%[trialCount%][0]),triggerTime);
+    case minLoc% = 5 then 'this is uncued location on
+        SampleText("Uncued Location On, Image "+Str$(attUncuedLocImage%[trialCount%][0]),triggerTime);    
+    case minLoc% = 6 and changesAreLocked% = 0 then 'this is an image change in the cued location
+        cc% += 1;  'Increment cc% by 1
+        if isCueAll% = -1 then
+            SampleText("Cued Location Image Change, Image "+Str$(attCuedLocImage%[trialCount%][1])+", window open, no cues match",triggerTime);
+        else    
+            SampleText("Cued Location Image Change, "+Str$(attCuedLocImage%[trialCount%][1])+" window open",triggerTime);
+        endif
+    case minLoc% = 6 and changesAreLocked% = 1 then 'this is an image change in BOTH locations simultaneously
+        cc% += 1;  'Increment cc% by 1
+        if isCueAll% = -1 then
+            SampleText("BOTH Locations Image Change, Cued Loc Image "+Str$(attCuedLocImage%[trialCount%][1])+", Uncued Loc Image "+Str$(attUncuedLocImage%[trialCount%][1])+", window open, no cues match",triggerTime);
+        else 
+            SampleText("BOTH Locations Image Change, Cued Loc Image "+Str$(attCuedLocImage%[trialCount%][1])+", Uncued Loc Image "+Str$(attUncuedLocImage%[trialCount%][1])+", window open",triggerTime); 
+        endif
+    case minLoc% = 7 then 'this is an image change in the uncued location
+        docase
+        case isCueAll% = -1 then
+            cc% += 10;  'Increment cc% by 10
+            SampleText("Uncued Location Image Change, Image "+Str$(attUncuedLocImage%[trialCount%][1])+", window open, no cues match",triggerTime);
+        case isCueAll% = 1 then
+            cc% += 10;  'Increment cc% by 10
+            SampleText("Uncued Location Image Change, Image "+Str$(attUncuedLocImage%[trialCount%][1])+", window open",triggerTime);
+        else
+            'do NOT increment CC, this change is not a target, NO!  We need to know the change happened, not a target is dealt with by caller
+            cc% += 10;  'Increment cc% by 10
+            SampleText("Uncued Location Image Change, Image "+Str$(attUncuedLocImage%[trialCount%][1])+", not a target",triggerTime);
+        endcase;
+    case minLoc% = 8 and offsetsAreLocked% = 0 then 'this is image off in the cued location
+        cc% += 1;  'Increment cc% by 1
+        if isCueAll% = -1 then
+            SampleText("Cued Location Image Off, window closed, no cues match",triggerTime);
+        else
+            SampleText("Cued Location Image Off, window closed",triggerTime); 
+        endif
+    case minLoc% = 8 and offsetsAreLocked% = 1 then 'this is image off in BOTH locations simultaneously
+        cc% += 1;  'Increment cc% by 1
+        if isCueAll% = -1 then
+            SampleText("BOTH locations Image Off, window closed, no cues match",triggerTime);
+        else
+            SampleText("BOTH locations Image Off, window closed",triggerTime); 
+        endif
+    case minLoc% = 9 then 'this is image off in the uncued location
+        docase
+        case isCueAll% = -1 then
+            cc% += 10;  'Increment cc% by 10
+            SampleText("Uncued Location Image Off, window closed, no cues match",triggerTime);
+        case isCueAll% = 1 then
+            cc% += 10;  'Increment cc% by 10
+            SampleText("Uncued Location Image off, window closed",triggerTime);
+        else
+            'do NOT increment CC, this change is not a target, NO!  We need to know the change happened, not a target is dealt with by caller
+            cc% += 10;  'Increment cc% by 10
+            SampleText("Uncued Location Image Off, not a target",triggerTime);
+        endcase;    
+    
+    endcase
+
+    
+    return;
+end
+
+
+
+
+
 
 'masterColorList$ and masterColorListVSG$ define fixation colors and should have the same progression as cue circle colors
 'but due to the command line need to be in a text format.  Use cue circle colors to fill these variables.
@@ -5982,4 +6688,741 @@ func CallJoystickConfigDialog%()
     DoSampleAutoName(key$,"atn","atn",primaryTxt$,secondaryTxt$);
     
     return 1;
+end
+
+
+func SelectImagesTrialsFile%()
+    'This generic function ought to work for any of the dialogs where we allow the selection of a tuning file, etc.
+
+    var status% := 1;
+    var direc$;
+    var fh0%;
+    
+    direc$ := FilePath$();  'get current directory
+    fh0%:=FileOpen(direc$+"*.txt",1,0,"Please select an images/trials file");  'Find a file
+    direc$ := FileName$(0);  'Get full path of selected file
+    FileClose(fh0%);  'Just close the file, we're not using it
+    DlgValue$(7,direc$);  'Place filename into dialog item 7 of calling dialog
+
+	return status%;  'return 1 so calling dialog doesn't close
+    
+end;
+
+
+func ReadImagesTrialsFile%(ImagesTrialsFile$,&mainX,&mainY,&dist1X,&dist1Y,&dist2X,&dist2Y,&dist3X,&dist3Y,&dist4X,&dist4Y,
+    &numPatches%,&offBits%[],&optoOn%[],&cueOn[],&cueOff[],&fixOff[],&mainTime[][],&mainImage%[][],&dist1Time[][],&dist1Image%[][],
+    &dist2Time[][],&dist2Image%[][],&dist3Time[][],&dist3Image%[][],&dist4Time[][],&dist4Image%[][],&allOff[],
+    &HazardMinTime,&HazardCutoffTime,&IsCueAll%[],&CuedLocList%[],&CuedLocChangesList%[],
+    &CuedLocImage%[][],&CuedLocImageTime[][],&UncuedLocList%[],&UncuedLocChangesList%[],&UncuedLocImage%[][],
+    &UncuedLocImageTime[][],&TrialEndTime[],&FixColor%[],&masterColorListVSG$[],&fixColor$[]);
+    
+    var status% := 1;  'by default, return success
+    var fh0%;
+    var imageFileNames$[attMaxTrl%];  'For now, we do NOT care what the image file names are, but we may as well collect them in case one day Henry changes his mind
+    var numImages% := 0;  'For now we do not care how many images there are, but we may as well calculate it, just in case
+    'var fixColor$[attMaxTrl%];  'For now we do not care about the fixation color, but keep it, just in case, we will actually return the index to masterColorListVSG$[]
+                                 'OK, we need it
+    
+    var tempImage$ := "HelloWorld";
+    
+    var open$;
+    var numRead%;
+    var cue1$ := "(128/128/128)";
+    var cue2$ := "(128/128/128)";
+    var cue3$ := "(128/128/128)";
+    var cue4$ := "(128/128/128)";
+    var cue5$ := "(128/128/128)";
+    var cue6$ := "(128/128/128)";
+    var i%;
+    var j%;
+    var trialCount%;
+    var tooManyTokens$;
+    
+    'Please note that the VSG will consider comment lines (started with "#") as legal and skip them, and will also
+    'skip any blank line.  It would be easier to be *more strict* than this, but if Dan writes a file with comments
+    'and tries to test, we can't just have it fail, so we will really need to have the legal formats identical here.
+    
+    'open Images/Trials file
+    fh0%:=FileOpen(ImagesTrialsFile$,8,0);
+    
+    'in case the file open does not work, return
+    if fh0%<0 then
+        message("Warning Message | Failure to load the Images/Trials file: \n\n %s\n\n If this file exists, tell Jeff!",ImagesTrialsFile$);
+        printlog("Failure to load the Images/Trials file %s!  Quitting!!\n",ImagesTrialsFile$);
+        return 0;
+    endif;
+    
+    'Hmm, readsetup is always tricky.  Hard separator is comma, no soft separator, no string open, string close with comma and space, string close (no open) with comma and space. 
+    readsetup(",","","",", ",", ");
+    
+    '==== Read Image Section ====
+    'Read first line
+    while numRead% = 0 do
+        numRead% := Read(open$,mainX,mainY,dist1X,dist1Y,dist2X,dist2Y,dist3X,dist3Y,dist4X,dist4Y,tooManyTokens$);
+        
+        'Aggressively check integrity of file format so we don't pass a bad file to the VSG
+        docase
+        'We have to read SOMETHING in the first line, no errors, no empty file    
+        case numRead% < 0 then
+            fileclose();  'close Images/Trials file fh0%
+            message("Warning Message | Read error on first line of Images/Trials file: \n\n %s\n\n See log for details!",ImagesTrialsFile$);
+            printlog("Error on first line of Images/Trials file %s!\n Error is %s\n  Quitting!!\n",ImagesTrialsFile$,Error$(numRead%));
+            return 0;
+        'Check for and ignore blank lines
+        case numRead% = 0 then
+            'Do nothing, will stay in WHILE loop
+        'Check for and ignore comment lines
+        case Left$(open$,1) = "#" then
+            numRead% := 0;  'reset numRead% to stay in WHILE loop
+        'We have to read at least the "Image" opener and an X/Y position for the main patch, if not, there's a problem with the file    
+        case numRead% = 1 or numRead% = 2 then  
+            fileclose();  'close Images/Trials file fh0%
+            message("Warning Message | Read failure on first line of Images/Trials file: \n\n %s\n\n If this file is OK, tell Jeff!",ImagesTrialsFile$);
+            printlog("Failure to read the first line of Images/Trials file %s!  Quitting!!\n",ImagesTrialsFile$);
+            return 0;
+        'The first token should be "Images"...but is not case sensitive
+        case LCase$(open$) <> "images" then
+            fileclose();  'close Images/Trials file fh0%
+            message("Warning Message | Read bad input on first line of Images/Trials file: \n\n %s\n\n If this file is OK, tell Jeff!",ImagesTrialsFile$);
+            printlog("Failure to read the first line of Images/Trials file %s!  Quitting!!\n",ImagesTrialsFile$);
+            return 0;
+        'Make sure a maximum of 5 patches are defined
+        case (numRead%-1) > 10 then
+            fileclose();  'close Images/Trials file fh0%
+            message("Warning Message | Too many patches defined in Images/Trials file: \n\n %s",ImagesTrialsFile$);
+            printlog("Too many patches defined in Images/Trials file %s!  Quitting!!\n",ImagesTrialsFile$);
+            return 0;
+        'Make sure all patches are fully defined
+        case (numRead%-1) mod 2 <> 0 then
+            fileclose();  'close Images/Trials file fh0%
+            message("Warning Message | A patch is missing its Y location in Images/Trials file: \n\n %s",ImagesTrialsFile$);
+            printlog("A patch is missing its Y location in Images/Trials file %s!  Quitting!!\n",ImagesTrialsFile$);
+            return 0;   
+        endcase;
+    wend
+    
+    'Calculate number of patches
+    numPatches% := (numRead%-1)/2;
+    
+    'Log locations of image patches
+    'printlog("Open is %s\n",open$);  'sanity check
+    printlog("Attention-Images experiment\n");
+    printlog("Main location is %f,%f\n",mainX,mainY);
+    if numPatches% > 1 then
+        printlog("Distractor 1 location is %f,%f\n",dist1X,dist1Y);
+    endif;
+    if numPatches% > 2 then
+        printlog("Distractor 2 location is %f,%f\n",dist2X,dist2Y);
+    endif;
+    if numPatches% > 3 then
+        printlog("Distractor 3 location is %f,%f\n",dist3X,dist3Y);
+    endif;
+    if numPatches% > 4 then
+        printlog("Distractor 4 location is %f,%f\n",dist4X,dist4Y);
+    endif;
+    printlog("Number of patches is %d\n",numPatches%);
+    
+    
+    'Read obligatory cue color line, marked by a comment
+    numRead% := 0;
+    while numRead% = 0 do
+        numRead% := Read(open$,cue1$,cue2$,cue3$,cue4$,cue5$,cue6$,tooManyTokens$);
+        
+        docase
+        'We have to read SOMETHING in the second line, no errors, no empty file    
+        case numRead% < 0 then
+            fileclose();  'close Images/Trials file fh0%
+            message("Warning Message | Read error on second line of Images/Trials file: \n\n %s\n\n See log for details!",ImagesTrialsFile$);
+            printlog("Error on second line of Images/Trials file %s!\n Error is %s\n  Quitting!!\n",ImagesTrialsFile$,Error$(numRead%));
+            return 0;
+        'Check for and ignore blank lines
+        case numRead% = 0 then
+            'Do nothing, will stay in WHILE loop
+        'Check for and ignore comment lines
+        case Left$(open$,1) <> "#" then
+            fileclose();  'close Images/Trials file fh0%
+            message("Warning Message | Missing obligatory #-cue-colors on second line of Images/Trials file: \n\n %s\n\n See log for details!",ImagesTrialsFile$);
+            printlog("Missing obligatory #-cue-colors on second line of Images/Trials file %s!\n Error is %s\n  Quitting!!\n",ImagesTrialsFile$,Error$(numRead%));
+            return 0;
+        case numRead% > 7 then
+            fileclose();  'close Images/Trials file fh0%
+            message("Warning Message | Too many tokens on #-cue-colors line in Images/Trials file: \n\n %s",ImagesTrialsFile$);
+            printlog("Too many tokens on #-cue-colors line in Images/Trials file %s!  Quitting!!\n",ImagesTrialsFile$);
+            return 0;
+        case numRead% < 2 then
+            fileclose();  'close Images/Trials file fh0%
+            message("Warning Message | Too few tokens on #-cue-colors line in Images/Trials file: \n\n %s",ImagesTrialsFile$);
+            printlog("Too few tokens on #-cue-colors line in Images/Trials file %s!  Quitting!!\n",ImagesTrialsFile$);
+            return 0;
+        endcase
+    wend
+    
+    'Check to make sure that the color list is really a color list, just do a quick check for open/close parens, if found assume all is well
+    var whoops%;
+    docase
+    case Left$(cue1$,1) <> "(" or Right$(cue1$,1) <> ")" then
+        whoops% := 1;
+    case Left$(cue2$,1) <> "(" or Right$(cue2$,1) <> ")" then
+        whoops% := 1;
+    case Left$(cue3$,1) <> "(" or Right$(cue3$,1) <> ")" then
+        whoops% := 1;
+    case Left$(cue4$,1) <> "(" or Right$(cue4$,1) <> ")" then
+        whoops% := 1;
+    case Left$(cue5$,1) <> "(" or Right$(cue5$,1) <> ")" then
+        whoops% := 1;
+    case Left$(cue6$,1) <> "(" or Right$(cue6$,1) <> ")" then
+        whoops% := 1;
+    endcase
+    if whoops% = 1 then
+        fileclose();  'close Images/Trials file fh0%
+        message("Warning Message | #-cue-colors line is not of correct format in Images/Trials file: \n\n %s",ImagesTrialsFile$);
+        printlog("#-cue-colors line is not of correct format in Images/Trials file %s!  Quitting!!\n",ImagesTrialsFile$);
+        return 0;
+    endif;
+  
+    'Fill masterColorListVSG$[]
+    masterColorListVSG$[0] := cue1$;
+    masterColorListVSG$[1] := cue2$;
+    masterColorListVSG$[2] := cue3$;
+    masterColorListVSG$[3] := cue4$;
+    masterColorListVSG$[4] := cue5$;
+    masterColorListVSG$[5] := cue6$;
+    
+    
+    
+    'Read image lines
+    while tempImage$ <> "*" and numRead% > 0 do  'a line with a single asterisk is the end of the images section
+        numRead% := Read(tempImage$,tooManyTokens$);
+        
+        docase
+        'Check for and ignore blank lines
+        case numRead% = 0 then
+            numRead% := 1;  'reset numRead% to stay in WHILE loop
+        'Check for and ignore comment lines
+        case Left$(open$,1) = "#" then
+            numRead% := 1;  'reset numRead% to stay in WHILE loop
+        'Check for too many tokens
+        case numRead% > 1 then
+            fileclose();  'close Images/Trials file fh0%
+            message("Warning Message | There can be only one image per line in Images/Trials file: \n\n %s",ImagesTrialsFile$);
+            printlog("There can be only one image per line in Images/Trials file %s!  Quitting!!\n",ImagesTrialsFile$);
+            return 0;
+        'Check for EOF or other read error
+        case numRead% < 0 then
+            fileclose();  'close Images/Trials file fh0%
+            message("Warning Message | Read error in Images section of Images/Trials file: \n\n %s\n\n See log for details!",ImagesTrialsFile$);
+            printlog("Error in Images section of Images/Trials file %s!\n Error is %s\n  Quitting!!\n",ImagesTrialsFile$,Error$(numRead%));
+            return 0;
+        'If the line is not an asterisk (final line), it's an image, keep the image name, read again
+        case tempImage$ <> "*" and numRead% = 1 then
+            imageFileNames$[numImages%] := tempImage$;  'keep image name
+            numImages% += 1;  'keep number of images defined
+        endcase;
+    wend;
+    
+    'Log image file locations
+    for i% := 0 to numImages%-1 do
+        printlog("Image %d is %s\n",i%,imageFileNames$[i%]);
+    next
+    
+    
+    '==== End Read Image Section ====
+    
+    
+    '==== Read Trial Section ====
+    'For the trial section, I am unsure whether trials will be separated by white space
+    'As such, we should simply read all the way to the end of the file - don't assume white space marks an ending
+    'READ() will return -1530 when EOF is reached
+    '(However, there is a specific trial format, if that format is not followed, then error out.)
+    
+    var val%;  'first value on first trial line will be an integer offbits value
+    var val2%;  'second value will be an integer (Opto indicator, contrast, image number)
+    var val;  'first value on object lines will be a float time indicator
+    var lastLine%;
+    var mainInd%;  'counters for main, dist patches
+    var dist1Ind%;
+    var dist2Ind%;
+    var dist3Ind%;
+    var dist4Ind%;
+    var breakOut%;
+    var changeLoc%[2];
+    var locInd%;
+    
+    i% := 0;  'use as trial counter
+    numRead% := 1;  'numRead% should be 1 already, just setting to be explicit
+    
+    'Loop through all lines of each trial found
+    'Please note that this WHILE loop should never terminate. However, any possible file structure
+    'will eventually trigger the function to close the file and return. To failsafe the above statement
+    'I have added a max trial cap (attMaxTrl%, is generally 1000), just in case an inadvertent change results in an endless loop.
+    while numRead% >= 0 and trialCount% < attMaxTrl% do
+        
+        'read until we find the trial indicator ("Trial N")
+        numRead% := 0;
+        while numRead% = 0 do
+            numRead% := Read(open$,j%,tooManyTokens$);
+            docase
+            'On EOF when looking for a trial indicator, we're done!
+            case numRead% = -1530 then  '-1530 is EOF
+                fileclose();  'close Images/Trials file fh0%
+                printlog("Success reading Images/Trials file!\n");
+                breakOut% := 1;  'prepare to break out of wrapping WHILE loop
+                break;  'break out of internal WHILE loop
+                'return 1;  'success!!!!
+            'On error, quit   
+            case numRead% < 0 then  'any other negative return is an error, report error
+                fileclose();  'close Images/Trials file fh0%
+                message("Warning Message | Read error in Trial section of Images/Trials file: \n\n %s\n\n See log for details!",ImagesTrialsFile$);
+                printlog("Error in Trial section of Images/Trials file %s!\n Error is %s\n  Quitting!!\n",ImagesTrialsFile$,Error$(numRead%));
+                return 0;
+            'On a blank line, keep reading
+            case numRead% = 0 then
+                'do nothing
+            'On a comment line, keep reading    
+            case Left$(open$,1) = "#" then
+                numRead% := 0;  'reset numRead% to stay in WHILE loop
+            'Check for trial indicator    
+            case LCase$(open$) <> "trial" then
+                fileclose();  'close Images/Trials file fh0%
+                message("Warning Message | Missing TRIAL indicator on trial %d in Images/Trials file: \n\n %s",i%+1,ImagesTrialsFile$);
+                printlog("Missing TRIAL indicator on trial %d in Images/Trials file %s!  Quitting!!\n",i%+1,ImagesTrialsFile$);
+                return 0;
+            'Check for too many tokens
+            case numRead% > 2 then
+                fileclose();  'close Images/Trials file fh0%
+                message("Warning Message | Too many tokens in TRIAL indicator %d in Images/Trials file: \n\n %s",i%+1,ImagesTrialsFile$);
+                printlog("Too many tokens in TRIAL indicator %d in Images/Trials file %s!  Quitting!!\n",i%+1,ImagesTrialsFile$);
+                return 0;
+            'Check for too few tokens
+            case numRead% < 2 then
+                fileclose();  'close Images/Trials file fh0%
+                message("Warning Message | Too few tokens in TRIAL indicator %d in Images/Trials file: \n\n %s",i%+1,ImagesTrialsFile$);
+                printlog("Too few tokens in TRIAL indicator %d in Images/Trials file %s!  Quitting!!\n",i%+1,ImagesTrialsFile$);
+                return 0;
+            'Check for sequential trial indicator
+            case j% <> i%+1 then
+                fileclose();  'close Images/Trials file fh0%
+                message("Warning Message | TRIAL indicator on trial %d out of sequence (says %d) in Images/Trials file: \n\n %s",i%+1,j%,ImagesTrialsFile$);
+                printlog("TRIAL indicator on trial %d out of sequence (says %d) in Images/Trials file %s!  Quitting!!\n",i%+1,j%,ImagesTrialsFile$);
+                return 0;
+            endcase
+        wend
+        
+        'Check to see if the file read is complete and successful, if so, break out of wrapping WHILE loop
+        if breakOut% = 1 then
+            break;
+        endif;
+        
+        'Read first trial line
+        numRead% := 0;
+        while numRead% = 0 do
+            numRead% := Read(open$,val%,val2%,tooManyTokens$);
+            docase
+            'On error, quit   
+            case numRead% < 0 then
+                fileclose();  'close Images/Trials file fh0%
+                message("Warning Message | Read error in Trial section of Images/Trials file: \n\n %s\n\n See log for details!",ImagesTrialsFile$);
+                printlog("Error in Trial section of Images/Trials file %s!\n Error is %s\n  Quitting!!\n",ImagesTrialsFile$,Error$(numRead%));
+                return 0;
+            'On a blank line, keep reading
+            case numRead% = 0 then
+                'do nothing
+            'On a comment line, keep reading    
+            case Left$(open$,1) = "#" then
+                numRead% := 0;  'reset numRead% to stay in WHILE loop
+            'Check for too many tokens
+            case numRead% > 3 then
+                fileclose();  'close Images/Trials file fh0%
+                message("Warning Message | Too many tokens in TRIAL first line %d in Images/Trials file: \n\n %s",i%+1,ImagesTrialsFile$);
+                printlog("Too many tokens in TRIAL first line %d in Images/Trials file %s!  Quitting!!\n",i%+1,ImagesTrialsFile$);
+                return 0;
+            'Check for too few tokens
+            case numRead% < 3 then
+                fileclose();  'close Images/Trials file fh0%
+                message("Warning Message | Too few tokens in TRIAL first line %d in Images/Trials file: \n\n %s",i%+1,ImagesTrialsFile$);
+                printlog("Too few tokens in TRIAL first line %d in Images/Trials file %s!  Quitting!!\n",i%+1,ImagesTrialsFile$);
+                return 0;
+            endcase
+        wend
+        
+        'Gather data from first trial line
+        fixColor$[i%] := open$;
+        offBits%[i%] := val%;
+        optoOn%[i%] := val2%;
+        
+        'Read object lines until the final object line indicator
+        mainInd% := 0;
+        dist1Ind% := 0;
+        dist2Ind% := 0;
+        dist3Ind% := 0;
+        dist4Ind% := 0;
+        lastLine% := 0;
+        while lastLine% = 0 do
+            numRead% := 0;
+            'read until we find an object line
+            while numRead% = 0 do
+                numRead% := Read(open$,val,val2%,tooManyTokens$);
+                docase
+                'On error, quit   
+                case numRead% < 0 then
+                    fileclose();  'close Images/Trials file fh0%
+                    message("Warning Message | Read error in Trial section of Images/Trials file: \n\n %s\n\n See log for details!",ImagesTrialsFile$);
+                    printlog("Error in Trial section of Images/Trials file %s!\n Error is %s\n  Quitting!!\n",ImagesTrialsFile$,Error$(numRead%));
+                    return 0;    
+                'On a blank line, keep reading
+                case numRead% = 0 then
+                    'do nothing
+                'On a comment line, keep reading    
+                case Left$(open$,1) = "#" then
+                    numRead% := 0;  'reset numRead% to stay in WHILE loop
+                'Check for too many tokens
+                case numRead% > 3 then
+                    fileclose();  'close Images/Trials file fh0%
+                    message("Warning Message | Too many tokens in object line on trial %d in Images/Trials file: \n\n %s",i%+1,ImagesTrialsFile$);
+                    printlog("Too many tokens in object line on trial %d in Images/Trials file %s!  Quitting!!\n",i%+1,ImagesTrialsFile$);
+                    return 0;
+                'Check for too few tokens
+                case numRead% < 3 then
+                    fileclose();  'close Images/Trials file fh0%
+                    message("Warning Message | Too few tokens in object line on trial %d in Images/Trials file: \n\n %s",i%+1,ImagesTrialsFile$);
+                    printlog("Too few tokens in object line on trial %d in Images/Trials file %s!  Quitting!!\n",i%+1,ImagesTrialsFile$);
+                    return 0;
+                case open$ = "Q" then
+                    docase
+                    case val2% = 100 then
+                        cueOn[i%] := val;
+                    case val2% = 0 then
+                        cueOff[i%] := val;
+                    else
+                        fileclose();  'close Images/Trials file fh0%
+                        message("Warning Message | Contrast must be 0 or 100 (for now): \n\n %s",ImagesTrialsFile$);
+                        printlog("Contrast must be 0 or 100 (for now): %s!  Quitting!!\n",ImagesTrialsFile$);
+                        return 0;
+                    endcase
+                case open$ = "F" then
+                    if val2% = 0 then
+                        fixOff[i%] := val;
+                    else
+                        fileclose();  'close Images/Trials file fh0%
+                        message("Warning Message | Fixation may only be turned off (for now): \n\n %s",ImagesTrialsFile$);
+                        printlog("Fixation may only be turned off (for now): %s!  Quitting!!\n",ImagesTrialsFile$);
+                        return 0;
+                    endif;
+                case open$ = "0" then
+                    mainTime[i%][mainInd%] := val;
+                    mainImage%[i%][mainInd%] := val2%;
+                    mainInd% += 1;
+                case open$ = "1" then
+                    dist1Time[i%][dist1Ind%] := val;
+                    dist1Image%[i%][dist1Ind%] := val2%;
+                    dist1Ind% += 1;  
+                case open$ = "2" then
+                    dist2Time[i%][dist2Ind%] := val;
+                    dist2Image%[i%][dist2Ind%] := val2%;
+                    dist2Ind% += 1;                   
+                case open$ = "3" then
+                    dist3Time[i%][dist3Ind%] := val;
+                    dist3Image%[i%][dist3Ind%] := val2%;
+                    dist3Ind% += 1;     
+                case open$ = "4" then
+                    dist4Time[i%][dist4Ind%] := val;
+                    dist4Image%[i%][dist4Ind%] := val2%;
+                    dist4Ind% += 1;     
+                case open$ = "*" then
+                    allOff[i%] := val;
+                    lastLine% := 1;
+                    i% += 1;
+                endcase
+                
+            wend
+        wend
+        trialCount% += 1;  'Don't allow over attMaxTrl% trials 
+    wend
+   
+    
+    
+    '==== End Read Trial Section ====
+    
+
+    'Finished reading Images/Trials File
+    
+    'One final check for error
+    if trialCount% >= attMaxTrl% then
+        fileclose();  'close Images/Trials file fh0%
+        message("Warning Message | Either max trials exceeded or endless loop in file read occurred: \n\n %s",ImagesTrialsFile$);
+        printlog("Either max trials exceeded or endless loop in file read occurred: %s!  Quitting!!\n",ImagesTrialsFile$);
+        return 0;
+    endif;
+    
+    'If we get here, the read was successful and file is closed, now it is time to fill additional variables that are needed
+    'Loop through each trial
+    var firstStimTime;
+    HazardMinTime := 10000;  'Make this large
+    HazardCutoffTime := 0;   'And this small, we'll find the real values below, note that we are looking at first image change, there can potentially be later ones that do not play into the hazard time
+    for i% := 0 to trialCount%-1 do
+        'Set IsCueAll%[]
+        if offBits%[i%] = 256 then
+            IsCueAll%[i%] := 1;
+        else
+            IsCueAll%[i%] := 0;
+        endif;
+        
+        'Check to make sure image isn't turned off before it is turned on
+        if mainImage%[i%][0] = -1 then
+            message("Warning Message | Main image is turned off before it is turned on on trial %d",i%+1);
+            printlog("Main image is turned off before it is turned on on trial %d!  Quitting!!\n",i%+1);
+            return 0;
+        endif
+        if dist1Image%[i%][0] = -1 then
+            message("Warning Message | Distractor 1 image is turned off before it is turned on on trial %d",i%+1);
+            printlog("Distractor 1 image is turned off before it is turned on on trial %d!  Quitting!!\n",i%+1);
+            return 0;
+        endif
+        if dist2Image%[i%][0] = -1 then
+            message("Warning Message | Distractor 2 image is turned off before it is turned on on trial %d",i%+1);
+            printlog("Distractor 2 image is turned off before it is turned on on trial %d!  Quitting!!\n",i%+1);
+            return 0;
+        endif
+        if dist3Image%[i%][0] = -1 then
+            message("Warning Message | Distractor 3 image is turned off before it is turned on on trial %d",i%+1);
+            printlog("Distractor 3 image is turned off before it is turned on on trial %d!  Quitting!!\n",i%+1);
+            return 0;
+        endif
+        if dist4Image%[i%][0] = -1 then
+            message("Warning Message | Distractor 4 image is turned off before it is turned on on trial %d",i%+1);
+            printlog("Distractor 4 image is turned off before it is turned on on trial %d!  Quitting!!\n",i%+1);
+            return 0;
+        endif
+        
+        'Get time of earliest stimulus, infer min/max hazard times, note that hazard time inference is done across all stimuli, not reset by trial
+        firstStimTime := 10000;  'arbitrarily big!
+        if mainTime[i%][0] > 0 then
+            firstStimTime := min(firstStimTime,mainTime[i%][0]);
+            if mainTime[i%][1] > 0 then
+                HazardMinTime := min(HazardMinTime,mainTime[i%][1]-mainTime[i%][0]);
+                HazardCutoffTime := max(HazardCutoffTime,mainTime[i%][1]-mainTime[i%][0]);
+            endif;
+        endif
+        if dist1Time[i%][0] > 0 then
+            firstStimTime := min(firstStimTime,dist1Time[i%][0]);
+            if dist1Time[i%][1] > 0 then
+                HazardMinTime := min(HazardMinTime,dist1Time[i%][1]-dist1Time[i%][0]);
+                HazardCutoffTime := max(HazardCutoffTime,dist1Time[i%][1]-dist1Time[i%][0]);
+            endif;
+        endif
+        if dist2Time[i%][0] > 0 then
+            firstStimTime := min(firstStimTime,dist2Time[i%][0]);
+            if dist2Time[i%][1] > 0 then
+                HazardMinTime := min(HazardMinTime,dist2Time[i%][1]-dist2Time[i%][0]);
+                HazardCutoffTime := max(HazardCutoffTime,dist2Time[i%][1]-dist2Time[i%][0]);
+            endif;
+        endif
+        if dist3Time[i%][0] > 0 then
+            firstStimTime := min(firstStimTime,dist3Time[i%][0]);
+            if dist3Time[i%][1] > 0 then
+                HazardMinTime := min(HazardMinTime,dist3Time[i%][1]-dist3Time[i%][0]);
+                HazardCutoffTime := max(HazardCutoffTime,dist3Time[i%][1]-dist3Time[i%][0]);
+            endif;
+        endif
+        if dist4Time[i%][0] > 0 then
+            firstStimTime := min(firstStimTime,dist4Time[i%][0]);
+            if dist4Time[i%][1] > 0 then
+                HazardMinTime := min(HazardMinTime,dist4Time[i%][1]-dist4Time[i%][0]);
+                HazardCutoffTime := max(HazardCutoffTime,dist4Time[i%][1]-dist4Time[i%][0]);
+            endif;
+        endif
+        
+        
+        'For the GRATING version, some values are defined in an additive fashion...
+        'StimOnsetTime is time between cue offset and stim onset, allowed to be negative
+        'TrialEndTime is the time between the stim onset and trial offset
+        '(It should be noted that in the grating version, all gratings onset at the same time,
+        'for images that is not a requirement)
+        'StimOnsetTime[i%] := firstStimTime-cueOff[i%];
+        'TrialEndTime[i%] := allOff[i%]-StimOnsetTime[i%];
+        
+        'But notably, outside of CreateContrastList (done by Henry) and TagTrigger (to be rewritten) 
+        'these values are only used to calculate the time relative to the beginning of the trial, so we
+        'can just use that for the fill
+        TrialEndTime[i%] := allOff[i%];  'Easier!
+        'StimOnsetTime[] does not need to be calculated at all if I can instead calculate the image change time
+        'at the cued and uncued locations.  To do this, I will assume that there will be ONE change of interest
+        '(and possibly a return??)  There will be no return, per Henry.
+        
+        
+        'Loop through cue colors to determine which is the fixation color
+        for j% := 0 to 5 do
+            if fixColor$[i%] = masterColorListVSG$[j%] then
+                FixColor%[i%] := j%;
+                break
+            endif
+            if j% = 5 then
+                'message("Warning Message | Fixation color %s on trial %d not found among cue colors!",fixColor$[i%],i%+1);
+                'printlog("Fixation color %s on trial %d not found among cue colors!  Quitting!!\n",fixColor$[i%],i%+1);
+                'return 0;
+                
+                IsCueAll%[i%] := -1;  'Trial is "no cue matches"
+                FixColor%[i%] := -1;  'Hopefully we don't need this, will verify
+                
+            endif
+        next
+        
+        'There should be a maximum of two locations changing
+        'The simplest thing would seem to be to decide which locations change and then to decide whether those locations
+        'are cued or uncued locations
+        'So check all locations for an image change (a time in second position that is not an offset)
+        locInd% := 0;  'reset for each trial
+        changeLoc%[0] := -1;  'set to -1, indicating no location changing
+        changeLoc%[1] := -1;
+        if locInd% < 2 and mainTime[i%][1] > 0 and mainImage%[i%][1] > -1 then
+            changeLoc%[locInd%] := 0;  '0 for main location
+            locInd% += 1;  'increment index
+        endif
+        if locInd% < 2 and dist1Time[i%][1] > 0 and dist1Image%[i%][1] > -1 then
+            changeLoc%[locInd%] := 1;  '1 for dist1 location
+            locInd% += 1;  'increment index
+        endif
+        if locInd% < 2 and dist2Time[i%][1] > 0 and dist2Image%[i%][1] > -1 then
+            changeLoc%[locInd%] := 2;  '2 for dist2 location
+            locInd% += 1;  'increment index
+        endif
+        if locInd% < 2 and dist3Time[i%][1] > 0 and dist3Image%[i%][1] > -1 then
+            changeLoc%[locInd%] := 3;  '3 for dist3 location
+            locInd% += 1;  'increment index
+        endif
+        if locInd% < 2 and dist4Time[i%][1] > 0 and dist4Image%[i%][1] > -1 then
+            changeLoc%[locInd%] := 4;  '4 for dist4 location
+            locInd% += 1;  'increment index
+        endif
+        
+        CuedLocList%[i%] := FixColor%[i%]; 'By default, the cued location is the location of the fixation color, for cue-all, will be changed to first changing location
+        UncuedLocList%[i%] := -1; 'By default there is no uncued location, will be filled with second uncued location that changes, if two such locations exist, or the first if one exists
+        
+        'Now go through each change, determine if the location was cued, fill as appropriate
+        for j% := 0 to locInd%-1 do
+            docase
+            case changeLoc%[j%] = FixColor%[i%] or (FixColor%[i%] = 5 and j% = 0) then  'this is the cued location
+                if FixColor%[i%] = 5 then
+                    CuedLocList%[i%] := changeloc%[j%];  'if this is cue all, set change loc to first changing location
+                endif;
+                CuedLocChangesList%[i%] := 1;  
+                docase
+                case changeLoc%[j%] = 0 then
+                    CuedLocImage%[i%][0] := mainImage%[i%][0];
+                    CuedLocImage%[i%][1] := mainImage%[i%][1];
+                    CuedLocImageTime[i%][0] := mainTime[i%][0];
+                    CuedLocImageTime[i%][1] := mainTime[i%][1];
+                    if mainImage%[i%][2] = -1 then
+                        CuedLocImage%[i%][2] := mainImage%[i%][2];
+                        CuedLocImageTime[i%][2] := mainTime[i%][2];
+                    endif;
+                case changeLoc%[j%] = 1 then
+                    CuedLocImage%[i%][0] := dist1Image%[i%][0];
+                    CuedLocImage%[i%][1] := dist1Image%[i%][1];
+                    CuedLocImageTime[i%][0] := dist1Time[i%][0];
+                    CuedLocImageTime[i%][1] := dist1Time[i%][1];
+                    if dist1Image%[i%][2] = -1 then
+                        CuedLocImage%[i%][2] := dist1Image%[i%][2];
+                        CuedLocImageTime[i%][2] := dist1Time[i%][2];
+                    endif;
+                case changeLoc%[j%] = 2 then
+                    CuedLocImage%[i%][0] := dist2Image%[i%][0];
+                    CuedLocImage%[i%][1] := dist2Image%[i%][1];
+                    CuedLocImageTime[i%][0] := dist2Time[i%][0];
+                    CuedLocImageTime[i%][1] := dist2Time[i%][1];
+                    if dist2Image%[i%][2] = -1 then
+                        CuedLocImage%[i%][2] := dist2Image%[i%][2];
+                        CuedLocImageTime[i%][2] := dist2Time[i%][2];
+                    endif;
+                case changeLoc%[j%] = 3 then
+                    CuedLocImage%[i%][0] := dist3Image%[i%][0];
+                    CuedLocImage%[i%][1] := dist3Image%[i%][1];
+                    CuedLocImageTime[i%][0] := dist3Time[i%][0];
+                    CuedLocImageTime[i%][1] := dist3Time[i%][1];
+                    if dist3Image%[i%][2] = -1 then
+                        CuedLocImage%[i%][2] := dist3Image%[i%][2];
+                        CuedLocImageTime[i%][2] := dist3Time[i%][2];
+                    endif;
+                case changeLoc%[j%] = 4 then
+                    CuedLocImage%[i%][0] := dist4Image%[i%][0];
+                    CuedLocImage%[i%][1] := dist4Image%[i%][1];
+                    CuedLocImageTime[i%][0] := dist4Time[i%][0];
+                    CuedLocImageTime[i%][1] := dist4Time[i%][1];
+                    if dist4Image%[i%][2] = -1 then
+                        CuedLocImage%[i%][2] := dist4Image%[i%][2];
+                        CuedLocImageTime[i%][2] := dist4Time[i%][2];
+                    endif;
+                endcase
+            else  'this is an uncued location that changes
+                UncuedLocList%[i%] := changeloc%[j%];
+                UncuedLocChangesList%[i%] := 1;
+                docase
+                case changeLoc%[j%] = 0 then
+                    UncuedLocImage%[i%][0] := mainImage%[i%][0];
+                    UncuedLocImage%[i%][1] := mainImage%[i%][1];
+                    UncuedLocImageTime[i%][0] := mainTime[i%][0];
+                    UncuedLocImageTime[i%][1] := mainTime[i%][1];
+                    if mainImage%[i%][2] = -1 then
+                        UncuedLocImage%[i%][2] := mainImage%[i%][2];
+                        UncuedLocImageTime[i%][2] := mainTime[i%][2];
+                    endif;
+                case changeLoc%[j%] = 1 then
+                    UncuedLocImage%[i%][0] := dist1Image%[i%][0];
+                    UncuedLocImage%[i%][1] := dist1Image%[i%][1];
+                    UncuedLocImageTime[i%][0] := dist1Time[i%][0];
+                    UncuedLocImageTime[i%][1] := dist1Time[i%][1];
+                    if dist1Image%[i%][2] = -1 then
+                        UncuedLocImage%[i%][2] := dist1Image%[i%][2];
+                        UncuedLocImageTime[i%][2] := dist1Time[i%][2];
+                    endif;
+                case changeLoc%[j%] = 2 then
+                    UncuedLocImage%[i%][0] := dist2Image%[i%][0];
+                    UncuedLocImage%[i%][1] := dist2Image%[i%][1];
+                    UncuedLocImageTime[i%][0] := dist2Time[i%][0];
+                    UncuedLocImageTime[i%][1] := dist2Time[i%][1];
+                    if dist2Image%[i%][2] = -1 then
+                        UncuedLocImage%[i%][2] := dist2Image%[i%][2];
+                        UncuedLocImageTime[i%][2] := dist2Time[i%][2];
+                    endif;
+                case changeLoc%[j%] = 3 then
+                    UncuedLocImage%[i%][0] := dist3Image%[i%][0];
+                    UncuedLocImage%[i%][1] := dist3Image%[i%][1];
+                    UncuedLocImageTime[i%][0] := dist3Time[i%][0];
+                    UncuedLocImageTime[i%][1] := dist3Time[i%][1];
+                    if dist3Image%[i%][2] = -1 then
+                        UncuedLocImage%[i%][2] := dist3Image%[i%][2];
+                        UncuedLocImageTime[i%][2] := dist3Time[i%][2];
+                    endif;
+                case changeLoc%[j%] = 4 then
+                    UncuedLocImage%[i%][0] := dist4Image%[i%][0];
+                    UncuedLocImage%[i%][1] := dist4Image%[i%][1];
+                    UncuedLocImageTime[i%][0] := dist4Time[i%][0];
+                    UncuedLocImageTime[i%][1] := dist4Time[i%][1];
+                    if dist4Image%[i%][2] = -1 then
+                        UncuedLocImage%[i%][2] := dist4Image%[i%][2];
+                        UncuedLocImageTime[i%][2] := dist4Time[i%][2];
+                    endif;
+                endcase
+            endcase
+        next
+        
+'For testing the extraction above, it looks like all is working as expected        
+'        printlog("\n\nTRIAL %d\n",i%+1);
+'        printlog("Fixation color is %d, which is %s\n",FixColor%[i%],masterColorListVSG$[FixColor%[i%]]);
+'        printlog("Current Hazard Min is %f and Hazard Cutoff is %f\n",HazardMinTime,HazardCutoffTime);
+'        printlog("Trial is cue-all: %d\n",IsCueAll%[i%]);
+'        printlog("Cued location is %d, does this location change: %d\n",CuedLocList%[i%],CuedLocChangesList%[i%]);
+'        printlog("First cued loc image is %d at time %f\n",CuedLocImage%[i%][0],CuedLocImageTime[i%][0]);
+'        printlog("Second cued loc image is %d at time %f\n",CuedLocImage%[i%][1],CuedLocImageTime[i%][1]);
+'        printlog("Uncued location is %d, does this location change: %d\n",UncuedLocList%[i%],UncuedLocChangesList%[i%]);
+'        printlog("First uncued loc image is %d at time %f\n",UncuedLocImage%[i%][0],UncuedLocImageTime[i%][0]);
+'        printlog("Second uncued loc image is %d at time %f\n",UncuedLocImage%[i%][1],UncuedLocImageTime[i%][1]);
+'        printlog("Trial end time is %f\n",TrialEndTime[i%]);
+        
+        
+    next
+    
+    
+    return 1;
+    
 end
