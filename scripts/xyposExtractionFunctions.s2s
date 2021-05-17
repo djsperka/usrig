@@ -1,0 +1,50 @@
+#include "../util/LogUtilities.s2s"
+#include "../util/ChannelUtilities.s2s"
+#include "../util/FileUtilities.s2s"
+
+
+func xyposX%(window%, args$)
+    var tlast := -1;
+    var tlastFrame := -1;
+    var t0, t1;     ' frame times
+    var txt$;
+    var unused%[3];
+    var x,y;
+    var s1$, s2$;
+    var n%;
+    var outfile$;
+    var outhndl;
+    LogInfo(FileName$(-4));
+    outhndl := FileOpen(FileName$(-4) + ".xypos", 8, 1); 
+    View(window%);
+    tlast := NextTime(30, tlast, unused%, txt$);
+    while (tlast >= 0) do
+        'LogInfo("xyposX: " + txt$ + " @ " + str$(tlast));
+        if (Left$(txt$, 1) = "T") then
+            ReadSetup(",", "", "", "", ",");
+            n% := ReadStr(txt$, s1$, x, s2$, y);
+            if (n% = 4) then
+                'LogInfo("Got " + str$(x) + "," + str$(y));
+                n% := FindRisingEdge%(41, tlast, t0);
+                if (n% = 0) then
+                    n% := FindRisingEdge%(41, t0, t1);
+                    if (n% = 0) then
+                        'LogInfo("Got times : " + str$(t0) + ", " + str$(t1));
+                        View(outhndl).Print("%f,%f,%f,%f\n", x, y, t0, t1);
+                    else
+                        LogError("xyposX%()", "Error reading second rising edge, after t=" + str$(t0));
+                    endif
+                else
+                    LogError("xyposX%()", "Error reading first rising edge, after t=" + str$(tlast));
+                endif
+            else
+                LogError("xyposX()", "Expecting 4 values read");
+            endif
+        endif
+
+        tlast := NextTime(30, tlast, unused%, txt$);
+    wend
+    View(outhndl).FileClose();
+    
+    return 0;
+end
