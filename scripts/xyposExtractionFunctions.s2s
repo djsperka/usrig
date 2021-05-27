@@ -1,7 +1,7 @@
 #include "../util/LogUtilities.s2s"
 #include "../util/ChannelUtilities.s2s"
 #include "../util/FileUtilities.s2s"
-
+#include "ExtractionUtilities.s2s"
 
 func xyposX%(window%, args$)
     var tlast := -1;
@@ -44,6 +44,101 @@ func xyposX%(window%, args$)
 
         tlast := NextTime(30, tlast, unused%, txt$);
     wend
+    View(outhndl).FileClose();
+    
+    return 0;
+end
+
+
+
+
+func borX%(window%, args$)
+    var tlast := -1;
+    var tlastFrame := -1;
+    var iDone% := 0;
+    var t0, t1;     ' frame times
+    var txt$;
+    var cmd$;
+    var unused%[3];
+    var x,y;
+    var s1$, s2$;
+    var n%;
+    var outfile$;
+    var outhndl;
+    LogInfo(FileName$(-4));
+    outhndl := FileOpen(FileName$(-4) + ".bor", 8, 1); 
+    View(window%);
+    
+    ' reconstruct command line, and parse out the border ownership arg.
+    tlast := NextTime(30, tlast, unused%, txt$);
+    while (tlast >= 0 and iDone% < 2) do
+        docase
+        case (iDone% = 0) then        
+            ' expect "cmd" to start command line string
+            if (InStr(txt$, "cmd") = 1) then
+                cmd$ := txt$;
+                iDone% := 1;
+            endif
+        case (iDone% = 1) then
+            ' look for line begin with "T," to end
+            if (InStr(txt$, "T,") = 1) then
+                iDone% := 2;
+            else
+                cmd$ += txt$
+            endif
+        endcase
+        tlast := NextTime(30, tlast, unused%, txt$);
+    wend
+    
+    ' cmd$ holds command line string. Look for "-c" and save the argument.
+    n% := InStr(cmd$, "-c");
+    if (n% > 0) then
+        var tmp$ := Right$(cmd$, Len(cmd$) - n% - 2);
+        var s$[6];
+        var istim%[1000];
+        var nread%;
+        ReadSetup(",","","","",",");
+        nread% := ReadStr(tmp$, s$, istim%);
+        'while ReadStr(tmp$, line$) >= 0 do    ' read while not EOF or error
+        PrintLog("%d: %s\n%s\n%s\n%s\n%s\n%s\n", nread%, s$[0], s$[1], s$[2], s$[3], s$[4], s$[5]); ' write whatever we got
+        PrintLog("%d %d %d\n", istim%[0], istim%[1], istim%[2]);
+        ReadSetup();                 ' restore standard separators
+        
+        ' Load up S sample keys
+        var lastS := -1;
+        var tS :=-1;
+        var tI :=-1;
+        var tOn := -1;
+        var tOff := -1;
+        var ss$;
+        var ignore%[4];
+        tS := NextKey(lastS, ss$, "XaQo0");
+        while (tS > 0) do
+            lastS := tS;
+                
+            ' fetch stimulus number
+            tI := NextTime(29, tS, ignore%, ss$);
+            
+            ' fetch stim onset and offset
+            tOn := -1;
+            tOff := -1;
+            if (FindRisingEdge%(27, tS, tOn) = 0 and FindRisingEdge%(27, tOn, tOff) = 0) then
+                PrintLog("Got i %s edges %f %f\n", ss$, tOn, tOff);
+                View(outhndl).Print("%s,%f,%f\n", ss$, tOn, tOff);
+            else
+                LogError("borX%()", "Error finding stim onset/offset FRAME rising edge");
+            endif
+            
+            tS := NextKey(lastS, ss$, "XaQo0");
+        wend
+    else
+        LogError("borX%()", "Cannot find -c on command line");
+    endif
+    
+    'ReadSetup(" ", "", "", "", " ");
+    
+    
+    
     View(outhndl).FileClose();
     
     return 0;

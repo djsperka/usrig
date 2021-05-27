@@ -16,8 +16,18 @@
 #include "xyposExtractionFunctions.s2s"
 
 var nProcessed% := 0;
-
-
-nProcessed% := ProcessListFile%("", xyposX%);
-LogStatus("xyposExtractBatch", "Processed " + str$(nProcessed%) + " files.");
+var ok%;
+var ichoice% := 0;
+DlgCreate("choose extraction type");
+DlgList(1,"data type:","xypos|bor");
+ok% := DlgShow(ichoice%);
+if (ok% = 1) then
+    if (ichoice% = 0) then
+        nProcessed% := ProcessListFile%("", xyposX%);
+        LogStatus("xypos", "Processed " + str$(nProcessed%) + " files.");
+    else
+        nProcessed% := ProcessListFile%("", borX%);
+        LogStatus("bor", "Processed " + str$(nProcessed%) + " files.");
+    endif
+endif
 
