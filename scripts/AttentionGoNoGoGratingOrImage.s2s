@@ -37,6 +37,7 @@ var attNumPatches%;  'how many stimulus patches on the screen?
 var attGetGPFromMainStim% := 0;  'check box variable, should we get the distractor grating parameters (except for XY position) from the main stimulus?
 var attUseCueCircles%;
 var attCueCircleExtraRadius;
+var attCuePointDiameter;
 var attBackgroundColor$;
 var attBackgroundRed% := 0;
 var attBackgroundGreen% := 0;
@@ -124,6 +125,7 @@ var attStartBlock%;
 'var attNoInfoCondition%;  'not being used, replaced by cue-all, now completely deprecated
 var attSwapCueCircle%;
 var attCueCircleStrokeWidth%;
+var attCuePointUseFixDiameter%;
 var attUseFlashers%;  'flashers are currently disabled, could be enabled later
 var attFlasherGratingParams$;
 var attFlasherDur; 
@@ -2464,6 +2466,7 @@ proc GetAttentionScriptParameters()
     attGetGPFromMainStim% := GetIntRegistryValue%(key$, "GetGPFromMainStim", 1);  ''
     attUseCueCircles% := GetIntRegistryValue%(key$, "UseCueCircles", 1); ''
     attCueCircleExtraRadius := GetFloatRegistryValue(key$, "CueCircleExtraRadius", 0.0); ''
+    attCuePointDiameter := GetFloatRegistryValue(key$, "CuePointDiameter", 0.0); ''
     attSelectRandomContrastEachTrial% := GetIntRegistryValue%(key$, "NoBlockRand", 1); ''
 	attTrainingContrastCheck% := GetIntRegistryValue%(key$, "TrainingContrastCheck", 0); ''
 	attTrainingContrastPct% := GetIntRegistryValue%(key$, "TrainingContrastPct", 0); ''
@@ -2476,6 +2479,7 @@ proc GetAttentionScriptParameters()
 	'attAnswerPointWindowRadius := GetFloatRegistryValue(key$, "AnswerPointWindowRadius", 2.0); ''
     attSwapCueCircle% := GetIntRegistryValue%(key$, "SwapCueCircle", 0); ''
     attCueCircleStrokeWidth% := GetIntRegistryValue%(key$, "CueCircleStrokeWidth", 0); ''
+    attCuePointUseFixDiameter% := GetIntRegistryValue%(key$, "CuePointUseFixDiameter", 0); ''
     attUseLowReward% := GetIntRegistryValue%(key$, "UseLowReward", 0); ''
     attLowReward% := GetIntRegistryValue%(key$, "LowReward", 0); ''
     attDoOpto% := GetIntRegistryValue%(key$, "DoOpto", 0); ''
@@ -2503,6 +2507,7 @@ proc SaveAttentionScriptParameters()
     SetIntRegistryValue(key$, "GetGPFromMainStim", attGetGPFromMainStim%);
     SetIntRegistryValue(key$, "UseCueCircles", attUseCueCircles%);
     SetFloatRegistryValue(key$, "CueCircleExtraRadius", attCueCircleExtraRadius);
+    SetFloatRegistryValue(key$, "CuePointDiameter", attCuePointDiameter);
     SetIntRegistryValue(key$, "NoBlockRand", attSelectRandomContrastEachTrial%);
 	SetIntRegistryValue(key$, "TrainingContrastCheck", attTrainingContrastCheck%);
 	SetIntRegistryValue(key$, "TrainingContrastPct", attTrainingContrastPct%);
@@ -2515,6 +2520,7 @@ proc SaveAttentionScriptParameters()
 	'SetFloatRegistryValue(key$, "AnswerPointWindowRadius", attAnswerPointWindowRadius);
     SetIntRegistryValue(key$, "SwapCueCircle", attSwapCueCircle%);  
     SetIntRegistryValue(key$, "CueCircleStrokeWidth", attCueCircleStrokeWidth%);
+    SetIntRegistryValue(key$, "CuePointUseFixDiameter", attCuePointUseFixDiameter%);
     SetIntRegistryValue(key$, "UseLowReward", attUseLowReward%);
     SetIntRegistryValue(key$, "LowReward", attLowReward%);     
     SetIntRegistryValue(key$, "DoOpto", attDoOpto%);
@@ -2537,8 +2543,10 @@ proc GetAttentionScriptImagesParameters()
 
     attUseCueCircles% := GetIntRegistryValue%(key$, "UseCueCircles", 1); ''
     attCueCircleExtraRadius := GetFloatRegistryValue(key$, "CueCircleExtraRadius", 0.0); ''
+    attCuePointDiameter := GetFloatRegistryValue(key$, "CuePointDiameter", 0.0); ''
 	attAnswerPointWindowRadius := GetFloatRegistryValue(key$, "AnswerPointWindowRadius", 2.0); ''
     attCueCircleStrokeWidth% := GetIntRegistryValue%(key$, "CueCircleStrokeWidth", 0); ''
+    attCuePointUseFixDiameter% := GetIntRegistryValue%(key$, "CuePointUseFixDiameter", 0); ''
     attDoOpto% := GetIntRegistryValue%(key$, "DoOpto", 0); ''
     attRequireJoystickResponse% := GetIntRegistryValue%(key$, "RequireJoystickResponse", 0);
     
@@ -2553,8 +2561,10 @@ proc SaveAttentionScriptImagesParameters()
     
     SetIntRegistryValue(key$, "UseCueCircles", attUseCueCircles%);
     SetFloatRegistryValue(key$, "CueCircleExtraRadius", attCueCircleExtraRadius);
+    SetFloatRegistryValue(key$, "CuePointDiameter", attCuePointDiameter);
 	SetFloatRegistryValue(key$, "AnswerPointWindowRadius", attAnswerPointWindowRadius);  
     SetIntRegistryValue(key$, "CueCircleStrokeWidth", attCueCircleStrokeWidth%);    
+    SetIntRegistryValue(key$, "CuePointUseFixDiameter", attCuePointUseFixDiameter%); 
     SetIntRegistryValue(key$, "DoOpto", attDoOpto%);
     SetIntRegistryValue(key$, "RequireJoystickResponse", attRequireJoystickResponse%);
     
@@ -2901,13 +2911,13 @@ func AttentionScriptDialog%()
     var tempTotal;  'friggin integer math
     var tempWhoops;
     var tenints%[10];
-    var cueCircleList$[4];
+    var cueCircleList$[3];
   
     cueCircleList$[0] := "No Cue Circles";
-    'cueCircleList$[1] := "Cue Circles";
-    cueCircleList$[1] := "Cue Squares (not working)";
-    cueCircleList$[2] := "Cue Circles + Cue Points";
-    cueCircleList$[3] := "Cue Points Only";  'should be ready to go
+    cueCircleList$[1] := "Cue Points Only";
+    cueCircleList$[2] := "Cue Squares";
+    'cueCircleList$[3] := "Cue Circles + Cue Points";
+     
     
 	GetAttentionScriptParameters();
     GetColorsDialogParameters();  'we need to GET the parameters here, or the user will need to open each dialog
@@ -2978,10 +2988,12 @@ func AttentionScriptDialog%()
     DlgCheck(19, "Use Flashers", 37, 13);
     
     DlgGroup("Cue Circles", 1, 13, 34, 5);
-    DlgList(20, 30, cueCircleList$[], 4, 4, 14);
+    DlgList(20, 30, cueCircleList$[], 3, 4, 14);
     DlgCheck(21, "Swap Cue Circles (if used)", 2, 15);
-	DlgReal(22, "Cue extra radius (deg)", 0, 5, 21, 16);
-    DlgInteger(23, 4, 0, 20, 30, 17); DlgText("Cue Circle Stroke Width(integer)",2,17);
+	'DlgReal(22, "Cue extra radius (deg)", 0, 5, 21, 16);
+    DlgReal(22, "Cue point diameter (deg)", 0, 5, 21, 16);
+    DlgCheck(23, "Use Fixpt Diameter",2,17);
+    'DlgInteger(23, 4, 0, 20, 30, 17); DlgText("Cue Circle Stroke Width(integer)",2,17);
     
     
     DlgGroup("Reward", 36, 14, 34, 3);
@@ -3002,7 +3014,7 @@ func AttentionScriptDialog%()
     
 	i%:=DlgShow(attNumberOfSetsOfBlocks%, attTrialsPerBlock%, attEasyTrialsPerBlock%, distracterOffForEasy%, attCuedLocationChangePct%, attUncuedLocationChangePct%,
     attContrastBase%, attMaxContChange, attMinContChange, attNContLevels%, attAnswerPointWindowRadius, tenints%[], 
-    attCueCircleExtraRadius, attCueCircleStrokeWidth%, attUseLowReward%, attLowReward%, attDoOpto%, attRequireJoystickResponse%, attNoCuesMatchFixpt%);
+    attCuePointDiameter, attCuePointUseFixDiameter%, attUseLowReward%, attLowReward%, attDoOpto%, attRequireJoystickResponse%, attNoCuesMatchFixpt%);
     
     
 	if i% = 1 then
@@ -3018,6 +3030,7 @@ func AttentionScriptDialog%()
         attUseFlashers% := tenints%[7];
         attUseCueCircles% := tenints%[8];
         attSwapCueCircle% := tenints%[9];
+        
         
         'Make sure the user doesn't break things by having illegal values in the blocks dialog
         '(OK, technically, the blocks dialog doesn't allow illegal values, but those values can later turn out illegal
@@ -3092,6 +3105,10 @@ func AttentionScriptDialog%()
         endif;
         
 		SaveAttentionScriptParameters();
+        
+        if attCuePointUseFixDiameter% = 1 then
+            attCuePointDiameter := FixationDiameter;
+        endif;
         
         'After saving parameters, set phase to 0 if we are not controlling it
         if attPhaseCheck% = 0 then
@@ -3312,6 +3329,7 @@ func AttentionScriptDialogChanged%(item%)
     DlgEnable(DlgValue(24), 25);  'allow low reward value based on use of low reward
     DlgEnable(DlgValue(19), -7);  'allow flashers button based on use of flashers
     DlgEnable(DlgValue(26), -3);  'allow opto button based on use of opto
+    DlgEnable(1-DlgValue(23), 22);  'allow cue point diameter, if not using fixpt size
     
     DlgEnable(0,24);  'Completely disable low reward, may never use this again
     DlgEnable(0,25);  'etc.
@@ -3337,14 +3355,13 @@ func AttentionScriptImagesDialog%()
     var tempTrialsPerContrast%;
     var tempTotal;  'friggin integer math
     var tempWhoops;
-    var cueCircleList$[4];
+    var cueCircleList$[3];
     var success%;
   
     cueCircleList$[0] := "No Cue Circles";
-    'cueCircleList$[1] := "Cue Circles";
-    cueCircleList$[1] := "Cue Squares (not working)";
-    cueCircleList$[2] := "Cue Circles + Cue Points";
-    cueCircleList$[3] := "Cue Points Only";  'should be ready to go
+    cueCircleList$[1] := "Cue Points Only";
+    cueCircleList$[2] := "Cue Squares";
+    'cueCircleList$[3] := "Cue Circles + Cue Points";
     
 	GetAttentionScriptImagesParameters();
     'GetColorsDialogImagesParameters();  'we need to GET the parameters here, or the user will need to open each dialog
@@ -3374,10 +3391,10 @@ func AttentionScriptImagesDialog%()
     
     DlgGroup("Cues", 1, 1, 43, 5);
     DlgReal(1, "Answer Window Radius (deg)", 0, 20, 20, 2);
-    DlgList(2, 30, cueCircleList$[], 4, 3, 3);
-	DlgReal(3, "Cue extra radius (deg)", 0, 5, 20, 4);
-    DlgInteger(4, "Cue Circle Stroke Width(integer)", 0, 20, 20, 5);
-    'DlgInteger(23, 4, 0, 20, 30, 17); DlgText("Cue Circle Stroke Width(integer)",2,17);
+    DlgList(2, 30, cueCircleList$[], 3, 3, 3);
+	DlgReal(3, "Cue point diameter (deg)", 0, 5, 20, 4);
+    DlgCheck(4, "Use Fixpt Diameter",2,5);
+    'DlgInteger(4, "Cue Circle Stroke Width(integer)", 0, 20, 20, 5);
     
     DlgGroup("Opto", 1, 6, 43, 3);
     DlgCheck(5,"Opto On",2,7);
@@ -3397,13 +3414,17 @@ func AttentionScriptImagesDialog%()
 
     DlgAllow(0, 0, AttentionScriptImagesDialogChanged%);
     
-	i%:=DlgShow(attAnswerPointWindowRadius, attUseCueCircles%, attCueCircleExtraRadius, 
-    attCueCircleStrokeWidth%, attDoOpto%, attRequireJoystickResponse%, attImagesTrialsFile$);
+	i%:=DlgShow(attAnswerPointWindowRadius, attUseCueCircles%, attCuePointDiameter, 
+    attCuePointUseFixDiameter%, attDoOpto%, attRequireJoystickResponse%, attImagesTrialsFile$);
     
     
 	if i% = 1 then   
         
 		SaveAttentionScriptImagesParameters(); 
+        
+        if attCuePointUseFixDiameter% = 1 then
+            attCuePointDiameter := FixationDiameter;
+        endif;
         
         'Read the Images/Trials file, extract required variables
         success% := ReadImagesTrialsFile%(attImagesTrialsFile$,mainX,mainY,dist1X,dist1Y,dist2X,dist2Y,dist3X,dist3Y,dist4X,dist4Y,
@@ -3433,6 +3454,8 @@ func AttentionScriptImagesDialogChanged%(item%)
     DlgEnable(DlgValue(5), -2);  'allow opto button based on use of opto
     
     DlgEnable(DlgValue(6), -3);  'allow joystick button based on use of joystick
+    
+    DlgEnable(1-DlgValue(4), 3);  'allow cue point diameter, if not using fixpt size
     
     return status%;
 end
@@ -5374,7 +5397,10 @@ proc WriteParameterFile()
         if attUseCueCircles% > 0 then
             Print("\tUsing: %s\n",cueCircleList$[attUseCueCircles%]);
         endif;
-        Print("Cue Circle extra radius    : %f\n", attCueCircleExtraRadius);
+        Print("Cue Point diameter    : %f\n", attCuePointDiameter);
+        'Print("Cue Circle extra radius    : %f\n", attCueCircleExtraRadius);
+        
+        
         'Print("Start Block     : %d (%s)\n", attStartBlock%,blockStartList$[attStartBlock%]);
         'Print("No Change Condition    : %d\n", attNoChangeCondition%);  'TODO something logical here
         'if attNoChangeCondition% > 0 then
@@ -5392,7 +5418,8 @@ proc WriteParameterFile()
         if attUseCueCircles% > 0 then
             Print("\tUsing: %s\n",cueCircleList$[attUseCueCircles%]);
         endif;
-        Print("Cue Circle extra radius    : %f\n", attCueCircleExtraRadius);
+        Print("Cue Point diameter    : %f\n", attCuePointDiameter);
+        'Print("Cue Circle extra radius    : %f\n", attCueCircleExtraRadius);
     endif
     
     
@@ -5686,7 +5713,8 @@ end
 func CreateCueCircleColorSets$()
     
     var CueCircLocal$;
-    var RadAndWid$;  'these are all the same for every cue circle
+    'var RadAndWid$;  'these are all the same for every cue circle
+    var Diam$;
     
     var ContrastList%[5];  
     var RGBList%[5][3];
@@ -5744,23 +5772,21 @@ func CreateCueCircleColorSets$()
     'Set cue flag
     docase  'these values changed as of 8/21/2020 due to remapping on VSG side
     case attUseCueCircles% = 1 then
-        cueFlag$ := "-r ";  'Henry is reporting that -r is doing nothing.
-    case attUseCueCircles% = 2 then
-        cueFlag$ := "-Q ";
-    case attUseCueCircles% = 3 then
         cueFlag$ := "-q ";  
+    case attUseCueCircles% = 2 then
+        cueFlag$ := "-r -q ";  'Henry is reporting that -r is doing nothing, has to be -r -q.
+    'case attUseCueCircles% = 3 then
+        'cueFlag$ := "-Q ";  'This is deprecated
     else
         message("Error!  UseCueCircles% holds an illegal value!  Quitting!");
         quit%();
     endcase
     
-    'Radius and Width includes following commas but NOT leading comma - leading comma is not always used
-    RadAndWid$ := Str$(attCueCircleExtraRadius) + "," + Str$(attCueCircleStrokeWidth%) + ",";
-    
-    'Put in cue circle opener and first cue circle, which always happens
-    'CueCircLocal$ := "-Q " + Str$(attCueCircleExtraRadius) + "," + FadeColorToGray$(attendRGB%[],attCueCircleContrastAttend%);  'This is for old version of cue circle call (as of 6/5/15)
-    'This is for new version of cue circle call, adding stroke width, whenever it gets implemented
-    'CueCircLocal$ := cueFlag$ + RadAndWid$ + FadeColorToGray$(attendRGB%[],attCueCircleContrastAttend%);  
+    'The cue circle arguments used to be radius,strokewidth,color:
+    'RadAndWid$ := Str$(attCueCircleExtraRadius) + "," + Str$(attCueCircleStrokeWidth%) + ",";
+    'With cue circles gone, cue point arguments are now diameter,0,color:
+    Diam$ := Str$(attCuePointDiameter) + ",0,";
+    'Radius and Width/ Diam includes following commas but NOT leading comma - leading comma is not always used  
     
     'start building
     CueCircLocal$ := cueFlag$;
@@ -5771,7 +5797,8 @@ func CreateCueCircleColorSets$()
                 if i%<>0 or j%<>0 or k%<>0 then
                     CueCircLocal$ := CueCircLocal$ + ",";  'do not insert comma on very first spec, otherwise insert comma
                 endif
-                CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
+                CueCircLocal$ := CueCircLocal$ + Diam$;  'insert diameter, always the same here.
+                'CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
                 'get index of correct color
                 colIdx% := (i% + k%) mod attNumPatches%;
 
@@ -5854,7 +5881,8 @@ end
 'cuec circles in CueCircLocal$ for inclusion in the long spec file.
 func CreateCueCircleColorSetsLite$()
     var CueCircLocal$;
-    var RadAndWid$;  'these are all the same for every cue circle
+    'var RadAndWid$;  'these are all the same for every cue circle
+    var Diam$;        'this is the same for all cue points
     
     var ContrastList%[5];  
     var RGBList%[5][3];
@@ -5888,20 +5916,25 @@ func CreateCueCircleColorSetsLite$()
     RGBList%[4][2] := ignore4RGB%[2];
     
     'Set cue flag
-    docase
+    docase  'these values changed as of 8/21/2020 due to remapping on VSG side
     case attUseCueCircles% = 1 then
-        cueFlag$ := "-Q ";
-    case attUseCueCircles% = 2 then
         cueFlag$ := "-q ";
-    case attUseCueCircles% = 3 then
-        cueFlag$ := "-r ";  'this ought to work as of 1/24/18
+    case attUseCueCircles% = 2 then
+        cueFlag$ := "-r -q ";  'Henry is reporting that -r is doing nothing, has to be -r -q.
+    'case attUseCueCircles% = 3 then
+        'cueFlag$ := "-Q ";  'This is deprecated  
     else
         message("Error!  UseCueCircles% holds an illegal value!  Quitting!");
         quit%();
     endcase
     
-    'Radius and Width includes following commas but NOT leading comma - leading comma is not always used
-    RadAndWid$ := Str$(attCueCircleExtraRadius) + "," + Str$(attCueCircleStrokeWidth%) + ",";
+    
+    
+    'The cue circle arguments used to be radius,strokewidth,color:
+    'RadAndWid$ := Str$(attCueCircleExtraRadius) + "," + Str$(attCueCircleStrokeWidth%) + ",";
+    'With cue circles gone, cue point arguments are now diameter,0,color:
+    Diam$ := Str$(attCuePointDiameter) + ",0,";
+    'Radius and Width/ Diam includes following commas but NOT leading comma - leading comma is not always used
     
     'start building
     CueCircLocal$ := cueFlag$;
@@ -5910,7 +5943,8 @@ func CreateCueCircleColorSetsLite$()
         if i%<>0 then
             CueCircLocal$ := CueCircLocal$ + ",";  'do not insert comma on very first spec, otherwise insert comma
         endif
-        CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
+        'CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
+        CueCircLocal$ := CueCircLocal$ + Diam$;  'insert diameter, always the same here.
         
         'Here build of CueCircLocal$ varies depending on if we are using the grating or images version
         if isGrating% = 1 then
@@ -5935,7 +5969,8 @@ func CreateCueCircleColorSetsLite$()
     if attCueCirclesMatchCueAllFixpt% = 1 or isGrating% = 0 then
         for i% := 0 to attNumPatches%-1 do 'loop through each patch
             CueCircLocal$ := CueCircLocal$ + ",";  'insert comma in all cases
-            CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
+            'CueCircLocal$ := CueCircLocal$ + RadAndWid$;  'insert radius and width, always the same here.
+            CueCircLocal$ := CueCircLocal$ + Diam$;  'insert diameter, always the same here.
             
             if isGrating% = 1 then
                 'This is cue-all fixation color
