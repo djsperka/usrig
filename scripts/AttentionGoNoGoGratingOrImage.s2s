@@ -4594,7 +4594,10 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 
                 
                 ''' Determine uncued location (location that will change that is NOT cued - fill uncuedLoc%[])
-                if attNumPatches% > 1 then 'select a random location that is not the cued location
+                docase
+                case blockOrder%[j%] = 6 then 'This is cue-all
+                    uncuedLoc%[ind%] := 0;  'Henry has requested NO uncued changes on cue-all trials, if there's no uncued loc, there will be no uncued changes
+                case attNumPatches% > 1 then 'select a random location that is not the cued location
                     temp% := cuedLoc%[ind%];  'we can't select this location
                     while temp% = cuedLoc%[ind%] do
                         temp% := floor(rand(attNumPatches%,1)); 'Pick a value 1-N
@@ -4602,7 +4605,7 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                     uncuedLoc%[ind%] := temp%;
                 else
                     uncuedLoc%[ind%] := 0;  'if there is only one patch, then there can't be an uncued location
-                endif
+                endcase
                 
                 
                 ''' Determine which locations change contrast (Fill cuedLocChanges%[], uncuedLocChanges%[])
@@ -6331,15 +6334,15 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
     case minLoc% = 6 then 'this is a contrast change in the uncued location
         docase
         case isCueAll% = -1 then
-            cc% += 10;  'Increment cc% by 10
-            SampleText("Uncued Location CC, window open, no cues match",triggerTime);
+            cc% += 10;  'Increment cc% by 10  
+            SampleText("Uncued Location CC, Location " + Str$(attUncuedLocList%[trialCount%]) + ", Contrast " + Str$(attContrastUncuedList%[trialCount%]) + ", window open, no cues match",triggerTime);
         case isCueAll% = 1 then
             cc% += 10;  'Increment cc% by 10
-            SampleText("Uncued Location CC, window open",triggerTime);
+            SampleText("Uncued Location CC, Location " + Str$(attUncuedLocList%[trialCount%]) + ", Contrast " + Str$(attContrastUncuedList%[trialCount%]) + ", window open",triggerTime);
         else
             'do NOT increment CC, this contrast change is not a target, NO!  We need to know the change happened, not a target is dealt with by caller
             cc% += 10;  'Increment cc% by 10
-            SampleText("Uncued Location CC, not a target",triggerTime);
+            SampleText("Uncued Location CC, Location " + Str$(attUncuedLocList%[trialCount%]) + ", Contrast " + Str$(attContrastUncuedList%[trialCount%]) + ", not a target",triggerTime);
         endcase;
     case minLoc% = 7 and bothCuesAreLocked% = 0 then 'this is a contrast return in the cued location
         cc% += 1;  'Increment cc% by 1
@@ -6539,15 +6542,15 @@ proc TagTriggerWithSampletextImages(triggerTime,tAnimationOn,trialCount%,&cc%,is
     case minLoc% = 7 then 'this is an image change in the uncued location
         docase
         case isCueAll% = -1 then
-            cc% += 10;  'Increment cc% by 10
-            SampleText("Uncued Location Image Change, Image "+Str$(attUncuedLocImage%[trialCount%][1])+", window open, no cues match",triggerTime);
+            cc% += 10;  'Increment cc% by 10    
+            SampleText("Uncued Location Image Change, Location " + Str$(attUncuedLocList%[trialCount%]) + " Image " + Str$(attUncuedLocImage%[trialCount%][1]) + ", window open, no cues match",triggerTime);
         case isCueAll% = 1 then
             cc% += 10;  'Increment cc% by 10
-            SampleText("Uncued Location Image Change, Image "+Str$(attUncuedLocImage%[trialCount%][1])+", window open",triggerTime);
+            SampleText("Uncued Location Image Change, Location " + Str$(attUncuedLocList%[trialCount%]) + " Image " + Str$(attUncuedLocImage%[trialCount%][1]) + ", window open",triggerTime);
         else
             'do NOT increment CC, this change is not a target, NO!  We need to know the change happened, not a target is dealt with by caller
             cc% += 10;  'Increment cc% by 10
-            SampleText("Uncued Location Image Change, Image "+Str$(attUncuedLocImage%[trialCount%][1])+", not a target",triggerTime);
+            SampleText("Uncued Location Image Change, Location " + Str$(attUncuedLocList%[trialCount%]) + " Image " + Str$(attUncuedLocImage%[trialCount%][1]) + ", not a target",triggerTime);
         endcase;
     case minLoc% = 8 and offsetsAreLocked% = 0 then 'this is image off in the cued location
         cc% += 1;  'Increment cc% by 1
