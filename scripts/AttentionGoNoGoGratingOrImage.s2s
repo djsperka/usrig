@@ -2476,7 +2476,7 @@ proc GetAttentionScriptParameters()
     attMinContChange := GetFloatRegistryValue(key$, "ContrastMin", 1); ''
 	attAnswerPointDiameter := GetFloatRegistryValue(key$, "AnswerPointDiameter", 0.5);
 	attAnswerPointOffset := GetFloatRegistryValue(key$, "AnswerPointOffset", 5.0);
-	'attAnswerPointWindowRadius := GetFloatRegistryValue(key$, "AnswerPointWindowRadius", 2.0); ''
+	attAnswerPointWindowRadius := GetFloatRegistryValue(key$, "AnswerPointWindowRadius", 2.0); ''
     attSwapCueCircle% := GetIntRegistryValue%(key$, "SwapCueCircle", 0); ''
     attCueCircleStrokeWidth% := GetIntRegistryValue%(key$, "CueCircleStrokeWidth", 0); ''
     attCuePointUseFixDiameter% := GetIntRegistryValue%(key$, "CuePointUseFixDiameter", 0); ''
@@ -2517,7 +2517,7 @@ proc SaveAttentionScriptParameters()
     SetIntRegistryValue(key$, "NContrastLevels", attNContLevels%);
 	SetFloatRegistryValue(key$, "AnswerPointDiameter", attAnswerPointDiameter);
 	SetFloatRegistryValue(key$, "AnswerPointOffset", attAnswerPointOffset);
-	'SetFloatRegistryValue(key$, "AnswerPointWindowRadius", attAnswerPointWindowRadius);
+	SetFloatRegistryValue(key$, "AnswerPointWindowRadius", attAnswerPointWindowRadius);
     SetIntRegistryValue(key$, "SwapCueCircle", attSwapCueCircle%);  
     SetIntRegistryValue(key$, "CueCircleStrokeWidth", attCueCircleStrokeWidth%);
     SetIntRegistryValue(key$, "CuePointUseFixDiameter", attCuePointUseFixDiameter%);
@@ -3032,6 +3032,13 @@ func AttentionScriptDialog%()
         attSwapCueCircle% := tenints%[9];
         
         
+        'Testing syntax...seems OK...but Henry reports a no-go on changing the size fo the cue point, and squares doing no cue at all
+        'var CueCirc$;
+        'CueCirc$ := CreateCueCircleColorSetsLite$();
+        'printlog("Cue Circ is %s\n",CueCirc$);
+        'halt
+        
+        
         'Make sure the user doesn't break things by having illegal values in the blocks dialog
         '(OK, technically, the blocks dialog doesn't allow illegal values, but those values can later turn out illegal
         ' if the user decreases the number of stimuli after running the blocks dialog, or without running the blocks dialog)
@@ -3342,7 +3349,7 @@ func AttentionScriptDialogChanged%(item%)
     
     DlgEnable(0,21);  'Cue circle swapping does nothing right now!
     
-    DlgEnable(0,11);  'Disabling answer point radius, using grating size instead
+    'DlgEnable(0,11);  'Disabling answer point radius, using grating size instead - now re-enabling!
     
     return status%;
 end
@@ -5004,18 +5011,34 @@ func Answer%(EyePosX, EyePosY)
     var ans% := 0;
     
     'note that in the case statement, we will not consider grating patches that don't exist - see how smart we are!
+    
+    'This code has an independent answer point window radius set by the dialog box
     docase
-    case (Pow(EyePosX-mainX,2) + Pow(EyePosY-(mainY),2)) <= Pow(mainW,2) then 'Looking at main grating location, just assuming mainW = mainH!
+    case (Pow(EyePosX-mainX,2) + Pow(EyePosY-(mainY),2)) <= Pow(attAnswerPointWindowRadius,2) then 'Looking at main grating location, just assuming mainW = mainH!
         ans% := 1;
-    case (Pow(EyePosX-dist1X,2) + Pow(EyePosY-(dist1Y),2)) <= Pow(dist1W,2) and attNumPatches% > 1 then 'Looking at distracter 1 location, just assuming dist1W = dist1H!
+    case (Pow(EyePosX-dist1X,2) + Pow(EyePosY-(dist1Y),2)) <= Pow(attAnswerPointWindowRadius,2) and attNumPatches% > 1 then 'Looking at distracter 1 location, just assuming dist1W = dist1H!
         ans% := 2;
-    case (Pow(EyePosX-dist2X,2) + Pow(EyePosY-(dist2Y),2)) <= Pow(dist2W,2) and attNumPatches% > 2 then 'Looking at distracter 2 location, just assuming dist2W = dist2H!
+    case (Pow(EyePosX-dist2X,2) + Pow(EyePosY-(dist2Y),2)) <= Pow(attAnswerPointWindowRadius,2) and attNumPatches% > 2 then 'Looking at distracter 2 location, just assuming dist2W = dist2H!
         ans% := 3;
-    case (Pow(EyePosX-dist3X,2) + Pow(EyePosY-(dist3Y),2)) <= Pow(dist3W,2) and attNumPatches% > 3 then 'Looking at distracter 3 location, just assuming dist3W = dist3H!
+    case (Pow(EyePosX-dist3X,2) + Pow(EyePosY-(dist3Y),2)) <= Pow(attAnswerPointWindowRadius,2) and attNumPatches% > 3 then 'Looking at distracter 3 location, just assuming dist3W = dist3H!
         ans% := 4;
-    case (Pow(EyePosX-dist4X,2) + Pow(EyePosY-(dist4Y),2)) <= Pow(dist4W,2) and attNumPatches% > 4 then 'Looking at distracter 4 location, just assuming dist4W = dist4H!
+    case (Pow(EyePosX-dist4X,2) + Pow(EyePosY-(dist4Y),2)) <= Pow(attAnswerPointWindowRadius,2) and attNumPatches% > 4 then 'Looking at distracter 4 location, just assuming dist4W = dist4H!
         ans% := 5;
     endcase;
+    
+    'This code makes the answer point window radius the same size as the grating at that location
+'    docase
+'    case (Pow(EyePosX-mainX,2) + Pow(EyePosY-(mainY),2)) <= Pow(mainW,2) then 'Looking at main grating location, just assuming mainW = mainH!
+'        ans% := 1;
+'    case (Pow(EyePosX-dist1X,2) + Pow(EyePosY-(dist1Y),2)) <= Pow(dist1W,2) and attNumPatches% > 1 then 'Looking at distracter 1 location, just assuming dist1W = dist1H!
+'        ans% := 2;
+'    case (Pow(EyePosX-dist2X,2) + Pow(EyePosY-(dist2Y),2)) <= Pow(dist2W,2) and attNumPatches% > 2 then 'Looking at distracter 2 location, just assuming dist2W = dist2H!
+'        ans% := 3;
+'    case (Pow(EyePosX-dist3X,2) + Pow(EyePosY-(dist3Y),2)) <= Pow(dist3W,2) and attNumPatches% > 3 then 'Looking at distracter 3 location, just assuming dist3W = dist3H!
+'        ans% := 4;
+'    case (Pow(EyePosX-dist4X,2) + Pow(EyePosY-(dist4Y),2)) <= Pow(dist4W,2) and attNumPatches% > 4 then 'Looking at distracter 4 location, just assuming dist4W = dist4H!
+'        ans% := 5;
+'    endcase;
     
 	return ans%;
 end;
