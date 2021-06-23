@@ -1,0 +1,2 @@
+REM demo of box-of-parameters with a single grating. The varying parameters are Orientation (-O), Contrast (-C), and fixpt color (-U). 
+%~dp0\..\bin\remote.exe 127.0.0.1 7000 fixstim -f 0,0,1.0,red -b gray -d 813 -a -D blue,0,0,5,.25,5,4,0,45,90,135
