@@ -30,6 +30,7 @@ const tunTypeDSS$ := "DSS";
 const tunTypeNullTest$ := "NULL";
 const tunTypeLag$ := "LAG";
 const tunTypeBakersDozen$ := "BAKER";
+const tunTypeFixptColor$ := "FPC";
 var tunType$:=tunTypeNone$;
 var tunType1$:=tunTypeNone$;  'for first of two tuning curves, if Box O' Donuts, or for non-CRG curve in CRG scenarios
 var tunType2$:=tunTypeNone$;  'for second of two tuning curves, if Box O' Donuts
@@ -68,6 +69,7 @@ const tundlgNullTestANDLagButton% := 27;
 const tundlgSelectTuningFileButton% := 28;
 const tundlgLagButton% := 29;
 const tundlgOptogeneticsButton% := 30;
+const tundlgFixptColorButton% := 31;
 
 ' A note about "steps". 
 ' The dialogs ask for a number of "steps". A step is a transition from one stimulus
@@ -284,6 +286,25 @@ var tunLagFrames2$;
 var tunLagMasterIsLagged%;
 
 
+'Baker's Dozen variables
+var tunBDTuningFile$;
+var tunBakersDozenFileLoc$;
+
+
+'Fixpt Color
+var tunFPCNSteps%;
+var tunFPCNRepeats%;
+var tunFPCRedValue%;
+var tunFPCGreenValue%;
+var tunFPCBlueValue%;
+var tunFPCGunIndex%;
+var tunFPCMinValue;
+var tunFPCMaxValue;
+var tunFPCProgression%;
+var tunFPCUseFile%;
+var tunFPCTuningFile$;
+
+
 ' Optogenetics variables
 var tunPreStimOptoTime;
 var tunPostStimOptoTime;
@@ -308,9 +329,7 @@ var tunLaserDiode% := 0;  'Are we recording the output of the laser using a phot
 var tunInterBlockTime := 0;        ' New, time between blocks, important for opto
 
 
-'Baker's Dozen variables
-var tunBDTuningFile$;
-var tunBakersDozenFileLoc$;
+
 
 ' Strings that hold grating parameters
 var tunGratingParams$;
@@ -354,6 +373,7 @@ var TunCurveDArg$:="";            'holds second type of tuning curve on distract
 var tunButtonCollect%;            'Collect button data for rivalry?
 var tunUseLagDialog%;             'will be 1 if we are using the lag dialog, 0 for null test
 var tunUseDonutDialog%;           'will be 1 if we are using the donut dialog, 0 for Gonzagos
+var tunUseCRGDialog%;             'will be 1 if we are using the CRG dialog, 0 for FixPtColor
 var tunUseConstantLag%;           '0 = no constant lag, 1 = constant lag on master, 2 = constant lag on slave
 var tunUseDisparityDialog%;
 var tunConstantLagFrames%;
@@ -915,6 +935,40 @@ proc SaveTuningCurveBakersDozenParameters()
 	var key$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\BakersDozen";
     SetStringRegistryValue(key$, "TuningFile", tunBDTuningFile$);
+end;
+
+
+
+proc GetTuningCurveFixptColorParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\FixptColor";
+    tunFPCNSteps% := GetIntRegistryValue%(key$, "NSteps", tunFPCNSteps%);
+    tunFPCNRepeats% := GetIntRegistryValue%(key$, "NRepeats", tunFPCNRepeats%);
+    tunFPCRedValue% := GetIntRegistryValue%(key$, "RedValue", tunFPCRedValue%);
+    tunFPCGreenValue% := GetIntRegistryValue%(key$, "GreenValue", tunFPCGreenValue%);
+    tunFPCBlueValue% := GetIntRegistryValue%(key$, "BlueValue", tunFPCBlueValue%);
+    tunFPCGunIndex% := GetIntRegistryValue%(key$, "GunIndex", tunFPCGunIndex%);
+    tunFPCMinValue := GetFloatRegistryValue(key$, "MinValue", tunFPCMinValue);
+    tunFPCMaxValue := GetFloatRegistryValue(key$, "MaxValue", tunFPCMaxValue);
+    tunFPCProgression% := GetIntRegistryValue%(key$, "Progression", tunFPCProgression%);
+    tunFPCUseFile% := GetIntRegistryValue%(key$, "UseFile", tunFPCUseFile%);
+    tunFPCTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunFPCTuningFile$);
+end;
+
+proc SaveTuningCurveFixptColorParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\FixptColor";
+    SetIntRegistryValue(key$, "NSteps", tunFPCNSteps%);
+    SetIntRegistryValue(key$, "NRepeats", tunFPCNRepeats%);
+    SetIntRegistryValue(key$, "RedValue", tunFPCRedValue%);
+    SetIntRegistryValue(key$, "GreenValue", tunFPCGreenValue%);
+    SetIntRegistryValue(key$, "BlueValue", tunFPCBlueValue%);
+    SetIntRegistryValue(key$, "GunIndex", tunFPCGunIndex%);
+    SetFloatRegistryValue(key$, "MinValue", tunFPCMinValue);
+    SetFloatRegistryValue(key$, "MaxValue", tunFPCMaxValue);
+    SetIntRegistryValue(key$, "Progression", tunFPCProgression%);
+    SetIntRegistryValue(key$, "UseFile", tunFPCUseFile%);
+    SetStringRegistryValue(key$, "TuningFile", tunFPCTuningFile$);
 end;
 
 
@@ -1992,7 +2046,8 @@ func TuningCurveBoxODonutsDialogChanged%(item%)
         DlgEnable(1,-tundlgTemporalButton%);
         DlgEnable(1,-tundlgAreaButton%);
         DlgEnable(1,-tundlgXPosButton%);
-
+        DlgEnable(1,-tundlgLagButton%);
+        DlgEnable(1,-tundlgFixptColorButton%);
         
     endif;  
     if tunBoxODonutsCurrentCurve% = 3 then
@@ -2021,6 +2076,8 @@ func TuningCurveBoxODonutsDialogChanged2%(item%)
         DlgEnable(1,-tundlgTemporalButton%);
         DlgEnable(1,-tundlgAreaButton%);
         DlgEnable(1,-tundlgXPosButton%);
+        DlgEnable(1,-tundlgLagButton%);
+        DlgEnable(1,-tundlgFixptColorButton%);
         DlgEnable(0,3);  'Disable master follows curve 1 checkbox
         DlgEnable(0,-151);  'Disable all two-screen buttons
         DlgEnable(0,-152);
@@ -2085,6 +2142,7 @@ func TuningCurveBoxODonutsDialog%()
     else
         DlgButton(tundlgLagButton%, "Phase/Null", TuningCurveNullTestANDLagDialog%, 50, 8);
     endif;
+    DlgButton(tundlgFixptColorButton%, "Fixpt Color", TuningCurveFixptColorANDCRGDialog%, 50 , 9);
     
     
     
@@ -2240,97 +2298,211 @@ func TuningCurveCRGDialogChanged%(item%)
 end
 
 
-func TuningCurveCRGDialog%()
-    'Just copied over Box O Donuts for now
-    var sValues$;
-    var i%;
+func TuningCurveFixptColorANDCRGDialog%()
     var iReturn%;
-    var tunCurveText$;
-    var tunCurveCRGText$;
+    var i%;
     
-    var mylist$[2];
-    mylist$[0] := "Master";
-    mylist$[1] := "Slave";
-    
-    GetTuningCurveCRGParameters();    
-    
-    tunCRGCurrentCurve% := 1;  'this will be 0 unless we select this tuning curve
-    
-    tunCurveText$ := "Tuning Curve is unselected";
-    if tunCRGOnSlave% = 0 then
-        tunCurveCRGText$ := "Contrast Reversing Grating on MASTER";
+    if tunUseCRGDialog% = 0 then
+        
+        var GunLabels$[4];
+        GunLabels$[0] := "R";
+        GunLabels$[1] := "G";
+        GunLabels$[2] := "B";
+        GunLabels$[3] := "Luminance";
+        
+        GetTuningCurveFixptColorParameters();
+        DlgCreate("Run Fixpt Color Tuning Curve");
+        DlgInteger(1, "Number of Steps", 1, 100);
+        'DlgInteger(2, "Number of Repeats", 1, 10);
+        DlgInteger(3, "Red Gun Value (0-255)",0,255);
+        DlgInteger(4, "Green Gun Value (0-255)",0,255);
+        DlgInteger(5, "Blue Gun Value (0-255)",0,255);
+        DlgList(6,"Color to Vary",GunLabels$,4);
+        DlgReal(7, "Min Value (0-255)", 0, 255);
+        DlgReal(8, "Max Value (0-255)", 0, 255);
+        'DlgCheck(9, "Random Progression");
+        DlgCheck(10, "Use File For Tuning Values");
+        DlgString(11,40,255,"",3);  'for visual confirmation of selected seq file
+        DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 12);
+        if tunBoxODonutsCurrentCurve% = 0 then
+            DlgInteger(2, "Number of Repeats", 1, 3000);
+            DlgCheck(9, "Random Progression");
+        else
+            DlgInteger(2, "----------------", 1, 1);
+            DlgCheck(9, "----------------");
+        endif;
+        DlgAllow(0xffff, 0, TuningCurveFixptColorDialogChanged%);
+        
+        i% := DlgShow(tunFPCNSteps%, tunFPCNRepeats%, tunFPCRedValue%, tunFPCGreenValue%, tunFPCBlueValue%, tunFPCGunIndex%, 
+        tunFPCMinValue, tunFPCMaxValue, tunFPCProgression%, tunFPCUseFile%, tunFPCTuningFile$);
+        
+        ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+        ' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
+        ' djs 2/4/2011
+        ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+        ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+        ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+        ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+        ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+        ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+        ' before things proceed. 
+        if i% = 1 then
+            SaveTuningCurveFixptColorParameters();
+            PrintLog("TuningCurveFixptColorDialog - user hit OK\n");
+            tunType$ := tunTypeFixptColor$;
+            tunUseFile% := tunFPCUseFile%;
+            tunTuningFile$ := tunFPCTuningFile$;
+            
+            
+            'This is just for testing the output of the new StringifyColorProgression$ (and inherently 
+            'GetFixptColorThisTrial$) and they work FAAAAAAABULOUSLY
+            'tunNRepeats% := tunFPCNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+            'tunNAdvances% := tunFPCNSteps%;
+            'GetRepeatedParameterProgression%(tunFPCNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunFPCMinValue, tunFPCMaxValue, 0, tunFPCProgression%);
+            'tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
+            'tunValuesStringified$ := StringifyColorProgression$(tunNValues%, tunValues, tunValuesIndices%);
+            'printlog("Tuning String is %s\n",tunValuesStringified$);
+            
+            
+            
+            
+            'Change text on Box O' Donuts/CRG dialog box, if we're calling from there.
+            docase
+            case tunBoxODonutsCurrentCurve% = 1 then
+                tunType1$ := tunTypeFixptColor$;
+                tunUseFile1% := tunFPCUseFile%;
+                tunTuningFile1$ := tunFPCTuningFile$;
+                tunCurve1Text$ := "Tuning Curve 1 is FIXPT-COLOR";
+                DlgValue$(updateCurve1Text%, tunCurve1Text$);
+                tunBoxODonutsCurrentCurve% := 2;  'update current curve 
+                DlgEnable(0,-tundlgFixptColorButton%);  'So we don't pick orientation again
+            case tunBoxODonutsCurrentCurve% = 2 then
+                tunType2$ := tunTypeFixptColor$;
+                tunUseFile2% := tunFPCUseFile%;
+                tunTuningFile2$ := tunFPCTuningFile$;
+                tunCurve2Text$ := "Tuning Curve 2 is FIXPT-COLOR";
+                DlgValue$(updateCurve2Text%, tunCurve2Text$);
+                tunBoxODonutsCurrentCurve% := 3;  'update current curve 
+                DlgEnable(0,-tundlgFixptColorButton%);  'So we don't pick orientation again
+                TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
+            endcase;
+            
+            
+            if tunContext$ = tunContextDAQ$ then
+                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+                iReturn% := 1;
+            else
+                iReturn% := 1;
+            endif;
+        endif;
+        if i% = 0 then
+            PrintLog("TuningCurveFixptColorDialog - user hit Cancel\n");
+            tunType$ := tunTypeNone$;
+            if tunContext$ = tunContextDAQ$ then
+                iReturn% := 1;
+            else
+                iReturn% := 2;
+            endif;
+        endif;
+        PrintLog("Return value is %d\n", iReturn%);
+        return iReturn%;
+
+        
     else
-        tunCurveCRGText$ := "Contrast Reversing Grating on SLAVE";
+        
+        
+        
+        'Just copied over Box O Donuts for now
+        var sValues$;
+        var tunCurveText$;
+        var tunCurveCRGText$;
+        
+        var mylist$[2];
+        mylist$[0] := "Master";
+        mylist$[1] := "Slave";
+        
+        GetTuningCurveCRGParameters();    
+        
+        tunCRGCurrentCurve% := 1;  'this will be 0 unless we select this tuning curve
+        
+        tunCurveText$ := "Tuning Curve is unselected";
+        if tunCRGOnSlave% = 0 then
+            tunCurveCRGText$ := "Contrast Reversing Grating on MASTER";
+        else
+            tunCurveCRGText$ := "Contrast Reversing Grating on SLAVE";
+        endif;
+        
+        
+        DlgCreate("Contrast Reversing Grating Parameters");
+        
+        DlgInteger(1,"# of repeats per CRG sequence",1,1000,30,1);
+        DlgInteger(2,"# of frames per turn",1,1000,30,2);
+        DlgCheck(3, "Random Progression", 2, 3);
+        DlgButton(tundlgSelectSEQFileButton%,   "Select Sequence File", SelectSEQFile%,49,3);
+        DlgString(4,40,255,"",50,2);  'for visual confirmation of selected seq file
+        
+        
+        
+        DlgGroup("CRG Screen and Tuning Curve Type", 1, 4, 64, 7); 
+        DlgList(5, "CRG is on:", mylist$[], 2, 3);
+        updateCurve2Text% := DlgText(tunCurveCRGText$, 9, 6, 50);  'this keeps track of which screen holds CRG, 1/2 label got swapped, just rolling with it
+        updateCurve1Text% := DlgText(tunCurveText$, 9, 7, 50);  'this is to keep track of selected tuning curve 
+        DlgButton(tundlgBlankButton%, "     Blank     ", TuningCurveCRGBlank%, 2, 8);  'for blank screen
+        DlgButton(tundlgGratingOnlyButton%, "  Grating Only  ", TuningCurveCRGGratingOnly%, 18, 8);  'for single grating
+        DlgButton(tundlgCRG2Button%, "Secondary CRG", TuningCurveCRG2%, 36, 8);  'for secondary CRG
+        
+        DlgButton(tundlgOrientationButton%, " Orientation  ", TuningCurveOrientationDialog%, 2, 9); 'Note that labels for Orientation-Area are superceded 
+        DlgButton(tundlgContrastButton%, "     Contrast     ", TuningCurveContrastDialog%, 18, 9);  'by TuningCurveScriptDialogChanged% even upon opening 
+        DlgButton(tundlgSpatialButton%, "Spatial Freq", TuningCurveSpatialDialog%, 2, 10);           'the dialog (i.e. whatever label is here is unused)
+        DlgButton(tundlgTemporalButton%, "Temporal Freq", TuningCurveTemporalDialog%, 18, 10);
+        DlgButton(tundlgAreaButton%, "         Area         ", TuningCurveAreaDialog%, 36, 9);
+        DlgButton(tundlgXPosButton%, "     X Position     ", TuningCurveXPosDialog%, 36, 10);
+        DlgButton(tundlgLagButton%, "   Lag   ", TuningCurveNullTestANDLagDialog%, 55, 8);
+        
+        DlgButton(151, "Master Grating", TunDlgGratingMaster%);
+        DlgButton(152, "Slave Grating", TunDlgGratingSlave%);
+        DlgButton(153, "Master Vals -> Slave", TunMasterValsToSlave%);
+        DlgButton(154, "Slave Vals -> Master", TunSlaveValsToMaster%);
+        DlgAllow(0xffff, 0, TuningCurveCRGDialogChanged%);
+        
+        i% := DlgShow(tunCRGNRepeats%,tunCRGFramesPerFlip%,tunCRGProgression%,tunCRGSeqFile$,tunCRGOnSlave%);
+        
+        ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+        ' When user hits OK we always save the parameters, and when user hits Cancel we don't.
+        ' 
+        ' djs 2/4/2011
+        ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+        ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+        ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+        ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+        ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+        ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+        ' before things proceed. 
+        
+        tunCRGCurrentCurve% := 0;  'reset this, we don't need it once this dialog box is closed and it messes up stuff if we want to pick a different tuning curve    
+        if i% = 1 then
+            SaveTuningCurveCRGParameters();
+            tunType$ := tunTypeCRG$;
+            if tunContext$ = tunContextDAQ$ then
+                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
+                iReturn% := 1;
+            else
+                iReturn% := 1;
+            endif;
+        endif;
+        if i% = 0 then
+            tunType$ := tunTypeNone$;
+            if tunContext$ = tunContextDAQ$ then
+                iReturn% := 1;
+            else
+                iReturn% := 2;
+            endif;
+        endif;
+        
+        return iReturn%;  
+        
     endif;
     
-    
-    DlgCreate("Contrast Reversing Grating Parameters");
-    
-    DlgInteger(1,"# of repeats per CRG sequence",1,1000,30,1);
-    DlgInteger(2,"# of frames per turn",1,1000,30,2);
-    DlgCheck(3, "Random Progression", 2, 3);
-    DlgButton(tundlgSelectSEQFileButton%,   "Select Sequence File", SelectSEQFile%,49,3);
-    DlgString(4,40,255,"",50,2);  'for visual confirmation of selected seq file
-    
-    
-
-    DlgGroup("CRG Screen and Tuning Curve Type", 1, 4, 64, 7); 
-    DlgList(5, "CRG is on:", mylist$[], 2, 3);
-    updateCurve2Text% := DlgText(tunCurveCRGText$, 9, 6, 50);  'this keeps track of which screen holds CRG, 1/2 label got swapped, just rolling with it
-    updateCurve1Text% := DlgText(tunCurveText$, 9, 7, 50);  'this is to keep track of selected tuning curve 
-    DlgButton(tundlgBlankButton%, "     Blank     ", TuningCurveCRGBlank%, 2, 8);  'for blank screen
-    DlgButton(tundlgGratingOnlyButton%, "  Grating Only  ", TuningCurveCRGGratingOnly%, 18, 8);  'for single grating
-    DlgButton(tundlgCRG2Button%, "Secondary CRG", TuningCurveCRG2%, 36, 8);  'for secondary CRG
-    
-    DlgButton(tundlgOrientationButton%, " Orientation  ", TuningCurveOrientationDialog%, 2, 9); 'Note that labels for Orientation-Area are superceded 
-	DlgButton(tundlgContrastButton%, "     Contrast     ", TuningCurveContrastDialog%, 18, 9);  'by TuningCurveScriptDialogChanged% even upon opening 
-	DlgButton(tundlgSpatialButton%, "Spatial Freq", TuningCurveSpatialDialog%, 2, 10);           'the dialog (i.e. whatever label is here is unused)
-	DlgButton(tundlgTemporalButton%, "Temporal Freq", TuningCurveTemporalDialog%, 18, 10);
-	DlgButton(tundlgAreaButton%, "         Area         ", TuningCurveAreaDialog%, 36, 9);
-    DlgButton(tundlgXPosButton%, "     X Position     ", TuningCurveXPosDialog%, 36, 10);
-    DlgButton(tundlgLagButton%, "   Lag   ", TuningCurveNullTestANDLagDialog%, 55, 8);
-    
-    DlgButton(151, "Master Grating", TunDlgGratingMaster%);
-    DlgButton(152, "Slave Grating", TunDlgGratingSlave%);
-    DlgButton(153, "Master Vals -> Slave", TunMasterValsToSlave%);
-    DlgButton(154, "Slave Vals -> Master", TunSlaveValsToMaster%);
-    DlgAllow(0xffff, 0, TuningCurveCRGDialogChanged%);
-    
-    i% := DlgShow(tunCRGNRepeats%,tunCRGFramesPerFlip%,tunCRGProgression%,tunCRGSeqFile$,tunCRGOnSlave%);
-    
-    ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
-	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-    ' 
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
-	
-    tunCRGCurrentCurve% := 0;  'reset this, we don't need it once this dialog box is closed and it messes up stuff if we want to pick a different tuning curve    
-    if i% = 1 then
-		SaveTuningCurveCRGParameters();
-		tunType$ := tunTypeCRG$;
-		if tunContext$ = tunContextDAQ$ then
-            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-            iReturn% := 1;
-		else
-			iReturn% := 1;
-		endif;
-	endif;
-	if i% = 0 then
-		tunType$ := tunTypeNone$;
-		if tunContext$ = tunContextDAQ$ then
-			iReturn% := 1;
-		else
-			iReturn% := 2;
-		endif;
-	endif;
-    
-	return iReturn%;   
     
 end
 
@@ -3622,7 +3794,7 @@ func TuningCurveScriptDialog%()
     DlgButton(tundlgBerlinerButton%, "    Berliners!    ", TuningCurveBerlinerDialog%, 18, 23);
     DlgButton(tundlgBoxODonutsButton%, " Box O' Donuts ", TuningCurveBoxODonutsDialog%, 36, 23);
     DlgButton(tundlgDotsButton%, "     Dots!     ", TuningCurveDotsDialog%, 2, 24);
-    DlgButton(tundlgCRGButton%,"      CRaGs      ",TuningCurveCRGDialog%, 18, 24);
+    DlgButton(tundlgCRGButton%,"      CRaGs      ",TuningCurveFixptColorANDCRGDialog%, 18, 24);
     DlgButton(tundlgDisparityAndBakersDozenButton%, "      Disparity      ", TuningCurveDisparityAndBakersDozenDialog%, 36, 24);
     DlgButton(tundlgDanishButton%, "  Danishes!  ", TuningCurveDanishDialog%, 2, 25);
     DlgButton(tundlgDSSButton%,"        DSS        ",TuningCurveDSSDialog%, 18, 25);
@@ -3753,7 +3925,7 @@ func TuningCurveScriptDialogChanged%(item%)
     DlgEnable(0,19);  'Always disable millisecond conversion, we can't type here to get frame values
     if DlgValue(11) = 0 then  'If single VSG, do not allow Donuts or Berliners or disparity or CRG
         'DlgEnable(0,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%,-tundlgBoxODonutsButton%,-tundlgCRGButton%,-tundlgDisparityAndBakersDozenButton%); 'old version
-        DlgEnable(0,-tundlgBerlinerButton%,-tundlgCRGButton%);  'allow boxOdonuts for single screen now
+        DlgEnable(0,-tundlgBerlinerButton%);  'allow boxOdonuts for single screen now, CRG now turns to FixptColor
         'Also disable card synch functions, dual tuning listbox
         DlgEnable(0,12); 'dual tuning listbox
         DlgEnable(0,17); 'constant lag listbox
@@ -3773,13 +3945,15 @@ func TuningCurveScriptDialogChanged%(item%)
         DlgValue$(-tundlgNullTestANDLagButton%, "      Null Test     ");
         DlgValue$(-tundlgDonutANDGonzagoButton%, "      Gonzagos!     ");
         DlgValue$(-tundlgDisparityAndBakersDozenButton%, "   Baker's Dozen   ");
+        DlgValue$(-tundlgCRGButton%, "Fixpt Color");
         tunUseLagDialog% := 0;
         tunUseDonutDialog% := 0;
         tunUseDisparityDialog% := 0;
+        tunUseCRGDialog% := 0;
     endif;
     if DlgValue(11) = 1 then  'If dual VSG, allow donuts and Berliners and disparity and CRG
         'DlgEnable(1,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%,-tundlgBoxODonutsButton%,-tundlgCRGButton%,-tundlgDisparityAndBakersDozenButton%);  'old version
-        DlgEnable(1,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%,-tundlgCRGButton%);  'allow boxOdonuts for single screen now
+        DlgEnable(1,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%);  'allow boxOdonuts for single screen now
         'Also allow turning off card synch, dual tuning listbox
         DlgEnable(1,12);  'dual tuning listbox
         DlgEnable(1,17); 'constant lag listbox
@@ -3801,6 +3975,7 @@ func TuningCurveScriptDialogChanged%(item%)
             DlgValue$(-tundlgXPosButton%, "D X Position");
             DlgValue$(-tundlgNullTestANDLagButton%, "        Lag        ");
             DlgValue$(-tundlgDonutANDGonzagoButton%, "       Donuts!      ");
+            DlgValue$(-tundlgCRGButton%, "      CRGs      ");
         case DlgValue(12) = 1 then
             DlgValue$(-tundlgOrientationButton%, " M Orientation ");
             DlgValue$(-tundlgContrastButton%, "    M Contrast    ");
@@ -3810,6 +3985,7 @@ func TuningCurveScriptDialogChanged%(item%)
             DlgValue$(-tundlgXPosButton%, "M X Position");
             DlgValue$(-tundlgNullTestANDLagButton%, "        Lag        ");
             DlgValue$(-tundlgDonutANDGonzagoButton%, "       Donuts!      ");
+            DlgValue$(-tundlgCRGButton%, "      CRGs      ");
         case DlgValue(12) = 2 then
             DlgValue$(-tundlgOrientationButton%, " S Orientation ");
             DlgValue$(-tundlgContrastButton%, "    S Contrast    ");
@@ -3819,10 +3995,12 @@ func TuningCurveScriptDialogChanged%(item%)
             DlgValue$(-tundlgXPosButton%, "S X Position");
             DlgValue$(-tundlgNullTestANDLagButton%, "        Lag        ");
             DlgValue$(-tundlgDonutANDGonzagoButton%, "       Donuts!      ");
+            DlgValue$(-tundlgCRGButton%, "      CRGs      ");
         endcase;
         tunUseLagDialog% := 1;
         tunUseDonutDialog% := 1;
         tunUseDisparityDialog% := 1;
+        tunUseCRGDialog% := 1;
     endif;
     if DlgValue(13) = 0 then 'disable maintain mode timing if not using maintain mode
         DlgEnable(0,7);
@@ -4096,6 +4274,42 @@ func TuningCurveGenericDialogChanged%(item%)
     return 1;
 end
 
+
+func TuningCurveFixptColorDialogChanged%(item%)
+    if DlgValue(10) = 0 then  'If we are not using a tuning file
+        DlgEnable(0,11);  'disable the string box with the text file name (button still works)
+        DlgEnable(1,1);  'enable nSteps, gun select, min, and max
+        DlgEnable(1,6); 
+        DlgEnable(1,7);
+        DlgEnable(1,8);
+    endif;
+    if DlgValue(10) = 1 then
+        DlgEnable(1,11);  'enable the string box with the text file name
+        DlgEnable(0,1);  'disable nSteps, gun select, min, and max
+        DlgEnable(0,6);
+        DlgEnable(0,7);
+        DlgEnable(0,8);
+    endif;
+    docase
+    case DlgValue(6) = 0 then  'If we are tuning the red gun
+        DlgEnable(0,3);  'disable red gun
+        DlgEnable(1,4);  'enable green gun
+        DlgEnable(1,5);  'enable blue gun
+    case DlgValue(6) = 1 then  'If we are tuning the green gun
+        DlgEnable(1,3);  'enable red gun
+        DlgEnable(0,4);  'disable green gun
+        DlgEnable(1,5);  'enable blue gun
+    case DlgValue(6) = 2 then  'If we are tuning the blue gun
+        DlgEnable(1,3);  'enable red gun
+        DlgEnable(1,4);  'enable green gun
+        DlgEnable(0,5);  'disable blue gun
+    case DlgValue(6) = 3 then  'If we are tuning luminance, it will be gray
+        DlgEnable(0,3);  'disable red gun
+        DlgEnable(0,4);  'disable green gun
+        DlgEnable(0,5);  'disable blue gun
+    endcase
+    return 1;
+end
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
