@@ -625,13 +625,13 @@ func IdleProcessing%()
         LogStatus("StartTrial", "Request stimulus");
         docase
         case TunType$ = tunTypeFixptColor$ then
-            SampleText("T," + GetFixptColorThisTrial$(nTrialsCompleted%));
+            SampleText("T," + GetFixptColorThisTrial$(nTrialsCompleted%,tunValues[],tunValuesIndices%[]));
         case TunType$ = tunTypeBoxODonuts$ and TunType1$ = tunTypeFixptColor$ then
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval even though we only use yval
-            SampleText("T," + GetFixptColorThisTrial$(nTrialsCompleted%) + ",T2," + str$(yval));
+            SampleText("T," + GetFixptColorThisTrial$(nTrialsCompleted%,tun1Values[],tun1ValuesIndices%[]) + ",T2," + str$(yval));
         case TunType$ = tunTypeBoxODonuts$ and TunType2$ = tunTypeFixptColor$ then
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval even though we only use xval
-            SampleText("T," + str$(xval) + ",T2," + GetFixptColorThisTrial$(nTrialsCompleted%));
+            SampleText("T," + str$(xval) + ",T2," + GetFixptColorThisTrial$(nTrialsCompleted%,tun2Values[],tun2ValuesIndices%[]));
         case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ or (tunType$ = tunTypeContrast$ and tunContrastDualScreenCombo% = 1) or (tunType$ = tunTypeArea$ and tunAreaDualScreenCombo% = 1) then
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
             SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
@@ -1023,14 +1023,14 @@ func IdleProcessing%()
                     endif;
                 endif;
                 
-                
-                docase
-                case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ then
-                    GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
-                    SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
-                else
-                    SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
-                endcase;
+                'this is redundant with code that happens at the time of stimulus request, removing, will ask Henry
+'                docase
+'                case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ then
+'                    GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
+'                    SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
+'                else
+'                    SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
+'                endcase;
                 
                 
                 if tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4 then  'this will allow a "break" after giving a reward, uses intertrial interval
@@ -1138,10 +1138,11 @@ func GetPlotXYCoord(nTrials%,&xval,&yval,&xind%,&yind%)  'new for Box O' Donuts
     yind% := tun2ValuesIndices%[nTrials%];  'but yind is used in PlotSpikes2TunCurves
 end;
 
-func GetFixptColorThisTrial$(nTrials%)  'This function is written assuming integer gun values, should be easy enough to adapt for 0-1 gun values if necessary
+func GetFixptColorThisTrial$(nTrials%,tValues[],tValuesIndices%[])  'This function is written assuming integer gun values, should be easy enough to adapt for 0-1 gun values if necessary
+    'In order to use this function to get fixpt colors in both regular and Box'O'Donuts version, we have to pass the proper tunValues/tunValuesIndices%[]
     var val%;
     var f$;
-    val% := tunValues[tunValuesIndices%[nTrials%]];
+    val% := tValues[tValuesIndices%[nTrials%]];
     docase
     case tunFPCGunIndex% = 0 then  'if tuned gun is red
         f$ := "(" + Str$(val%) + "/" + Str$(tunFPCGreenValue%) + "/" + Str$(tunFPCBlueValue%) + ")";
@@ -1889,7 +1890,8 @@ proc CreateSampleConfiguration()
             GetRepeatedParameterProgression%(tunFPCNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunFPCMinValue, tunFPCMaxValue, 0, tunFPCProgression%);
         endif;
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
-        tunValuesStringified$ := StringifyColorProgression$(tunNValues%, tunValues, tunValuesIndices%);    
+        tunValuesStringified$ := StringifyColorProgression$(tunNValues%, tunValues, tunValuesIndices%); 
+        'printlog("TunValuesStringified is %s\n",tunValuesStringified$);
         
     case tunType$ = tunTypeArea$ then 
         DoSampleAutoName(key$,"area","are",primaryTxt$,secondaryTxt$);
@@ -2209,6 +2211,7 @@ proc CreateSampleConfiguration()
         docase
         case tuntype1$ = tunTypeFixptColor$ then 
             tun1ValuesStringified$ := StringifyColorProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun1Values[], tun1ValuesIndices%[]);
+            'printlog("TunValuesStringified is %s\n",tun1ValuesStringified$);
             tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun2Values[], tun2ValuesIndices%[]);
         case tuntype2$ = tunTypeFixptColor$ then
             tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun1Values[], tun1ValuesIndices%[]);
@@ -4310,7 +4313,7 @@ Func StringifyColorProgression$(n%, vec[], ind%[])
 		if i% > 0 then 
 			s$ += ",";
 		endif
-		s$ += GetFixptColorThisTrial$(ind%[i%]);
+		s$ += GetFixptColorThisTrial$(i%,vec[],ind%[]);
 	next
 	return s$;
 end;
