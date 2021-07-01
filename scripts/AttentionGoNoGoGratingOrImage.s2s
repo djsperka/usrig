@@ -495,7 +495,7 @@ proc AttentionGNGGratingOrImage()
     
     ' run main script dialog - run correct dialog based on whether this is grating- or image-based
     
-    if isGrating% = 1 then
+    if isGrating% = 1 then  'Note - this is the line that "breaks" if you tried to compile AttGNGGratingOrImage instead of compiling AttGNGGrating or AttGNGImage
         iScript% := AttentionScriptDialog%();
     else
         iScript% := AttentionScriptImagesDialog%();
@@ -1902,7 +1902,7 @@ func IdleProcessing%()
             case CCHappened% = 0 or CCHappened% = 20 or CCHappened% = 40 then  
                 queueReward% := -1;                   
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-                SampleText("Incorrect",tNow);
+                SampleText("Incorrect, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
                 
@@ -1911,7 +1911,7 @@ func IdleProcessing%()
                 queueReward% := 1;                   
                 attCountAllTrialsCorrect% += 1;
                 attInterTrialTimeThisTrial := attInterTrialTime;
-                SampleText("Correct",tNow);
+                SampleText("Correct, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
                 
@@ -1919,7 +1919,7 @@ func IdleProcessing%()
             else  
                 queueReward% := -1;                    
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-                SampleText("Incorrect",tNow);
+                SampleText("Incorrect, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over
             endcase
@@ -1931,7 +1931,7 @@ func IdleProcessing%()
             case CCHappened% < 20 then  
                 queueReward% := -1;                   
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-                SampleText("Incorrect",tNow);
+                SampleText("Incorrect, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow); 
                 
@@ -1940,7 +1940,7 @@ func IdleProcessing%()
                 queueReward% := 1;                   
                 attCountAllTrialsCorrect% += 1;
                 attInterTrialTimeThisTrial := attInterTrialTime;
-                SampleText("Correct",tNow);
+                SampleText("Correct, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
                 
@@ -1948,7 +1948,7 @@ func IdleProcessing%()
             else  
                 queueReward% := -1;                    
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-                SampleText("Incorrect",tNow);
+                SampleText("Incorrect, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over
             endcase  
@@ -1957,7 +1957,7 @@ func IdleProcessing%()
         case attRequireJoystickResponse% = 0 and iAnswer% > 0 then 
             queueReward% := -1;                   
             attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-            SampleText("Incorrect",tNow);
+            SampleText("Incorrect, response to location " + Str$(iAnswer%),tNow);
             CCHappened% := 0;
             ChangeStateTo(stateCheckTurnOffOpto%, tNow);
             
@@ -1966,7 +1966,7 @@ func IdleProcessing%()
             queueReward% := 1;                   
             attCountAllTrialsCorrect% += 1;
             attInterTrialTimeThisTrial := attInterTrialTime;
-            SampleText("Correct",tNow);
+            SampleText("Correct, joystick in position " + Str$(attJoyPos%),tNow);
             CCHappened% := 0;
             ChangeStateTo(stateCheckTurnOffOpto%, tNow);
             
@@ -1974,7 +1974,7 @@ func IdleProcessing%()
         case attRequireJoystickResponse% = 1 and (attJoyPos% = JSCenter% or attJoyPos% = JSHalfUp% or attJoyPos% = JSUp%) and expectedAnswer%+expectedAnswerUncued% = 0 then
             queueReward% := -1;                   
             attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-            SampleText("Incorrect",tNow);
+            SampleText("Incorrect, joystick in position " + Str$(attJoyPos%),tNow);
             CCHappened% := 0;
             ChangeStateTo(stateCheckTurnOffOpto%, tNow);
             
@@ -1982,7 +1982,7 @@ func IdleProcessing%()
             if trialIsTarget% = 1 then  'this is a miss, we would have caught the answer on the last check if not
                 queueReward% := -1;                    
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-                SampleText("Incorrect",tNow);
+                SampleText("Incorrect, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over
             else  'this is a CR, we would have caught fixation break on last check if not
@@ -1991,7 +1991,7 @@ func IdleProcessing%()
                 trialIsCRForDelayBasedReward% := 1;
                 attCountAllTrialsCorrect% += 1;
                 attInterTrialTimeThisTrial := attInterTrialTime;
-                SampleText("Correct",tNow);
+                SampleText("Correct, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over 
             endif;   
@@ -4692,21 +4692,64 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 
                 
                 ''' Ensure no contrast changes overlap - this ensures we get a trigger for every contrast change event, necessary for smooth functioning of trigger-tagging
+                'Updated to use dataScreenMSPerFrame rather than 0.050 seconds, will need to test to see if this is reasonable for TagTrigger...
+                'Simultaneously updated to remove cued location "priority"
+                var frameMSCeil;
+                frameMSCeil := Ceil(dataScreenMSPerFrame);  'get a ceiling value here so there are no roundoff issues with VSG, we want to ensure things end up on separate frames
                 docase
                 case attLockUncuedToCued% = 1 then
                     'Do nothing, contrast changes WILL overlap, there will be exactly one trigger, this is fixed in TagTrigger...
-                'if both onsets are within 50 ms of each other, set the uncued onset to 50 ms AFTER cued onset, update return time as well
-                case cuedLocChanges%[ind%] = 1 and abs(cuedLocCCTime[ind%]-uncuedLocCCTime[ind%]) < 0.050 then
-                    uncuedLocCCTime[ind%] := cuedLocCCTime[ind%] + 0.050;
-                    uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
-                'if cued offset and uncued onset are within 50 ms of each other, set uncued onset to 50 ms AFTER cued offset, update return time as well 
-                case cuedLocChanges%[ind%] = 1 and abs(cuedLocReturnTime[ind%]-uncuedLocCCTime[ind%]) < 0.050 then
-                    uncuedLocCCTime[ind%] := cuedLocReturnTime[ind%] + 0.050;
-                    uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
-                'if cued onset and uncued offset are within 50 ms of each other, set the cued onset to 50 ms AFTER uncued offset
-                case cuedLocChanges%[ind%] = 1 and abs(cuedLocCCTime[ind%]-uncuedLocReturnTime[ind%]) < 0.050 then    
-                    cuedLocCCTime[ind%] := uncuedLocReturnTime[ind%] + 0.050;
-                    cuedLocReturnTime[ind%] := cuedLocCCTime[ind%] + attContrastChangeDuration;
+                 'if both onsets are at identical times, randomly choose one to be first, delay the next for one frame
+                 'ACTUALLY, this one case should be do-able, and will (probably) only happen if both onsets are pegged to the minimum hazard time, here we will just use the "locked" option in TagTrigger...   
+'                case cuedLocChanges%[ind%] = 1 and cuedLocCCTime[ind%] = uncuedLocCCTime[ind%] then
+'                    if rand() > 0.5 then
+'                        uncuedLocCCTime[ind%] := cuedLocCCTime[ind%] + frameMSCeil;
+'                        uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
+'                    else
+'                        cuedLocCCTime[ind%] := uncuedLocCCTime[ind%] + frameMSCeil;
+'                        cuedLocReturnTime[ind%] := cuedLocCCTime[ind%] + attContrastChangeDuration;
+'                    endif;
+                'if cued offset and uncued onset are at identical times, randomly choose one to be first, delay the next for one frame
+                case cuedLocChanges%[ind%] = 1 and cuedLocReturnTime[ind%] = uncuedLocCCTime[ind%] then
+                    if rand() > 0.5 then
+                        uncuedLocCCTime[ind%] := cuedLocReturnTime[ind%] + frameMSCeil;
+                        uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
+                    else
+                        cuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + frameMSCeil; 'This will be one frame too long
+                    endif;    
+                'if cued onset and uncued offset are at identical times, randomly choose one to be first, delay the next for one frame
+                case cuedLocChanges%[ind%] = 1 and cuedLocCCTime[ind%] = uncuedLocReturnTime[ind%] then
+                    if rand() > 0.5 then
+                        cuedLocCCTime[ind%] := uncuedLocReturnTime[ind%] + frameMSCeil;
+                        cuedLocReturnTime[ind%] := cuedLocCCTime[ind%] + attContrastChangeDuration;
+                    else
+                        uncuedLocReturnTime[ind%] := cuedLocCCTime[ind%] + frameMSCeil; 'This will be one frame too long
+                    endif;        
+                'if both onsets are within dataScreenMSPerFrame of each other, set the later onset to dataScreenMSPerFrame AFTER earlier onset, update return time as well
+                case cuedLocChanges%[ind%] = 1 and abs(cuedLocCCTime[ind%]-uncuedLocCCTime[ind%]) < frameMSCeil then
+                    if uncuedLocCCTime[ind%] > cuedLocCCTime[ind%] then
+                        uncuedLocCCTime[ind%] := cuedLocCCTime[ind%] + frameMSCeil;
+                        uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
+                    else
+                        cuedLocCCTime[ind%] := uncuedLocCCTime[ind%] + frameMSCeil;
+                        cuedLocReturnTime[ind%] := cuedLocCCTime[ind%] + attContrastChangeDuration;
+                    endif    
+                'if cued offset and uncued onset are within dataScreenMSPerFrame of each other, set later to dataScreenMSPerFrame AFTER earlier, update return time as well 
+                case cuedLocChanges%[ind%] = 1 and abs(cuedLocReturnTime[ind%]-uncuedLocCCTime[ind%]) < frameMSCeil then
+                    if uncuedLocCCTime[ind%] > cuedLocReturnTime[ind%] then
+                        uncuedLocCCTime[ind%] := cuedLocReturnTime[ind%] + frameMSCeil;
+                        uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
+                    else
+                        cuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + frameMSCeil;  'this will be one frame too long
+                    endif; 
+                'if cued onset and uncued offset are within dataScreenMSPerFrame of each other, set later to dataScreenMSPerFrame AFTER earlier, update return time as well
+                case cuedLocChanges%[ind%] = 1 and abs(cuedLocCCTime[ind%]-uncuedLocReturnTime[ind%]) < frameMSCeil then 
+                    if cuedLocCCTime[ind%] > uncuedLocReturnTime[ind%] then
+                        cuedLocCCTime[ind%] := uncuedLocReturnTime[ind%] + frameMSCeil;
+                        cuedLocReturnTime[ind%] := cuedLocCCTime[ind%] + attContrastChangeDuration;
+                    else
+                        uncuedLocReturnTime[ind%] := cuedLocCCTime[ind%] + frameMSCeil;  'this will be one frame too long
+                    endif 
                 endcase;
                 
                 
@@ -6224,6 +6267,7 @@ end
 'Since these are on the same channel, it just looks for the nearest expected time to the known trigger.
 'Since there is a buffer of 100 ms between any onset, there should be no difficulty, but I will have the
 'SampleText indicate a possible problem if the timing is off by more than, say, 2ms
+'Buffer has now been reduced to dataScreenMSPerFrame, with identical onsets (but not identical onset/offset) allowed
 'This function has been changed to a PROC, it does not return a value, but will update the value in cc%
 proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount%,&cc%,isCueAll%)
     var fTime;  'expected time of next flasher
@@ -6290,8 +6334,8 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
     endif;
     allOffTime := tAnimationOn + attCueOffsetTime + attStimOnsetList[trialCount%] + attTrialEndTime[trialCount%];
     'All times are now locally calculated
-    'One last fix, if uncued is locked to cued and they both change, eliminate the uncued time, indicate both cues are locked
-    if attCuedLocCCTime[trialCount%] > -1 and attUncuedLocCCTime[trialCount%] > -1 and attLockUncuedToCued% = 1 then
+    'One last fix, if uncued is locked to cued (or identical without explicit locking) and they both change, eliminate the uncued time, indicate both cues are locked
+    if (attCuedLocCCTime[trialCount%] > -1 and attUncuedLocCCTime[trialCount%] > -1) and (attLockUncuedToCued% = 1 or attCuedLocCCTime[trialCount%] = attUncuedLocCCTime[trialCount%])then
         ccTimeU := 9999999;
         ccReturnTimeU := 9999999;
         bothCuesAreLocked% := 1;
@@ -6411,6 +6455,7 @@ end
 'Since these are on the same channel, it just looks for the nearest expected time to the known trigger.
 'Since there is a buffer of 100 ms between any onset, there should be no difficulty, but I will have the
 'SampleText indicate a possible problem if the timing is off by more than, say, 2ms
+'Buffer has now been reduced to dataScreenMSPerFrame, with identical onsets (but not identical onset/offset) allowed
 'This function has been changed to a PROC, it does not return a value, but will update the value in cc%
 'This function was built from the original TagTriggerWithSampleText and as such uses the "CC" convention
 'to refer to events, even though the events here are NOT contrast changes but rather image changes.
