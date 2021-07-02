@@ -303,7 +303,8 @@ var flasherX[attMaxTrl%][attMaxFlashers%];  'hold flasher x position
 var flasherY[attMaxTrl%][attMaxFlashers%];  'hold flasher y position
 var flasherCount%[attMaxTrl%];  'hold number of flashers on each trial
 var flasherCountThisTrial%;  'keep track of number of flashers played on the current trial
-var CCHappened%;  'keep track of what contrast change(s) happen
+var CCHappened%;  'keep track of what contrast change at the cued location
+var CCUHappened%;  'keep track of contrast change at the uncued location
 var answerWindowCuedHighlighted%;
 var answerWindowUncuedHighlighted%;
 var cuedResponseWindowCloseTime;
@@ -1668,6 +1669,7 @@ func IdleProcessing%()
                 endif;
                 'and we need to reset these variables, as they now hold states we need to keep track of over time
                 CCHappened% := 0;
+                CCUHappened% := 0;
                 answerWindowCuedHighlighted% := 0;
                 answerWindowUncuedHighlighted% := 0;
                 
@@ -1777,32 +1779,39 @@ func IdleProcessing%()
     case iState% = stateCheckForAnswerThroughAnimation% then
         
         'Check to see if there was a trigger - here there may be intervening triggers so updating tLast is important
-        tTrigger := View(DataWindow%).NextTime(FrameTriggerChannel%, tLast, vTrigger);
-        if tTrigger > tLast and vTrigger = 0 then  'only look at rising edge
-            if tTrigger < tNow then      'View(DataWindow%).MaxTime() then  'try using tNow to avoid rare double-catch
-               tLastTrigger := tTrigger;
+        tTrigger := 0; 'get into the while loop
+        while tTrigger > -1 do
+            'Check for multiple triggers that may have come through during an OS pause
+            'First time through, tLast will be previous tNow or penultimate tNow (if sampling hadn't caught up)
+            'Later times through, tLast will be time of most recent trigger
+            tTrigger := View(DataWindow%).NextTime(FrameTriggerChannel%, tLast, vTrigger);
+            docase
+            case tTrigger >= tNow then  'if the trigger time is greater than tNow, sampling hasn't caught up
+                updateTLast% := 0;  'do not update tLast to tNow, wait for sampling to catch up
+                tTrigger := -1;  'break out of while loop here, have to wait for sampling to catch up
+            case tTrigger > -1 and vTrigger = 1 then  'if we have caught a falling edge of a trigger, ignore, but check for future triggers
+                tLast := tTrigger;  'this will skip past the falling edge, top of WHILE will check for another trigger
+            case tTrigger > -1 and vTrigger = 0 then  'found a rising edge trigger, which must be < tNow (or prior case statement would apply)
+                tLast := tTrigger;
                 'put in a sample text for Flashers, sample text for CC will be done below
                 'right now, flashers are not enabled
-                'CCHappened% will now be updated, not overwritten, in order to allow us to keep track of the current state of
-                'the target window, and nontarget window if appropriate.  TagTriggerWithSampleText%() will increment CCHappened%
-                'by 1 when the target window opens and by 1 when the target window closes, and will increment CCHappened% by 10
-                'when the uncued target window opens and by 10 when the uncued target window closes.  Concomitantly, the local
-                'code will also do these increments, which allows for us to keep track of when fixation windows have been updated.
-                'It's a mess.  But it should work.
+                'The "mess" that was keeping track of contrast changes for both the cued and uncued locations has been updated
+                'so that there are now two separate variables: CCHappened% and CCUHappened%.  Situations where BOTH contrast
+                'changes happened simultaneously pretty much destroyed the "ones column/tens column" version - it became
+                'untenably difficult, and keeping track of both independently became easier.
                 if isGrating% = 1 then
-                    TagTriggerWithSampletext(tLastTrigger,tAnimationOn,attCurrTrialIndex%,flasherCountThisTrial%,CCHappened%,trialIsCueAll%);
+                    TagTriggerWithSampletext(tTrigger,tAnimationOn,attCurrTrialIndex%,flasherCountThisTrial%,CCHappened%,CCUHappened%,trialIsCueAll%);
                 else
-                    TagTriggerWithSampletextImages(tLastTrigger,tAnimationOn,attCurrTrialIndex%,CCHappened%,trialIsCueAll%);
+                    TagTriggerWithSampletextImages(tTrigger,tAnimationOn,attCurrTrialIndex%,CCHappened%,CCUHappened%,trialIsCueAll%);
                 endif;
-            else
-                updateTLast% := 0;  'waiting for sampling to catch up
-            endif;
-        endif;
+            endcase;
+        wend
+        
         
         
         'Check to see if we need to change the colors on the display, cued location
         docase
-        case CCHappened% = 1 or CCHappened% = 21 or CCHappened% = 41 then  'This means the cued target window just opened
+        case CCHappened% = 1 then  'This means the cued target window JUST opened
             'change display colors, if cued target window has just opened
             view(XYWindow%).XYColour(iFixationWindowChannel%,13);  'Change fixation window to blue
             docase  'expectedAnswer% gives cued location
@@ -1817,8 +1826,8 @@ func IdleProcessing%()
             case expectedAnswer% = 5 then
                 view(XYWindow%).XYColour(iAnswerWindowChannelDist4%,16);  'Change dist4 window to red
             endcase
-            CCHappened% := CCHappened% + 1;  'increment CCHappened%, ones column of 2 means cued target window open
-        case CCHappened% = 3 or CCHappened% = 23 or CCHappened% = 43 then  'This means the cued target window just closed
+            CCHappened% := CCHappened% + 1;  'increment CCHappened%, 2 means cued target window IS open and has been
+        case CCHappened% = 3 then  'This means the cued target window JUST closed
             'change display colors, if cued target window has just closed
             docase 'expectedAnswer% gives cued location
             case expectedAnswer% = 1 then
@@ -1832,13 +1841,13 @@ func IdleProcessing%()
             case expectedAnswer% = 5 then
                 view(XYWindow%).XYColour(iAnswerWindowChannelDist4%,13);  'Change dist4 window to blue
             endcase
-            CCHappened% := CCHappened% + 1;  'increment CCHappened%, ones column of 4 means cued target window closed
+            CCHappened% := CCHappened% + 1;  'increment CCHappened%, 4 means cued target window IS closed and has been
         endcase
         
         'Check to see if we need to change the colors on the display, uncued location
         'Actually, because TagTriggerWithSampleText only tags one trigger at a time, we don't need to separate this from the above, but whatever
         docase
-        case CCHappened% = 10 or CCHappened% = 12 or CCHappened% = 14 then  'This means the uncued target window just opened
+        case CCUHappened% = 1 then  'This means the uncued target window JUST opened
             'change display colors, if uncued target window has just opened
             view(XYWindow%).XYColour(iFixationWindowChannel%,13);  'Change fixation window to blue
             docase  'expectedAnswerUncued% gives uncued location
@@ -1853,8 +1862,8 @@ func IdleProcessing%()
             case expectedAnswerUncued% = 5 then
                 view(XYWindow%).XYColour(iAnswerWindowChannelDist4%,16);  'Change dist4 window to red
             endcase
-            CCHappened% := CCHappened% + 10;  'increment CCHappened%, tens column of 20 means uncued target window open
-        case CCHappened% = 30 or CCHappened% = 32 or CCHappened% = 34 then  'This means the uncued target window just closed
+            CCUHappened% := CCUHappened% + 1;  'increment CCUHappened%, 2 means uncued target window IS open and has been
+        case CCUHappened% = 3 then  'This means the uncued target window JUST closed
             'change display colors, if uncued target window has just closed
             docase 'expectedAnswerUncued% gives uncued location
             case expectedAnswerUncued% = 1 then
@@ -1868,7 +1877,7 @@ func IdleProcessing%()
             case expectedAnswerUncued% = 5 then
                 view(XYWindow%).XYColour(iAnswerWindowChannelDist4%,13);  'Change dist4 window to blue
             endcase
-            CCHappened% := CCHappened% + 10;  'increment CCHappened%, tens column of 40 means uncued target window closed
+            CCUHappened% := CCUHappened% + 1;  'increment CCUHappened%, 4 means uncued target window IS closed and has been
         endcase
         
         'Check to see if the animal has answered, we will use this in below case statement, get both eye and joystick
@@ -1881,7 +1890,7 @@ func IdleProcessing%()
         
         docase  
         'if fixation is broken and no contrast change has happened, begin abort procedure            
-        case Looking%(xEye, yEye) = 0 and CCHappened% = 0 then  
+        case Looking%(xEye, yEye) = 0 and CCHappened% = 0 and CCUHappened% = 0 then  
             PrintLog("stateCheckForAnswerThroughAnimation: fixation lost before contrast/image change.\n");
             ChangeStateTo(stateAbort%, tNow);
             
@@ -1891,7 +1900,7 @@ func IdleProcessing%()
             ChangeStateTo(stateAbort%, tNow);
             
         'if joystick is up (response) and no contrast change has happened, begin abort procedure    
-        case (attJoyPos% = JSCenter% or attJoyPos% = JSHalfUp% or attJoyPos% = JSUp%) and CCHappened% = 0 then  
+        case (attJoyPos% = JSCenter% or attJoyPos% = JSHalfUp% or attJoyPos% = JSUp%) and CCHappened% = 0 and CCUHappened% = 0 then  
             PrintLog("stateCheckForAnswerThroughAnimation: joystick up before contrast/image change.\n");
             ChangeStateTo(stateAbort%, tNow);
             
@@ -1899,20 +1908,23 @@ func IdleProcessing%()
         case attRequireJoystickResponse% = 0 and iAnswer% > 0 and iAnswer% = expectedAnswer% then 
             docase
             'if cued window has not yet opened, this is a false alarm    
-            case CCHappened% = 0 or CCHappened% = 20 or CCHappened% = 40 then  
+            case CCHappened% = 0 then  
                 queueReward% := -1;                   
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
                 SampleText("Incorrect, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
+                CCUHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
                 
             'if cued window has opened and not yet closed, it's a hit, set up reward    
-            case tNow <= tStateStart+cuedResponseWindowCloseTime then 
+            'case tNow <= tStateStart+cuedResponseWindowCloseTime then 
+            case CCHappened% = 2 then 'this seems the better way to check this
                 queueReward% := 1;                   
                 attCountAllTrialsCorrect% += 1;
                 attInterTrialTimeThisTrial := attInterTrialTime;
                 SampleText("Correct, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
+                CCUHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
                 
             'cued window has closed, response too late, it's a miss    
@@ -1921,6 +1933,7 @@ func IdleProcessing%()
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
                 SampleText("Incorrect, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
+                CCUHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over
             endcase
             
@@ -1928,20 +1941,23 @@ func IdleProcessing%()
         case attRequireJoystickResponse% = 0 and iAnswer% > 0 and iAnswer% = expectedAnswerUncued% then 
             docase
             'if uncued window has not yet opened, this is a false alarm    
-            case CCHappened% < 20 then  
+            case CCUHappened% = 0 then  
                 queueReward% := -1;                   
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
                 SampleText("Incorrect, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
+                CCUHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow); 
                 
             'if uncued window has opened and not yet closed, it's a hit, set up reward    
-            case tNow <= tStateStart+uncuedResponseWindowCloseTime then 
+            'case tNow <= tStateStart+uncuedResponseWindowCloseTime then
+            case CCUHappened% = 2 then 'this seems the better way to check this                
                 queueReward% := 1;                   
                 attCountAllTrialsCorrect% += 1;
                 attInterTrialTimeThisTrial := attInterTrialTime;
                 SampleText("Correct, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
+                CCUHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
                 
             'uncued window has closed, response too late, it's a miss    
@@ -1950,6 +1966,7 @@ func IdleProcessing%()
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
                 SampleText("Incorrect, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
+                CCUHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over
             endcase  
             
@@ -1959,6 +1976,7 @@ func IdleProcessing%()
             attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
             SampleText("Incorrect, response to location " + Str$(iAnswer%),tNow);
             CCHappened% := 0;
+            CCUHappened% := 0;
             ChangeStateTo(stateCheckTurnOffOpto%, tNow);
             
         'there is a joystick response (joystick is not down), and any legal-to-respond contrast/image change has happened, hit
@@ -1968,6 +1986,7 @@ func IdleProcessing%()
             attInterTrialTimeThisTrial := attInterTrialTime;
             SampleText("Correct, joystick in position " + Str$(attJoyPos%),tNow);
             CCHappened% := 0;
+            CCUHappened% := 0;
             ChangeStateTo(stateCheckTurnOffOpto%, tNow);
             
         'there is a joystick response (joystick is not down), contrast/image change has happened, but should not be responded to, FA
@@ -1976,6 +1995,7 @@ func IdleProcessing%()
             attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
             SampleText("Incorrect, joystick in position " + Str$(attJoyPos%),tNow);
             CCHappened% := 0;
+            CCUHappened% := 0;
             ChangeStateTo(stateCheckTurnOffOpto%, tNow);
             
         case tNow > tStateStart + attTimeTrialEnds then  'if animation is over and no reponse has occurred
@@ -1984,6 +2004,7 @@ func IdleProcessing%()
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
                 SampleText("Incorrect, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
+                CCUHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over
             else  'this is a CR, we would have caught fixation break on last check if not
                 queueReward% := 1;
@@ -1993,6 +2014,7 @@ func IdleProcessing%()
                 attInterTrialTimeThisTrial := attInterTrialTime;
                 SampleText("Correct, response to location " + Str$(iAnswer%),tNow);
                 CCHappened% := 0;
+                CCUHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over 
             endif;   
           
@@ -6269,7 +6291,7 @@ end
 'SampleText indicate a possible problem if the timing is off by more than, say, 2ms
 'Buffer has now been reduced to dataScreenMSPerFrame, with identical onsets (but not identical onset/offset) allowed
 'This function has been changed to a PROC, it does not return a value, but will update the value in cc%
-proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount%,&cc%,isCueAll%)
+proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount%,&cc%,&ccu%,isCueAll%)
     var fTime;  'expected time of next flasher
     var ccTime; 'expected time of cued contrast change
     var ccTimeU; 'expected time of uncued contrast change
@@ -6391,24 +6413,22 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
         else    
             SampleText("Cued Location CC, window open",triggerTime);
         endif
-    case minLoc% = 5 and bothCuesAreLocked% = 1 then 'this is a contrast change in BOTH locations simultaneously
-        cc% += 1;  'Increment cc% by 1
+    case (minLoc% = 5 or minLoc% = 6) and bothCuesAreLocked% = 1 then 'this is a contrast change in BOTH locations simultaneously
+        cc% += 1;  'Increment cc% and ccu% by 1, because both have happened
+        ccu% += 1;
         if isCueAll% = -1 then
             SampleText("BOTH Locations CC, window open, no cues match",triggerTime);
         else 
             SampleText("BOTH Locations CC, window open",triggerTime); 
         endif
     case minLoc% = 6 then 'this is a contrast change in the uncued location
+        ccu% += 1;  'Increment ccu% by 1
         docase
-        case isCueAll% = -1 then
-            cc% += 10;  'Increment cc% by 10  
+        case isCueAll% = -1 then 
             SampleText("Uncued Location CC, Location " + Str$(attUncuedLocList%[trialCount%]) + ", Contrast " + Str$(attContrastUncuedList%[trialCount%]) + ", window open, no cues match",triggerTime);
         case isCueAll% = 1 then
-            cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location CC, Location " + Str$(attUncuedLocList%[trialCount%]) + ", Contrast " + Str$(attContrastUncuedList%[trialCount%]) + ", window open",triggerTime);
         else
-            'do NOT increment CC, this contrast change is not a target, NO!  We need to know the change happened, not a target is dealt with by caller
-            cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location CC, Location " + Str$(attUncuedLocList%[trialCount%]) + ", Contrast " + Str$(attContrastUncuedList%[trialCount%]) + ", not a target",triggerTime);
         endcase;
     case minLoc% = 7 and bothCuesAreLocked% = 0 then 'this is a contrast return in the cued location
@@ -6418,24 +6438,22 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
         else
             SampleText("Cued Location return to baseline, window closed",triggerTime); 
         endif
-    case minLoc% = 7 and bothCuesAreLocked% = 1 then 'this is a contrast return in BOTH locations simultaneously
-        cc% += 1;  'Increment cc% by 1
+    case (minLoc% = 7 or minLoc% = 8) and bothCuesAreLocked% = 1 then 'this is a contrast return in BOTH locations simultaneously
+        cc% += 1;  'Increment cc% and ccu% by 1, because both have happened
+        ccu% += 1;
         if isCueAll% = -1 then
             SampleText("BOTH locations return to baseline, window closed, no cues match",triggerTime);
         else
             SampleText("BOTH locations return to baseline, window closed",triggerTime); 
         endif
     case minLoc% = 8 then 'this is a contrast return in the uncued location
+        ccu% += 1; 'Increment ccu% by 1
         docase
         case isCueAll% = -1 then
-            cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location return to baseline, window closed, no cues match",triggerTime);
         case isCueAll% = 1 then
-            cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location return to baseline, window closed",triggerTime);
         else
-            'do NOT increment CC, this contrast change is not a target, NO!  We need to know the change happened, not a target is dealt with by caller
-            cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location return to baseline, not a target",triggerTime);
         endcase;    
     case minLoc% = 9 then 'this is a flasher (not currently in use)
@@ -6460,7 +6478,7 @@ end
 'This function has been changed to a PROC, it does not return a value, but will update the value in cc%
 'This function was built from the original TagTriggerWithSampleText and as such uses the "CC" convention
 'to refer to events, even though the events here are NOT contrast changes but rather image changes.
-proc TagTriggerWithSampletextImages(triggerTime,tAnimationOn,trialCount%,&cc%,isCueAll%)
+proc TagTriggerWithSampletextImages(triggerTime,tAnimationOn,trialCount%,&cc%,&ccu%,isCueAll%)
     var ccTime; 'expected time of cued location image change
     var ccTimeU; 'expected time of uncued location image change
     var cuedLocOffTime; 
@@ -6601,24 +6619,22 @@ proc TagTriggerWithSampletextImages(triggerTime,tAnimationOn,trialCount%,&cc%,is
         else    
             SampleText("Cued Location Image Change, "+Str$(attCuedLocImage%[trialCount%][1])+" window open",triggerTime);
         endif
-    case minLoc% = 6 and changesAreLocked% = 1 then 'this is an image change in BOTH locations simultaneously
-        cc% += 1;  'Increment cc% by 1
+    case (minLoc% = 6 or minLoc% = 7) and changesAreLocked% = 1 then 'this is an image change in BOTH locations simultaneously
+        cc% += 1;  'Increment cc% and ccu% by 1, both have happened
+        ccu% += 1;
         if isCueAll% = -1 then
             SampleText("BOTH Locations Image Change, Cued Loc Image "+Str$(attCuedLocImage%[trialCount%][1])+", Uncued Loc Image "+Str$(attUncuedLocImage%[trialCount%][1])+", window open, no cues match",triggerTime);
         else 
             SampleText("BOTH Locations Image Change, Cued Loc Image "+Str$(attCuedLocImage%[trialCount%][1])+", Uncued Loc Image "+Str$(attUncuedLocImage%[trialCount%][1])+", window open",triggerTime); 
         endif
     case minLoc% = 7 then 'this is an image change in the uncued location
+        ccu% += 1;  'Increment ccu% by 1
         docase
-        case isCueAll% = -1 then
-            cc% += 10;  'Increment cc% by 10    
+        case isCueAll% = -1 then   
             SampleText("Uncued Location Image Change, Location " + Str$(attUncuedLocList%[trialCount%]) + " Image " + Str$(attUncuedLocImage%[trialCount%][1]) + ", window open, no cues match",triggerTime);
         case isCueAll% = 1 then
-            cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location Image Change, Location " + Str$(attUncuedLocList%[trialCount%]) + " Image " + Str$(attUncuedLocImage%[trialCount%][1]) + ", window open",triggerTime);
         else
-            'do NOT increment CC, this change is not a target, NO!  We need to know the change happened, not a target is dealt with by caller
-            cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location Image Change, Location " + Str$(attUncuedLocList%[trialCount%]) + " Image " + Str$(attUncuedLocImage%[trialCount%][1]) + ", not a target",triggerTime);
         endcase;
     case minLoc% = 8 and offsetsAreLocked% = 0 then 'this is image off in the cued location
@@ -6629,26 +6645,25 @@ proc TagTriggerWithSampletextImages(triggerTime,tAnimationOn,trialCount%,&cc%,is
             SampleText("Cued Location Image Off, window closed",triggerTime); 
         endif
     case minLoc% = 8 and offsetsAreLocked% = 1 then 'this is image off in BOTH locations simultaneously
-        cc% += 1;  'Increment cc% by 1
+        cc% += 1;  'Increment cc% and ccu% by 1, both have happened
+        ccu% += 1;
         if isCueAll% = -1 then
             SampleText("BOTH locations Image Off, window closed, no cues match",triggerTime);
         else
             SampleText("BOTH locations Image Off, window closed",triggerTime); 
         endif
     case minLoc% = 9 then 'this is image off in the uncued location
+        ccu% += 1;  'Increment ccu% by 1
         docase
         case isCueAll% = -1 then
-            cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location Image Off, window closed, no cues match",triggerTime);
         case isCueAll% = 1 then
-            cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location Image off, window closed",triggerTime);
         else
-            'do NOT increment CC, this change is not a target, NO!  We need to know the change happened, not a target is dealt with by caller
-            cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location Image Off, not a target",triggerTime);
         endcase;    
-    
+    else
+        SampleText("Error - trigger minimum location " + Str$(minLoc%) + " not recognized!",triggerTime);
     endcase
 
     
