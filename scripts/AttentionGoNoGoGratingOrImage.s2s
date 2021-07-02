@@ -4714,10 +4714,10 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 
                 
                 ''' Ensure no contrast changes overlap - this ensures we get a trigger for every contrast change event, necessary for smooth functioning of trigger-tagging
-                'Updated to use dataScreenMSPerFrame rather than 0.050 seconds, will need to test to see if this is reasonable for TagTrigger...
+                'Updated to use 2*dataScreenMSPerFrame rather than 0.050 seconds, will need to test to see if this is reasonable for TagTrigger...1*dataScreenMSPerFrame results in some confusions
                 'Simultaneously updated to remove cued location "priority"
                 var frameCeilSec;
-                frameCeilSec := Ceil(dataScreenMSPerFrame)/1000;  'get a ceiling value here so there are no roundoff issues with VSG, we want to ensure things end up on separate frames
+                frameCeilSec := 2*(Ceil(dataScreenMSPerFrame)/1000);  'get a ceiling value here so there are no roundoff issues with VSG, we want to ensure things end up on separate frames
                 docase
                 case attLockUncuedToCued% = 1 then
                     'Do nothing, contrast changes WILL overlap, there will be exactly one trigger, this is fixed in TagTrigger...
