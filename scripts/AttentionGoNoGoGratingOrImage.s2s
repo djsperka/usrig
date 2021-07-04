@@ -4717,12 +4717,16 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 'Updated to use 2*dataScreenMSPerFrame rather than 0.050 seconds, will need to test to see if this is reasonable for TagTrigger...1*dataScreenMSPerFrame results in some confusions
                 'Simultaneously updated to remove cued location "priority"
                 var frameCeilSec;
-                frameCeilSec := 2*(Ceil(dataScreenMSPerFrame)/1000);  'get a ceiling value here so there are no roundoff issues with VSG, we want to ensure things end up on separate frames
+                'For now, trying to keep these VERY separated because there are some instances of there being two triggers given the same tag - ultimate goal is to fix that and get this down to 1/2 frames
+                frameCeilSec := 7*(Ceil(dataScreenMSPerFrame)/1000);  'get a ceiling value here so there are no roundoff issues with VSG, we want to ensure things end up on separate frames
                 docase
                 case attLockUncuedToCued% = 1 then
-                    'Do nothing, contrast changes WILL overlap, there will be exactly one trigger, this is fixed in TagTrigger...
-                 'if both onsets are at identical times, randomly choose one to be first, delay the next for one frame
-                 'ACTUALLY, this one case should be do-able, and will (probably) only happen if both onsets are pegged to the minimum hazard time, here we will just use the "locked" option in TagTrigger...   
+                'Do nothing, contrast changes WILL overlap, there will be exactly one trigger, this is fixed in TagTrigger...
+                'if both onsets are at identical times, randomly choose one to be first, delay the next for one frame
+                'ACTUALLY, this one case should be do-able, and will (probably) only happen if both onsets are pegged to the minimum hazard time, here we will just use the "locked" option in TagTrigger...   
+                'So with this CASE commented out, then if there are identical times, they WILL be separated.  We could
+                'in principle have the CASE uncommented but with no following code to leave the times as is, but this
+                'is probably a "next step"
 '                case cuedLocChanges%[ind%] = 1 and cuedLocCCTime[ind%] = uncuedLocCCTime[ind%] then
 '                    if rand() > 0.5 then
 '                        uncuedLocCCTime[ind%] := cuedLocCCTime[ind%] + frameCeilSec;
@@ -4748,14 +4752,22 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                         uncuedLocReturnTime[ind%] := cuedLocCCTime[ind%] + frameCeilSec; 'This will be one frame too long
                     endif;        
                 'if both onsets are within dataScreenMSPerFrame of each other, set the later onset to dataScreenMSPerFrame AFTER earlier onset, update return time as well
+                'With the "equal" case commented out above, equal will trip this CASE instead, have to account for it   
                 case cuedLocChanges%[ind%] = 1 and abs(cuedLocCCTime[ind%]-uncuedLocCCTime[ind%]) < frameCeilSec then
-                    if uncuedLocCCTime[ind%] > cuedLocCCTime[ind%] then
+                    docase
+                    case uncuedLocCCTime[ind%] = cuedLocCCTime[ind%] and rand() > 0.5 then  'equal and 50% random trips
                         uncuedLocCCTime[ind%] := cuedLocCCTime[ind%] + frameCeilSec;
                         uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
-                    else
+                    case uncuedLocCCTime[ind%] = cuedLocCCTime[ind%] then  'equal and 50% random didn't trip
                         cuedLocCCTime[ind%] := uncuedLocCCTime[ind%] + frameCeilSec;
                         cuedLocReturnTime[ind%] := cuedLocCCTime[ind%] + attContrastChangeDuration;
-                    endif    
+                    case uncuedLocCCTime[ind%] > cuedLocCCTime[ind%] then
+                        uncuedLocCCTime[ind%] := cuedLocCCTime[ind%] + frameCeilSec;
+                        uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
+                    else 'cuedLocCCTime[ind%] > uncuedLocCCTime[ind%]
+                        cuedLocCCTime[ind%] := uncuedLocCCTime[ind%] + frameCeilSec;
+                        cuedLocReturnTime[ind%] := cuedLocCCTime[ind%] + attContrastChangeDuration;
+                    endcase    
                 'if cued offset and uncued onset are within dataScreenMSPerFrame of each other, set later to dataScreenMSPerFrame AFTER earlier, update return time as well 
                 case cuedLocChanges%[ind%] = 1 and abs(cuedLocReturnTime[ind%]-uncuedLocCCTime[ind%]) < frameCeilSec then
                     if uncuedLocCCTime[ind%] > cuedLocReturnTime[ind%] then
