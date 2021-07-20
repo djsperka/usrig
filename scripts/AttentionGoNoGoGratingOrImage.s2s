@@ -519,7 +519,7 @@ proc AttentionGNGGratingOrImage()
     SynchChannel% := 36;
     PhotodiodeChannel% := 33;
     UtilityChannel% := 34;
-    TimingChannel% := 35;
+    TimingChannel% := 37;  'was 35, but that would overlap JoyChannel% - this shouldn't really be looked at by any external code so it shouldn't be an issue.
     OptoCopyChannel% := 49;
     
     
@@ -3200,7 +3200,8 @@ func AttentionScriptDialog%()
 '        'Contrast file test write is important for now, should be same as in Start function
 '        'Write contrast file, pulling this out of CreateContrastList so we only have to write once
 '        var c$;
-'        CreateContrastList(c$,Flashers$,attIsCueAll%[],attCuedLocList%[],attCuedLocChangesList%[],attContrastCuedList%[],attCuedLocCCTime[],
+'        var c2$;  'testing the actual requests vs frame requests, this was good, it's all commented out again now
+'        CreateContrastList(c$,c2$,Flashers$,attIsCueAll%[],attCuedLocList%[],attCuedLocChangesList%[],attContrastCuedList%[],attCuedLocCCTime[],
 '        attCuedLocReturnTime[],attUncuedLocList%[],attUncuedLocChangesList%[],attContrastUncuedList%[],attUncuedLocCCTime[],attUncuedLocReturnTime[],
 '        attTrialEndTime[],attFixColor%[],attCueCircleColor%[][],attOffBitsList%[],attBlockList%[],attSetList%[],attEasyList%[]);',
 '        'flasherTimes[][],flasherX[][],flasherY[][],flasherCount%[];
@@ -3210,6 +3211,15 @@ func AttentionScriptDialog%()
 '        Print("%s",c$);
 '        'close contrast file
 '        FileClose(0);
+'        ContrastFile$:="E:\\testingshit\\AttentionTrialContrastFile2.txt";  'this is for testing on Seager
+'        FileOpen(ContrastFile$, 8, 1);
+'        'print constructed contrast string to file
+'        Print("%s",c2$);
+'        'close contrast file
+'        FileClose(0);
+'        
+'        halt;
+        
 '        
 '        'open a file to write the spec file for the VSG
 '        var specHandle%;
@@ -4923,7 +4933,15 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 'Note: With massive update to code, this needs to be checked to make sure it works...for now, not being implemented
                 'Flasher string
                 'UpdateFlasherSpecString(f$,flashN%[ind%],flashX[ind%][],flashY[ind%][],attFlasherWidth,attFlasherHeight,flashTimes[ind%][],attFlasherDur,firstRun)
-                UpdateTrialSpecString(c$,ind%,masterColorListVSG$[fixColor%[ind%]-1],initPhase%[],offList%[ind%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,easyList%[ind%],
+'                UpdateTrialSpecString(c$,ind%,masterColorListVSG$[fixColor%[ind%]-1],initPhase%[],offList%[ind%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,easyList%[ind%],
+'                    cuedLoc%[ind%],cuedLocContrast%[ind%],cuedLocCCTime[ind%],cuedLocReturnTime[ind%],
+'                    uncuedLoc%[ind%],uncuedLocContrast%[ind%],uncuedLocCCTime[ind%],uncuedLocReturnTime[ind%],trialEnd[ind%]);
+                
+                'new version of trial spec string deliberately updates c$ so that requests come 1 ms after each frame time
+                'which ensures that the FLOOR function on the VSG always works appropriately.  Note that the request times
+                'as found in the ccTime variables, etc., are NOT adjusted, so adjustment will be necessary again at the
+                'TagTrigger... step.
+                UpdateTrialSpecStringFrameFloor(c$,ind%,masterColorListVSG$[fixColor%[ind%]-1],initPhase%[],offList%[ind%],attCueOnsetTime,attCueOffsetTime,attStimOnsetTime,easyList%[ind%],
                     cuedLoc%[ind%],cuedLocContrast%[ind%],cuedLocCCTime[ind%],cuedLocReturnTime[ind%],
                     uncuedLoc%[ind%],uncuedLocContrast%[ind%],uncuedLocCCTime[ind%],uncuedLocReturnTime[ind%],trialEnd[ind%]);
                 
@@ -5489,7 +5507,7 @@ proc WriteParameterFile()
         Print("Max contrast change   : %f\n", attMaxContChange);
         Print("Min contrast change   : %f\n", attMinContChange);
         Print("N Contrast levels   : %d\n", attNContLevels%);
-        Print("Answer point window radius   : Matches Stimulus\n");  
+        Print("Answer point window radius   : %f\n",attAnswerPointWindowRadius);  
         'Print("Use Training Contrast?   : %d\n", attTrainingContrastCheck%);
         'Print("Training contrast   : %d\n", attTrainingContrastPct%);
         Print("Set phase at contrast change?   : %d\n", attPhaseCheck%);
@@ -5645,6 +5663,9 @@ func GetStimulusPhase(stim%)
     return phase;
 end
 
+
+'This function has been "replaced" by UpdateTrialSpecStringFrameFloor pending testing of new method
+'If everything works out, probably get rid of this, rename newer function to UpdateTrialSpecString
 proc UpdateTrialSpecString(&c$,ind%,col$,phaseList%[],offList%,cueOnsetTime,cueOffsetTime,stimOnsetTime,easy%,
         cuedLoc%,cuedLocContrast%,cuedLocCCTime,cuedLocReturnTime,
         uncuedLoc%,uncuedLocContrast%,uncuedLocCCTime,uncuedLocReturnTime,trialEnd);
@@ -5707,15 +5728,77 @@ proc UpdateTrialSpecString(&c$,ind%,col$,phaseList%[],offList%,cueOnsetTime,cueO
     'Add trial offset, must be final line of trial, put in extra new line
     c$ := c$ + "*," + Str$(cueOffsetTime+stimOnsetTime+trialEnd) + ",0\n\n"
     
-    'This function should kind of be done
-    'There is only one remaining concern, obviously testing is needed but this isF where there could/will be an issue
-    '1) Color spec appears to use color names, e.g. "red", to replace "known" colors.  No reason this shouldn't still work.
+end
+
+
+proc UpdateTrialSpecStringFrameFloor(&c$,ind%,col$,phaseList%[],offList%,cueOnsetTime,cueOffsetTime,stimOnsetTime,easy%,
+        cuedLoc%,cuedLocContrast%,cuedLocCCTime,cuedLocReturnTime,
+        uncuedLoc%,uncuedLocContrast%,uncuedLocCCTime,uncuedLocReturnTime,trialEnd);
+    
+    var i%;
+    
+    'Insert trial opener, first line of trial spec
+    c$ := c$ + "Trial " + Str$(ind%+1) + "\n";
+    
+    'For second line of trials spec: Add color of fixpt
+    c$ := c$ + col$ + ",";
+    
+    'Add off-bits
+    c$ := c$ + Str$(offList%);  'leave off comma, will add to BEGINNING of phase for convenience
+    
+    'Add phase specs
+    for i% := 1 to attNumPatches% do
+        c$ := c$ + "," + Str$(phaseList%[i%-1]);
+    next
+    
+    'Add new line to end second line of trial spec
+    c$ := c$ + "\n"; 
+    
+    'From here on out every statement is its own line and has a new line character
+    
+    'Add cue onset, there will always be a cue onset 
+    c$ := c$ + "Q," + Str$(GetFrameFloorTime(cueOnsetTime)) + "," + Str$(attCueCircleContrastAttend%) + "\n";  'We have been going with kind of one contrast, that would be the attend one.  Cue circle dialog may be something we can cut down a ton
+    
+    'Add cue offset, there will always be a cue offset
+    c$ := c$ + "Q," + Str$(GetFrameFloorTime(cueOffsetTime)) + ",0\n";
+    
+    'Add stimulus onsets
+    'Here, attNumPatches% and attContrastBase% are available globally
+    if easy% = 0 or distracterOffForEasy% = 0 then  'For regular trials, or easy trials where distractor is NOT off, turn on all locations
+        for i% := 1 to attNumPatches% do
+            c$ := c$ + Str$(i%-1) + "," + Str$(GetFrameFloorTime(cueOffsetTime+stimOnsetTime)) + "," + Str$(attContrastBase%) + "\n";
+        next
+    else  'For easy trials when distractor IS off for easy trials, only turn on cued location
+        c$ := c$ + Str$(cuedLoc%-1) + "," + Str$(GetFrameFloorTime(cueOffsetTime+stimOnsetTime)) + "," + Str$(attContrastBase%) + "\n";
+    endif;
+    
+    'Add contrast change and contrast returns, when appropriate
+    if cuedLocCCTime > 0 then
+        'Contrast change
+        c$ := c$ + Str$(cuedLoc%-1) + "," + Str$(GetFrameFloorTime(cueOffsetTime+stimOnsetTime+cuedLocCCTime)) + "," + Str$(cuedLocContrast%) + "\n";
+    endif
+    if cuedLocReturnTime > 0 then
+        'Contrast return
+        c$ := c$ + Str$(cuedLoc%-1) + "," + Str$(GetFrameFloorTime(cueOffsetTime+stimOnsetTime+cuedLocReturnTime)) + "," + Str$(attContrastBase%) + "\n";
+    endif;
+    if uncuedLocCCTime > 0 then
+        'Contrast change
+        c$ := c$ + Str$(uncuedLoc%-1) + "," + Str$(GetFrameFloorTime(cueOffsetTime+stimOnsetTime+uncuedLocCCTime)) + "," + Str$(uncuedLocContrast%) + "\n";
+    endif
+    if uncuedLocReturnTime > 0 then
+        'Contrast return
+        c$ := c$ + Str$(uncuedLoc%-1) + "," + Str$(GetFrameFloorTime(cueOffsetTime+stimOnsetTime+uncuedLocReturnTime)) + "," + Str$(attContrastBase%) + "\n";
+    endif;
+    
+    'Add trial offset, must be final line of trial, put in extra new line
+    c$ := c$ + "*," + Str$(GetFrameFloorTime(cueOffsetTime+stimOnsetTime+trialEnd)) + ",0\n\n"
     
 end
 
 
 proc UpdateFlasherSpecString(&f$,numFlashers%,x[],y[],w,h,onset[],dur,&fR)
-    var ind%;
+    'Note that Flasher time has been updated to match the frame times, as with contrast changes
+    var ind%;    
     
     if fR = 0 then  'check if it's the first run, return this variable
         f$ := f$ + ",";  'if not the first run, put in initial comma
@@ -5732,8 +5815,8 @@ proc UpdateFlasherSpecString(&f$,numFlashers%,x[],y[],w,h,onset[],dur,&fR)
         f$ := f$ + Str$(y[ind%]) + ",";  'add y position for this flasher
         f$ := f$ + Str$(w) + ",";  'add width for this flasher
         f$ := f$ + Str$(h) + ",";  'add height for this flasher
-        f$ := f$ + Str$(onset[ind%]) + ",";  'add onset for this flasher
-        f$ := f$ + Str$(onset[ind%]+dur);  'add offset for this flasher
+        f$ := f$ + Str$(GetFrameFloorTime(onset[ind%])) + ",";  'add onset for this flasher
+        f$ := f$ + Str$(GetFrameFloorTime(onset[ind%]+dur));  'add offset for this flasher
         ind% += 1;  'increment index
         numFlashers% -= 1; 'decrement numFlashers%
     wend
@@ -6299,7 +6382,7 @@ end
 
 'This function places a SampleText to indicate the onset/location of flashers or the time of the contrast change
 'Since these are on the same channel, it just looks for the nearest expected time to the known trigger.
-'Since there is a buffer of 100 ms between any onset, there should be no difficulty, but I will have the
+'Since there is a buffer of 50 ms between any onset, there should be no difficulty, but I will have the
 'SampleText indicate a possible problem if the timing is off by more than, say, 2ms
 'Buffer has now been reduced to dataScreenMSPerFrame, with identical onsets (but not identical onset/offset) allowed
 'This function has been changed to a PROC, it does not return a value, but will update the value in cc%
@@ -6343,30 +6426,32 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
     
     
     'For simplicity, we should calculate these values locally first
-    cueOnTime := tAnimationOn + attCueOnsetTime;  'Cue onset time is now constant
-    cueOffTime := tAnimationOn + attCueOffsetTime;  'Cue offset time is now constant
-    gratingOnTime := tAnimationOn + attCueOffsetTime + attStimOnsetList[trialCount%];  'Stim onset (and following timing) is now referenced to cue offset
+    'Known event times need to be updated for the FrameFloor adjustment done in CreateContrastList
+    'Note that GetFrameFloorTime returns a value that is 1 ms too high on purpose, subtract that 1 ms to get true estimate of trigger time
+    cueOnTime := tAnimationOn + GetFrameFloorTime(attCueOnsetTime) - 0.001;  'Cue onset time is now a scalar - constant on all trials
+    cueOffTime := tAnimationOn + GetFrameFloorTime(attCueOffsetTime) - 0.001;  'Cue offset time is now a scalar - constant on all trials
+    gratingOnTime := tAnimationOn + GetFrameFloorTime(attCueOffsetTime + attStimOnsetList[trialCount%]) - 0.001;  'Stim onset (and following timing) is referenced to cue offset in attStimOnsetList[]
     if attCuedLocCCTime[trialCount%] > -1 then  'This value should always be positive if there is a contrast change ... -1 indicates no contrast change
-        ccTime := tAnimationOn + attCueOffsetTime + attStimOnsetList[trialCount%] + attCuedLocCCTime[trialCount%];
+        ccTime := tAnimationOn + GetFrameFloorTime(attCueOffsetTime + attStimOnsetList[trialCount%] + attCuedLocCCTime[trialCount%]) - 0.001;
     else
         ccTime := 9999999;  'Place time corresponding to nonexistent contrast change safely into the future
     endif;
     if attUncuedLocCCTime[trialCount%] > -1 then 
-        ccTimeU := tAnimationOn + attCueOffsetTime + attStimOnsetList[trialCount%] + attUncuedLocCCTime[trialCount%];
+        ccTimeU := tAnimationOn + GetFrameFloorTime(attCueOffsetTime + attStimOnsetList[trialCount%] + attUncuedLocCCTime[trialCount%]) - 0.001;
     else
         ccTimeU := 9999999;  'Place time corresponding to nonexistent contrast change safely into the future
     endif;
     if attCuedLocReturnTime[trialCount%] > -1 then
-        ccReturnTime := tAnimationOn + attCueOffsetTime + attStimOnsetList[trialCount%] + attCuedLocReturnTime[trialCount%];
+        ccReturnTime := tAnimationOn + GetFrameFloorTime(attCueOffsetTime + attStimOnsetList[trialCount%] + attCuedLocReturnTime[trialCount%]) - 0.001;
     else
         ccReturnTime := 9999999;  'Place time corresponding to nonexistent contrast change safely into the future
     endif;
     if attUncuedLocReturnTime[trialCount%] > -1 then 
-        ccReturnTimeU := tAnimationOn + attCueOffsetTime + attStimOnsetList[trialCount%] + attUncuedLocReturnTime[trialCount%];
+        ccReturnTimeU := tAnimationOn + GetFrameFloorTime(attCueOffsetTime + attStimOnsetList[trialCount%] + attUncuedLocReturnTime[trialCount%]) - 0.001;
     else
         ccReturnTimeU := 9999999;  'Place time corresponding to nonexistent contrast change safely into the future
     endif;
-    allOffTime := tAnimationOn + attCueOffsetTime + attStimOnsetList[trialCount%] + attTrialEndTime[trialCount%];
+    allOffTime := tAnimationOn + GetFrameFloorTime(attCueOffsetTime + attStimOnsetList[trialCount%] + attTrialEndTime[trialCount%]) - 0.001;
     'All times are now locally calculated
     'One last fix, if uncued is locked to cued (or identical without explicit locking) and they both change, eliminate the uncued time, indicate both cues are locked
     if (attCuedLocCCTime[trialCount%] > -1 and attUncuedLocCCTime[trialCount%] > -1) and (attLockUncuedToCued% = 1 or attCuedLocCCTime[trialCount%] = attUncuedLocCCTime[trialCount%])then
@@ -6379,7 +6464,7 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
     
     'Set a flasher time for the upcoming flasher, if it exists - this is currently shorted out via NoFlashersRightNow%
     if flasherTimes[trialCount%][flasherCount%] > 0 and NoFlashersRightNow% = 0 then  'this will not evaluate true right now
-        fTime := tAnimationOn + flasherTimes[trialCount%][flasherCount%];
+        fTime := tAnimationOn + GetFrameFloorTime(flasherTimes[trialCount%][flasherCount%]) - 0.001;
     else 'Currently no flashers, fTime is always set to 9999999
         fTime := 9999999; 'Place time corresponding to nonexistent flasher safely into the future
     endif;
@@ -6387,14 +6472,14 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
     
     'Fill diffArray with differences between time of current trigger and known event times
     diffArray[0] := abs(tAnimationOn - triggerTime);  'for now we are short circuiting and not tagging tAnimationOn, but this will allow easy tagging if desired
-    diffArray[1]:= abs(allOffTime - triggerTime);
+    diffArray[1] := abs(allOffTime - triggerTime);
     diffArray[2] := abs(cueOnTime - triggerTime);
     diffArray[3] := abs(cueOffTime - triggerTime);
     diffArray[4] := abs(gratingOnTime - triggerTime);
     diffArray[5] := abs(ccTime - triggerTime);  'contrast change time goes first, because this has priority, if there is a tie, min will take the first value
     diffArray[6] := abs(ccTimeU - triggerTime);
-    diffArray[7]:= abs(ccReturnTime - triggerTime);
-    diffArray[8]:= abs(ccReturnTimeU - triggerTime);
+    diffArray[7] := abs(ccReturnTime - triggerTime);
+    diffArray[8] := abs(ccReturnTimeU - triggerTime);
     diffArray[9] := abs(fTime - triggerTime);
     
     minLoc% := min(diffArray);  'find index of smallest difference
@@ -6484,7 +6569,7 @@ end
 
 'This function places a SampleText to indicate the time of the image changes
 'Since these are on the same channel, it just looks for the nearest expected time to the known trigger.
-'Since there is a buffer of 100 ms between any onset, there should be no difficulty, but I will have the
+'Since there is a buffer of 50 ms between any onset, there should be no difficulty, but I will have the
 'SampleText indicate a possible problem if the timing is off by more than, say, 2ms
 'Buffer has now been reduced to dataScreenMSPerFrame, with identical onsets (but not identical onset/offset) allowed
 'This function has been changed to a PROC, it does not return a value, but will update the value in cc%
@@ -6533,45 +6618,47 @@ proc TagTriggerWithSampletextImages(triggerTime,tAnimationOn,trialCount%,&cc%,&c
     
     
     'For simplicity, we should calculate these values locally first
-    cueOnTime := tAnimationOn + attCueOnsetTime;  'Cue onset time is now constant
-    cueOffTime := tAnimationOn + attCueOffsetTime;  'Cue offset time is now constant
+    'Known event times need to be updated for the FrameFloor adjustment done in CreateContrastList
+    'Note that GetFrameFloorTime returns a value that is 1 ms too high on purpose, subtract that 1 ms to get true estimate of trigger time
+    cueOnTime := tAnimationOn + GetFrameFloorTime(attCueOnsetTime) - 0.001;  'Cue onset time is now a scalar - constant on all trials
+    cueOffTime := tAnimationOn + GetFrameFloorTime(attCueOffsetTime) - 0.001;  'Cue offset time is now a scalar - constant on all trials
     if attCuedLocImageTime[trialCount%][0] > 0 then
-        cuedLocOnTime := tAnimationOn + attCuedLocImageTime[trialCount%][0];  'Stim onset (and following timing) is now referenced to cue offset
+        cuedLocOnTime := tAnimationOn + GetFrameFloorTime(attCuedLocImageTime[trialCount%][0]) - 0.001;  'Stim onset (and following timing) is referenced to cue offset in attCuedLocImageTime[]
     else
         cuedLocOnTime := 9999999;
     endif;
     if attUncuedLocImageTime[trialCount%][0] > 0 then
-        uncuedLocOnTime := tAnimationOn + attUncuedLocImageTime[trialCount%][0];  'Stim onset (and following timing) is now referenced to cue offset
+        uncuedLocOnTime := tAnimationOn + GetFrameFloorTime(attUncuedLocImageTime[trialCount%][0]) - 0.001;  'Stim onset (and following timing) is referenced to cue offset
     else
         uncuedLocOnTime := 9999999;
     endif;
     if attCuedLocImage%[trialCount%][1] > -1 and attCuedLocImageTime[trialCount%][1] > 0 then  
-        ccTime := tAnimationOn + attCuedLocImageTime[trialCount%][1];
+        ccTime := tAnimationOn + GetFrameFloorTime(attCuedLocImageTime[trialCount%][1]) - 0.001;
     else
         ccTime := 9999999;  'Place time corresponding to nonexistent contrast change safely into the future
     endif;
     if attUncuedLocImage%[trialCount%][1] > -1 and attUncuedLocImageTime[trialCount%][1] > 0 then   
-        ccTimeU := tAnimationOn + attUncuedLocImageTime[trialCount%][1];
+        ccTimeU := tAnimationOn + GetFrameFloorTime(attUncuedLocImageTime[trialCount%][1]) - 0.001;
     else
         ccTimeU := 9999999;  'Place time corresponding to nonexistent contrast change safely into the future
     endif;
     docase
     case attCuedLocImage%[trialCount%][1] = -1 then
-        cuedLocOffTime := tAnimationOn + attCuedLocImageTime[trialCount%][1];
+        cuedLocOffTime := tAnimationOn + GetFrameFloorTime(attCuedLocImageTime[trialCount%][1]) - 0.001;
     case attCuedLocImage%[trialCount%][2] = -1 then
-        cuedLocOffTime := tAnimationOn + attCuedLocImageTime[trialCount%][2];
+        cuedLocOffTime := tAnimationOn + GetFrameFloorTime(attCuedLocImageTime[trialCount%][2]) - 0.001;
     else
         cuedLocOffTime := 9999999;  'Place time corresponding to nonexistent contrast change safely into the future
     endcase;
     docase
     case attUncuedLocImage%[trialCount%][1] = -1 then
-        uncuedLocOffTime := tAnimationOn + attUncuedLocImageTime[trialCount%][1];
+        uncuedLocOffTime := tAnimationOn + GetFrameFloorTime(attUncuedLocImageTime[trialCount%][1]) - 0.001;
     case attUncuedLocImage%[trialCount%][2] = -1 then
-        uncuedLocOffTime := tAnimationOn + attUncuedLocImageTime[trialCount%][2];
+        uncuedLocOffTime := tAnimationOn + GetFrameFloorTime(attUncuedLocImageTime[trialCount%][2]) - 0.001;
     else
         uncuedLocOffTime := 9999999;  'Place time corresponding to nonexistent contrast change safely into the future
     endcase;
-    allOffTime := tAnimationOn + attTrialEndTime[trialCount%];
+    allOffTime := tAnimationOn + GetFrameFloorTime(attTrialEndTime[trialCount%]) - 0.001;
     'All times are now locally calculated
     'One last fix, if uncued is locked to cued and they both change, eliminate the uncued time, indicate both cues are locked
     if cuedLocOnTime = uncuedLocOnTime then
@@ -7558,5 +7645,25 @@ func ReadImagesTrialsFile%(ImagesTrialsFile$,&mainX,&mainY,&dist1X,&dist1Y,&dist
     
     
     return 1;
+    
+end
+
+
+
+func GetFrameFloorTime(inTime)
+    'This function uses the value in dataScreenMSPerFrame to adjust the request time to a known frame time
+    'for the purposes of the ATTENTION animation sequence.  Because the animation sequence floors the request
+    'time on the VSG, here we will intentionally add one ms to the nearest "known" frame time to prevent any
+    'small temporal misalignment from placing our request a full frame distant from the updated intended
+    'request.  Note that inTime is in seconds, while dataScreenMSPerframe is in ms.
+    
+    var outTime;
+    var frames;
+    
+    frames := Round(inTime*1000/dataScreenMSPerFrame);  'change inTime to ms
+    outTime := ((dataScreenMSPerFrame*frames)+1)/1000;  'change ms back to seconds
+    
+    return outTime;
+    
     
 end
