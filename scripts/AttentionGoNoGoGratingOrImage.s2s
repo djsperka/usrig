@@ -3201,23 +3201,24 @@ func AttentionScriptDialog%()
 '        'Contrast file test write is important for now, should be same as in Start function
 '        'Write contrast file, pulling this out of CreateContrastList so we only have to write once
 '        var c$;
-'        var c2$;  'testing the actual requests vs frame requests, this was good, it's all commented out again now
-'        CreateContrastList(c$,c2$,Flashers$,attIsCueAll%[],attCuedLocList%[],attCuedLocChangesList%[],attContrastCuedList%[],attCuedLocCCTime[],
+'        'var c2$;  'testing the actual requests vs frame requests, this was good, it's all commented out again now as is the c2$ version
+'        'CreateContrastList(c$,c2$,Flashers$,attIsCueAll%[],attCuedLocList%[],attCuedLocChangesList%[],attContrastCuedList%[],attCuedLocCCTime[],
+'        CreateContrastList(c$,Flashers$,attIsCueAll%[],attCuedLocList%[],attCuedLocChangesList%[],attContrastCuedList%[],attCuedLocCCTime[],
 '        attCuedLocReturnTime[],attUncuedLocList%[],attUncuedLocChangesList%[],attContrastUncuedList%[],attUncuedLocCCTime[],attUncuedLocReturnTime[],
 '        attTrialEndTime[],attFixColor%[],attCueCircleColor%[][],attOffBitsList%[],attBlockList%[],attSetList%[],attEasyList%[]);',
 '        'flasherTimes[][],flasherX[][],flasherY[][],flasherCount%[];
-'        ContrastFile$:="E:\\testingshit\\AttentionTrialContrastFile.txt";  'this is for testing on Seager
+'        ContrastFile$:="E:\\testingshit\\AttentionTrialContrastFileTest.txt";  'this is for testing on Seager
 '        FileOpen(ContrastFile$, 8, 1);
 '        'print constructed contrast string to file
 '        Print("%s",c$);
 '        'close contrast file
 '        FileClose(0);
-'        ContrastFile$:="E:\\testingshit\\AttentionTrialContrastFile2.txt";  'this is for testing on Seager
-'        FileOpen(ContrastFile$, 8, 1);
-'        'print constructed contrast string to file
-'        Print("%s",c2$);
-'        'close contrast file
-'        FileClose(0);
+'        'ContrastFile$:="E:\\testingshit\\AttentionTrialContrastFile2.txt";  'this is for testing on Seager
+'        'FileOpen(ContrastFile$, 8, 1);
+'        ''print constructed contrast string to file
+'        'Print("%s",c2$);
+'        ''close contrast file
+'        'FileClose(0);
 '        
 '        halt;
         
@@ -4622,7 +4623,7 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                     cuedLoc%[ind%] := floor(rand(attNumPatches%,1));  'Pick a random location to cue and change, 1-N
                     isCueAll%[ind%] := 0;
                 case blockOrder%[j%] = 8 then  'random cue location, include cue-all 
-                    temp% := floor(rand(attNumPatches%+1,0)); 'Pick a value 0-N, if ) interpret as cue-all
+                    temp% := floor(rand(attNumPatches%+1,0)); 'Pick a value 0-N, if 0 interpret as cue-all
                     if temp% > 0 then  'If not cue-all, use this value
                         cuedLoc%[ind%] := temp%;
                         isCueAll%[ind%] := 0;
@@ -4635,7 +4636,7 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 
                 ''' Determine uncued location (location that will change that is NOT cued - fill uncuedLoc%[])
                 docase
-                case blockOrder%[j%] = 6 then 'This is cue-all
+                case isCueAll%[ind%] = 1 then 'This is cue-all
                     uncuedLoc%[ind%] := 0;  'Henry has requested NO uncued changes on cue-all trials, if there's no uncued loc, there will be no uncued changes
                 case attNumPatches% > 1 then 'select a random location that is not the cued location
                     temp% := cuedLoc%[ind%];  'we can't select this location
