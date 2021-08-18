@@ -456,6 +456,7 @@ var iAnswer%;
 var trialCatch%;  'need to update the logic for this one
 var trialIsTarget%;
 var trialAttendLoc%;
+var trialBlockType$;
 var trialHazardFunctionTimeCued;
 var trialHazardFunctionTimeUncued;
 var tOpt;
@@ -1655,11 +1656,11 @@ func IdleProcessing%()
                 ChangeStateTo(stateCheckForAnswerThroughAnimation%, tTrigger);
                 'In below sampletext, can change hazard time (currently relative to grating onset) to relative to animation onset with simple uncomment in PrepareTrial()
                 if isGrating% = 1 then
-                    SampleText("Animation on, Fixation color " + fixColor$ + ", Base contrast " + Str$(attContrastBase%) + ", hazard dur " + Str$(trialHazardFunctionTimeCued) + ", hazard dur2 " + Str$(trialHazardFunctionTimeUncued)
-                    + ", attend location " + Str$(trialAttendLoc%) + ", change location " + Str$(expectedAnswer%) + ", change contrast " + Str$(thisContrastCued%) + ", is Cue-All trial: " + Str$(trialIsCueAll%),tTrigger);
+                    SampleText("Animation on, FixColor " + fixColor$ + ", BaseContrast " + Str$(attContrastBase%) + ", HazDur " + Str$(trialHazardFunctionTimeCued) + ", HazDur2 " + Str$(trialHazardFunctionTimeUncued)
+                    + ", AttLoc " + Str$(trialAttendLoc%) + ", ChangeLoc " + Str$(expectedAnswer%) + ", ChangeContrast " + Str$(thisContrastCued%) + ", Is Cue-All Trial: " + Str$(trialIsCueAll%) + ", BlockType " + trialBlockType$,tTrigger);
                 else
-                    SampleText("Animation on, Fixation color " + fixColor$ + ", hazard dur " + Str$(trialHazardFunctionTimeCued) + ", hazard dur2 " + Str$(trialHazardFunctionTimeUncued)
-                    + ", attend location " + Str$(trialAttendLoc%) + ", change location " + Str$(expectedAnswer%) + ", is Cue-All trial: " + Str$(trialIsCueAll%),tTrigger);
+                    SampleText("Animation on, FixColor " + fixColor$ + ", HazDur " + Str$(trialHazardFunctionTimeCued) + ", HazDur2 " + Str$(trialHazardFunctionTimeUncued)
+                    + ", AttLoc " + Str$(trialAttendLoc%) + ", ChangeLoc " + Str$(expectedAnswer%) + ", Is Cue-All Trial: " + Str$(trialIsCueAll%) + ", BlockType " + trialBlockType$,tTrigger);
                 endif
                 
                 
@@ -2367,6 +2368,26 @@ proc PrepareTrial()
 
     'Record if this trial is Cue-All
     trialIsCueAll% := attIsCueAll%[attCurrTrialIndex%];
+    
+    'Get block type for this trial
+    docase
+    case attBlockList%[attCurrTrialIndex%] = 1 then
+        trialBlockType$ := "CueMain";
+    case attBlockList%[attCurrTrialIndex%] = 2 then
+        trialBlockType$ := "CueDist1";
+    case attBlockList%[attCurrTrialIndex%] = 3 then
+        trialBlockType$ := "CueDist2";
+    case attBlockList%[attCurrTrialIndex%] = 4 then
+        trialBlockType$ := "CueDist3";
+    case attBlockList%[attCurrTrialIndex%] = 5 then
+        trialBlockType$ := "CueDist4";
+    case attBlockList%[attCurrTrialIndex%] = 6 then
+        trialBlockType$ := "CueAll";
+    case attBlockList%[attCurrTrialIndex%] = 7 then
+        trialBlockType$ := "CueRandNoCueAll";
+    case attBlockList%[attCurrTrialIndex%] = 8 then
+        trialBlockType$ := "CueRandWithCueAll";        
+    endcase
     
     'Determine if contrast is changing (target) or not (nontarget)
     'Under the new scheme, if any contrast changes, it is a target, otherwise it is a nontarget
