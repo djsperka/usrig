@@ -64,6 +64,7 @@ var starTrialCounter% := 0;
 var starDoTargetGrid% := 0;
 const MAXEYETRACECOLORS% := 12;
 var starEyeTraceColors%[MAXEYETRACECOLORS%];    ' These are used to draw colors
+var starAnswerWindowRadius := 2;
 
 
 ' Optogenetics variables - since we will only be using wraparound and not pulsed (at least, that's my understanding) much of this might be unnecessary
@@ -147,6 +148,7 @@ proc GetStarStimScriptParameters()
     starTargetDiameter := GetFloatRegistryValue(key$, "TargetDiameter", starTargetDiameter);
     starDoTargetGrid% := GetIntRegistryValue%(key$, "DoTargetGrid", starDoTargetGrid%);
     starTargetIsGrating% := GetIntRegistryValue%(key$, "TargetIsGrating", starTargetIsGrating%);
+    starAnswerWindowRadius := GetFloatRegistryValue(key$, "AnswerWindowRadius", starAnswerWindowRadius);
     
 end;
  	
@@ -182,6 +184,7 @@ proc SaveStarStimScriptParameters()
     SetFloatRegistryValue(key$, "TargetDiameter", starTargetDiameter);
     SetIntRegistryValue(key$, "DoTargetGrid", starDoTargetGrid%);
     SetIntRegistryValue(key$, "TargetIsGrating", starTargetIsGrating%);
+    SetFloatRegistryValue(key$, "AnswerWindowRadius", starAnswerWindowRadius);
 end;
 
 
@@ -229,18 +232,20 @@ func StarStimScriptDialog%()
     DlgInteger(18, "Small reward size(ms)", 1, 200);
     DlgCheck(19, "Use fixpt diameter for target");
     DlgReal(20, "Target diameter", 0.1, 100);
-    smallAreaTextItemNumber% := DlgText("Text Here",2,21,25);
+    DlgReal(21, "Answer window diameter",0.1,100);
+    
+    smallAreaTextItemNumber% := DlgText("Text Here",2,22,25);
     'DlgCheck(20, "Use grating for target",2,21);
-    DlgList(21,30,gratingAsTargetOpts$[],3,0,22);
-    DlgButton(101, "SmallArea", StarStimSmallAreaDialog%,2,23);
-    DlgButton(102, "Opto Parameters", StarStimOptoDialog%,20,23);
-    DlgButton(103, "Squarewave Bar Parameters", StarStimGratingBarDialog%,2,24);
+    DlgList(22,30,gratingAsTargetOpts$[],3,0,23);
+    DlgButton(101, "SmallArea", StarStimSmallAreaDialog%,2,24);
+    DlgButton(102, "Opto Parameters", StarStimOptoDialog%,20,24);
+    DlgButton(103, "Squarewave Bar Parameters", StarStimGratingBarDialog%,2,25);
     DlgAllow(0xffff, 0, StarStimScriptDialogChanged%);
 	'i%:=DlgShow(starFixationDurationMin, starFixationDurationMax, starAcquisitionTime, starInterTrialTime, starAnswerTime, starNumTargets%, 
     i%:=DlgShow(sixFloats[], starNumTargets%,
     starNumBlocks%, starNumPerBlock%, starDoOpto%, starUseStimulusXY%, starTargetX, starTargetY,
     starKeepFixptOn%, starMinSmallRewardDelta, starMaxSmallRewardDelta, starJuicePerSmallReward%, starMSPerRewardHit%,
-    starUseDefaultTargetSize%, starTargetDiameter, starTargetIsGrating%);
+    starUseDefaultTargetSize%, starTargetDiameter, starAnswerWindowRadius, starTargetIsGrating%);
 	if i% = 1 then
         
         'extract six floats
@@ -300,20 +305,23 @@ func StarStimScriptDialogChanged%(item%)
     
     docase
     case item% = 0 then
-        DlgEnable(1-starUseStimulusXY%, 12, 13);
-        DlgEnable(starKeepFixptOn%, 15, 16, 17, 18);
-        DlgEnable(1-starUseDefaultTargetSize%, 20);
-        DlgEnable(1-DlgValue(21),19);  'disable target diameter = fixation point if target is grating
-        DlgEnable(1-DlgValue(21),20);
+        DlgEnable(1-DlgValue(11), 12, 13);
+        DlgEnable(DlgValue(14), 15, 16, 17, 18);
+        DlgEnable(1-DlgValue(22),19);  'disable target diameter = fixation point if target is grating
+        DlgEnable(1-DlgValue(22),20);
+        DlgEnable(1-DlgValue(19), 20);
     case item% = 11 then
         DlgEnable(1-DlgValue(11), 12, 13);
     case item% = 14 then
         DlgEnable(DlgValue(14), 15, 16, 17, 18);
     case item% = 19 then
         DlgEnable(1-DlgValue(19), 20);
-    case item% = 21 then
-        DlgEnable(1-DlgValue(21),19);  'disable target diameter = fixation point if target is grating
-        DlgEnable(1-DlgValue(21),20);
+    case item% = 22 then
+        DlgEnable(1-DlgValue(22),19);  'disable target diameter = fixation point if target is grating
+        DlgEnable(1-DlgValue(22),20);
+        if DlgValue(22) <> 1 then
+            DlgEnable(1-DlgValue(19), 20);
+        endif
     endcase
     return 1;
 end
@@ -1971,7 +1979,7 @@ func InTargetWindow%(EyePosX,EyePosY)
 	x := starTargetPositions[starTargetOrder%[iTargetPoint%]][0];
 	y := starTargetPositions[starTargetOrder%[iTargetPoint%]][1];
 	'Determine if the eye position is within the answer window
-	if starAlwaysLooking% = 1 or (Pow(EyePosX-x, 2) + Pow(EyePosY-y, 2)) <= Pow(WindowRadius,2) then 
+	if starAlwaysLooking% = 1 or (Pow(EyePosX-x, 2) + Pow(EyePosY-y, 2)) <= Pow(starAnswerWindowRadius,2) then 
 		i% := 1;
 	endif
 	return i%;
