@@ -626,12 +626,18 @@ func IdleProcessing%()
         docase
         case TunType$ = tunTypeFixptColor$ then
             SampleText("T," + GetFixptColorThisTrial$(nTrialsCompleted%,tunValues[],tunValuesIndices%[]));
+        case TunType$ =  tunTypePolkaDot$ then
+            SampleText("T," + tunPDDotSpecsPerTrial$[nTrialsCompleted%]);
         case TunType$ = tunTypeBoxODonuts$ and TunType1$ = tunTypeFixptColor$ then
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval even though we only use yval
             SampleText("T," + GetFixptColorThisTrial$(nTrialsCompleted%,tun1Values[],tun1ValuesIndices%[]) + ",T2," + str$(yval));
         case TunType$ = tunTypeBoxODonuts$ and TunType2$ = tunTypeFixptColor$ then
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval even though we only use xval
             SampleText("T," + str$(xval) + ",T2," + GetFixptColorThisTrial$(nTrialsCompleted%,tun2Values[],tun2ValuesIndices%[]));
+        case TunType$ = tunTypeBoxODonuts$ and TunType1$ = tunTypePolkaDot$ then
+            'something here
+        case TunType$ = tunTypeBoxODonuts$ and TunType2$ = tunTypePolkaDot$ then
+            'something here
         case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ or (tunType$ = tunTypeContrast$ and tunContrastDualScreenCombo% = 1) or (tunType$ = tunTypeArea$ and tunAreaDualScreenCombo% = 1) then
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
             SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
@@ -1893,6 +1899,99 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := StringifyColorProgression$(tunNValues%, tunValues, tunValuesIndices%); 
         'printlog("TunValuesStringified is %s\n",tunValuesStringified$);
         
+    case tunType$ = tunTypePolkaDot$ then
+        DoSampleAutoName(key$,"pd","pd",primaryTxt$,secondaryTxt$);
+        
+        ''Here is the XY position, which is basically identical to XYPos
+        'for tun1, use X
+        if tunPDNXSteps% = 0 then  'this allows for no x movement
+            tun1Values[0] := tunPDMinXPos;
+            tun1ValuesIndices%[0] := 1;
+        else
+            GetRepeatedParameterProgression%(tunPDNXSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunPDMinXPos, tunPDMaxXPos, 0, 0);
+        endif;
+        tun1NValues% := (tunPDNXSteps%+1);
+        
+        'for tun2, use Y
+        if tunPDNYSteps% = 0 then  'this allows for no y movement
+            tun2Values[0] := tunPDMinYPos;
+            tun2ValuesIndices%[0] := 1;
+        else
+            GetRepeatedParameterProgression%(tunPDNYSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunPDMinYPos, tunPDMaxYPos, 0, 0);
+        endif;
+        tun2NValues% := (tunPDNYSteps%+1);       
+        
+        'tunXYNAdvances% := tun1NValues%*tun2NValues%-1;  'this gives the correct number of advances
+        var tunXYNValues%;
+        tunXYNValues% := tun1NValues%*tun2NValues%*1;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
+        
+        'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
+        GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],0,1);         
+        
+        'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
+        tun1ValuesStringified$ := StringifyProgression$(tunXYNValues%, tun1Values[], tun1ValuesIndices%[]);
+        tun2ValuesStringified$ := StringifyProgression$(tunXYNValues%, tun2Values[], tun2ValuesIndices%[]);
+        
+        'printlog("X values are %s\n",tun1ValuesStringified$);
+        'printlog("Y values are %s\n",tun2ValuesStringified$);
+        
+        'This is the Color, have already renamed PolkaDot
+        docase
+            'This seems a bit silly, but it has to look like this to work with the subsequent functions we call
+        case tunPDNColorSteps% = 0 and tunPDGunIndex% = 0 then  'this allows for no color change, red gun selected
+            tunValues[0] := tunPDRedValue%;
+            tunValuesIndices%[0] := 0;
+        case tunPDNColorSteps% = 0 and tunPDGunIndex% = 1 then  'this allows for no color change, green gun selected
+            tunValues[0] := tunPDGreenValue%;
+            tunValuesIndices%[0] := 0;
+        case tunPDNColorSteps% = 0 and tunPDGunIndex% = 2 then  'this allows for no color change, blue gun selected
+            tunValues[0] := tunPDBlueValue%;
+            tunValuesIndices%[0] := 0;
+        case tunPDNColorSteps% = 0 and tunPDGunIndex% = 3 then  'this allows for no color change, luminance
+            tunValues[0] := tunPDMinGunValue;
+            tunValuesIndices%[0] := 0;
+        else 'the color is changing
+            GetRepeatedParameterProgression%(tunPDNColorSteps%+1, 1, tunValues[], tunValuesIndices%[], tunPDMinGunValue, tunPDMaxGunValue, 0, tunPDProgression%);
+        endcase  
+        tunNAdvances% := tunPDNColorSteps%;            
+        tunNValues% := (tunNAdvances%+1)*1;  
+        
+        tunValuesStringified$ := StringifyPolkaDotProgression$(tunNValues%, tunValues[], tunValuesIndices%[]);
+        'printlog("Color String is %s\n",tunValuesStringified$);
+        
+        
+        'Now we need to Interleave the X string, the Y string, the Diameter, and the color string.  Diameter is a constant.
+        tunNRepeats% := tunPDNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+        tunValuesStringified$ := InterleavePDStrings$(tun1ValuesStringified$,tun2ValuesStringified$,Str$(tunPDDiameter),tunValuesStringified$,tunNRepeats%);
+        'printlog("Polka Dot string is %s\n",tunValuesStringified$);
+        
+        tunNValues% := tunXYNValues%*tunNValues%*tunNRepeats%;
+        'printlog("Total number of values is %d\n",tunNValues%);
+            
+        'Randomization of the above would be very complicated.  The easiest thing to do here will be to write a function
+        'to randomize the VSG string.  This would require parsing the VSG string down using the semicolon as a token.
+        'Easy enough.  But, since we also need to tag each trial with the dot specs, rather than break down the VSG string
+        'every trial, we should just break it down once at the beginning and store the result.
+        
+        if tunPDProgression% = 1 then
+            'Fill tunValuesIndices with shuffled value
+            Shuffle%(tunNValues%,tunValuesIndices%[]);
+        else
+            'Fill tunValuesIndices with unshuffled index
+            var jjj%;
+            for jjj% := 0 to tunNvalues%-1 do
+                tunValuesIndices%[jjj%] := jjj%;
+            next
+        endif
+        
+        'We run this even if we are not scrambling, because we are filling tunPDDotSpecsPerTrial$[]
+        tunvaluesStringified$ := ShufflePDTuningString$(tunNValues%,tunValuesIndices%[],tunvaluesStringified$,tunPDDotSpecsPerTrial$[]);
+        
+        'printlog("Randomized string is %s\n",tunValuesStringified$);
+        'printlog("Order is %d\n",tunValuesIndices%[0:tunNValues%]);
+        'printlog("Individual dot specs are %s\n",tunPDDotSpecsPerTrial$[0:tunNValues%]);
+        
+        
     case tunType$ = tunTypeArea$ then 
         DoSampleAutoName(key$,"area","are",primaryTxt$,secondaryTxt$);
         
@@ -1969,6 +2068,7 @@ proc CreateSampleConfiguration()
         GetRepeatedParameterProgression%(tunXPosNSteps%+1, tunXPosNRepeats%, tunValues[], tunValuesIndices%[], tunXPosMinXPos, tunXPosMaxXPos, 0, tunXPosProgression%);  'Note - linear spacing for position, not log
         tunNValues% := (tunXPosNSteps%+1)*tunXPosNRepeats%;
         tunValuesStringified$ := StringifyProgression$(tunNValues%, tunValues, tunValuesIndices%);   
+        
     case tunType$ = tunTypeXYPos$ then 
         DoSampleAutoName(key$,"xypos","xyp",primaryTxt$,secondaryTxt$);
         
@@ -2659,17 +2759,17 @@ proc WriteParameterFile()
 	var parHandle%;
     var tempPrimary$;
     var tempSecondary$;
-
+    
 	' get filename for parfile (data file + "par" extension) and open it
 	View(DataWindow%);
 	parFileBase$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
 	parFileName$ := parFileBase$ + ".par";
 	PrintLog("par filename is " + parFileName$ + "\n");
 	parHandle% := FileOpen(parFileName$, 8, 1);
-
+    
 	' write general info - eye coil gains, dist to screen
 	Print("Tuning parameters for %s\n\n", parFileBase$);
-
+    
 	Print("General information\n");
 	Print("-------------------\n\n");
 	Print("Distance to screen (MM)    : %s\n", GetDistanceToScreenMM$());
@@ -2680,7 +2780,7 @@ proc WriteParameterFile()
     Print("Continuous ports           : %s\n", GetContinuousPorts$());
 	Print("Reward size (ms)           : %d\n", GetJuiceRewardMS%());
 	Print("Background color           : %s\n", tunBackgroundColor$);
-
+    
 	' write fixpoint parameters
 	Print("\nFixation point\n");
 	Print("-------------------\n\n");
@@ -2689,7 +2789,7 @@ proc WriteParameterFile()
 	Print("Position (y, degrees)      : %f\n", FixationY);
 	Print("Diameter (degrees)         : %f\n", FixationDiameter);
 	Print("Color                      : %s\n", FixationColor$);
-
+    
 	' write stimulus parameters
 	var Tstimstr$;
 	var Tstimx$, Tstimy$, Tstimw$, Tstimh$, Tstimiw$, Tstimih$, Tstimcontrast$, Tstimsf$, Tstimtf$, Tstimorientation$, Tstimphase$, Tstimcv$, Tstimp$, Tstimap$;
@@ -2771,7 +2871,7 @@ proc WriteParameterFile()
     
 	Print("\nExperimental parameters\n");
 	Print("-------------------------\n\n");
-
+    
 	'Print("Fixation time(s)       : %f\n", tunFixationDuration);  'cleaning these up!
 	'Print("Maintain fixation (s)  : %f\n", tunMaintainFixation);
 	'Print("Time out (s)           : %f\n", tunTimeOutTime);
@@ -2785,50 +2885,194 @@ proc WriteParameterFile()
 	Print("\nTuning parameters\n");
 	Print("-------------------\n\n");
 	docase 
-        case tunType$ = tunTypeBakersDozen$ then
-            Print("Type                  : BakersDozen\n");
-            Print("File                  : " + tunBakersDozenFileLoc$ + "\n");
+    case tunType$ = tunTypeBakersDozen$ then
+        Print("Type                  : BakersDozen\n");
+        Print("File                  : " + tunBakersDozenFileLoc$ + "\n");
+        Print("\n");
+        
+        
+    case tunType$ = tunTypeContrast$ then
+        
+        Print("Type:                  : Contrast\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunContrastMinContrast, tunContrastMaxContrast, tunContrastNSteps%, tunContrastNRepeats%);
+        if tunContrastDualScreenCombo% = 0 then
+            Print("Values: " + tunValuesStringified$ + "\n");
+        else
+            Print("Master Values: " + tun1ValuesStringified$ + "\n");
+            Print("Slave Values: " + tun2ValuesStringified$ + "\n");
+        endif;
+        Print("\n");
+        
+        
+    case tunType$ = tunTypeOrientation$ then
+        
+        Print("Type:                  : Orientation\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunOriMinOrientation, tunOriMaxOrientation, tunOriNSteps%, tunOriNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeSpatial$ then
+        
+        Print("Type:                  : Spatial Frequency\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunSpatialMinSF, tunSpatialMaxSF, tunSpatialNSteps%, tunSpatialNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeTemporal$ then
+        
+        Print("Type:                  : Temporal Frequency\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunTemporalMinTF, tunTemporalMaxTF, tunTemporalNSteps%, tunTemporalNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeFixptColor$ then
+        
+        Print("Type:                  : Fixpt Color\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunFPCMinValue, tunFPCMaxValue, tunFPCNSteps%, tunFPCNRepeats%);
+        docase
+        case tunFPCGunIndex% = 0 then
+            Print("Color Tuned:       Red\n");
+        case tunFPCGunIndex% = 1 then
+            Print("Color Tuned:     Green\n");
+        case tunFPCGunIndex% = 2 then
+            Print("Color Tuned:      Blue\n");
+        case tunFPCGunIndex% = 2 then
+            Print("Color Tuned: Luminance\n");
+        endcase
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypePolkaDot$ then
+        
+        Print("Type:                  : Polka Dot\n");
+        Print("#Repeats: ,%d\n", tunPDNRepeats%);
+        if tunPDNXSteps% = 0 then
+            Print("No X position tuning, X position: %f\n",tunPDMinXPos);
+        else
+            Print("X position Min,Max,#Steps: %f,%f,%d\n",tunPDMinXPos,tunPDMaxXPos,tunPDNXSteps%);
+        endif
+        if tunPDNYSteps% = 0 then
+            Print("No Y position tuning, Y position: %f\n",tunPDMinYPos);
+        else
+            Print("Y position Min,Max,#Steps: %f,%f,%d\n",tunPDMinYPos,tunPDMaxYPos,tunPDNYSteps%);
+        endif
+        if tunPDNColorSteps% = 0 then
+            Print("No color tuning, R/G/B: %d,%d,%d\n",tunPDRedValue%,tunPDGreenValue%,tunPDBlueValue%);
+        else
+            docase
+            case tunPDGunIndex% = 0 then
+                Print("Color Tuned:       Red\n");
+                Print("Green, Blue: %d,%d\n",tunPDGreenValue%,tunPDBlueValue%);
+            case tunPDGunIndex% = 1 then
+                Print("Color Tuned:     Green\n");
+                Print("Red, Blue: %d,%d\n",tunPDRedValue%,tunPDBlueValue%);
+            case tunPDGunIndex% = 2 then
+                Print("Color Tuned:      Blue\n");
+                Print("Red, Green: %d,%d\n",tunPDRedValue%,tunPDGreenValue%);
+            case tunPDGunIndex% = 2 then
+                Print("Color Tuned: Luminance\n");
+            endcase
+            Print("Color Min,Max,Steps: %f,%f,%d\n",tunPDMinGunValue,tunPDMaxGunValue,tunPDNColorSteps%); 
+        endif
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeArea$ then
+        
+        Print("Type:                  : Aperture Area\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
+        if tunAreaDualScreenCombo% = 0 then
+            Print("Values: " + tunValuesStringified$ + "\n");
+        else
+            Print("Master Values: " + tun1ValuesStringified$ + "\n");
+            Print("Slave Values: " + tun2ValuesStringified$ + "\n");
+        endif;
+        Print("\n");
+        
+    case tunType$ = tunTypeNullTest$ then
+        
+        Print("Type:                  : Null Test Phase Tuning\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunNullTestMinPhase, tunNullTestMaxPhase, tunNullTestNSteps%, tunNullTestNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeXPos$ then
+        
+        Print("Type:                  : X Position\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunXPosMinXPos, tunXPosMaxXPos, tunXPosNSteps%, tunXPosNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeXYPos$ then
+        
+        Print("Type:                  : XY Position\n");
+        Print("MinX,MaxX,#XSteps,#Repeats: %f,%f,%d,%d\n", tunXYPosMinXPos, tunXYPosMaxXPos, tunXYPosNXSteps%, tunXPosNRepeats%);
+        Print("MinY,MaxY,#YSteps,#Repeats: %f,%f,%d,%d\n", tunXYPosMinYPos, tunXYPosMaxYPos, tunXYPosNYSteps%, tunXPosNRepeats%);
+        Print("XValues: " + tun1ValuesStringified$ + "\n");
+        Print("YValues: " + tun2ValuesStringified$ + "\n");
+        Print("\n");        
+        
+    case tunType$ = tunTypeDisparity$ then
+        
+        Print("Type:                  : Disparity\n");
+        Print("Center,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunDisparityCenterXPos, tunDisparityMaxXPos, tunDisparityNSteps%, tunDisparityNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeDonut$ then
+        
+        ' djs - 10/15/2014 - Added Optimal diameter to parameter file
+        Print("Type:                  : Donut Area\n");
+        Print("Optimal,Min,Max,#Steps,#Repeats: %f,%f,%f,%d,%d\n", tunDonutOptimalDiam, tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeBerliner$ then
+        
+        Print("Type:                  : Berliner Area\n");
+        Print("Optimal,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunDonutOptimalDiam, tunBerlinerMaximalDiam, tunBerlinerNSteps%, tunBerlinerNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeBoxODonuts$ then
+        
+        Print("Type:                  : Box O' Donuts\n");
+        Print("#Repeats: %d\n", tunBoxODonutsNRepeats%);
+        Print("\n");
+        docase 
+        case tunType1$ = tunTypeContrast$ then
+            
+            Print("Type 1:                  : Contrast\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunContrastMinContrast, tunContrastMaxContrast, tunContrastNSteps%, tunContrastNRepeats%);
+            Print("Values: " + tun1ValuesStringified$ + "\n");
             Print("\n");
             
-        
-		case tunType$ = tunTypeContrast$ then
-
-			Print("Type:                  : Contrast\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunContrastMinContrast, tunContrastMaxContrast, tunContrastNSteps%, tunContrastNRepeats%);
-            if tunContrastDualScreenCombo% = 0 then
-                Print("Values: " + tunValuesStringified$ + "\n");
-            else
-                Print("Master Values: " + tun1ValuesStringified$ + "\n");
-                Print("Slave Values: " + tun2ValuesStringified$ + "\n");
-            endif;
-			Print("\n");
-
-
-		case tunType$ = tunTypeOrientation$ then
-
-			Print("Type:                  : Orientation\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunOriMinOrientation, tunOriMaxOrientation, tunOriNSteps%, tunOriNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-			Print("\n");
-
-		case tunType$ = tunTypeSpatial$ then
-
-			Print("Type:                  : Spatial Frequency\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunSpatialMinSF, tunSpatialMaxSF, tunSpatialNSteps%, tunSpatialNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-			Print("\n");
-	
-		case tunType$ = tunTypeTemporal$ then
-
-			Print("Type:                  : Temporal Frequency\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunTemporalMinTF, tunTemporalMaxTF, tunTemporalNSteps%, tunTemporalNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
+            
+        case tunType1$ = tunTypeOrientation$ then
+            
+            Print("Type 1:                  : Orientation\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunOriMinOrientation, tunOriMaxOrientation, tunOriNSteps%, tunOriNRepeats%);
+            Print("Values: " + tun1ValuesStringified$ + "\n");
             Print("\n");
-        
-        case tunType$ = tunTypeFixptColor$ then
-
-			Print("Type:                  : Fixpt Color\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunFPCMinValue, tunFPCMaxValue, tunFPCNSteps%, tunFPCNRepeats%);
+            
+        case tunType1$ = tunTypeSpatial$ then
+            
+            Print("Type 1:                  : Spatial Frequency\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunSpatialMinSF, tunSpatialMaxSF, tunSpatialNSteps%, tunSpatialNRepeats%);
+            Print("Values: " + tun1ValuesStringified$ + "\n");
+            Print("\n");
+            
+        case tunType1$ = tunTypeTemporal$ then
+            
+            Print("Type 1:                  : Temporal Frequency\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunTemporalMinTF, tunTemporalMaxTF, tunTemporalNSteps%, tunTemporalNRepeats%);
+            Print("Values: " + tun1ValuesStringified$ + "\n");
+            Print("\n");
+            
+        case tunType1$ = tunTypeFixptColor$ then
+            
+            Print("Type 1:                  : Fixpt Color\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunFPCMinValue, tunFPCMaxValue, tunFPCNSteps%, tunFPCNRepeats%);
             docase
             case tunFPCGunIndex% = 0 then
                 Print("Color Tuned:       Red\n");
@@ -2840,326 +3084,287 @@ proc WriteParameterFile()
                 Print("Color Tuned: Luminance\n");
             endcase
             Print("Values: " + tunValuesStringified$ + "\n");
-			Print("\n");
-
-		case tunType$ = tunTypeArea$ then
-
-			Print("Type:                  : Aperture Area\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
-			if tunAreaDualScreenCombo% = 0 then
-                Print("Values: " + tunValuesStringified$ + "\n");
+            Print("\n");
+            
+        case tunType1$ = tunTypePolkaDot$ then
+            
+			Print("Type:                  : Polka Dot\n");
+            Print("#Repeats: ,%d\n", tunPDNRepeats%);
+            if tunPDNXSteps% = 0 then
+                Print("No X position tuning, X position: %f\n",tunPDMinXPos);
             else
-                Print("Master Values: " + tun1ValuesStringified$ + "\n");
-                Print("Slave Values: " + tun2ValuesStringified$ + "\n");
-            endif;
-            Print("\n");
-        
-        case tunType$ = tunTypeNullTest$ then
-
-			Print("Type:                  : Null Test Phase Tuning\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunNullTestMinPhase, tunNullTestMaxPhase, tunNullTestNSteps%, tunNullTestNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-            Print("\n");
-        
-        case tunType$ = tunTypeXPos$ then
-
-			Print("Type:                  : X Position\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunXPosMinXPos, tunXPosMaxXPos, tunXPosNSteps%, tunXPosNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-            Print("\n");
-        
-        case tunType$ = tunTypeXYPos$ then
-
-			Print("Type:                  : XY Position\n");
-            Print("MinX,MaxX,#XSteps,#Repeats: %f,%f,%d,%d\n", tunXYPosMinXPos, tunXYPosMaxXPos, tunXYPosNXSteps%, tunXPosNRepeats%);
-            Print("MinY,MaxY,#YSteps,#Repeats: %f,%f,%d,%d\n", tunXYPosMinYPos, tunXYPosMaxYPos, tunXYPosNYSteps%, tunXPosNRepeats%);
-            Print("XValues: " + tun1ValuesStringified$ + "\n");
-            Print("YValues: " + tun2ValuesStringified$ + "\n");
-            Print("\n");        
-        
-        case tunType$ = tunTypeDisparity$ then
-
-			Print("Type:                  : Disparity\n");
-			Print("Center,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunDisparityCenterXPos, tunDisparityMaxXPos, tunDisparityNSteps%, tunDisparityNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-			Print("\n");
-
-		case tunType$ = tunTypeDonut$ then
-        
-            ' djs - 10/15/2014 - Added Optimal diameter to parameter file
-			Print("Type:                  : Donut Area\n");
-			Print("Optimal,Min,Max,#Steps,#Repeats: %f,%f,%f,%d,%d\n", tunDonutOptimalDiam, tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-            Print("\n");
-        
-        case tunType$ = tunTypeBerliner$ then
-
-			Print("Type:                  : Berliner Area\n");
-			Print("Optimal,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunDonutOptimalDiam, tunBerlinerMaximalDiam, tunBerlinerNSteps%, tunBerlinerNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-			Print("\n");
-        
-        case tunType$ = tunTypeBoxODonuts$ then
-
-			Print("Type:                  : Box O' Donuts\n");
-			Print("#Repeats: %d\n", tunBoxODonutsNRepeats%);
-            Print("\n");
-            docase 
-            case tunType1$ = tunTypeContrast$ then
-            
-                Print("Type 1:                  : Contrast\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunContrastMinContrast, tunContrastMaxContrast, tunContrastNSteps%, tunContrastNRepeats%);
-                Print("Values: " + tun1ValuesStringified$ + "\n");
-                Print("\n");
-            
-            
-            case tunType1$ = tunTypeOrientation$ then
-            
-                Print("Type 1:                  : Orientation\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunOriMinOrientation, tunOriMaxOrientation, tunOriNSteps%, tunOriNRepeats%);
-                Print("Values: " + tun1ValuesStringified$ + "\n");
-                Print("\n");
-            
-            case tunType1$ = tunTypeSpatial$ then
-            
-                Print("Type 1:                  : Spatial Frequency\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunSpatialMinSF, tunSpatialMaxSF, tunSpatialNSteps%, tunSpatialNRepeats%);
-                Print("Values: " + tun1ValuesStringified$ + "\n");
-                Print("\n");
-            
-            case tunType1$ = tunTypeTemporal$ then
-            
-                Print("Type 1:                  : Temporal Frequency\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunTemporalMinTF, tunTemporalMaxTF, tunTemporalNSteps%, tunTemporalNRepeats%);
-                Print("Values: " + tun1ValuesStringified$ + "\n");
-                Print("\n");
-            
-            case tunType1$ = tunTypeFixptColor$ then
-
-                Print("Type 1:                  : Fixpt Color\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunFPCMinValue, tunFPCMaxValue, tunFPCNSteps%, tunFPCNRepeats%);
+                Print("X position Min,Max,#Steps: %f,%f,%d\n",tunPDMinXPos,tunPDMaxXPos,tunPDNXSteps%);
+            endif
+            if tunPDNYSteps% = 0 then
+                Print("No Y position tuning, Y position: %f\n",tunPDMinYPos);
+            else
+                Print("Y position Min,Max,#Steps: %f,%f,%d\n",tunPDMinYPos,tunPDMaxYPos,tunPDNYSteps%);
+            endif
+            if tunPDNColorSteps% = 0 then
+                Print("No color tuning, R/G/B: %d,%d,%d\n",tunPDRedValue%,tunPDGreenValue%,tunPDBlueValue%);
+            else
                 docase
-                case tunFPCGunIndex% = 0 then
+                case tunPDGunIndex% = 0 then
                     Print("Color Tuned:       Red\n");
-                case tunFPCGunIndex% = 1 then
+                    Print("Green, Blue: %d,%d\n",tunPDGreenValue%,tunPDBlueValue%);
+                case tunPDGunIndex% = 1 then
                     Print("Color Tuned:     Green\n");
-                case tunFPCGunIndex% = 2 then
+                    Print("Red, Blue: %d,%d\n",tunPDRedValue%,tunPDBlueValue%);
+                case tunPDGunIndex% = 2 then
                     Print("Color Tuned:      Blue\n");
-                case tunFPCGunIndex% = 2 then
+                    Print("Red, Green: %d,%d\n",tunPDRedValue%,tunPDGreenValue%);
+                case tunPDGunIndex% = 2 then
                     Print("Color Tuned: Luminance\n");
                 endcase
-                Print("Values: " + tunValuesStringified$ + "\n");
-                Print("\n");
+                Print("Color Min,Max,Steps: %f,%f,%d\n",tunPDMinGunValue,tunPDMaxGunValue,tunPDNColorSteps%); 
+            endif
+            Print("Values: " + tunValuesStringified$ + "\n");
+			Print("\n");
             
-            case tunType1$ = tunTypeArea$ then
+        case tunType1$ = tunTypeArea$ then
             
-                Print("Type 1:                  : Aperture Area\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
-                Print("Values: " + tun1ValuesStringified$ + "\n");
-                Print("\n");
+            Print("Type 1:                  : Aperture Area\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
+            Print("Values: " + tun1ValuesStringified$ + "\n");
+            Print("\n");
             
-            case tunType1$ = tunTypeXPos$ then
+        case tunType1$ = tunTypeXPos$ then
             
-                Print("Type 1:                  : X Position\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunXPosMinXPos, tunXPosMaxXPos, tunXPosNSteps%, tunXPosNRepeats%);
-                Print("Values: " + tun1ValuesStringified$ + "\n");
-                Print("\n");
+            Print("Type 1:                  : X Position\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunXPosMinXPos, tunXPosMaxXPos, tunXPosNSteps%, tunXPosNRepeats%);
+            Print("Values: " + tun1ValuesStringified$ + "\n");
+            Print("\n");
             
-            case tunType1$ = tunTypeNullTest$ then
+        case tunType1$ = tunTypeNullTest$ then
             
-                Print("Type 1:                  : Null/Phase\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunNullTestMinPhase, tunNullTestMaxPhase, tunNullTestNSteps%, tunNullTestNRepeats%);
-                Print("Values: " + tun1ValuesStringified$ + "\n");
-                Print("\n");
-            endcase
+            Print("Type 1:                  : Null/Phase\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunNullTestMinPhase, tunNullTestMaxPhase, tunNullTestNSteps%, tunNullTestNRepeats%);
+            Print("Values: " + tun1ValuesStringified$ + "\n");
+            Print("\n");
+        endcase
         
-            docase 
-            case tunType2$ = tunTypeContrast$ then
-                
-                Print("Type 2:                  : Contrast\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunContrastMinContrast, tunContrastMaxContrast, tunContrastNSteps%, tunContrastNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
+        docase 
+        case tunType2$ = tunTypeContrast$ then
+            
+            Print("Type 2:                  : Contrast\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunContrastMinContrast, tunContrastMaxContrast, tunContrastNSteps%, tunContrastNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
+            Print("\n");
             
             
-            case tunType2$ = tunTypeOrientation$ then
+        case tunType2$ = tunTypeOrientation$ then
             
-                Print("Type 2:                  : Orientation\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunOriMinOrientation, tunOriMaxOrientation, tunOriNSteps%, tunOriNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
+            Print("Type 2:                  : Orientation\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunOriMinOrientation, tunOriMaxOrientation, tunOriNSteps%, tunOriNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
+            Print("\n");
             
-            case tunType2$ = tunTypeSpatial$ then
+        case tunType2$ = tunTypeSpatial$ then
             
-                Print("Type 2:                  : Spatial Frequency\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunSpatialMinSF, tunSpatialMaxSF, tunSpatialNSteps%, tunSpatialNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
+            Print("Type 2:                  : Spatial Frequency\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunSpatialMinSF, tunSpatialMaxSF, tunSpatialNSteps%, tunSpatialNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
+            Print("\n");
             
-           case tunType2$ = tunTypeTemporal$ then
+        case tunType2$ = tunTypeTemporal$ then
             
-                Print("Type 2:                  : Temporal Frequency\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunTemporalMinTF, tunTemporalMaxTF, tunTemporalNSteps%, tunTemporalNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
+            Print("Type 2:                  : Temporal Frequency\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunTemporalMinTF, tunTemporalMaxTF, tunTemporalNSteps%, tunTemporalNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
+            Print("\n");
             
-            case tunType2$ = tunTypeFixptColor$ then
-
-                Print("Type 2:                  : Fixpt Color\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunFPCMinValue, tunFPCMaxValue, tunFPCNSteps%, tunFPCNRepeats%);
+        case tunType2$ = tunTypeFixptColor$ then
+            
+            Print("Type 2:                  : Fixpt Color\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunFPCMinValue, tunFPCMaxValue, tunFPCNSteps%, tunFPCNRepeats%);
+            docase
+            case tunFPCGunIndex% = 0 then
+                Print("Color Tuned:       Red\n");
+            case tunFPCGunIndex% = 1 then
+                Print("Color Tuned:     Green\n");
+            case tunFPCGunIndex% = 2 then
+                Print("Color Tuned:      Blue\n");
+            case tunFPCGunIndex% = 2 then
+                Print("Color Tuned: Luminance\n");
+            endcase
+            Print("Values: " + tunValuesStringified$ + "\n");
+            Print("\n");
+            
+        case tunType2$ = tunTypePolkaDot$ then
+            
+			Print("Type:                  : Polka Dot\n");
+            Print("#Repeats: ,%d\n", tunPDNRepeats%);
+            if tunPDNXSteps% = 0 then
+                Print("No X position tuning, X position: %f\n",tunPDMinXPos);
+            else
+                Print("X position Min,Max,#Steps: %f,%f,%d\n",tunPDMinXPos,tunPDMaxXPos,tunPDNXSteps%);
+            endif
+            if tunPDNYSteps% = 0 then
+                Print("No Y position tuning, Y position: %f\n",tunPDMinYPos);
+            else
+                Print("Y position Min,Max,#Steps: %f,%f,%d\n",tunPDMinYPos,tunPDMaxYPos,tunPDNYSteps%);
+            endif
+            if tunPDNColorSteps% = 0 then
+                Print("No color tuning, R/G/B: %d,%d,%d\n",tunPDRedValue%,tunPDGreenValue%,tunPDBlueValue%);
+            else
                 docase
-                case tunFPCGunIndex% = 0 then
+                case tunPDGunIndex% = 0 then
                     Print("Color Tuned:       Red\n");
-                case tunFPCGunIndex% = 1 then
+                    Print("Green, Blue: %d,%d\n",tunPDGreenValue%,tunPDBlueValue%);
+                case tunPDGunIndex% = 1 then
                     Print("Color Tuned:     Green\n");
-                case tunFPCGunIndex% = 2 then
+                    Print("Red, Blue: %d,%d\n",tunPDRedValue%,tunPDBlueValue%);
+                case tunPDGunIndex% = 2 then
                     Print("Color Tuned:      Blue\n");
-                case tunFPCGunIndex% = 2 then
+                    Print("Red, Green: %d,%d\n",tunPDRedValue%,tunPDGreenValue%);
+                case tunPDGunIndex% = 2 then
                     Print("Color Tuned: Luminance\n");
                 endcase
-                Print("Values: " + tunValuesStringified$ + "\n");
-                Print("\n");
+                Print("Color Min,Max,Steps: %f,%f,%d\n",tunPDMinGunValue,tunPDMaxGunValue,tunPDNColorSteps%); 
+            endif
+            Print("Values: " + tunValuesStringified$ + "\n");
+			Print("\n");
             
-            case tunType2$ = tunTypeArea$ then
+        case tunType2$ = tunTypeArea$ then
             
-                Print("Type 2:                  : Aperture Area\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
-                
-            case tunType2$ = tunTypeXPos$ then
-            
-                Print("Type 2:                  : X Position\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunXPosMinXPos, tunXPosMaxXPos, tunXPosNSteps%, tunXPosNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
-            
-            case tunType2$ = tunTypeNullTest$ then
-            
-                Print("Type 2:                  : Null/Phase\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunNullTestMinPhase, tunNullTestMaxPhase, tunNullTestNSteps%, tunNullTestNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
-            endcase
-        
-        case tunType$ = tunTypeCRG$ then
-
-			Print("Type:                  : Contrast Reversing Grating\n");
-			Print("#Repeats: %d\n", tunCRGNRepeats%);
+            Print("Type 2:                  : Aperture Area\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
             Print("\n");
-        
-            if tunCRGOnSlave% = 0 then
-                tempPrimary$ := "Master";
-                tempSecondary$ := "Slave";
-            else
-                tempPrimary$ := "Slave";
-                tempSecondary$ := "Master";
-            endif;
-        
-                Print(tempPrimary$ + ":                  : CRG\n");
-                Print("FramesPerFlip,#Repeats: %d,%d\n", tunCRGFramesPerFlip%, tunCRGNRepeats%);
-                Print("SEQFile: " + tunCRGSeqFile$ + "\n");
-                Print("Values: " + tun1ValuesStringified$ + "\n");
-                Print("\n");        
-        
-            docase 
-                case tunType1$ = tunTypeContrast$ then
             
-                Print(tempSecondary$ + ":                  : Contrast\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunContrastMinContrast, tunContrastMaxContrast, tunContrastNSteps%, tunContrastNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
+        case tunType2$ = tunTypeXPos$ then
             
-            
-                case tunType1$ = tunTypeOrientation$ then
-            
-                Print(tempSecondary$ + ":                  : Orientation\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunOriMinOrientation, tunOriMaxOrientation, tunOriNSteps%, tunOriNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
-            
-                case tunType1$ = tunTypeSpatial$ then
-            
-                Print(tempSecondary$ + ":                  : Spatial Frequency\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunSpatialMinSF, tunSpatialMaxSF, tunSpatialNSteps%, tunSpatialNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
-            
-                case tunType1$ = tunTypeTemporal$ then
-            
-                Print(tempSecondary$ + ":                  : Temporal Frequency\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunTemporalMinTF, tunTemporalMaxTF, tunTemporalNSteps%, tunTemporalNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
-            
-                case tunType1$ = tunTypeArea$ then
-            
-                Print(tempSecondary$ + ":                  : Aperture Area\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
-            
-                case tunType1$ = tunTypeXPos$ then
-            
-                Print(tempSecondary$ + ":                  : X Position\n");
-                Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunXPosMinXPos, tunXPosMaxXPos, tunXPosNSteps%, tunXPosNRepeats%);
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
-            
-                case tunType1$ = tunTypeBlank$ then
-            
-                Print(tempSecondary$ + ":                  : Blank\n");
-                Print("\n");
-            
-                case tunType1$ = tunTypeGratingOnly$ then
-            
-                Print(tempSecondary$ + ":                  : Grating Only\n");
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
-            
-                case tunType1$ = tunTypeCRG$ then
-            
-                Print(tempSecondary$ + ":                  :CRG\n");
-                Print("SEQFile: " + tunCRGSeqFile2$ + "\n");
-                Print("Values: " + tun2ValuesStringified$ + "\n");
-                Print("\n");
-            
-            endcase
-        
-        case tunType$ = tunTypeDots$ then
-        
-			Print("Type:                  : Dots\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunDotsMinOrientation, tunDotsMaxOrientation, tunDotsNSteps%, tunDotsNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
+            Print("Type 2:                  : X Position\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunXPosMinXPos, tunXPosMaxXPos, tunXPosNSteps%, tunXPosNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
             Print("\n");
-        
-        case tunType$ = tunTypeDanish$ then
-
-			Print("Type:                  : Danish\n");
-			Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunDanishMinOuterDiameter, tunDanishMaxOuterDiameter, tunDanishNSteps%, tunDanishNRepeats%);
-			Print("Values: " + tunValuesStringified$ + "\n");
-            Print("\n"); 
-        
-        case tunType$ = tunTypeDSS$ then
-
-			Print("Type:                  : DSS\n");
-			Print("#Trials,#Flashes,#Blanks,#FlashesPerReward: %d,%d,%d,%d\n", tunDSSNTrials%, tunDSSNPeriods%, tunDSSNBlanks%, tunDSSNFlashesPerReward%);
-            Print("\n");        
-        
-        
-        case tunType$ = tunTypeGonzago$ then
-        
-            Print("Type:                  : Gonzago\n");
-			Print("Core Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunGonzagoMinContrast, tunGonzagoMaxContrast, tunGonzagoCoreContrastNSteps%, tunGonzagoNRepeats%);
-            Print("Core Values: " + tun2ValuesStringified$ + "\n");
-            Print("Donut Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunGonzagoMinOuterDiameter, tunGonzagoMaxOuterDiameter, tunGonzagoDonutAreaNSteps%, tunGonzagoNRepeats%);
-            Print("Donut Values: " + tun1ValuesStringified$ + "\n");
+            
+        case tunType2$ = tunTypeNullTest$ then
+            
+            Print("Type 2:                  : Null/Phase\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunNullTestMinPhase, tunNullTestMaxPhase, tunNullTestNSteps%, tunNullTestNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
             Print("\n");
+        endcase
         
-		else
-
-			Print("TuningCurve Error - unknown value for tunType$: %s\n", tunType$);
-
+    case tunType$ = tunTypeCRG$ then
+        
+        Print("Type:                  : Contrast Reversing Grating\n");
+        Print("#Repeats: %d\n", tunCRGNRepeats%);
+        Print("\n");
+        
+        if tunCRGOnSlave% = 0 then
+            tempPrimary$ := "Master";
+            tempSecondary$ := "Slave";
+        else
+            tempPrimary$ := "Slave";
+            tempSecondary$ := "Master";
+        endif;
+        
+        Print(tempPrimary$ + ":                  : CRG\n");
+        Print("FramesPerFlip,#Repeats: %d,%d\n", tunCRGFramesPerFlip%, tunCRGNRepeats%);
+        Print("SEQFile: " + tunCRGSeqFile$ + "\n");
+        Print("Values: " + tun1ValuesStringified$ + "\n");
+        Print("\n");        
+        
+        docase 
+        case tunType1$ = tunTypeContrast$ then
+            
+            Print(tempSecondary$ + ":                  : Contrast\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunContrastMinContrast, tunContrastMaxContrast, tunContrastNSteps%, tunContrastNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
+            Print("\n");
+            
+            
+        case tunType1$ = tunTypeOrientation$ then
+            
+            Print(tempSecondary$ + ":                  : Orientation\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunOriMinOrientation, tunOriMaxOrientation, tunOriNSteps%, tunOriNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
+            Print("\n");
+            
+        case tunType1$ = tunTypeSpatial$ then
+            
+            Print(tempSecondary$ + ":                  : Spatial Frequency\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunSpatialMinSF, tunSpatialMaxSF, tunSpatialNSteps%, tunSpatialNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
+            Print("\n");
+            
+        case tunType1$ = tunTypeTemporal$ then
+            
+            Print(tempSecondary$ + ":                  : Temporal Frequency\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunTemporalMinTF, tunTemporalMaxTF, tunTemporalNSteps%, tunTemporalNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
+            Print("\n");
+            
+        case tunType1$ = tunTypeArea$ then
+            
+            Print(tempSecondary$ + ":                  : Aperture Area\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunAreaMinDiam, tunAreaMaxDiam, tunAreaNSteps%, tunAreaNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
+            Print("\n");
+            
+        case tunType1$ = tunTypeXPos$ then
+            
+            Print(tempSecondary$ + ":                  : X Position\n");
+            Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunXPosMinXPos, tunXPosMaxXPos, tunXPosNSteps%, tunXPosNRepeats%);
+            Print("Values: " + tun2ValuesStringified$ + "\n");
+            Print("\n");
+            
+        case tunType1$ = tunTypeBlank$ then
+            
+            Print(tempSecondary$ + ":                  : Blank\n");
+            Print("\n");
+            
+        case tunType1$ = tunTypeGratingOnly$ then
+            
+            Print(tempSecondary$ + ":                  : Grating Only\n");
+            Print("Values: " + tun2ValuesStringified$ + "\n");
+            Print("\n");
+            
+        case tunType1$ = tunTypeCRG$ then
+            
+            Print(tempSecondary$ + ":                  :CRG\n");
+            Print("SEQFile: " + tunCRGSeqFile2$ + "\n");
+            Print("Values: " + tun2ValuesStringified$ + "\n");
+            Print("\n");
+            
+        endcase
+        
+    case tunType$ = tunTypeDots$ then
+        
+        Print("Type:                  : Dots\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunDotsMinOrientation, tunDotsMaxOrientation, tunDotsNSteps%, tunDotsNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n");
+        
+    case tunType$ = tunTypeDanish$ then
+        
+        Print("Type:                  : Danish\n");
+        Print("Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunDanishMinOuterDiameter, tunDanishMaxOuterDiameter, tunDanishNSteps%, tunDanishNRepeats%);
+        Print("Values: " + tunValuesStringified$ + "\n");
+        Print("\n"); 
+        
+    case tunType$ = tunTypeDSS$ then
+        
+        Print("Type:                  : DSS\n");
+        Print("#Trials,#Flashes,#Blanks,#FlashesPerReward: %d,%d,%d,%d\n", tunDSSNTrials%, tunDSSNPeriods%, tunDSSNBlanks%, tunDSSNFlashesPerReward%);
+        Print("\n");        
+        
+        
+    case tunType$ = tunTypeGonzago$ then
+        
+        Print("Type:                  : Gonzago\n");
+        Print("Core Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunGonzagoMinContrast, tunGonzagoMaxContrast, tunGonzagoCoreContrastNSteps%, tunGonzagoNRepeats%);
+        Print("Core Values: " + tun2ValuesStringified$ + "\n");
+        Print("Donut Min,Max,#Steps,#Repeats: %f,%f,%d,%d\n", tunGonzagoMinOuterDiameter, tunGonzagoMaxOuterDiameter, tunGonzagoDonutAreaNSteps%, tunGonzagoNRepeats%);
+        Print("Donut Values: " + tun1ValuesStringified$ + "\n");
+        Print("\n");
+        
+    else
+        
+        Print("TuningCurve Error - unknown value for tunType$: %s\n", tunType$);
+        
 	endcase;
     
     if tunDoOpto% = 1 then
@@ -3188,7 +3393,7 @@ proc WriteParameterFile()
     
 	' close parfile
 	FileClose(0);
-
+    
 end;
 
 
@@ -3675,6 +3880,10 @@ func Start%()
     case tunType$ = tunTypeXYPos$ then
         tunCurveMArg$ := " -Z ";
         'tunDoRivalry cannot be 1 in this case because dualstim does not have this function
+        
+    case tunType$ = tunTypePolkaDot$ then
+        tunCurveMArg$ := " -D ";
+        'tunDoRivalry cannot be 1 in this case because dualstim does not have this function    
         
     case tunType$ = tunTypeLag$ then
         'tunDoRivalry will be 1
@@ -4341,6 +4550,159 @@ Func StringifyProgressionCRG2$(n%, refvec[], refind%[], vec[], ind%[])
 	next
 	return s$;
 end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Put a vector of color vectors into a comma separated string
+' This will only work for integer (0-255) color vectors, will have to adapt or write a new function for [0-1] color vectors
+Func StringifyPolkaDotProgression$(n%, vec[], ind%[])
+	var s$;
+	var i%;
+    
+    if n% > tunMaxTrials% then
+        message("You have requested " + Str$(n%) + " trials, max is " + Str$(tunMaxTrials%) + "!  Quitting!");
+        halt
+    endif;
+    
+    
+	for i% := 0 to n%-1 do
+		if i% > 0 then 
+			s$ += ",";
+		endif
+		s$ += GetPolkaDotColorThisTrial$(i%,vec[],ind%[]);
+	next
+	return s$;
+end;
+
+func GetPolkaDotColorThisTrial$(n%,tValues[],tValuesIndices%[])  'This function is written assuming integer gun values, should be easy enough to adapt for 0-1 gun values if necessary
+    'In order to use this function to get fixpt colors in both regular and Box'O'Donuts version, we have to pass the proper tunValues/tunValuesIndices%[]
+    var val%;
+    var f$;
+    val% := tValues[tValuesIndices%[n%]];
+    docase
+    case tunPDGunIndex% = 0 then  'if tuned gun is red
+        f$ := "(" + Str$(val%) + "/" + Str$(tunPDGreenValue%) + "/" + Str$(tunPDBlueValue%) + ")";
+    case tunPDGunIndex% = 1 then  'if tuned gun is green
+        f$ := "(" + Str$(tunPDRedValue%) + "/" + Str$(val%) + "/" + Str$(tunPDBlueValue%) + ")";
+    case tunPDGunIndex% = 2 then  'if tuned gun is blue
+        f$ := "(" + Str$(tunPDRedValue%) + "/" + Str$(tunPDGreenValue%) + "/" + Str$(val%) + ")";
+    case tunPDGunIndex% = 3 then  'if tuning is on luminance
+        f$ := "(" + Str$(val%) + "/" + Str$(val%) + "/" + Str$(val%) + ")";
+    endcase
+    return f$;
+end;
+
+
+
+'InterleavePDStrings$ will do the string interleave for creating a PolkaDot spec.
+'The PolkaDot spec is dot1;dot2;dot3;...dotN 
+'where "dotN" is x,y,d,(RRR/GGG/BBB)
+'Inputs will be x$, y$ (must be same length), d$ (must be single value), c$, n%
+'Note that this function assumes that the x$/y$ strings are already "gridded"
+'d$ is the diameter, just a single value
+'c$ is a comma-separated string of color specs
+'n% is the number of repeats
+'This function runs color on the outside loop, so without randomization it
+'will progress through position before color
+
+func InterleavePDStrings$(x$,y$,d$,c$,n%)
+    var i%;
+    var cind%;
+    var xind%;
+    var yind%;
+    var out$;
+    var xcopy$;
+    var ycopy$;
+    var ccopy$;
+    var mycount%;
+    c$ := c$ + ",";  'Add comma to end of c$
+    x$ := x$ + ",";  'Add comma to end of x$
+    y$ := y$ + ",";  'Add comma to end of y$
+    xcopy$ := x$;  'keep copy of x$, we will be cutting original
+    ycopy$ := y$;  'keep copy of y$, we will be cutting original
+    ccopy$ := c$;  'keep copy of c$, we will be cutting original, will reuse for each repeat
+    
+    for i% := 1 to n% do
+        c$ := ccopy$;  'refresh c$ for every repeat
+        cind% := InStr(c$,",");  'get index of first comma remaining in c$
+        'loop through each color spec
+        while cind% > 0 and mycount% < 10000 do 
+            x$ := xcopy$;  'refresh x$ for every color spec
+            y$ := ycopy$;  'refresh y$ for every color spec
+            xind% := InStr(x$,","); 'get index of first comma remaining in x$
+            'loop through each x position
+            while xind% > 0 and mycount% < 10000 do
+                yind% := InStr(y$,","); 'get index of first comma remaining in y$
+                out$ += Left$(x$,xind%-1);  'add xval to output
+                out$ += ",";  'add comma to output
+                out$ += Left$(y$,yind%-1);  'add yval to output
+                out$ += ",";  'add comma to output
+                out$ += d$;  'add diameter to output
+                out$ += ",";  'add comma to output
+                out$ += Left$(c$,cind%-1);  'add color to output
+                out$ += ";";  'add semicolon to output to separate Dot specs
+                
+                x$ := DelStr$(x$,1,xind%); 'remove xval and comma from x$
+                y$ := DelStr$(y$,1,yind%); 'remove yval and comma from y$
+                
+                'get next xind
+                xind% := InStr(x$,",");
+                mycount% += 1;
+            wend;
+            mycount% += 1;  'just in case it's the inner loop
+            c$ := DelStr$(c$,1,cind%); 'remove color spec and comma from c$
+            cind% := InStr(c$,",");  'get index of first comma remaining in c$
+        wend;
+    next
+    
+    if mycount% >= 10000 then
+        printlog("In InterleavePDStrings, mycount is %d\n",mycount%);
+        printlog("This either indicates that the function got stuck in a WHILE loop or there were too many trials requested!\n");
+        message("Too many trial requested!")
+    endif
+    
+    
+    'Then there will be one extra semicolon left over
+    out$ := Left$(out$,len(out$)-1);
+    
+    return out$;
+    
+    
+end;
+
+
+
+
+'This function shuffles a Polka Dot tuning string based on the
+'provided indices, returning a shuffled string.  Also, fills
+'the provided dotSpecs$[] array with the SHUFFLED trial specs.
+'Thus, when we ask for the dot specs on each trial we will index
+'with the trial number, not for indices%[trial number%]
+func ShufflePDTuningString$(n%,ind%[],origString$,&dotSpecs$[])
+    var outString$;
+    var i%;
+    var scind%;
+    var temp$;
+    
+    'Deconstruct origString$
+    for i% := 0 to n%-2 do  'final value will not have a semicolon
+        scind% := InStr(origString$,";");  'get index of first semicolon remaining in origString$
+        dotSpecs$[ind%[i%]] := Left$(origString$,scind%-1); 'place dot spec into correct index of dotSpecs$[]
+        origString$ := DelStr$(origString$,1,scind%); 'remove dot spec and comma from origString$
+    next
+    dotSpecs$[ind%[n%-1]] := origString$;  'Place final value (no semicolon at end) into final index
+    
+    'Reconstruct outString$
+    for i% := 0 to n%-2 do 'final value will not get a semicolon
+        outString$ += dotSpecs$[i%];  'add ith dot spec
+        outString$ += ";";  'add separating semicolon
+    next
+    outString$ += dotSpecs$[n%-1]; 'add final dot spec
+    
+    return outString$;
+end;
+
 
 
 

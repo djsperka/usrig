@@ -523,11 +523,13 @@ end
 	
 proc GetDAQParameters()
 	var key$;
+    var globalKey$;
 	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
+    globalKey$ := GetRigName$() +  "\\GlobalDAQ";  'Do not use "DAQ" as "global" key, because there is old registry info in this location, will interfere with "seeding" new globals with config-specific values
     DegreesPerVoltX := GetFloatRegistryValue(key$, "DegreesPerVoltX", 0.0);
     DegreesPerVoltY := GetFloatRegistryValue(key$, "DegreesPerVoltY", 0.0);
     CalibrationOffsetDegrees := GetFloatRegistryValue(key$, "CalibrationOffsetDegrees", 8);
-    CalibrationComPort% := GetIntRegistryValue%(key$, "CalibrationComPort", 2);
+    CalibrationComPort% := GetIntRegistryValue%(globalKey$, "CalibrationComPort", GetIntRegistryValue%(key$, "CalibrationComPort", 2));    'We get the value from the global key, if it does not exist, the default is the value from the config-specific key, if THAT does not exist, default as default
     CalibrationConfigFile$ := GetStringRegistryValue$(key$, "CalibrationConfigFile", "NONE_SELECTED");
     EyeCoilSamplingFrequency% := GetIntRegistryValue%(key$, "EyeCoilSamplingFrequency", 1000);
     NumberOfElectrodes% := GetIntRegistryValue%(key$, "NumberOfElectrodes", 1);
@@ -536,16 +538,16 @@ proc GetDAQParameters()
     JuiceRewardMSMin% := GetIntRegistryValue%(key$, "JuiceRewardMSMin", JuiceRewardMSMin%);
     JuiceRewardMSMax% := GetIntRegistryValue%(key$, "JuiceRewardMSMax", JuiceRewardMSMax%);
     JuiceRewardMS% := GetIntRegistryValue%(key$, "JuiceRewardMS", JuiceRewardMS%);
-    JuicerIndex% := GetIntRegistryValue%(key$, "JuicerIndex", JuicerIndex%);
+    JuicerIndex% := GetIntRegistryValue%(globalKey$, "JuicerIndex", GetIntRegistryValue%(key$, "JuicerIndex", JuicerIndex%));
     EyeXPort% := GetIntRegistryValue%(key$, "EyeXPort", 14);
     EyeYPort% := GetIntRegistryValue%(key$, "EyeYPort", 15);
     JoystickPort% := GetIntRegistryValue%(key$, "JoystickPort", 13);
-    UseRemoteStimulus% := GetIntRegistryValue%(key$, "UseRemoteStimulus", 0);
-    RemoteStimulusIP$ := GetStringRegistryValue$(key$, "RemoteStimulusIP", "192.168.1.2");
-    RemoteStimulusPort$ := GetStringRegistryValue$(key$, "RemoteStimulusPort", "7000");
-    SlaveStimulusIP$ := GetStringRegistryValue$(key$, "SlaveStimulusIP", "192.168.1.2");
-    SlaveStimulusPort$ := GetStringRegistryValue$(key$, "SlaveStimulusPort", "7000");
-    DisplayHardwareIndex% := GetIntRegistryValue%(key$, "DisplayHardwareIndex", DisplayHardwareIndex%);
+    UseRemoteStimulus% := GetIntRegistryValue%(globalKey$, "UseRemoteStimulus", GetIntRegistryValue%(key$, "UseRemoteStimulus", 0));
+    RemoteStimulusIP$ := GetStringRegistryValue$(globalKey$, "RemoteStimulusIP", GetStringRegistryValue$(key$, "RemoteStimulusIP", "192.168.1.2"));
+    RemoteStimulusPort$ := GetStringRegistryValue$(globalKey$, "RemoteStimulusPort", GetStringRegistryValue$(key$, "RemoteStimulusPort", "7000"));
+    SlaveStimulusIP$ := GetStringRegistryValue$(globalKey$, "SlaveStimulusIP", GetStringRegistryValue$(key$, "SlaveStimulusIP", "192.168.1.2"));
+    SlaveStimulusPort$ := GetStringRegistryValue$(globalKey$, "SlaveStimulusPort", GetStringRegistryValue$(key$, "SlaveStimulusPort", "7000"));
+    DisplayHardwareIndex% := GetIntRegistryValue%(globalKey$, "DisplayHardwareIndex", GetIntRegistryValue%(key$, "DisplayHardwareIndex", DisplayHardwareIndex%));
     RecordEyeTrackerOutputFile% := GetIntRegistryValue%(key$, "RecordEyeTrackerOutputFile", 0);
     EEGPort% := GetIntRegistryValue%(key$, "EEGPort", -1);
     OptoEffCopyPort% := GetIntRegistryValue%(key$, "OptoEffCopyPort", -1);
@@ -561,13 +563,15 @@ end;
 
 proc SaveDAQParameters()
     var key$;
-    var s$;
-    var i%;
+    var globalKey$;
+    'var s$;
+    'var i%;
 	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
+    globalKey$ := GetRigName$() +  "\\GlobalDAQ";
     SetFloatRegistryValue(key$, "DegreesPerVoltX", DegreesPerVoltX);
 	SetFloatRegistryValue(key$, "DegreesPerVoltY", DegreesPerVoltY);
     SetFloatRegistryValue(key$, "CalibrationOffsetDegrees", CalibrationOffsetDegrees);
-    SetIntRegistryValue(key$, "CalibrationComPort", CalibrationComPort%);
+    SetIntRegistryValue(globalKey$, "CalibrationComPort", CalibrationComPort%);
     SetStringRegistryValue(key$, "CalibrationConfigFile", CalibrationConfigFile$);
     SetFloatRegistryValue(key$, "pReward", pReward);
 	SetIntRegistryValue(key$, "EyeCoilSamplingFrequency", EyeCoilSamplingFrequency%);
@@ -576,16 +580,16 @@ proc SaveDAQParameters()
     SetIntRegistryValue(key$, "JuiceRewardMSMin", JuiceRewardMSMin%);
     SetIntRegistryValue(key$, "JuiceRewardMSMax", JuiceRewardMSMax%);
     SetIntRegistryValue(key$, "JuiceRewardMS", JuiceRewardMS%);
-    SetIntRegistryValue(key$, "JuicerIndex", JuicerIndex%);
+    SetIntRegistryValue(globalKey$, "JuicerIndex", JuicerIndex%);
     SetIntRegistryValue(key$, "EyeXPort", EyeXPort%);
     SetIntRegistryValue(key$, "EyeYPort", EyeYPort%);
     SetIntRegistryValue(key$, "JoystickPort", JoystickPort%);
-    SetIntRegistryValue(key$, "UseRemoteStimulus", UseRemoteStimulus%);
-    SetStringRegistryValue(key$, "RemoteStimulusIP", RemoteStimulusIP$);
-    SetStringRegistryValue(key$, "RemoteStimulusPort", RemoteStimulusPort$);
-    SetStringRegistryValue(key$, "SlaveStimulusIP", SlaveStimulusIP$);
-    SetStringRegistryValue(key$, "SlaveStimulusPort", SlaveStimulusPort$);
-    SetIntRegistryValue(key$, "DisplayHardwareIndex", DisplayHardwareIndex%);
+    SetIntRegistryValue(globalKey$, "UseRemoteStimulus", UseRemoteStimulus%);
+    SetStringRegistryValue(globalKey$, "RemoteStimulusIP", RemoteStimulusIP$);
+    SetStringRegistryValue(globalKey$, "RemoteStimulusPort", RemoteStimulusPort$);
+    SetStringRegistryValue(globalKey$, "SlaveStimulusIP", SlaveStimulusIP$);
+    SetStringRegistryValue(globalKey$, "SlaveStimulusPort", SlaveStimulusPort$);
+    SetIntRegistryValue(globalKey$, "DisplayHardwareIndex", DisplayHardwareIndex%);
     SetIntRegistryValue(key$, "RecordEyeTrackerOutputFile", RecordEyeTrackerOutputFile%);
     SetIntRegistryValue(key$, "EEGPort", EEGPort%);
     SetIntRegistryValue(key$, "OptoEffCopyPort", OptoEffCopyPort%);

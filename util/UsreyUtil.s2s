@@ -45,6 +45,7 @@ var dataScreenHz:=60;                       'We can't let this default be 0, or 
 var dataScreenMSPerFrame;                   'GetDataParameters will set this, it is changed if dataScreenHz is changed, but it is not saved.
 var dataPathWork$ := "C:\\work";
 var dataPathWorkSlave$ := "Z:\\work";       ' work dir as viewed from slave machine (s/b mount of a share on master) 
+var gammaTableLoc$ := "None";
 GetDataParameters();
 
 'if GetRigName$() = "AlertRig" then
@@ -98,31 +99,37 @@ end
 
 proc GetDataParameters()
 	var key$;
-	'key$ := GetRigName$() + "\\Data";
+    var globalKey$;
+	'key$ := GetRigName$() + "\\Data";  'Do not use as "global" key, because there is old registry info in this location, will interfere with "seeding" new globals with config-specific values
     key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\Data";
+    globalKey$ := GetRigName$() + "\\GlobalData";
     dataPathRoot$ := GetStringRegistryValue$(key$, "PathRoot", dataPathRoot$);
     dataPathRootSlave$ := GetStringRegistryValue$(key$, "PathRootSlave", dataPathRootSlave$);
 	dataDataSet$ := GetStringRegistryValue$(key$, "DataSet", dataDataSet$);
 	dataCellName$ := GetStringRegistryValue$(key$, "CellName", dataCellName$);
     dataDistanceToScreenMM$ := GetStringRegistryValue$(key$, "DistanceToScreenMM", dataDistanceToScreenMM$);
-    dataScreenHz := GetFloatRegistryValue(key$, "ScreenHz", dataScreenHz);
+    dataScreenHz := GetFloatRegistryValue(globalKey$, "ScreenHz", GetFloatRegistryValue(key$, "ScreenHz", dataScreenHz));  'We get the value from the global key, if it does not exist, the default is the value from the config-specific key, if THAT does not exist, default as default
     dataScreenMSPerFrame := 1000/dataScreenHz;
-    dataPathWork$ := GetStringRegistryValue$(key$, "PathWork", dataPathWork$);
-    dataPathWorkSlave$ := GetStringRegistryValue$(key$, "PathWorkSlave", dataPathWorkSlave$);
+    dataPathWork$ := GetStringRegistryValue$(globalKey$, "PathWork", GetStringRegistryValue$(key$, "PathWork", dataPathWork$));
+    dataPathWorkSlave$ := GetStringRegistryValue$(globalKey$, "PathWorkSlave", GetStringRegistryValue$(key$, "PathWorkSlave", dataPathWorkSlave$));
+    gammaTableLoc$ := GetStringRegistryValue$(globalKey$, "GammaTableLoc", GetStringRegistryValue$(key$, "GammaTableLoc", gammaTableLoc$));
 end;
 
 proc SaveDataParameters()
 	var key$;
+    var globalKey$;
 	'key$ := GetRigName$() + "\\Data";
     key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\Data";
+    globalKey$ := GetRigName$() + "\\GlobalData";
     SetStringRegistryValue(key$, "PathRoot", dataPathRoot$);
     SetStringRegistryValue(key$, "PathRootSlave", dataPathRootSlave$);
 	SetStringRegistryValue(key$, "DataSet", dataDataSet$);
 	SetStringRegistryValue(key$, "CellName", dataCellName$);
     SetStringRegistryValue(key$, "DistanceToScreenMM", dataDistanceToScreenMM$);
-    SetFloatRegistryValue(key$, "ScreenHz", dataScreenHz);
-    SetStringRegistryValue(key$, "PathWork", dataPathWork$);
-    SetStringRegistryValue(key$, "PathWorkSlave", dataPathWorkSlave$);
+    SetFloatRegistryValue(globalKey$, "ScreenHz", dataScreenHz);
+    SetStringRegistryValue(globalKey$, "PathWork", dataPathWork$);
+    SetStringRegistryValue(globalKey$, "PathWorkSlave", dataPathWorkSlave$);
+    SetStringRegistryValue(globalKey$, "GammaTableLoc", gammaTableLoc$);
 	return;
 end;
 
@@ -137,13 +144,14 @@ func DataParametersDialog%()
 	dataDataSetTextItem% := DlgText("Data set name: " + dataDataSet$, 0, 3);
 	DlgString(3, "Cell name:", 10, "", 0, 4);
     DlgInteger(4, "Dist to Screen (MM):", 1, 10000, 0, 5);
-    DlgReal(5, "Screen Refresh (Hz):)", 30, 200, 0, 6);
+    DlgReal(5, "Screen Refresh (Hz):", 30, 200, 0, 6);
     DlgString(6, "Work dir path", 20, "", 0, 7);
     DlgString(7, "Work dir path (secondary):", 20, "", 0, 8);
-    DlgButton(8, "New Data Set", NewDataSet%);
+    DlgString(8, "Gamma Table path:", 20, "", 0, 9);
+    DlgButton(9, "New Data Set", NewDataSet%);
     idist% := val(GetDistanceToScreenMM$());
     var itest%;
-	i% := DlgShow(dataPathRoot$, dataPathRootSlave$, dataCellName$, idist%, dataScreenHz, dataPathWork$, dataPathWorkSlave$, itest%);
+	i% := DlgShow(dataPathRoot$, dataPathRootSlave$, dataCellName$, idist%, dataScreenHz, dataPathWork$, dataPathWorkSlave$, gammaTableLoc$, itest%);
 	if (i% = 1) then
         SetDistanceToScreenMM(idist%);
 		if Len(dataDataSet$) = 0 then

@@ -31,6 +31,7 @@ const tunTypeNullTest$ := "NULL";
 const tunTypeLag$ := "LAG";
 const tunTypeBakersDozen$ := "BAKER";
 const tunTypeFixptColor$ := "U";
+const tunTypePolkaDot$ := "PD";
 var tunType$:=tunTypeNone$;
 var tunType1$:=tunTypeNone$;  'for first of two tuning curves, if Box O' Donuts, or for non-CRG curve in CRG scenarios
 var tunType2$:=tunTypeNone$;  'for second of two tuning curves, if Box O' Donuts
@@ -70,6 +71,7 @@ const tundlgSelectTuningFileButton% := 28;
 const tundlgLagButton% := 29;
 const tundlgOptogeneticsButton% := 30;
 const tundlgFixptColorButton% := 31;
+const tundlgPolkaDotButton% := 32;
 
 ' A note about "steps". 
 ' The dialogs ask for a number of "steps". A step is a transition from one stimulus
@@ -305,6 +307,33 @@ var tunFPCUseFile%;
 var tunFPCTuningFile$;
 
 
+
+'Polka Dots
+    'Color
+var tunPDNColorSteps%;
+var tunPDRedValue%;
+var tunPDGreenValue%;
+var tunPDBlueValue%;
+var tunPDGunIndex%;
+var tunPDMinGunValue;
+var tunPDMaxGunValue;
+    'XY Position
+var tunPDNXSteps%;	    ' # steps in X position tuning curve
+var tunPDMinXPos;		' min position
+var tunPDMaxXPos;		' max position
+var tunPDNYSteps%;		' # steps in Y position tuning curve
+var tunPDMinYPos;		' min position
+var tunPDMaxYPos;		' max position
+    'Common variables
+var tunPDDiameter;
+var tunPDNRepeats%;
+var tunPDProgression%;  'For now, do not consider randomizing position without also randomizing color, or vice versa
+var tunPDUseFile%;
+var tunPDTuningFile$;
+
+
+
+
 ' Optogenetics variables
 var tunPreStimOptoTime;
 var tunPostStimOptoTime;
@@ -401,7 +430,7 @@ var tun2NValues%;
 var tunValuesStringified$;
 var tun1ValuesStringified$;     'For Box O' Donuts
 var tun2ValuesStringified$;
-
+var tunPDDotSpecsPerTrial$[tunMaxTrials%];
 
 ' Wavemarks and continuous ports
 const tunMaxPorts% := 64;  'there can be more channels, but that's all the ports we can collect
@@ -972,6 +1001,53 @@ proc SaveTuningCurveFixptColorParameters()
 end;
 
 
+proc GetTuningCurvePolkaDotParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\PolkaDots";
+    tunPDNColorSteps% := GetIntRegistryValue%(key$, "NColorSteps", tunPDNColorSteps%);
+    tunPDNRepeats% := GetIntRegistryValue%(key$, "NRepeats", tunPDNRepeats%);
+    tunPDRedValue% := GetIntRegistryValue%(key$, "RedValue", tunPDRedValue%);
+    tunPDGreenValue% := GetIntRegistryValue%(key$, "GreenValue", tunPDGreenValue%);
+    tunPDBlueValue% := GetIntRegistryValue%(key$, "BlueValue", tunPDBlueValue%);
+    tunPDGunIndex% := GetIntRegistryValue%(key$, "GunIndex", tunPDGunIndex%);
+    tunPDMinGunValue := GetFloatRegistryValue(key$, "MinGunValue", tunPDMinGunValue);
+    tunPDMaxGunValue := GetFloatRegistryValue(key$, "MaxGunValue", tunPDMaxGunValue);
+    tunPDNXSteps% := GetIntRegistryValue%(key$, "NXSteps", tunPDNXSteps%);
+    tunPDMinXPos := GetFloatRegistryValue(key$, "MinXPos", tunPDMinXPos);
+    tunPDMaxXPos := GetFloatRegistryValue(key$, "MaxXPos", tunPDMaxXPos);
+    tunPDNYSteps% := GetIntRegistryValue%(key$, "NYSteps", tunPDNYSteps%);
+    tunPDMinYPos := GetFloatRegistryValue(key$, "MinYPos", tunPDMinYPos);
+    tunPDMaxYPos := GetFloatRegistryValue(key$, "MaxYPos", tunPDMaxYPos);
+    tunPDProgression% := GetIntRegistryValue%(key$, "Progression", tunPDProgression%);
+    tunPDUseFile% := GetIntRegistryValue%(key$, "UseFile", tunPDUseFile%);
+    tunPDTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunPDTuningFile$);
+    tunPDDiameter := GetFloatRegistryValue(key$, "Diameter", tunPDDiameter);
+end;
+
+proc SaveTuningCurvePolkaDotParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\PolkaDots";
+    SetIntRegistryValue(key$, "NColorSteps", tunPDNColorSteps%);
+    SetIntRegistryValue(key$, "NRepeats", tunPDNRepeats%);
+    SetIntRegistryValue(key$, "RedValue", tunPDRedValue%);
+    SetIntRegistryValue(key$, "GreenValue", tunPDGreenValue%);
+    SetIntRegistryValue(key$, "BlueValue", tunPDBlueValue%);
+    SetIntRegistryValue(key$, "GunIndex", tunPDGunIndex%);
+    SetFloatRegistryValue(key$, "MinGunValue", tunPDMinGunValue);
+    SetFloatRegistryValue(key$, "MaxGunValue", tunPDMaxGunValue);
+    SetIntRegistryValue(key$, "NXSteps", tunPDNXSteps%);
+    SetFloatRegistryValue(key$, "MinXPos", tunPDMinXPos);
+    SetFloatRegistryValue(key$, "MaxXPos", tunPDMaxXPos);
+    SetIntRegistryValue(key$, "NYSteps", tunPDNYSteps%);
+    SetFloatRegistryValue(key$, "MinYPos", tunPDMinYPos);
+    SetFloatRegistryValue(key$, "MaxYPos", tunPDMaxYPos);
+    SetIntRegistryValue(key$, "Progression", tunPDProgression%);
+    SetIntRegistryValue(key$, "UseFile", tunPDUseFile%);
+    SetStringRegistryValue(key$, "TuningFile", tunPDTuningFile$);
+    SetFloatRegistryValue(key$, "Diameter", tunPDDiameter);
+end;
+
+
 
 '------------ END Read/write tuning curve parameters to the registry ------------
 
@@ -1002,14 +1078,6 @@ func TuningCurveOrientationDialog%()
 
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
 	if i% = 1 then
 		SaveTuningCurveOrientationParameters();
 		PrintLog("TuningCurveOrientationDialog - user hit OK\n");
@@ -1047,14 +1115,9 @@ func TuningCurveOrientationDialog%()
             DlgValue$(updateCurve1Text%, tunCurve1Text$);
             TuningCurveCRGDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
         endcase;
+
+        iReturn% := 1;
         
-        
-		if tunContext$ = tunContextDAQ$ then
-            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-            iReturn% := 1;
-		else
-			iReturn% := 1;
-		endif;
 	endif;
 	if i% = 0 then
 		PrintLog("TuningCurveOrientationDialog - user hit Cancel\n");
@@ -1112,15 +1175,7 @@ func TuningCurveContrastDialog%()
 
 	i% := DlgShow(tunContrastNSteps%, tunContrastNRepeats%, tunContrastMinContrast, tunContrastMaxContrast, tunContrastProgression%, tunContrastUseFile%, tunContrastTuningFile$, tunContrastDualScreenCombo%);
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
-	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
+	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't. 
 	if i% = 1 then
         if tempDualValue% = 1 then 'save value in registry if we are allowed to change it
             tunContrastDualScreenComboRegistry% := tunContrastDualScreenCombo%;
@@ -1163,13 +1218,8 @@ func TuningCurveContrastDialog%()
             TuningCurveCRGDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
         endcase;
         
+        iReturn% := 1;
         
-		if tunContext$ = tunContextDAQ$ then
-            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-            iReturn% := 1;
-		else
-			iReturn% := 1;
-		endif;
 	endif;
 	if i% = 0 then
 '		PrintLog("TuningCurveContrastDialog - user hit Cancel\n");
@@ -1233,14 +1283,6 @@ func TuningCurveSpatialDialog%()
 	i% := DlgShow(tunSpatialNSteps%, tunSpatialNRepeats%, tunSpatialMinSF, tunSpatialMaxSF, tunSpatialProgression%, tunSpatialUseFile%, tunSpatialTuningFile$);
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
 	if i% = 1 then
 		SaveTuningCurveSpatialParameters();
 '		PrintLog("TuningCurveSpatialDialog - user hit OK\n");
@@ -1278,14 +1320,9 @@ func TuningCurveSpatialDialog%()
             DlgValue$(updateCurve1Text%, tunCurve1Text$);
             TuningCurveCRGDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
         endcase;
+
+        iReturn% := 1;
         
-        
-		if tunContext$ = tunContextDAQ$ then
-            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-            iReturn% := 1;
-		else
-			iReturn% := 1;
-		endif;
 	endif;
 	if i% = 0 then
 '		PrintLog("TuningCurveSpatialDialog - user hit Cancel\n");
@@ -1325,14 +1362,6 @@ func TuningCurveTemporalDialog%()
 	i% := DlgShow(tunTemporalNSteps%, tunTemporalNRepeats%, tunTemporalMinTF, tunTemporalMaxTF, tunTemporalProgression%, tunTemporalUseFile%, tunTemporalTuningFile$);
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
 	if i% = 1 then
 		SaveTuningCurveTemporalParameters();
 '		PrintLog("TuningCurveTemporalDialog - user hit OK\n");
@@ -1370,14 +1399,9 @@ func TuningCurveTemporalDialog%()
             DlgValue$(updateCurve1Text%, tunCurve1Text$);
             TuningCurveCRGDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
         endcase;
+
+        iReturn% := 1;
         
-        
-		if tunContext$ = tunContextDAQ$ then
-            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-            iReturn% := 1;
-		else
-			iReturn% := 1;
-		endif;
 	endif;
 	if i% = 0 then
 '		PrintLog("TuningCurveTemporalDialog - user hit Cancel\n");
@@ -1437,15 +1461,6 @@ func TuningCurveAreaDialog%()
 	i% := DlgShow(tunAreaNSteps%, tunAreaNRepeats%, tunAreaMinDiam, tunAreaMaxDiam, tunAreaProgression%, tunAreaUseFile%, tunAreaTuningFile$, tunAreaDualScreenCombo%);
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-    ' 
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
     'tunMaximalDiam := tunAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
 	if i% = 1 then
         if tempDualValue% = 1 then 'save value in registry if we are allowed to change it
@@ -1488,14 +1503,9 @@ func TuningCurveAreaDialog%()
             DlgValue$(updateCurve1Text%, tunCurve1Text$);
             TuningCurveCRGDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
         endcase;
+
+        iReturn% := 1;
         
-        
-		if tunContext$ = tunContextDAQ$ then
-            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-            iReturn% := 1;
-		else
-			iReturn% := 1;
-		endif;
 	endif;
 	if i% = 0 then
 '		PrintLog("TuningCurveAreaDialog - user hit Cancel\n");
@@ -1521,7 +1531,7 @@ func TuningCurveXPosDialog%()
     'Because XY tuning is a superset of X tuning there does not seem to be much reason to have a separate
     'button, so that means this button needs to change between XY tuning and X tuning depending on the
     'context.  But that's doable.
-    if DlgValue(11) = 1 or tunBoxODonutsCurrentCurve% = 1 or tunCRGCurrentCurve% = 1 then  'if it's a dualstim scenario, use X position
+    if DlgValue(11) = 1 or tunCRGCurrentCurve% = 1 or tunBoxODonutsCurrentCurve% > 0 then  'if it's a dualstim/Box scenario, use X position
         
         GetTuningCurveXPosParameters();
         DlgCreate("XPos Tuning Curve Parameters");
@@ -1576,26 +1586,32 @@ func TuningCurveXPosDialog%()
                 TuningCurveCRGDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
             endcase;
             
+            iReturn% := 1;
             
-            if tunContext$ = tunContextDAQ$ then
-                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-                iReturn% := 1;
-            else
-                iReturn% := 1;
-            endif;
         endif;
     else 'if it's a fixstim scenario, use XY position
+        'Note that XYPosition is now superficially set up for Box'o'Donuts use, but as this is a
+        'basically zero-priority change, and there are complications in the implementation at later
+        'stages, I am putting it off.  Adjust this ELSE's IF to remove tunBoxODonutsCurrentCurve% > 0
+        'to get in here if this is ever implemented. -jj
         
         GetTuningCurveXYPosParameters();
         DlgCreate("XYPos Tuning Curve Parameters");
-        DlgInteger(1, "Number of Repeats", 1, 3000);
+        'DlgInteger(1, "Number of Repeats", 1, 3000);
         DlgInteger(2, "Number of X Steps", 0, 100);
         DlgReal(3, "Min X Position", -14, 14);
         DlgReal(4, "Max X Position", -14, 14);
         DlgInteger(5, "Number of Y Steps", 0, 100);
         DlgReal(6, "Min Y Position", -14, 14);
         DlgReal(7, "Max Y Position", -14, 14);
-        DlgCheck(8, "Random Progression");
+        'DlgCheck(8, "Random Progression");
+        if tunBoxODonutsCurrentCurve% = 0 then
+            DlgInteger(1, "Number of Repeats", 1, 3000);
+            DlgCheck(8, "Random Progression");
+        else
+            DlgInteger(1, "----------------", 1, 1);
+            DlgCheck(8, "----------------");
+        endif;
         
         DlgAllow(0xffff, 0, TuningCurveXYPosDialogChanged%);
         
@@ -1607,14 +1623,28 @@ func TuningCurveXPosDialog%()
             SaveTuningCurveXYPosParameters();
             '		PrintLog("TuningCurveAreaDialog - user hit OK\n");
             tunType$ := tunTypeXYPos$;
-               
             
-            if tunContext$ = tunContextDAQ$ then
-                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-                iReturn% := 1;
-            else
-                iReturn% := 1;
-            endif;
+            'Change text on Box O' Donuts/CRG dialog box, if we're calling from there.
+            'Oh, and update tuning types we are going to use.
+            docase
+            case tunBoxODonutsCurrentCurve% = 1 then
+                tunType1$ := tunTypeXYPos$;
+                tunCurve1Text$ := "Tuning Curve 1 is XY POSITION";
+                DlgValue$(updateCurve1Text%, tunCurve1Text$);
+                tunBoxODonutsCurrentCurve% := 2;  'update current curve 
+                DlgEnable(0,-tundlgXPosButton%);  'So we don't pick XY position again, don't rename variable
+            case tunBoxODonutsCurrentCurve% = 2 then
+                tunType2$ := tunTypeXYPos$;
+                tunCurve2Text$ := "Tuning Curve 2 is XY POSITION";
+                DlgValue$(updateCurve2Text%, tunCurve2Text$);
+                tunBoxODonutsCurrentCurve% := 3;  'update current curve 
+                DlgEnable(0,-tundlgXPosButton%);  'So we don't pick XY position again, don't rename variable
+                TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
+            'Not allowing XYPos fir CRG at this point, only updating for Box'o'Donuts
+            endcase;
+               
+            iReturn% := 1;
+            
         endif;
     endif;    
         
@@ -1684,16 +1714,7 @@ func TuningCurveDisparityAndBakersDozenDialog%()
         
         i% := DlgShow(tunDisparityNSteps%, tunDisparityNRepeats%, tunDisparityCenterXPos, tunDisparityMaxXPos, tunDisparityOnMaster%, tunDisparityLinear%, tunDisparityProgression%);
         ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
-        ' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-        ' 
-        ' djs 2/4/2011
-        ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-        ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-        ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-        ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-        ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-        ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-        ' before things proceed. 
+        ' When user hits OK we always save the parameters, and when user hits Cancel we don't. 
         'tunMaximalDiam := tunAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
         if i% = 1 then
             SaveTuningCurveDisparityParameters();
@@ -1704,14 +1725,9 @@ func TuningCurveDisparityAndBakersDozenDialog%()
             TunMasterValsToSlave%();  'this copies master values over to slave
             
             tunType$ := tunTypeDisparity$;
+
+            iReturn% := 1;
             
-            
-            if tunContext$ = tunContextDAQ$ then
-                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-                iReturn% := 1;
-            else
-                iReturn% := 1;
-            endif;
         endif;
         if i% = 0 then
             '		PrintLog("TuningCurveAreaDialog - user hit Cancel\n");
@@ -1735,14 +1751,6 @@ func TuningCurveDisparityAndBakersDozenDialog%()
         
         ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
         ' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
-        ' djs 2/4/2011
-        ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-        ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-        ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-        ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-        ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-        ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-        ' before things proceed. 
         if i% = 1 then
             SaveTuningCurveBakersDozenParameters();
             PrintLog("TuningCurveBakersDozenDialog - user hit OK\n");
@@ -1750,12 +1758,8 @@ func TuningCurveDisparityAndBakersDozenDialog%()
             tunUseFile% := 1;
             tunBakersDozenFileLoc$ := tunBDTuningFile$;
             
-            if tunContext$ = tunContextDAQ$ then
-                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-                iReturn% := 1;
-            else
-                iReturn% := 1;
-            endif;
+            iReturn% := 1;
+            
         endif;
         if i% = 0 then
             PrintLog("TuningCurveOrientationDialog - user hit Cancel\n");
@@ -1826,26 +1830,14 @@ func TuningCurveDonutANDGonzagoDialog%()
         
         ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
         ' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-        ' 
-        ' djs 2/4/2011
-        ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-        ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-        ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-        ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-        ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-        ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-        ' before things proceed. 
         if i% = 1 then
             SaveTuningCurveGonzagoParameters();
             tunType$ := tunTypeGonzago$;
             tunType1$ := tunTypeContrast$;
             tunType2$ := tunTypeArea$;
-            if tunContext$ = tunContextDAQ$ then
-                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-                iReturn% := 1;
-            else
-                iReturn% := 1;
-            endif;
+
+            iReturn% := 1;
+            
         endif;
         if i% = 0 then
             tunType$ := tunTypeNone$;
@@ -1889,27 +1881,15 @@ func TuningCurveDonutANDGonzagoDialog%()
         tunDonutOptimalDiam := result[tunDonutOptimalIndex%];
         
         ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
-        ' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-        ' 
-        ' djs 2/4/2011
-        ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-        ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-        ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-        ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-        ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-        ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-        ' before things proceed. 
+        ' When user hits OK we always save the parameters, and when user hits Cancel we don't. 
         tunMaximalDiam := result[tunDonutOptimalIndex%];
         tunSlaveMaximalDiam := tunAreaMaxDiam;
         if i% = 1 then
             SaveTuningCurveAreaParameters();
             tunType$ := tunTypeDonut$;
-            if tunContext$ = tunContextDAQ$ then
-                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-                iReturn% := 1;
-            else
-                iReturn% := 1;
-            endif;
+
+            iReturn% := 1;
+            
         endif;
         if i% = 0 then
             tunType$ := tunTypeNone$;
@@ -1999,24 +1979,12 @@ func TuningCurveBerlinerDialog%()
     
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-    ' 
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
 	if i% = 1 then
 		SaveTuningCurveAreaParameters();
 		tunType$ := tunTypeBerliner$;
-		if tunContext$ = tunContextDAQ$ then
-            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-            iReturn% := 1;
-		else
-			iReturn% := 1;
-		endif;
+
+        iReturn% := 1;
+        
 	endif;
 	if i% = 0 then
 		tunType$ := tunTypeNone$;
@@ -2047,7 +2015,8 @@ func TuningCurveBoxODonutsDialogChanged%(item%)
         DlgEnable(1,-tundlgAreaButton%);
         DlgEnable(1,-tundlgXPosButton%);
         DlgEnable(1,-tundlgLagButton%);
-        DlgEnable(1,-tundlgFixptColorButton%);
+        'DlgEnable(1,-tundlgFixptColorButton%);
+        DlgEnable(1,-tundlgPolkaDotButton%);
         
     endif;  
     if tunBoxODonutsCurrentCurve% = 3 then
@@ -2077,7 +2046,8 @@ func TuningCurveBoxODonutsDialogChanged2%(item%)
         DlgEnable(1,-tundlgAreaButton%);
         DlgEnable(1,-tundlgXPosButton%);
         DlgEnable(1,-tundlgLagButton%);
-        DlgEnable(1,-tundlgFixptColorButton%);
+        'DlgEnable(1,-tundlgFixptColorButton%);
+        DlgEnable(1,-tundlgPolkaDotButton%);
         DlgEnable(0,3);  'Disable master follows curve 1 checkbox
         DlgEnable(0,-151);  'Disable all two-screen buttons
         DlgEnable(0,-152);
@@ -2142,8 +2112,8 @@ func TuningCurveBoxODonutsDialog%()
     else
         DlgButton(tundlgLagButton%, "Phase/Null", TuningCurveNullTestANDLagDialog%, 50, 8);
     endif;
-    DlgButton(tundlgFixptColorButton%, "Fixpt Color", TuningCurveFixptColorANDCRGDialog%, 50 , 9);
-    
+    'DlgButton(tundlgFixptColorButton%, "Fixpt Color", TuningCurveFixptColorANDCRGDialog%, 50 , 9);
+    DlgButton(tundlgPolkaDotButton%, "Polka Dots", TuningCurvePolkaDotANDCRGDialog%, 50 , 9);
     
     
     DlgButton(151, "Master Grating", TunDlgGratingMaster%);
@@ -2160,27 +2130,14 @@ func TuningCurveBoxODonutsDialog%()
     i% := DlgShow(tunBoxODonutsNRepeats%,tunBoxODonutsProgression%,tunMasterFollowsCurve1%,tunBoxODonutsOneOrTwoGratings%);
     
     ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
-	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-    ' 
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
-	
+	' When user hits OK we always save the parameters, and when user hits Cancel we don't.	
     tunBoxODonutsCurrentCurve% := 0;  'reset this, we don't need it once this dialog box is closed and it messes up stuff if we want to pick a different tuning curve    
     if i% = 1 then
 		SaveTuningCurveAreaParameters();
 		tunType$ := tunTypeBoxODonuts$;
-		if tunContext$ = tunContextDAQ$ then
-            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-            iReturn% := 1;
-		else
-			iReturn% := 1;
-		endif;
+
+        iReturn% := 1;
+        
 	endif;
 	if i% = 0 then
 		tunType$ := tunTypeNone$;
@@ -2236,25 +2193,13 @@ func TuningCurveDotsDialog%()
 
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
 	if i% = 1 then
 		SaveTuningCurveDotsParameters();
 		PrintLog("TuningCurveDotsDialog - user hit OK\n");
 		tunType$ := tunTypeDots$;
                 
-		if tunContext$ = tunContextDAQ$ then
-            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-            iReturn% := 1;
-		else
-			iReturn% := 1;
-		endif;
+        iReturn% := 1;
+        
 	endif;
 	if i% = 0 then
 		PrintLog("TuningCurveDotsDialog - user hit Cancel\n");
@@ -2298,7 +2243,8 @@ func TuningCurveCRGDialogChanged%(item%)
 end
 
 
-func TuningCurveFixptColorANDCRGDialog%()
+'func TuningCurveFixptColorANDCRGDialog%()
+func TuningCurvePolkaDotANDCRGDialog%()
     var iReturn%;
     var i%;
     
@@ -2310,58 +2256,176 @@ func TuningCurveFixptColorANDCRGDialog%()
         GunLabels$[2] := "B";
         GunLabels$[3] := "Luminance";
         
-        GetTuningCurveFixptColorParameters();
-        DlgCreate("Run Fixpt Color Tuning Curve");
-        DlgInteger(1, "Number of Steps", 1, 100);
-        'DlgInteger(2, "Number of Repeats", 1, 10);
-        DlgInteger(3, "Red Gun Value (0-255)",0,255);
-        DlgInteger(4, "Green Gun Value (0-255)",0,255);
-        DlgInteger(5, "Blue Gun Value (0-255)",0,255);
-        DlgList(6,"Color to Vary",GunLabels$,4);
-        DlgReal(7, "Min Value (0-255)", 0, 255);
-        DlgReal(8, "Max Value (0-255)", 0, 255);
-        'DlgCheck(9, "Random Progression");
-        DlgCheck(10, "Use File For Tuning Values");
-        DlgString(11,40,255,"",3);  'for visual confirmation of selected seq file
-        DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 12);
+        GetTuningCurvePolkaDotParameters();
+        DlgCreate("Run Polka Dot Tuning Curve");
+        DlgGroup("Common Parameters", 1, 1, 52, 7);
+        'DlgInteger(1, "Number of Total Repeats", 1, 10, 2, 2);  'these options will not be used in Box'o'Donuts
+        'DlgCheck(2, "Random Progression",2,3);
         if tunBoxODonutsCurrentCurve% = 0 then
-            DlgInteger(2, "Number of Repeats", 1, 3000);
-            DlgCheck(9, "Random Progression");
+            DlgInteger(1, "Number of Total Repeats", 1, 10, 36, 2);
+            DlgCheck(2, "Random Progression",2,3);
         else
-            DlgInteger(2, "----------------", 1, 1);
-            DlgCheck(9, "----------------");
+            DlgInteger(1, "----------------", 1, 1, 36, 2);
+            DlgCheck(2, "----------------", 2, 3);
         endif;
-        DlgAllow(0xffff, 0, TuningCurveFixptColorDialogChanged%);
+        DlgReal(3, "Polka Dot Diameter (degrees)", 0.01, 30, 36, 4);
+        DlgCheck(4, "Use File For Tuning Values",2,5);
+        DlgString(5,40,255,"",3,6);  'for visual confirmation of selected seq file
+        DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 7);
         
-        i% := DlgShow(tunFPCNSteps%, tunFPCNRepeats%, tunFPCRedValue%, tunFPCGreenValue%, tunFPCBlueValue%, tunFPCGunIndex%, 
-        tunFPCMinValue, tunFPCMaxValue, tunFPCProgression%, tunFPCUseFile%, tunFPCTuningFile$);
+        DlgGroup("Color Parameters", 1, 8, 52, 8);
+        DlgInteger(6, "Number of Steps (0 = no color change)", 0, 100, 36, 9);
+        DlgInteger(7, "Red Gun Value (0-255)",0,255, 36, 10);
+        DlgInteger(8, "Green Gun Value (0-255)",0,255, 36, 11);
+        DlgInteger(9, "Blue Gun Value (0-255)",0,255, 36, 12);
+        DlgList(10,"Color to Vary",GunLabels$,4, 30, 13);
+        DlgReal(11, "Min Value (0-255)", 0, 255, 36, 14);
+        DlgReal(12, "Max Value (0-255)", 0, 255, 36, 15);
+        
+        DlgGroup("XY Position Parameters", 1, 16, 52, 7);
+        DlgInteger(13, "Number of X Steps (0 = no X step)", 0, 100, 36, 17);
+        DlgReal(14, "Min X Position", -14, 14, 36, 18);
+        DlgReal(15, "Max X Position", -14, 14, 36, 19);
+        DlgInteger(16, "Number of Y Steps (0 = no Y step)", 0, 100, 36, 20);
+        DlgReal(17, "Min Y Position", -14, 14, 36, 21);
+        DlgReal(18, "Max Y Position", -14, 14, 36, 22);
+        
+        DlgAllow(0xffff, 0, TuningCurvePolkaDotDialogChanged%);
+        
+        i% := DlgShow(tunPDNRepeats%, tunPDProgression%, tunPDDiameter, tunPDUseFile%, tunPDTuningFile$, tunPDNColorSteps%,  
+        tunPDRedValue%, tunPDGreenValue%, tunPDBlueValue%, tunPDGunIndex%, tunPDMinGunValue, tunPDMaxGunValue, tunPDNXSteps%, 
+        tunPDMinXPos, tunPDMaxXPos, tunPDNYSteps%, tunPDMinYPos, tunPDMaxYPos);
+               
+        
         
         ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
         ' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
-        ' djs 2/4/2011
-        ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-        ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-        ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-        ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-        ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-        ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-        ' before things proceed. 
         if i% = 1 then
-            SaveTuningCurveFixptColorParameters();
-            PrintLog("TuningCurveFixptColorDialog - user hit OK\n");
-            tunType$ := tunTypeFixptColor$;
-            tunUseFile% := tunFPCUseFile%;
-            tunTuningFile$ := tunFPCTuningFile$;
+            SaveTuningCurvePolkaDotParameters();
+            PrintLog("TuningCurvePolkaDotDialog - user hit OK\n");
+            tunType$ := tunTypePolkaDot$;
+            tunUseFile% := tunPDUseFile%;
+            tunTuningFile$ := tunPDTuningFile$;
+            
+            'TEMPORARY, quit if boxOdonuts because it's not written
+            if tunBoxODonutsCurrentCurve% > 0 then
+                message("Sorry, Polks Dots not yet implementeed for Box O Donuts!  Quitting!");
+                halt
+            endif;
+            
+            
+            
+            
+            
+            
+            ''''''''TESTING SECTION - THIS CODE WILL GO INTO START
+            
+            
             
             
             'This is just for testing the output of the new StringifyColorProgression$ (and inherently 
             'GetFixptColorThisTrial$) and they work FAAAAAAABULOUSLY
-            'tunNRepeats% := tunFPCNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-            'tunNAdvances% := tunFPCNSteps%;
-            'GetRepeatedParameterProgression%(tunFPCNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunFPCMinValue, tunFPCMaxValue, 0, tunFPCProgression%);
-            'tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
-            'tunValuesStringified$ := StringifyColorProgression$(tunNValues%, tunValues, tunValuesIndices%);
-            'printlog("Tuning String is %s\n",tunValuesStringified$);
+            
+            
+            
+            
+'            ''Here is the XY position, which is basically identical to XYPos
+'            'for tun1, use X
+'            if tunPDNXSteps% = 0 then  'this allows for no x movement
+'                tun1Values[0] := tunPDMinXPos;
+'                tun1ValuesIndices%[0] := 1;
+'            else
+'                GetRepeatedParameterProgression%(tunPDNXSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunPDMinXPos, tunPDMaxXPos, 0, 0);
+'            endif;
+'            tun1NValues% := (tunPDNXSteps%+1);
+'            
+'            'for tun2, use Y
+'            if tunPDNYSteps% = 0 then  'this allows for no y movement
+'                tun2Values[0] := tunPDMinYPos;
+'                tun2ValuesIndices%[0] := 1;
+'            else
+'                GetRepeatedParameterProgression%(tunPDNYSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunPDMinYPos, tunPDMaxYPos, 0, 0);
+'            endif;
+'            tun2NValues% := (tunPDNYSteps%+1);       
+'              
+'            tunXYNAdvances% := tun1NValues%*tun2NValues%-1;  'this gives the correct number of advances
+'            tunXYNValues% := tun1NValues%*tun2NValues%*1;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
+'            
+'            'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
+'            GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],0,1);         
+'            
+'            'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
+'            tun1ValuesStringified$ := StringifyProgression$(tunXYNValues%, tun1Values[], tun1ValuesIndices%[]);
+'            tun2ValuesStringified$ := StringifyProgression$(tunXYNValues%, tun2Values[], tun2ValuesIndices%[]);
+'            
+'            printlog("X values are %s\n",tun1ValuesStringified$);
+'            printlog("Y values are %s\n",tun2ValuesStringified$);
+'
+'                       
+'            
+'            'This is the Color, have already renamed PolkaDot, but will have to do more work...let's put this later, actually
+'            
+'            
+'            docase
+'            'This seems a bit silly, but it has to look like this to work with the subsequent functions we call
+'            case tunPDNColorSteps% = 0 and tunPDGunIndex% = 0 then  'this allows for no color change, red gun selected
+'                tunValues[0] := tunPDRedValue%;
+'                tunValuesIndices%[0] := 0;
+'            case tunPDNColorSteps% = 0 and tunPDGunIndex% = 1 then  'this allows for no color change, green gun selected
+'                tunValues[0] := tunPDGreenValue%;
+'                tunValuesIndices%[0] := 0;
+'            case tunPDNColorSteps% = 0 and tunPDGunIndex% = 2 then  'this allows for no color change, blue gun selected
+'                tunValues[0] := tunPDBlueValue%;
+'                tunValuesIndices%[0] := 0;
+'            case tunPDNColorSteps% = 0 and tunPDGunIndex% = 3 then  'this allows for no color change, luminance
+'                tunValues[0] := tunPDMinGunValue;
+'                tunValuesIndices%[0] := 0;
+'            else 'the color is changing
+'                GetRepeatedParameterProgression%(tunPDNColorSteps%+1, 1, tunValues[], tunValuesIndices%[], tunPDMinGunValue, tunPDMaxGunValue, 0, tunPDProgression%);
+'            endcase  
+'            tunNAdvances% := tunPDNColorSteps%;            
+'            tunNValues% := (tunNAdvances%+1)*1;  
+'            
+'            tunValuesStringified$ := StringifyPolkaDotProgression$(tunNValues%, tunValues[], tunValuesIndices%[]);
+'            printlog("Color String is %s\n",tunValuesStringified$);
+'            
+'            
+'            'Now we need to Interleave the X string, the Y string, the Diameter, and the color string.  Diameter is a constant.
+'            
+'            tunNRepeats% := tunPDNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+'            tunValuesStringified$ := InterleavePDStrings$(tun1ValuesStringified$,tun2ValuesStringified$,Str$(tunPDDiameter),tunValuesStringified$,tunNRepeats%);
+'            printlog("Polka Dot string is %s\n",tunValuesStringified$);
+'            
+'            
+'            tunNValues% := tunXYNValues%*tunNValues%*tunNRepeats%;
+'            printlog("Total number of values is %d\n",tunNValues%);
+'            
+'            'Randomization of the above would be very complicated.  The easiest thing to do here will be to write a function
+'            'to randomize the VSG string.  This would require parsing the VSG string down using the semicolon as a token.
+'            'Easy enough.  But, since we also need to tag each trial with the dot specs, rather than break down the VSG string
+'            'every trial, we should just break it down once at the beginning and store the result.
+'            
+'            if tunPDProgression% = 1 then
+'                'Fill tunValuesIndices with shuffled value
+'                Shuffle%(tunNValues%,tunValuesIndices%[]);
+'            else
+'                'Fill tunValuesIndices with unshuffled index
+'                var jjj%;
+'                for jjj% := 0 to tunNvalues%-1 do
+'                    tunValuesIndices%[jjj%] := jjj%;
+'                next
+'            endif
+'            
+'            'We run this even if we are not scrambling, because we are filling tunPDDotSpecsPerTrial$[]
+'            tunvaluesStringified$ := ShufflePDTuningString$(tunNValues%,tunValuesIndices%[],tunvaluesStringified$,tunPDDotSpecsPerTrial$[]);
+'            
+'            'printlog("Randomized string is %s\n",tunValuesStringified$);
+'            'printlog("Order is %d\n",tunValuesIndices%[0:tunNValues%]);
+'            'printlog("Individual dot specs are %s\n",tunPDDotSpecsPerTrial$[0:tunNValues%]);
+            
+            '''''''''END TESTING
+            
+            
             
             
             
@@ -2369,34 +2433,29 @@ func TuningCurveFixptColorANDCRGDialog%()
             'Change text on Box O' Donuts/CRG dialog box, if we're calling from there.
             docase
             case tunBoxODonutsCurrentCurve% = 1 then
-                tunType1$ := tunTypeFixptColor$;
-                tunUseFile1% := tunFPCUseFile%;
-                tunTuningFile1$ := tunFPCTuningFile$;
-                tunCurve1Text$ := "Tuning Curve 1 is FIXPT-COLOR";
+                tunType1$ := tunTypePolkaDot$;
+                tunUseFile1% := tunPDUseFile%;
+                tunTuningFile1$ := tunPDTuningFile$;
+                tunCurve1Text$ := "Tuning Curve 1 is POLKA-DOT";
                 DlgValue$(updateCurve1Text%, tunCurve1Text$);
                 tunBoxODonutsCurrentCurve% := 2;  'update current curve 
-                DlgEnable(0,-tundlgFixptColorButton%);  'So we don't pick orientation again
+                DlgEnable(0,-tundlgPolkaDotButton%);  'So we don't pick polka dots again
             case tunBoxODonutsCurrentCurve% = 2 then
-                tunType2$ := tunTypeFixptColor$;
-                tunUseFile2% := tunFPCUseFile%;
-                tunTuningFile2$ := tunFPCTuningFile$;
-                tunCurve2Text$ := "Tuning Curve 2 is FIXPT-COLOR";
+                tunType2$ := tunTypePolkaDot$;
+                tunUseFile2% := tunPDUseFile%;
+                tunTuningFile2$ := tunPDTuningFile$;
+                tunCurve2Text$ := "Tuning Curve 2 is POLKA-DOT";
                 DlgValue$(updateCurve2Text%, tunCurve2Text$);
                 tunBoxODonutsCurrentCurve% := 3;  'update current curve 
-                DlgEnable(0,-tundlgFixptColorButton%);  'So we don't pick orientation again
+                DlgEnable(0,-tundlgPolkaDotButton%);  'So we don't pick polka dots again
                 TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
             endcase;
             
+            iReturn% := 1;
             
-            if tunContext$ = tunContextDAQ$ then
-                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-                iReturn% := 1;
-            else
-                iReturn% := 1;
-            endif;
         endif;
         if i% = 0 then
-            PrintLog("TuningCurveFixptColorDialog - user hit Cancel\n");
+            PrintLog("TuningCurvePolkaDotDialog - user hit Cancel\n");
             tunType$ := tunTypeNone$;
             if tunContext$ = tunContextDAQ$ then
                 iReturn% := 1;
@@ -2404,8 +2463,102 @@ func TuningCurveFixptColorANDCRGDialog%()
                 iReturn% := 2;
             endif;
         endif;
-        PrintLog("Return value is %d\n", iReturn%);
-        return iReturn%;
+        'PrintLog("Return value is %d\n", iReturn%);
+        return iReturn%;  
+        
+        
+        
+        
+        ''''This is the old "FixptColor" dialog, now inactive
+'        var GunLabels$[4];
+'        GunLabels$[0] := "R";
+'        GunLabels$[1] := "G";
+'        GunLabels$[2] := "B";
+'        GunLabels$[3] := "Luminance";
+'        
+'        GetTuningCurveFixptColorParameters();
+'        DlgCreate("Run Fixpt Color Tuning Curve");
+'        DlgInteger(1, "Number of Steps", 1, 100);
+'        'DlgInteger(2, "Number of Repeats", 1, 10);
+'        DlgInteger(3, "Red Gun Value (0-255)",0,255);
+'        DlgInteger(4, "Green Gun Value (0-255)",0,255);
+'        DlgInteger(5, "Blue Gun Value (0-255)",0,255);
+'        DlgList(6,"Color to Vary",GunLabels$,4);
+'        DlgReal(7, "Min Value (0-255)", 0, 255);
+'        DlgReal(8, "Max Value (0-255)", 0, 255);
+'        'DlgCheck(9, "Random Progression");
+'        DlgCheck(10, "Use File For Tuning Values");
+'        DlgString(11,40,255,"",3);  'for visual confirmation of selected seq file
+'        DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 12);
+'        if tunBoxODonutsCurrentCurve% = 0 then
+'            DlgInteger(2, "Number of Repeats", 1, 3000);
+'            DlgCheck(9, "Random Progression");
+'        else
+'            DlgInteger(2, "----------------", 1, 1);
+'            DlgCheck(9, "----------------");
+'        endif;
+'        DlgAllow(0xffff, 0, TuningCurveFixptColorDialogChanged%);
+'        
+'        i% := DlgShow(tunFPCNSteps%, tunFPCNRepeats%, tunFPCRedValue%, tunFPCGreenValue%, tunFPCBlueValue%, tunFPCGunIndex%, 
+'        tunFPCMinValue, tunFPCMaxValue, tunFPCProgression%, tunFPCUseFile%, tunFPCTuningFile$);
+'        
+'        ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+'        ' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
+'        if i% = 1 then
+'            SaveTuningCurveFixptColorParameters();
+'            PrintLog("TuningCurveFixptColorDialog - user hit OK\n");
+'            tunType$ := tunTypeFixptColor$;
+'            tunUseFile% := tunFPCUseFile%;
+'            tunTuningFile$ := tunFPCTuningFile$;
+'            
+'            
+'            'This is just for testing the output of the new StringifyColorProgression$ (and inherently 
+'            'GetFixptColorThisTrial$) and they work FAAAAAAABULOUSLY
+'            'tunNRepeats% := tunFPCNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
+'            'tunNAdvances% := tunFPCNSteps%;
+'            'GetRepeatedParameterProgression%(tunFPCNSteps%+1, tunNRepeats%, tunValues[], tunValuesIndices%[], tunFPCMinValue, tunFPCMaxValue, 0, tunFPCProgression%);
+'            'tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
+'            'tunValuesStringified$ := StringifyColorProgression$(tunNValues%, tunValues, tunValuesIndices%);
+'            'printlog("Tuning String is %s\n",tunValuesStringified$);
+'            
+'            
+'            
+'            
+'            'Change text on Box O' Donuts/CRG dialog box, if we're calling from there.
+'            docase
+'            case tunBoxODonutsCurrentCurve% = 1 then
+'                tunType1$ := tunTypeFixptColor$;
+'                tunUseFile1% := tunFPCUseFile%;
+'                tunTuningFile1$ := tunFPCTuningFile$;
+'                tunCurve1Text$ := "Tuning Curve 1 is FIXPT-COLOR";
+'                DlgValue$(updateCurve1Text%, tunCurve1Text$);
+'                tunBoxODonutsCurrentCurve% := 2;  'update current curve 
+'                DlgEnable(0,-tundlgFixptColorButton%);  'So we don't pick fixpt color again
+'            case tunBoxODonutsCurrentCurve% = 2 then
+'                tunType2$ := tunTypeFixptColor$;
+'                tunUseFile2% := tunFPCUseFile%;
+'                tunTuningFile2$ := tunFPCTuningFile$;
+'                tunCurve2Text$ := "Tuning Curve 2 is FIXPT-COLOR";
+'                DlgValue$(updateCurve2Text%, tunCurve2Text$);
+'                tunBoxODonutsCurrentCurve% := 3;  'update current curve 
+'                DlgEnable(0,-tundlgFixptColorButton%);  'So we don't pick fixpt color again
+'                TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
+'            endcase;
+'
+'            iReturn% := 1;
+'            
+'        endif;
+'        if i% = 0 then
+'            PrintLog("TuningCurveFixptColorDialog - user hit Cancel\n");
+'            tunType$ := tunTypeNone$;
+'            if tunContext$ = tunContextDAQ$ then
+'                iReturn% := 1;
+'            else
+'                iReturn% := 2;
+'            endif;
+'        endif;
+'        PrintLog("Return value is %d\n", iReturn%);
+'        return iReturn%;
 
         
     else
@@ -2468,27 +2621,14 @@ func TuningCurveFixptColorANDCRGDialog%()
         i% := DlgShow(tunCRGNRepeats%,tunCRGFramesPerFlip%,tunCRGProgression%,tunCRGSeqFile$,tunCRGOnSlave%);
         
         ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
-        ' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-        ' 
-        ' djs 2/4/2011
-        ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-        ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-        ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-        ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-        ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-        ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-        ' before things proceed. 
-        
+        ' When user hits OK we always save the parameters, and when user hits Cancel we don't.        
         tunCRGCurrentCurve% := 0;  'reset this, we don't need it once this dialog box is closed and it messes up stuff if we want to pick a different tuning curve    
         if i% = 1 then
             SaveTuningCurveCRGParameters();
             tunType$ := tunTypeCRG$;
-            if tunContext$ = tunContextDAQ$ then
-                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-                iReturn% := 1;
-            else
-                iReturn% := 1;
-            endif;
+
+            iReturn% := 1;
+            
         endif;
         if i% = 0 then
             tunType$ := tunTypeNone$;
@@ -2622,25 +2762,13 @@ func TuningCurveDanishDialog%()
 
 
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
-	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-    ' 
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
+	' When user hits OK we always save the parameters, and when user hits Cancel we don't. 
 	if i% = 1 then
 		SaveTuningCurveDanishParameters();
 		tunType$ := tunTypeDanish$;
-		if tunContext$ = tunContextDAQ$ then
-            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-            iReturn% := 1;
-		else
-			iReturn% := 1;
-		endif;
+
+        iReturn% := 1;
+        
 	endif;
 	if i% = 0 then
 		tunType$ := tunTypeNone$;
@@ -2711,25 +2839,13 @@ func TuningCurveDSSDialog%()
     endif;
     
 	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
-	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-    ' 
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
+	' When user hits OK we always save the parameters, and when user hits Cancel we don't. 
 	if i% = 1 then
 		SaveTuningCurveDSSParameters();
 		tunType$ := tunTypeDSS$;
-		if tunContext$ = tunContextDAQ$ then
-            ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-            iReturn% := 1;
-		else
-			iReturn% := 1;
-		endif;
+
+        iReturn% := 1;
+        
 	endif;
 	if i% = 0 then
 		tunType$ := tunTypeNone$;
@@ -2767,16 +2883,7 @@ func TuningCurveNullTestANDLagDialog%()
         
         i% := DlgShow(tunNullTestNSteps%, tunNullTestNRepeats%, tunNullTestMinPhase, tunNullTestMaxPhase,  tunNullTestProgression%, tunNullTestUseFile%, tunNullTestTuningFile$);
         ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
-        ' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-        ' 
-        ' djs 2/4/2011
-        ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-        ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-        ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-        ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-        ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-        ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-        ' before things proceed. 
+        ' When user hits OK we always save the parameters, and when user hits Cancel we don't. 
         'tunMaximalDiam := tunAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
         if i% = 1 then
             SaveTuningCurveNullTestParameters();
@@ -2821,12 +2928,8 @@ func TuningCurveNullTestANDLagDialog%()
             'TuningCurveScriptDialogAllowOK% := 1;  'Prepare to enable OK button
             'TuningCurveScriptDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
             
-            if tunContext$ = tunContextDAQ$ then
-                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-                iReturn% := 1;
-            else
-                iReturn% := 1;
-            endif;
+            iReturn% := 1;
+            
         endif;
         if i% = 0 then
             '		PrintLog("TuningCurveNullTestDialog - user hit Cancel\n");
@@ -2873,15 +2976,7 @@ func TuningCurveNullTestANDLagDialog%()
         i% := DlgShow(tunLagNSteps%, tunLagNRepeats%, tunLagMinLagFrames%, tunLagMaxLagFrames%, tunLagProgression%, tunLagUseFile%, tunLagTuningFile$, tunLagFrames1$, tunLagFrames2$,tunLagMasterIsLagged%);
         ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
         ' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
-        ' djs 2/4/2011
-        ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-        ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-        ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-        ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-        ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-        ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-        ' before things proceed. 
-        
+
         'First things first, check the lag to make sure it will work
         if i% = 1 then
             tunLagMinLagFrames := tunLagMinLagFrames%;  'prepare for non-integer math
@@ -2931,14 +3026,9 @@ func TuningCurveNullTestANDLagDialog%()
                 DlgValue$(updateCurve1Text%, tunCurve1Text$);
                 TuningCurveCRGDialogChanged%(-1);  'Enables "OK" button, -1 is sham input
             endcase;
+
+            iReturn% := 1;
             
-            
-            if tunContext$ = tunContextDAQ$ then
-                ' djs 2/4/2011 We return 1 - that's the workaround			iReturn% := 0;
-                iReturn% := 1;
-            else
-                iReturn% := 1;
-            endif;
         endif;
         if i% = 0 then
             '		PrintLog("TuningCurveLagDialog - user hit Cancel\n");
@@ -3794,7 +3884,8 @@ func TuningCurveScriptDialog%()
     DlgButton(tundlgBerlinerButton%, "    Berliners!    ", TuningCurveBerlinerDialog%, 18, 23);
     DlgButton(tundlgBoxODonutsButton%, " Box O' Donuts ", TuningCurveBoxODonutsDialog%, 36, 23);
     DlgButton(tundlgDotsButton%, "     Dots!     ", TuningCurveDotsDialog%, 2, 24);
-    DlgButton(tundlgCRGButton%,"      CRaGs      ",TuningCurveFixptColorANDCRGDialog%, 18, 24);
+    'DlgButton(tundlgCRGButton%,"      CRaGs      ",TuningCurveFixptColorANDCRGDialog%, 18, 24);
+    DlgButton(tundlgCRGButton%,"      CRaGs      ",TuningCurvePolkaDotANDCRGDialog%, 18, 24);
     DlgButton(tundlgDisparityAndBakersDozenButton%, "      Disparity      ", TuningCurveDisparityAndBakersDozenDialog%, 36, 24);
     DlgButton(tundlgDanishButton%, "  Danishes!  ", TuningCurveDanishDialog%, 2, 25);
     DlgButton(tundlgDSSButton%,"        DSS        ",TuningCurveDSSDialog%, 18, 25);
@@ -3831,6 +3922,25 @@ func TuningCurveScriptDialog%()
     ' In addition, the return value from this function needs to change because we now assume that the user will have
     ' to hit OK on this dialog to start the experiment. Thus, make sure that the return value from this function is 1
     ' when user hits OK and 0 when user hits Cancel. Also, do not save script parameters when user hits Cancel.
+    ' djs 2/4/2011
+    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
+    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
+    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
+    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
+    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
+    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
+    ' before things proceed. 
+    ' A note on this "workaround" by jj, 10/13/21:
+    ' The short explanation of the above is: over a decade ago, when "OK" was selected from a tuning curve
+    ' subdialog (e.g. the Contrast Tuning dialog), the subdialog would close, the main dialog would ALSO
+    ' close, and the experiment would start immediately.  This caused issues when dialogs were called in
+    ' particular contexts, so this was changed such that closing a subdialog did not close the main dialog
+    ' nor does it start the experiment.  In the end, the current design is probably preferable, because it
+    ' allows for more flexible coding of subdialogs and does not require the user to complete dialog sections
+    ' in a strict order.  This "workaround" has been in place for over 10 years.  At this point, it's not
+    ' exactly a "workaround" anymore, it's standard code.  All futile IF/ELSE statements that assigned
+    ' an iReturn% of 1 in either case have been removed and replaced with a simple assignment.
+    ' The above note is retained here, but is now removed from all dialog box code.
     
     'PrintLog("Tuning Curve Parameters Dialog - return from DlgShow is %d\n", i%);
     '	if i%=tundlgOrientationButton% or i%=tundlgContrastButton% or i%=tundlgSpatialButton% or i%=tundlgTemporalButton% or i%=tundlgAreaButton% then
@@ -3945,7 +4055,7 @@ func TuningCurveScriptDialogChanged%(item%)
         DlgValue$(-tundlgNullTestANDLagButton%, "      Null Test     ");
         DlgValue$(-tundlgDonutANDGonzagoButton%, "      Gonzagos!     ");
         DlgValue$(-tundlgDisparityAndBakersDozenButton%, "   Baker's Dozen   ");
-        DlgValue$(-tundlgCRGButton%, "Fixpt Color");
+        DlgValue$(-tundlgCRGButton%, "Polka Dots");
         tunUseLagDialog% := 0;
         tunUseDonutDialog% := 0;
         tunUseDisparityDialog% := 0;
@@ -4057,15 +4167,6 @@ func TunOptoDialog%()
     i% := DlgShow(tunOptoVoltageOut,tunOptoStartState%,tunInterBlockTime,tunOptoUsePulse%,tunLaserDiode%,tunPreStimOptoTime,tunPostStimOptoTime,tunOptoStaysOn%,tunOptoNPulses%,tunPulsedOptoOnset,tunPulsedOptoWidth,tunPulsedOptoIPI);
     ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-    ' 
-    ' djs 2/4/2011
-    ' Spike2 bug workaround implemented. The return value from this function (when in DAQ context this
-    ' dialog is called from a DlgButton in another dialog) should make the parent dialog close, as if 
-    ' the OK button were hit. Bug in Spike2 v6 means this doesn't work right - the parent dialog will 
-    ' close but its variables are not updated prior to doing so.... so any changes to the parent dialog
-    ' are not seen in the subsequent expt, they're not saved in the registry, etc. Workaround is to return
-    ' something > 0 here. The parent dialog will continue to display, and the user has to hit OK on that 
-    ' before things proceed. 
     'tunMaximalDiam := tunAreaMaxDiam;  This won't do anything unless FIXSTIM is updated to allow crosshairs
 	if i% = 1 then
 		SaveTunOptoParameters();
@@ -4274,42 +4375,131 @@ func TuningCurveGenericDialogChanged%(item%)
     return 1;
 end
 
+'Disabled in favor of PolkaDots, which can do this
+'func TuningCurveFixptColorDialogChanged%(item%)
+'    if DlgValue(10) = 0 then  'If we are not using a tuning file
+'        DlgEnable(0,11);  'disable the string box with the text file name (button still works)
+'        DlgEnable(1,1);  'enable nSteps, gun select, min, and max
+'        DlgEnable(1,6); 
+'        DlgEnable(1,7);
+'        DlgEnable(1,8);
+'    endif;
+'    if DlgValue(10) = 1 then
+'        DlgEnable(1,11);  'enable the string box with the text file name
+'        DlgEnable(0,1);  'disable nSteps, gun select, min, and max
+'        DlgEnable(0,6);
+'        DlgEnable(0,7);
+'        DlgEnable(0,8);
+'    endif;
+'    docase
+'    case DlgValue(6) = 0 then  'If we are tuning the red gun
+'        DlgEnable(0,3);  'disable red gun
+'        DlgEnable(1,4);  'enable green gun
+'        DlgEnable(1,5);  'enable blue gun
+'    case DlgValue(6) = 1 then  'If we are tuning the green gun
+'        DlgEnable(1,3);  'enable red gun
+'        DlgEnable(0,4);  'disable green gun
+'        DlgEnable(1,5);  'enable blue gun
+'    case DlgValue(6) = 2 then  'If we are tuning the blue gun
+'        DlgEnable(1,3);  'enable red gun
+'        DlgEnable(1,4);  'enable green gun
+'        DlgEnable(0,5);  'disable blue gun
+'    case DlgValue(6) = 3 then  'If we are tuning luminance, it will be gray
+'        DlgEnable(0,3);  'disable red gun
+'        DlgEnable(0,4);  'disable green gun
+'        DlgEnable(0,5);  'disable blue gun
+'    endcase
+'    return 1;
+'end
 
-func TuningCurveFixptColorDialogChanged%(item%)
-    if DlgValue(10) = 0 then  'If we are not using a tuning file
-        DlgEnable(0,11);  'disable the string box with the text file name (button still works)
-        DlgEnable(1,1);  'enable nSteps, gun select, min, and max
-        DlgEnable(1,6); 
-        DlgEnable(1,7);
-        DlgEnable(1,8);
+
+
+func TuningCurvePolkaDotDialogChanged%(item%)
+    
+    'First, check if we are using a tuing file, if so, disable everything, otherwise enable everything
+    if DlgValue(4) = 0 then  'If we are not using a tuning file
+        DlgEnable(0,5);  'disable the string box with the text file name (button still works)
+        DlgEnable(1,6);  'enable nSteps, gun select, min, and max, guns will be enabled as desired below  
+        DlgEnable(1,10); 
+        DlgEnable(1,11);
+        DlgEnable(1,12);
+        DlgEnable(1,13); 'enable XY position entries 
+        DlgEnable(1,14);
+        DlgEnable(1,15);
+        DlgEnable(1,16);
+        DlgEnable(1,17);
+        DlgEnable(1,18);
     endif;
-    if DlgValue(10) = 1 then
-        DlgEnable(1,11);  'enable the string box with the text file name
-        DlgEnable(0,1);  'disable nSteps, gun select, min, and max
-        DlgEnable(0,6);
-        DlgEnable(0,7);
-        DlgEnable(0,8);
+    if DlgValue(4) = 1 then
+        DlgEnable(1,5);  'enable the string box with the text file name
+        DlgEnable(0,6);  'disable nSteps, guns, gun select, min, and max
+        DlgEnable(0,7);  
+        DlgEnable(0,8);  
+        DlgEnable(0,9); 
+        DlgEnable(0,10);
+        DlgEnable(0,11);
+        DlgEnable(0,12);
+        DlgEnable(0,13); 'disable XY position entries 
+        DlgEnable(0,14);
+        DlgEnable(0,15);
+        DlgEnable(0,16);
+        DlgEnable(0,17);
+        DlgEnable(0,18);
     endif;
+    
+    'Second, determine which gun entries to enable (gun select, min/max are enabled above when DlgValue(3) = 0 and need not be enabled here)
     docase
-    case DlgValue(6) = 0 then  'If we are tuning the red gun
-        DlgEnable(0,3);  'disable red gun
-        DlgEnable(1,4);  'enable green gun
-        DlgEnable(1,5);  'enable blue gun
-    case DlgValue(6) = 1 then  'If we are tuning the green gun
-        DlgEnable(1,3);  'enable red gun
-        DlgEnable(0,4);  'disable green gun
-        DlgEnable(1,5);  'enable blue gun
-    case DlgValue(6) = 2 then  'If we are tuning the blue gun
-        DlgEnable(1,3);  'enable red gun
-        DlgEnable(1,4);  'enable green gun
-        DlgEnable(0,5);  'disable blue gun
-    case DlgValue(6) = 3 then  'If we are tuning luminance, it will be gray
-        DlgEnable(0,3);  'disable red gun
-        DlgEnable(0,4);  'disable green gun
-        DlgEnable(0,5);  'disable blue gun
+    case DlgValue(6) = 0 and DlgValue(4) = 0 and DlgValue(10) = 3 then  'If we are not tuning, and selected luminance, enable min to select luminance, disable all three guns and gun select, max
+        DlgEnable(0,7);  'enable red gun
+        DlgEnable(0,8);  'enable green gun
+        DlgEnable(0,9);  'enable blue gun
+        DlgEnable(0,10);
+        DlgEnable(1,11);
+        DlgEnable(0,12);
+    case DlgValue(6) = 0 and DlgValue(4) = 0 then  'If we are not tuning, enable all three guns and disable gun select, max, min
+        DlgEnable(1,7);  'enable red gun
+        DlgEnable(1,8);  'enable green gun
+        DlgEnable(1,9);  'enable blue gun
+        DlgEnable(0,10);
+        DlgEnable(0,11);
+        DlgEnable(0,12);
+    case DlgValue(10) = 0 and DlgValue(4) = 0 then  'If we are tuning the red gun (and not using a tuning file)
+        DlgEnable(0,7);  'disable red gun
+        DlgEnable(1,8);  'enable green gun
+        DlgEnable(1,9);  'enable blue gun
+    case DlgValue(10) = 1 and DlgValue(4) = 0 then  'If we are tuning the green gun
+        DlgEnable(1,7);  'enable red gun
+        DlgEnable(0,8);  'disable green gun
+        DlgEnable(1,9);  'enable blue gun
+    case DlgValue(10) = 2 and DlgValue(4) = 0 then  'If we are tuning the blue gun
+        DlgEnable(1,7);  'enable red gun
+        DlgEnable(1,8);  'enable green gun
+        DlgEnable(0,9);  'disable blue gun
+    case DlgValue(10) = 3 and DlgValue(4) = 0 then  'If we are tuning luminance, it will be gray
+        DlgEnable(0,7);  'disable red gun
+        DlgEnable(0,8);  'disable green gun
+        DlgEnable(0,9);  'disable blue gun
     endcase
+    
+    'Third, determine if X/Y positions are not being varied, and disable MAX entry if so
+    docase
+    case DlgValue(13) = 0 and DlgValue(4) = 0 then
+        DlgEnable(0,15);  'disable Max X
+    case DlgValue(4) = 0 then
+        DlgEnable(1,15);  'enable Max X
+    endcase
+    docase
+    case DlgValue(16) = 0 and DlgValue(4) = 0 then
+        DlgEnable(0,18);  'disable Max Y
+    case DlgValue(4) = 0 then
+        DlgEnable(1,18);  'enable Max Y
+    endcase
+    
+    
     return 1;
 end
+
+
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
