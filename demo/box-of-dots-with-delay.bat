@@ -1,0 +1,2 @@
+rem extra dot blue, green, yellow. Delay 20, 40, 60 frames. Also contrast&ori
+%~dp0\..\bin\remote.exe 127.0.0.1 7000 fixstim -f 0,0,1.0,red -b gray -d 813 -a -f 0,0,1,red -s -5,5,4,4,100,0.2,.25,0,0,b,s,e -C 50,75,100 -O 45,135,225 -D 0,0,.5,blue;1,0,.5,green;-1,0,.5,(255/255/0) -E 20,40,60
