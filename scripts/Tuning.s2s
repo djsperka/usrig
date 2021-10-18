@@ -626,7 +626,7 @@ func IdleProcessing%()
         docase
         case TunType$ = tunTypeFixptColor$ then
             SampleText("T," + GetFixptColorThisTrial$(nTrialsCompleted%,tunValues[],tunValuesIndices%[]));
-        case TunType$ =  tunTypePolkaDot$ then
+        case TunType$ = tunTypePolkaDot$ then
             SampleText("T," + tunPDDotSpecsPerTrial$[nTrialsCompleted%]);
         case TunType$ = tunTypeBoxODonuts$ and TunType1$ = tunTypeFixptColor$ then
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval even though we only use yval
@@ -1365,7 +1365,8 @@ proc InitializeWindows()
 	View(DataWindow%).WindowVisible(1);
     
     'Inelegant hack - can't really do tuning histograms for DSS (no tuning), but don't want to interfere with dialog
-    if tunType$ = tunTypeDSS$ then
+    'Can't really do tuning for Polka Dots either, three parameters varying, and we can't easily refer back to see what they were
+    if tunType$ = tunTypeDSS$ or tunType$ = tunTypePolkaDot$ then
         tunDoTuningHist% := 0;
     endif
     
@@ -1692,6 +1693,10 @@ proc TuningCurveLabels(iport%)
         ChanTitle$(1, "Chan 1");
         XRange(tunFPCMinValue, tunFPCMaxValue);    
         
+    case tunType$ = tunTypePolkaDot$ then
+        
+        'This is going to be too tricky, 
+        '
         
     else
         
@@ -2945,7 +2950,9 @@ proc WriteParameterFile()
     case tunType$ = tunTypePolkaDot$ then
         
         Print("Type:                  : Polka Dot\n");
-        Print("#Repeats: ,%d\n", tunPDNRepeats%);
+        Print("#Repeats: %d\n", tunPDNRepeats%);
+        Print("Diameter: %f\n", tunPDDiameter);
+        Print("Show Grating: %d\n", tunPDShowGrating%);  'This will not apply to Box'o'Donuts, on that assume you're tuning a grating!
         if tunPDNXSteps% = 0 then
             Print("No X position tuning, X position: %f\n",tunPDMinXPos);
         else
@@ -3090,6 +3097,7 @@ proc WriteParameterFile()
             
 			Print("Type:                  : Polka Dot\n");
             Print("#Repeats: ,%d\n", tunPDNRepeats%);
+            Print("Diameter: %f\n", tunPDDiameter);
             if tunPDNXSteps% = 0 then
                 Print("No X position tuning, X position: %f\n",tunPDMinXPos);
             else
@@ -3194,6 +3202,7 @@ proc WriteParameterFile()
             
 			Print("Type:                  : Polka Dot\n");
             Print("#Repeats: ,%d\n", tunPDNRepeats%);
+            Print("Diameter: %f\n", tunPDDiameter);
             if tunPDNXSteps% = 0 then
                 Print("No X position tuning, X position: %f\n",tunPDMinXPos);
             else
@@ -3883,6 +3892,11 @@ func Start%()
         
     case tunType$ = tunTypePolkaDot$ then
         tunCurveMArg$ := " -D ";
+        if tunPDShowGrating% = 0 then  'typically I suspect we will want to clear the grating, but it can be shown
+            MGrat$ := "";  
+            MGratParam$ := "";
+        endif;
+        
         'tunDoRivalry cannot be 1 in this case because dualstim does not have this function    
         
     case tunType$ = tunTypeLag$ then

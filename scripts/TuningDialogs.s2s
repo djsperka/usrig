@@ -330,6 +330,7 @@ var tunPDNRepeats%;
 var tunPDProgression%;  'For now, do not consider randomizing position without also randomizing color, or vice versa
 var tunPDUseFile%;
 var tunPDTuningFile$;
+var tunPDShowGrating%;  'I don't know if we will want to do this, but maybe?
 
 
 
@@ -1022,6 +1023,7 @@ proc GetTuningCurvePolkaDotParameters()
     tunPDUseFile% := GetIntRegistryValue%(key$, "UseFile", tunPDUseFile%);
     tunPDTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunPDTuningFile$);
     tunPDDiameter := GetFloatRegistryValue(key$, "Diameter", tunPDDiameter);
+    tunPDShowGrating% := GetIntRegistryValue%(key$, "ShowGrating", tunPDShowGrating%);
 end;
 
 proc SaveTuningCurvePolkaDotParameters()
@@ -1045,6 +1047,7 @@ proc SaveTuningCurvePolkaDotParameters()
     SetIntRegistryValue(key$, "UseFile", tunPDUseFile%);
     SetStringRegistryValue(key$, "TuningFile", tunPDTuningFile$);
     SetFloatRegistryValue(key$, "Diameter", tunPDDiameter);
+    SetIntRegistryValue(key$, "ShowGrating", tunPDShowGrating%);
 end;
 
 
@@ -2258,43 +2261,44 @@ func TuningCurvePolkaDotANDCRGDialog%()
         
         GetTuningCurvePolkaDotParameters();
         DlgCreate("Run Polka Dot Tuning Curve");
-        DlgGroup("Common Parameters", 1, 1, 52, 7);
+        DlgGroup("Common Parameters", 1, 1, 52, 8);
         'DlgInteger(1, "Number of Total Repeats", 1, 10, 2, 2);  'these options will not be used in Box'o'Donuts
-        'DlgCheck(2, "Random Progression",2,3);
+        'DlgCheck(3, "Random Progression",2,5);
         if tunBoxODonutsCurrentCurve% = 0 then
             DlgInteger(1, "Number of Total Repeats", 1, 10, 36, 2);
-            DlgCheck(2, "Random Progression",2,3);
+            DlgCheck(3, "Random Progression",2,5);
         else
             DlgInteger(1, "----------------", 1, 1, 36, 2);
-            DlgCheck(2, "----------------", 2, 3);
+            DlgCheck(3, "----------------", 2, 5);
         endif;
-        DlgReal(3, "Polka Dot Diameter (degrees)", 0.01, 30, 36, 4);
-        DlgCheck(4, "Use File For Tuning Values",2,5);
-        DlgString(5,40,255,"",3,6);  'for visual confirmation of selected seq file
-        DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 7);
+        DlgReal(2, "Polka Dot Diameter (degrees)", 0.01, 30, 36, 3);
+        DlgCheck(19, "Show Main Grating",2,4);
+        DlgCheck(4, "Use File For Tuning Values",2,6);
+        DlgString(5,40,255,"",3,7);  'for visual confirmation of selected seq file
+        DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 8);
         
-        DlgGroup("Color Parameters", 1, 8, 52, 8);
-        DlgInteger(6, "Number of Steps (0 = no color change)", 0, 100, 36, 9);
-        DlgInteger(7, "Red Gun Value (0-255)",0,255, 36, 10);
-        DlgInteger(8, "Green Gun Value (0-255)",0,255, 36, 11);
-        DlgInteger(9, "Blue Gun Value (0-255)",0,255, 36, 12);
-        DlgList(10,"Color to Vary",GunLabels$,4, 30, 13);
-        DlgReal(11, "Min Value (0-255)", 0, 255, 36, 14);
-        DlgReal(12, "Max Value (0-255)", 0, 255, 36, 15);
+        DlgGroup("Color Parameters", 1, 9, 52, 8);
+        DlgInteger(6, "Number of Steps (0 = no color change)", 0, 100, 36, 10);
+        DlgInteger(7, "Red Gun Value (0-255)",0,255, 36, 11);
+        DlgInteger(8, "Green Gun Value (0-255)",0,255, 36, 12);
+        DlgInteger(9, "Blue Gun Value (0-255)",0,255, 36, 13);
+        DlgList(10,"Color to Vary",GunLabels$,4, 30, 14);
+        DlgReal(11, "Min Value (0-255)", 0, 255, 36, 15);
+        DlgReal(12, "Max Value (0-255)", 0, 255, 36, 16);
         
-        DlgGroup("XY Position Parameters", 1, 16, 52, 7);
-        DlgInteger(13, "Number of X Steps (0 = no X step)", 0, 100, 36, 17);
-        DlgReal(14, "Min X Position", -14, 14, 36, 18);
-        DlgReal(15, "Max X Position", -14, 14, 36, 19);
-        DlgInteger(16, "Number of Y Steps (0 = no Y step)", 0, 100, 36, 20);
-        DlgReal(17, "Min Y Position", -14, 14, 36, 21);
-        DlgReal(18, "Max Y Position", -14, 14, 36, 22);
+        DlgGroup("XY Position Parameters", 1, 17, 52, 7);
+        DlgInteger(13, "Number of X Steps (0 = no X step)", 0, 100, 36, 18);
+        DlgReal(14, "Min X Position", -14, 14, 36, 19);
+        DlgReal(15, "Max X Position", -14, 14, 36, 20);
+        DlgInteger(16, "Number of Y Steps (0 = no Y step)", 0, 100, 36, 21);
+        DlgReal(17, "Min Y Position", -14, 14, 36, 22);
+        DlgReal(18, "Max Y Position", -14, 14, 36, 23);
         
         DlgAllow(0xffff, 0, TuningCurvePolkaDotDialogChanged%);
         
-        i% := DlgShow(tunPDNRepeats%, tunPDProgression%, tunPDDiameter, tunPDUseFile%, tunPDTuningFile$, tunPDNColorSteps%,  
+        i% := DlgShow(tunPDNRepeats%, tunPDDiameter, tunPDProgression%, tunPDUseFile%, tunPDTuningFile$, tunPDNColorSteps%,  
         tunPDRedValue%, tunPDGreenValue%, tunPDBlueValue%, tunPDGunIndex%, tunPDMinGunValue, tunPDMaxGunValue, tunPDNXSteps%, 
-        tunPDMinXPos, tunPDMaxXPos, tunPDNYSteps%, tunPDMinYPos, tunPDMaxYPos);
+        tunPDMinXPos, tunPDMaxXPos, tunPDNYSteps%, tunPDMinYPos, tunPDMaxYPos, tunPDShowGrating%);
                
         
         
