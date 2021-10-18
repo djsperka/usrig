@@ -1991,7 +1991,10 @@ proc CreateSampleConfiguration()
         
         'We run this even if we are not scrambling, because we are filling tunPDDotSpecsPerTrial$[]
         tunvaluesStringified$ := ShufflePDTuningString$(tunNValues%,tunValuesIndices%[],tunvaluesStringified$,tunPDDotSpecsPerTrial$[]);
-        
+    
+        'Update tunNAdvances%, used in idle loop
+        tunNAdvances% := (tunXYNValues%*(tunPDNColorSteps%+1))-1; 
+    
         'printlog("Randomized string is %s\n",tunValuesStringified$);
         'printlog("Order is %d\n",tunValuesIndices%[0:tunNValues%]);
         'printlog("Individual dot specs are %s\n",tunPDDotSpecsPerTrial$[0:tunNValues%]);
@@ -3896,7 +3899,11 @@ func Start%()
             MGrat$ := "";  
             MGratParam$ := "";
         endif;
-        
+        if tunPDLagFrames% = 0 then
+            MConstantLag$ := "";
+        else
+            MConstantLag$ := " -E " + Str$(tunPDLagFrames%) + " ";
+        endif;
         'tunDoRivalry cannot be 1 in this case because dualstim does not have this function    
         
     case tunType$ = tunTypeLag$ then
@@ -4282,7 +4289,7 @@ func Start%()
     case tunDoRivalry% = 0 then
         cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$; 'prelim stuff
         cmdLine$ := cmdLine$ + RefrLock$ + OffsetFile$ + StimDur$;  'Dual VSG stuff
-        cmdLine$ := cmdLine$ + MasterIndicator$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$;  'Master grating stuff
+        cmdLine$ := cmdLine$ + MasterIndicator$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$ + MConstantLag$;  'Master grating stuff
         cmdLine$ := cmdLine$ + M2Grat$ + M2GratParam$ + TunCurveM2Arg$ + M2Values$;  'Master grating stuff, second grating (only box o' donuts on two gratings)
         cmdLine$ := cmdLine$ + SlaveIndicator$ + SGrat$ + SGratParam$ + TunCurveSArg$ + SValues$;  'Slave grating stuff
         cmdLine$ := cmdLine$ + TunCurveS2Arg$ + S2Values$;  'Second slave parameters (for Box O' Donuts, more possible)
@@ -4389,7 +4396,7 @@ func Start%()
         'print to spec file
         Print("%s",FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$);  'file should be everything starting from FixationArg$ on, prelim stuff
         Print("%s",RefrLock$ + OffsetFile$ + StimDur$);  'Dual VSG stuff
-        Print("%s",MasterIndicator$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$);  'Master grating stuff
+        Print("%s",MasterIndicator$ + DGrat$ + DGratParam$ + MGrat$ + MGratParam$ + TunCurveMArg$ + MValues$ + MConstantLag$);  'Master grating stuff
         Print("%s",M2Grat$ + M2GratParam$ + TunCurveM2Arg$ + M2Values$);  'Master grating stuff, second grating (only box o' donuts on two gratings)
         Print("%s",SlaveIndicator$ + SGrat$ + SGratParam$ + TunCurveSArg$ + SValues$);  'Slave grating stuff
         Print("%s",TunCurveS2Arg$ + S2Values$);  'Second slave parameters (for Box O' Donuts, more possible)
