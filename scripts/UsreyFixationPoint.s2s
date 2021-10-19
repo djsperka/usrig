@@ -12,10 +12,11 @@
 
 var WindowRadius;
 var FixationX, FixationY;
+var FixationR%, FixationG%, FixationB%;
 var FixationColor$;
 var iFixationColor%;
 var FixationDiameter;
-var FixationColorList$[3]; 
+var FixationColorList$[4]; 
 var FixationArg$;
 
 
@@ -48,17 +49,30 @@ proc GetFixationPointParameters()
 	FixationY := val(stmp$);
 	Profile(key$, "FixationColor", "0", stmp$);
 	iFixationColor% := val(stmp$);
+    
+    Profile(key$, "FixationR", "0", stmp$);
+	FixationR% := val(stmp$);
+    Profile(key$, "FixationG", "0", stmp$);
+	FixationG% := val(stmp$);
+    Profile(key$, "FixationB", "0", stmp$);
+	FixationB% := val(stmp$);
 
 	FixationColorList$[0]:="red"; 
 	FixationColorList$[1]:="green"; 
 	FixationColorList$[2]:="blue"; 
-	FixationColor$ := FixationColorList$[iFixationColor%];
+    FixationColorList$[3]:="custom";
+    if iFixationColor% < 3 then
+        FixationColor$ := FixationColorList$[iFixationColor%];
+    else
+        FixationColor$ := "(" + Str$(FixationR%) + "," + Str$(FixationG%) + "," + Str$(FixationB%) + ")";
+    endif;
 
 	Profile(key$, "FixationDiameter", "0.5", stmp$);
 	FixationDiameter := val(stmp$);
 
 	' Form the argument for applications. Convenience for passing args. 
 	FixationArg$ := " -f " + str$(FixationX) + "," + str$(FixationY) + "," + str$(FixationDiameter) + "," + FixationColor$;
+    'printlog("Fixation arg is %s\n",FixationArg$);
 end;
 
 proc SaveFixationPointParameters()
@@ -69,6 +83,9 @@ proc SaveFixationPointParameters()
 	Profile(key$, "FixationY", str$(FixationY));
 	Profile(key$, "FixationColor", str$(iFixationColor%));
 	Profile(key$, "FixationDiameter", str$(FixationDiameter));
+    Profile(key$, "FixationR", str$(FixationR%));
+    Profile(key$, "FixationB", str$(FixationB%));
+    Profile(key$, "FixationG", str$(FixationG%));
 end;
 
 
@@ -81,17 +98,40 @@ func FixationPointDialog%()
 	DlgReal(2, "Fixation Y:", -20, 20);
 	DlgReal(3, "Fixation diam:", .1, 5);
 	DlgReal(4, "Window radius:", .1, 30);
-	DlgList(5, "Color:", FixationColorList$[]);
-	i% := DlgShow(FixationX, FixationY, FixationDiameter, WindowRadius, iFixationColor%);	
+	DlgList(5, "Color:", FixationColorList$[],4);
+    DlgInteger(6, "Red Value (0-255):", 0, 255);
+    DlgInteger(7, "Green Value (0-255):", 0, 255);
+    DlgInteger(8, "Blue Value (0-255):", 0, 255);
+    
+    DlgAllow(0xffff, 0, FixationPointDialogChanged%);
+	i% := DlgShow(FixationX, FixationY, FixationDiameter, WindowRadius, iFixationColor%, FixationR%, FixationG%, FixationB%);	
 
 	' If user cancelled, reload params
 	if i% = 0 then
 		GetFixationPointParameters();
 	else
 		SaveFixationPointParameters();
+        GetFixationPointParameters();  'Get parameters again, fills FixationArg$
 	endif
 
 	return 1;
+end;
+
+
+func FixationPointDialogChanged%(item%)
+    
+    if DlgValue(5) = 3 then  'If we are doing a custom fixation point color
+        DlgEnable(1,6);
+        DlgEnable(1,7);
+        DlgEnable(1,8);
+    else
+        DlgEnable(0,6);
+        DlgEnable(0,7);
+        DlgEnable(0,8);
+    endif;
+    
+    return 1;
+    
 end;
 
 
