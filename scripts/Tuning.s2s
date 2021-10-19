@@ -1695,8 +1695,7 @@ proc TuningCurveLabels(iport%)
         
     case tunType$ = tunTypePolkaDot$ then
         
-        'This is going to be too tricky, 
-        '
+        'This is going to be too tricky, going to skip it, Henry seems OK with this decision, for now
         
     else
         
@@ -1959,9 +1958,9 @@ proc CreateSampleConfiguration()
             GetRepeatedParameterProgression%(tunPDNColorSteps%+1, 1, tunValues[], tunValuesIndices%[], tunPDMinGunValue, tunPDMaxGunValue, 0, tunPDProgression%);
         endcase  
         tunNAdvances% := tunPDNColorSteps%;            
-        tunNValues% := (tunNAdvances%+1)*1;  
+        tunNColorValues% := (tunNAdvances%+1)*1;  
         
-        tunValuesStringified$ := StringifyPolkaDotProgression$(tunNValues%, tunValues[], tunValuesIndices%[]);
+        tunValuesStringified$ := StringifyPolkaDotProgression$(tunNColorValues%, tunValues[], tunValuesIndices%[]);
         'printlog("Color String is %s\n",tunValuesStringified$);
         
         
@@ -1970,7 +1969,7 @@ proc CreateSampleConfiguration()
         tunValuesStringified$ := InterleavePDStrings$(tun1ValuesStringified$,tun2ValuesStringified$,Str$(tunPDDiameter),tunValuesStringified$,tunNRepeats%);
         'printlog("Polka Dot string is %s\n",tunValuesStringified$);
         
-        tunNValues% := tunXYNValues%*tunNValues%*tunNRepeats%;
+        tunNValues% := tunXYNValues%*tunNColorValues%*tunNRepeats%;
         'printlog("Total number of values is %d\n",tunNValues%);
             
         'Randomization of the above would be very complicated.  The easiest thing to do here will be to write a function
@@ -1978,14 +1977,24 @@ proc CreateSampleConfiguration()
         'Easy enough.  But, since we also need to tag each trial with the dot specs, rather than break down the VSG string
         'every trial, we should just break it down once at the beginning and store the result.
         
+        var jj%, kk%, mm%;
         if tunPDProgression% = 1 then
-            'Fill tunValuesIndices with shuffled value
-            Shuffle%(tunNValues%,tunValuesIndices%[]);
+            'Fill tunValuesIndices with shuffled values, but *shuffle by block*
+            GetRepeatedParameterProgression%(tunNColorValues%*tunXYNValues%,tunNRepeats%,tunValues[],tunValuesIndices%[],0,1,0,1);  'tunValues will be unused
+            'tunValuesIndices%[] has repeated indices in each block, add block N to each block to hold the correct "blocked" indices
+            for jj% := 0 to tunNRepeats%-1 do
+                for kk% := 0 to (tunNColorValues%*tunXYNValues%)-1 do
+                    tunValuesIndices%[mm%] += jj%*tunNColorValues%*tunXYNValues%;
+                    mm% += 1;
+                next
+            next
+            'printlog("Number of pre-repeat values is %d\n",tunNColorValues%*tunXYNValues%);
+            'printlog("tunValuesIndices is %d\n",tunValuesIndices%[0:tunNValues%]);
+            'printlog("tunValues is %f\n",tunValues[0:tunNValues%]);
         else
             'Fill tunValuesIndices with unshuffled index
-            var jjj%;
-            for jjj% := 0 to tunNvalues%-1 do
-                tunValuesIndices%[jjj%] := jjj%;
+            for jj% := 0 to tunNvalues%-1 do
+                tunValuesIndices%[jj%] := jj%;
             next
         endif
         
@@ -4705,14 +4714,25 @@ func ShufflePDTuningString$(n%,ind%[],origString$,&dotSpecs$[])
     var i%;
     var scind%;
     var temp$;
+    var ind2%;
+    var arr%[n%];
     
     'Deconstruct origString$
     for i% := 0 to n%-2 do  'final value will not have a semicolon
+        ArrConst(arr%[0:n%],ind%[0:n%]);  'cut off excess zeroes at end of ind%[]
+        ArrSub(arr%[],i%);  'Subtract current index, location of current index will be 0
+        Abs(arr%[]);  'Take ABS, location of all non-current indices will be positive
+        ind2% := Min(arr%[]);  'Find the zero with MIN
         scind% := InStr(origString$,";");  'get index of first semicolon remaining in origString$
-        dotSpecs$[ind%[i%]] := Left$(origString$,scind%-1); 'place dot spec into correct index of dotSpecs$[]
+        dotSpecs$[ind2%] := Left$(origString$,scind%-1); 'place dot spec into correct index of dotSpecs$[]
         origString$ := DelStr$(origString$,1,scind%); 'remove dot spec and comma from origString$
     next
-    dotSpecs$[ind%[n%-1]] := origString$;  'Place final value (no semicolon at end) into final index
+    ArrConst(arr%[0:n%],ind%[0:n%]);  'cut off excess zeroes at end of ind%[]
+    ArrSub(arr%[],n%-1);
+    Abs(arr%[]);
+    ind2% := Min(arr%[]);
+    'dotSpecs$[ind%[n%-1]] := origString$;  'Place final value (no semicolon at end) into final index
+    dotSpecs$[ind2%] := origString$;  'Place final value (no semicolon at end) into final index
     
     'Reconstruct outString$
     for i% := 0 to n%-2 do 'final value will not get a semicolon
