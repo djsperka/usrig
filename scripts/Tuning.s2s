@@ -634,10 +634,9 @@ func IdleProcessing%()
         case TunType$ = tunTypeBoxODonuts$ and TunType2$ = tunTypeFixptColor$ then
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval even though we only use xval
             SampleText("T," + str$(xval) + ",T2," + GetFixptColorThisTrial$(nTrialsCompleted%,tun2Values[],tun2ValuesIndices%[]));
-        case TunType$ = tunTypeBoxODonuts$ and TunType1$ = tunTypePolkaDot$ then
-            'something here
         case TunType$ = tunTypeBoxODonuts$ and TunType2$ = tunTypePolkaDot$ then
-            'something here
+            GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, don't worry about yval
+            SampleText("T," + str$(xval) + ",T2," + tunPDDotSpecsPerTrial$[nTrialsCompleted%]);
         case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ or (tunType$ = tunTypeContrast$ and tunContrastDualScreenCombo% = 1) or (tunType$ = tunTypeArea$ and tunAreaDualScreenCombo% = 1) then
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
             SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
@@ -1707,11 +1706,13 @@ end;
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 proc CreateSampleConfiguration()
 	var i%;
+    var jj%, kk%, mm%;
     var temp1$;
     var temp2$;
     var od;
     var key$;
     var eof% := 1;
+    var tunXYNValues%;
     
     var primaryTxt$;
     var secondaryTxt$;
@@ -1907,37 +1908,34 @@ proc CreateSampleConfiguration()
         DoSampleAutoName(key$,"pd","pd",primaryTxt$,secondaryTxt$);
         
         ''Here is the XY position, which is basically identical to XYPos
-        'for tun1, use X
         if tunPDNXSteps% = 0 then  'this allows for no x movement
-            tun1Values[0] := tunPDMinXPos;
-            tun1ValuesIndices%[0] := 1;
+            tunPDXValues[0] := tunPDMinXPos;
+            tunPDXValuesIndices%[0] := 1;
         else
-            GetRepeatedParameterProgression%(tunPDNXSteps%+1, 1, tun1Values[], tun1ValuesIndices%[], tunPDMinXPos, tunPDMaxXPos, 0, 0);
+            GetRepeatedParameterProgression%(tunPDNXSteps%+1, 1, tunPDXValues[], tunPDXValuesIndices%[], tunPDMinXPos, tunPDMaxXPos, 0, 0);
         endif;
-        tun1NValues% := (tunPDNXSteps%+1);
+        tunPDXNValues% := (tunPDNXSteps%+1);
         
-        'for tun2, use Y
         if tunPDNYSteps% = 0 then  'this allows for no y movement
-            tun2Values[0] := tunPDMinYPos;
-            tun2ValuesIndices%[0] := 1;
+            tunPDYValues[0] := tunPDMinYPos;
+            tunPDYValuesIndices%[0] := 1;
         else
-            GetRepeatedParameterProgression%(tunPDNYSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunPDMinYPos, tunPDMaxYPos, 0, 0);
+            GetRepeatedParameterProgression%(tunPDNYSteps%+1, 1, tunPDYValues[], tunPDYValuesIndices%[], tunPDMinYPos, tunPDMaxYPos, 0, 0);
         endif;
-        tun2NValues% := (tunPDNYSteps%+1);       
+        tunPDYNValues% := (tunPDNYSteps%+1);       
         
-        'tunXYNAdvances% := tun1NValues%*tun2NValues%-1;  'this gives the correct number of advances
-        var tunXYNValues%;
-        tunXYNValues% := tun1NValues%*tun2NValues%*1;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
+        'tunXYNAdvances% := tunPDXNValues%*tunPDYNValues%-1;  'this gives the correct number of advances
+        tunXYNValues% := tunPDXNValues%*tunPDYNValues%*1;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
         
         'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
-        GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],0,1);         
+        GridStimuli(tunPDXValues[],tunPDYValues[],tunPDXNValues%,tunPDYNValues%,tunPDXValuesIndices%[],tunPDYValuesIndices%[],0,1);         
         
-        'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
-        tun1ValuesStringified$ := StringifyProgression$(tunXYNValues%, tun1Values[], tun1ValuesIndices%[]);
-        tun2ValuesStringified$ := StringifyProgression$(tunXYNValues%, tun2Values[], tun2ValuesIndices%[]);
+        'StringifyProgression$ will work just fine on tunPDX/YValues and tunPDX/YValuesIndices
+        tunPDXValuesStringified$ := StringifyProgression$(tunXYNValues%, tunPDXValues[], tunPDXValuesIndices%[]);
+        tunPDYValuesStringified$ := StringifyProgression$(tunXYNValues%, tunPDYValues[], tunPDYValuesIndices%[]);
         
-        'printlog("X values are %s\n",tun1ValuesStringified$);
-        'printlog("Y values are %s\n",tun2ValuesStringified$);
+        'printlog("X values are %s\n",tunPDXValuesStringified$);
+        'printlog("Y values are %s\n",tunPDYValuesStringified$);
         
         'This is the Color, have already renamed PolkaDot
         docase
@@ -1966,7 +1964,7 @@ proc CreateSampleConfiguration()
         
         'Now we need to Interleave the X string, the Y string, the Diameter, and the color string.  Diameter is a constant.
         tunNRepeats% := tunPDNRepeats%*(1+tunDoOpto%);  'double number of blocks if doing optogenetics
-        tunValuesStringified$ := InterleavePDStrings$(tun1ValuesStringified$,tun2ValuesStringified$,Str$(tunPDDiameter),tunValuesStringified$,tunNRepeats%);
+        tunValuesStringified$ := InterleavePDStrings$(tunPDXValuesStringified$,tunPDYValuesStringified$,Str$(tunPDDiameter),tunValuesStringified$,tunNRepeats%);
         'printlog("Polka Dot string is %s\n",tunValuesStringified$);
         
         tunNValues% := tunXYNValues%*tunNColorValues%*tunNRepeats%;
@@ -1977,7 +1975,6 @@ proc CreateSampleConfiguration()
         'Easy enough.  But, since we also need to tag each trial with the dot specs, rather than break down the VSG string
         'every trial, we should just break it down once at the beginning and store the result.
         
-        var jj%, kk%, mm%;
         if tunPDProgression% = 1 then
             'Fill tunValuesIndices with shuffled values, but *shuffle by block*
             GetRepeatedParameterProgression%(tunNColorValues%*tunXYNValues%,tunNRepeats%,tunValues[],tunValuesIndices%[],0,1,0,1);  'tunValues will be unused
@@ -2312,7 +2309,73 @@ proc CreateSampleConfiguration()
                 GetRepeatedParameterProgression%(tunFPCNSteps%+1, 1, tun2Values[], tun2ValuesIndices%[], tunFPCMinValue, tunFPCMaxValue, 0, 0);
                 tun2NValues% := (tunFPCNSteps%+1);
             endif;
-            temp1$ := "_fpc"; 
+            temp2$ := "_fpc"; 
+        case tunType2$ = tunTypePolkaDot$ then
+            tunBoxODonutsNumGratingOption% := 2;  'This special value is used in the Start%() function to correctly set up the strings for the command line
+            temp2$ := "_plkd";
+            
+            ''Here is the XY position, which is basically identical to XYPos
+            if tunPDNXSteps% = 0 then  'this allows for no x movement
+                tunPDXValues[0] := tunPDMinXPos;
+                tunPDXValuesIndices%[0] := 1;
+            else
+                GetRepeatedParameterProgression%(tunPDNXSteps%+1, 1, tunPDXValues[], tunPDXValuesIndices%[], tunPDMinXPos, tunPDMaxXPos, 0, 0);
+            endif;
+            tunPDXNValues% := (tunPDNXSteps%+1);
+            
+            if tunPDNYSteps% = 0 then  'this allows for no y movement
+                tunPDYValues[0] := tunPDMinYPos;
+                tunPDYValuesIndices%[0] := 1;
+            else
+                GetRepeatedParameterProgression%(tunPDNYSteps%+1, 1, tunPDYValues[], tunPDYValuesIndices%[], tunPDMinYPos, tunPDMaxYPos, 0, 0);
+            endif;
+            tunPDYNValues% := (tunPDNYSteps%+1);       
+            
+            'tunXYNAdvances% := tunPDXNValues%*tunPDYNValues%-1;  'this gives the correct number of advances
+            tunXYNValues% := tunPDXNValues%*tunPDYNValues%*1;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
+            
+            'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
+            GridStimuli(tunPDXValues[],tunPDYValues[],tunPDXNValues%,tunPDYNValues%,tunPDXValuesIndices%[],tunPDYValuesIndices%[],0,1);         
+            
+            'StringifyProgression$ will work just fine on tunPDX/YValues and tunPDX/YValuesIndices
+            tunPDXValuesStringified$ := StringifyProgression$(tunXYNValues%, tunPDXValues[], tunPDXValuesIndices%[]);
+            tunPDYValuesStringified$ := StringifyProgression$(tunXYNValues%, tunPDYValues[], tunPDYValuesIndices%[]);
+            
+            'printlog("X values are %s\n",tunPDXValuesStringified$);
+            'printlog("Y values are %s\n",tunPDYValuesStringified$);
+            
+            'This is the PolkaDot
+            docase
+                'This seems a bit silly, but it has to look like this to work with the subsequent functions we call
+            case tunPDNColorSteps% = 0 and tunPDGunIndex% = 0 then  'this allows for no color change, red gun selected
+                tunValues[0] := tunPDRedValue%;
+                tunValuesIndices%[0] := 0;
+            case tunPDNColorSteps% = 0 and tunPDGunIndex% = 1 then  'this allows for no color change, green gun selected
+                tunValues[0] := tunPDGreenValue%;
+                tunValuesIndices%[0] := 0;
+            case tunPDNColorSteps% = 0 and tunPDGunIndex% = 2 then  'this allows for no color change, blue gun selected
+                tunValues[0] := tunPDBlueValue%;
+                tunValuesIndices%[0] := 0;
+            case tunPDNColorSteps% = 0 and tunPDGunIndex% = 3 then  'this allows for no color change, luminance
+                tunValues[0] := tunPDMinGunValue;
+                tunValuesIndices%[0] := 0;
+            else 'the color is changing
+                GetRepeatedParameterProgression%(tunPDNColorSteps%+1, 1, tunValues[], tunValuesIndices%[], tunPDMinGunValue, tunPDMaxGunValue, 0, tunPDProgression%);
+            endcase  
+            tunNAdvances% := tunPDNColorSteps%;            
+            tunNColorValues% := (tunNAdvances%+1)*1;  
+            
+            tunValuesStringified$ := StringifyPolkaDotProgression$(tunNColorValues%, tunValues[], tunValuesIndices%[]);
+            'printlog("Color String is %s\n",tunValuesStringified$);
+            
+            
+            'Now we need to Interleave the X string, the Y string, the Diameter, and the color string.  Diameter is a constant.
+            tunValuesStringified$ := InterleavePDStrings$(tunPDXValuesStringified$,tunPDYValuesStringified$,Str$(tunPDDiameter),tunValuesStringified$,1);
+            'printlog("Polka Dot string is %s\n",tunValuesStringified$);
+            
+            tun2NValues% := tunXYNValues%*tunNColorValues%*1;
+            'printlog("Total number of values is %d\n",tun2NValues%);
+            
         endcase;
               
         DoSampleAutoName(key$,"boxodonuts" + temp1$ + temp2$,"boxodonuts" + temp1$ + temp2$,primaryTxt$,secondaryTxt$);  'Note that this does not reflect the correct number of characters...it may not work properly?
@@ -2322,17 +2385,31 @@ proc CreateSampleConfiguration()
         tunNValues% := tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%;  'now used in idle loop instead of (tunNAdvances%+1)*tunNRepeats
         
         'Now we need to grid the values out into two appropriate tunValues and tunValuesIndices (the randomizer bit)
-        GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],tunBoxODonutsProgression%,tunBoxODonutsNRepeats%); 
+        if tuntype2$ <> tunTypePolkaDot$ then  'we don't do this if we are using polka dots, there's a different method below
+            GridStimuli(tun1Values[],tun2Values[],tun1NValues%,tun2NValues%,tun1ValuesIndices%[],tun2ValuesIndices%[],tunBoxODonutsProgression%,tunBoxODonutsNRepeats%); 
+        endif;
 
         'StringifyProgression$ will work just fine on tun1/2Values and tun1/2ValuesIndices
         docase
-        case tuntype1$ = tunTypeFixptColor$ then 
-            tun1ValuesStringified$ := StringifyColorProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun1Values[], tun1ValuesIndices%[]);
-            'printlog("TunValuesStringified is %s\n",tun1ValuesStringified$);
-            tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun2Values[], tun2ValuesIndices%[]);
-        case tuntype2$ = tunTypeFixptColor$ then
-            tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun1Values[], tun1ValuesIndices%[]);
-            tun2ValuesStringified$ := StringifyColorProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun2Values[], tun2ValuesIndices%[]);
+        case tuntype2$ = tunTypePolkaDot$ then
+            ExpandGratingIndices(tun2NValues%,tunNRepeats%,tun1NValues%,tun1ValuesIndices%[]);
+            'printlog("After expansion, Tun1ValuesIndices are %d\n",tun1ValuesIndices%[0:tunNValues%]);  'this is right, but not scrambled
+            tunValuesStringified$ := ExpandPDTuningString$(tunNRepeats%*tun1NValues%,tunValuesStringified$);
+            'printlog("Expanded polka dot string is %s\n",tunValuesStringified$); 'this is right, but not scrambled
+            'So now, we have an unscrambled polka string and an unscrambled set of grating indices
+            'Have to scramble both within blocks
+            tun2ValuesStringified$ := ShufflePDTuningStringBox$(tunNRepeats%,tun1NValues%*tun2NValues%,tun1ValuesIndices%[],tunvaluesStringified$,tunPDDotSpecsPerTrial$[]);
+            'Use scrambled tun1ValuesIndices%[] to create grating string
+            tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun1Values[], tun1ValuesIndices%[]);  ' this is the grating tuning curve
+
+            
+'        case tuntype1$ = tunTypeFixptColor$ then 'These are now deprecated
+'            tun1ValuesStringified$ := StringifyColorProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun1Values[], tun1ValuesIndices%[]);
+'            'printlog("TunValuesStringified is %s\n",tun1ValuesStringified$);
+'            tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun2Values[], tun2ValuesIndices%[]);
+'        case tuntype2$ = tunTypeFixptColor$ then
+'            tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun1Values[], tun1ValuesIndices%[]);
+'            tun2ValuesStringified$ := StringifyColorProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun2Values[], tun2ValuesIndices%[]);
         else
             tun1ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun1Values[], tun1ValuesIndices%[]);
             tun2ValuesStringified$ := StringifyProgression$(tun1NValues%*tun2NValues%*tunBoxODonutsNRepeats%, tun2Values[], tun2ValuesIndices%[]);
@@ -4030,11 +4107,13 @@ func Start%()
         
     case tunType$ = tunTypeBoxODonuts$ then
         
-        'If tunBoxODonutsOneOrTwoGratings% is 0, do as current, if 1, we are doing curve 1 on "stim" and curve 2 on "distractor"
+        'If tunBoxODonutsNumGratingOption% is 0, do as current, if 1, we are doing curve 1 on "stim" and curve 2 on "distractor"
+        'if 2, we are doing a grating tuning curve on "stim" in curve 1 and polka dots in curve 2
         'Since I don't know quite how we would ever work this (syntax-wise OR from a logical experimental point of view)
         'we will short circuit and force rivalry version to be on one grating no matter what the value says.
         
-        if tunBoxODonutsOneOrTwoGratings% = 0 or tunDoRivalry% = 1 then
+        docase
+        case tunBoxODonutsNumGratingOption% = 0 or tunDoRivalry% = 1 then
             
             'Set slave values, do this first because master values may be set to slave values
             TunCurveSArg$ := " -" + TunType1$ + " ";
@@ -4057,7 +4136,7 @@ func Start%()
                 MGrat$ := " -s ";  'change this back if we are not doing rivalry...the logic to get this to go is a bit ugly, but...
             endif;
             
-        else
+        case tunBoxODonutsNumGratingOption% = 1 then
             
             'In principle this is what we need...note that the actual build of the command line is not done yet...
             
@@ -4079,7 +4158,27 @@ func Start%()
             SGrat$ := "";
             SGratParam$ := "";
             
-        endif;
+        else 'tunBoxODonutsNumGratingOption% = 2, this is Polka Dots on Curve 2 (Polka Dots not allowed on Curve 1)
+            
+            'Set values for "Stimulus"
+            TunCurveMArg$ := " -" + TunType1$ + " ";
+            MValues$ := tun1ValuesStringified$;  
+            MGrat$ := " -s ";
+            MGratParam$ := GetGratingParameters$("Stimulus");  'this would undo the setting of tunSetStationary
+            
+            'Set values for Polka Dots
+            TunCurveM2Arg$ := " -D ";
+            M2Values$ := tun2ValuesStringified$; 
+            
+            'Blank out values for M2Grat, "Slave"
+            M2Grat$ := "";
+            M2GratParam$ := "";
+            TunCurveSArg$ := ""; 
+            SValues$ := "";
+            SGrat$ := "";
+            SGratParam$ := "";
+            
+        endcase;
         
         
     case tunType$ = tunTypeGonzago$ then
@@ -4725,7 +4824,7 @@ func ShufflePDTuningString$(n%,ind%[],origString$,&dotSpecs$[])
         ind2% := Min(arr%[]);  'Find the zero with MIN
         scind% := InStr(origString$,";");  'get index of first semicolon remaining in origString$
         dotSpecs$[ind2%] := Left$(origString$,scind%-1); 'place dot spec into correct index of dotSpecs$[]
-        origString$ := DelStr$(origString$,1,scind%); 'remove dot spec and comma from origString$
+        origString$ := DelStr$(origString$,1,scind%); 'remove dot spec and semicolon from origString$
     next
     ArrConst(arr%[0:n%],ind%[0:n%]);  'cut off excess zeroes at end of ind%[]
     ArrSub(arr%[],n%-1);
@@ -4743,6 +4842,122 @@ func ShufflePDTuningString$(n%,ind%[],origString$,&dotSpecs$[])
     
     return outString$;
 end;
+
+
+
+
+'This function differs from the original version because it is designed to work
+'in the box-o-donuts case.
+'n% - the total number of repeats
+'nb%  - the number of stimuli in a block (shuffle will be done within block)
+'grInd%[] - the grating values indices (will be shuffled)
+'pStr$ -  the unscrambled polka dot string
+'dotSpecs$[] - will be filled with the dot specs for each trial
+'Will return the shuffled version of the polka dot string, for the command line
+'as well as fill a dotSpec string array (index by trial index N-1 to get polka
+'dot value on trial N) and shuffle the grating values indices with the same
+'shuffle.  Note that the stringified version of the gratings is not made here.
+'Note that indexing of grating value is as normal: tunValues[tunValuseIndices%[N-1]]
+func ShufflePDTuningStringBox$(n%,nb%,&grInd%[],pStr$,&dotSpecs$[]);
+    var outString$;
+    var shuffInd%[nb%];  'shuffled indices, length of block
+    var arr%[nb%];  'temporary array to manipulate shuffled indices
+    var grIndCopy%[nb%];
+    var i%, j%;
+    var ind%;  'index into grInd%[]
+    var ind2%;  'index into dotSpecs$[]
+    var scind%;
+    
+    for i% := 0 to n%-1 do
+        ArrConst(grIndCopy%[0:nb%],grInd%[(i%*nb%):nb%]);  'Copy grating indices for this block
+        Shuffle%(nb%,shuffInd%[]);  'Put shuffled indices into shuffInd%[]
+        
+        for j% := 0 to nb%-1 do
+            'Shuffle grating indices
+            grInd%[ind%] := grIndCopy%[shuffInd%[j%]];  'easy
+            ind% += 1;  'increment index into grInd%[]
+            
+            'Shuffle string of polka dot specs
+            'Final value in pStr$ does not have a trailing semicolon, so code has to be slightly different
+            if j% = nb%-1 and i% = n%-1 then 'this is the final entry
+                ArrConst(arr%[0:nb%],shuffInd%[0:nb%]);  're-fill arr%[]
+                ArrSub(arr%[],j%);  'Subtract current index, location of current index will be 0
+                Abs(arr%[]);  'Take ABS, location of all non-current indices will be positive
+                ind2% := Min(arr%[]);  'Find the zero with MIN
+                dotSpecs$[ind2%+(i%*nb%)] := pStr$;  'Place final value (no semicolon at end) into final index                  
+            else 'this is the standard case
+                ArrConst(arr%[0:nb%],shuffInd%[0:nb%]);  're-fill arr%[]
+                ArrSub(arr%[],j%);  'Subtract current index, location of current index will be 0
+                Abs(arr%[]);  'Take ABS, location of all non-current indices will be positive
+                ind2% := Min(arr%[]);  'Find the zero with MIN
+                scind% := InStr(pStr$,";");  'get index of first semicolon remaining in pStr$
+                dotSpecs$[ind2%+(i%*nb%)] := Left$(pStr$,scind%-1); 'place dot spec into correct index of dotSpecs$[]
+                pStr$ := DelStr$(pStr$,1,scind%); 'remove dot spec and semicolon from origString$
+            endif;
+            
+        next
+
+    next
+    
+    'reconstruct shuffled polka dot string from ordered dot specs
+    for i% := 0 to (n%*nb%)-2 do
+        outString$ += dotSpecs$[i%];  'add current dot spec
+        outString$ += ";";  'add separating semicolon
+    next
+    outString$ += dotSpecs$[(n%*nb%)-1];  'add current dot spec
+    
+    
+    return outString$;
+end
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'A function to concatenate copies of the grating indices, for the Box-o-Donuts version
+'n% - number of times to expand to match polka dot string
+'nR% - number of repeats
+'len% - number of values in grating tuning curve
+'ind%[] - original index list, will be filled with new expanded indices 
+func ExpandGratingIndices(n%,nR%,len%,&ind%[]);
+    var temp%[len%];
+    var x%;  'to index ind%[]
+    var i%, j%;
+    ArrConst(temp%[0:len%],ind%[0:len%]); 'get a copy of indices
+    
+    for i% := 1 to len%*nR% do
+        j% := i% mod len%;
+        if j% = 0 then
+            j% := len%;
+        endif;
+        ArrConst(ind%[x%:n%],temp%[j%-1]);
+        x% += n%;
+    next
+
+    return 0;
+end
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'A function to concatenate copies of the polka dot string, for the Box-o-Donuts version
+func ExpandPDTuningString$(n%,inStr$);
+    var out$;
+    var i%;
+    
+    for i% := 1 to n% do
+        out$ := out$ + inStr$;
+        if i% < n% then
+            out$ := out$ + ";"; 'inStr$ will not have a trailing semicolon, add trailing semicolon to all except final copy, which is expected to lack it
+        endif
+    next
+    
+    
+    return out$
+end
+
+
+
 
 
 

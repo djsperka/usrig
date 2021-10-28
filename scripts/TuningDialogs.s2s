@@ -170,7 +170,7 @@ var updateCurve2Text%;
 var tunCurve1SelectedType$;         'This prevents us from doubling up
 var tunBoxODonutsProgression%;
 var tunBoxODonutsNRepeats%;
-var tunBoxODonutsOneOrTwoGratings%;
+var tunBoxODonutsNumGratingOption%;
 var tunMasterFollowsCurve1%;
 
 
@@ -434,6 +434,14 @@ var tunValuesStringified$;
 var tun1ValuesStringified$;     'For Box O' Donuts
 var tun2ValuesStringified$;
 var tunPDDotSpecsPerTrial$[tunMaxTrials%];
+var tunPDXValues[tunMaxTrials%];
+var tunPDYValues[tunMaxTrials%]; 
+var tunPDXValuesIndices%[tunMaxTrials%]; 
+var tunPDYValuesIndices%[tunMaxTrials%];
+var tunPDXNValues%;
+var tunPDYNValues%;
+var tunPDXValuesStringified$;
+var tunPDYValuesStringified$;
 
 ' Wavemarks and continuous ports
 const tunMaxPorts% := 64;  'there can be more channels, but that's all the ports we can collect
@@ -674,7 +682,7 @@ proc GetTuningCurveAreaParameters()
     tunMasterFollowsCurve1% := GetIntRegistryValue%(key$, "MasterFollowsCurve1", tunMasterFollowsCurve1%); 
     tunBoxODonutsProgression% := GetIntRegistryValue%(key$, "BoxODonutsProgression", tunBoxODonutsProgression%);
     tunBoxODonutsNRepeats% := GetIntRegistryValue%(key$, "BoxODonutsNRepeats", tunBoxODonutsNRepeats%);
-    tunBoxODonutsOneOrTwoGratings% := GetIntRegistryValue%(key$, "BoxODonutsOneOrTwoGratings", tunBoxODonutsOneOrTwoGratings%);
+    tunBoxODonutsNumGratingOption% := GetIntRegistryValue%(key$, "BoxODonutsOneOrTwoGratings", tunBoxODonutsNumGratingOption%);  'variable renamed, keep key the same
 end;
 
 proc SaveTuningCurveAreaParameters()
@@ -701,7 +709,7 @@ proc SaveTuningCurveAreaParameters()
     SetIntRegistryValue(key$, "BoxODonutsProgression", tunBoxODonutsProgression%);
     SetIntRegistryValue(key$, "BerlinerCoreOnSlave", tunBerlinerCoreOnSlave%);
     SetIntRegistryValue(key$, "BoxODonutsNRepeats", tunBoxODonutsNRepeats%);
-    SetIntRegistryValue(key$, "BoxODonutsOneOrTwoGratings", tunBoxODonutsOneOrTwoGratings%);
+    SetIntRegistryValue(key$, "BoxODonutsOneOrTwoGratings", tunBoxODonutsNumGratingOption%);  'variable renamed, keep key the same
 end;
 
 proc GetTuningCurveDotsParameters()
@@ -1102,6 +1110,7 @@ func TuningCurveOrientationDialog%()
             DlgValue$(updateCurve1Text%, tunCurve1Text$);
             tunBoxODonutsCurrentCurve% := 2;  'update current curve 
             DlgEnable(0,-tundlgOrientationButton%);  'So we don't pick orientation again
+            TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "Polka Dots" button, -1 is sham input
         case tunBoxODonutsCurrentCurve% = 2 then
             tunType2$ := tunTypeOrientation$;
             tunUseFile2% := tunOriUseFile%;
@@ -1204,6 +1213,7 @@ func TuningCurveContrastDialog%()
             DlgValue$(updateCurve1Text%, tunCurve1Text$);
             tunBoxODonutsCurrentCurve% := 2;  'update current curve 
             DlgEnable(0,-tundlgContrastButton%);  'So we don't pick contrast again
+            TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "Polka Dots" button, -1 is sham input
         case tunBoxODonutsCurrentCurve% = 2 then
             tunType2$ := tunTypeContrast$;
             tunUseFile2% := tunContrastUseFile%;
@@ -1307,6 +1317,7 @@ func TuningCurveSpatialDialog%()
             DlgValue$(updateCurve1Text%, tunCurve1Text$);
             tunBoxODonutsCurrentCurve% := 2;  'update current curve 
             DlgEnable(0,-tundlgSpatialButton%);  'So we don't pick spatial frequency again
+            TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "Polka Dots" button, -1 is sham input
         case tunBoxODonutsCurrentCurve% = 2 then
             tunType2$ := tunTypeSpatial$;
             tunUseFile2% := tunSpatialUseFile%;
@@ -1386,6 +1397,7 @@ func TuningCurveTemporalDialog%()
             DlgValue$(updateCurve1Text%, tunCurve1Text$);
             tunBoxODonutsCurrentCurve% := 2;  'update current curve 
             DlgEnable(0,-tundlgTemporalButton%);  'So we don't pick temporal frequency again
+            TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "Polka Dots" button, -1 is sham input
         case tunBoxODonutsCurrentCurve% = 2 then
             tunType2$ := tunTypeTemporal$;
             tunUseFile2% := tunTemporalUseFile%;
@@ -1490,6 +1502,7 @@ func TuningCurveAreaDialog%()
             DlgValue$(updateCurve1Text%, tunCurve1Text$);
             tunBoxODonutsCurrentCurve% := 2;  'update current curve 
             DlgEnable(0,-tundlgAreaButton%);  'So we don't pick area again
+            TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "Polka Dots" button, -1 is sham input
         case tunBoxODonutsCurrentCurve% = 2 then
             tunType2$ := tunTypeArea$;
             tunUseFile2% := tunAreaUseFile%;
@@ -1574,6 +1587,7 @@ func TuningCurveXPosDialog%()
                 DlgValue$(updateCurve1Text%, tunCurve1Text$);
                 tunBoxODonutsCurrentCurve% := 2;  'update current curve 
                 DlgEnable(0,-tundlgXPosButton%);  'So we don't pick X position again
+                TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "Polka Dots" button, -1 is sham input
             case tunBoxODonutsCurrentCurve% = 2 then
                 tunType2$ := tunTypeXPos$;
                 tunCurve2Text$ := "Tuning Curve 2 is X POSITION";
@@ -1640,6 +1654,7 @@ func TuningCurveXPosDialog%()
                 DlgValue$(updateCurve1Text%, tunCurve1Text$);
                 tunBoxODonutsCurrentCurve% := 2;  'update current curve 
                 DlgEnable(0,-tundlgXPosButton%);  'So we don't pick XY position again, don't rename variable
+                TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "Polka Dots" button, -1 is sham input
             case tunBoxODonutsCurrentCurve% = 2 then
                 tunType2$ := tunTypeXYPos$;
                 tunCurve2Text$ := "Tuning Curve 2 is XY POSITION";
@@ -2023,9 +2038,14 @@ func TuningCurveBoxODonutsDialogChanged%(item%)
         DlgEnable(1,-tundlgXPosButton%);
         DlgEnable(1,-tundlgLagButton%);
         'DlgEnable(1,-tundlgFixptColorButton%);
-        DlgEnable(1,-tundlgPolkaDotButton%);
+        'DlgEnable(1,-tundlgPolkaDotButton%);  'only enable polka dots for second button
         
     endif;  
+    if tunBoxODonutsCurrentCurve% = 1 then
+        DlgEnable(0,-tundlgPolkaDotButton%);
+    else
+        DlgEnable(1,-tundlgPolkaDotButton%);
+    endif;
     if tunBoxODonutsCurrentCurve% = 3 then
         DlgEnable(1,-1);  'enable "OK" if both curves have been selected
     else
@@ -2054,7 +2074,7 @@ func TuningCurveBoxODonutsDialogChanged2%(item%)
         DlgEnable(1,-tundlgXPosButton%);
         DlgEnable(1,-tundlgLagButton%);
         'DlgEnable(1,-tundlgFixptColorButton%);
-        DlgEnable(1,-tundlgPolkaDotButton%);
+        'DlgEnable(1,-tundlgPolkaDotButton%);  only enable polka dots for second button
         DlgEnable(0,3);  'Disable master follows curve 1 checkbox
         DlgEnable(0,-151);  'Disable all two-screen buttons
         DlgEnable(0,-152);
@@ -2062,6 +2082,11 @@ func TuningCurveBoxODonutsDialogChanged2%(item%)
         DlgEnable(0,-154);
         
     endif;  
+    if tunBoxODonutsCurrentCurve% = 1 then
+        DlgEnable(0,-tundlgPolkaDotButton%);
+    else
+        DlgEnable(1,-tundlgPolkaDotButton%);
+    endif;
     if tunBoxODonutsCurrentCurve% = 3 then
         DlgEnable(1,-1);  'enable "OK" if both curves have been selected
     else
@@ -2134,7 +2159,7 @@ func TuningCurveBoxODonutsDialog%()
     endif;
     
     
-    i% := DlgShow(tunBoxODonutsNRepeats%,tunBoxODonutsProgression%,tunMasterFollowsCurve1%,tunBoxODonutsOneOrTwoGratings%);
+    i% := DlgShow(tunBoxODonutsNRepeats%,tunBoxODonutsProgression%,tunMasterFollowsCurve1%,tunBoxODonutsNumGratingOption%);
     
     ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
 	' When user hits OK we always save the parameters, and when user hits Cancel we don't.	
@@ -2914,6 +2939,7 @@ func TuningCurveNullTestANDLagDialog%()
                 DlgValue$(updateCurve1Text%, tunCurve1Text$);
                 tunBoxODonutsCurrentCurve% := 2;  'update current curve 
                 DlgEnable(0,-tundlgLagButton%);  'So we don't pick phase/null again
+                TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "Polka Dots" button, -1 is sham input
             case tunBoxODonutsCurrentCurve% = 2 then
                 tunType2$ := tunTypeNullTest$;
                 tunUseFile2% := tunNullTestUseFile%;
@@ -3018,6 +3044,7 @@ func TuningCurveNullTestANDLagDialog%()
                 DlgValue$(updateCurve1Text%, tunCurve1Text$);
                 tunBoxODonutsCurrentCurve% := 2;  'update current curve 
                 DlgEnable(0,-tundlgLagButton%);  'So we don't pick lag again
+                TuningCurveBoxODonutsDialogChanged%(-1);  'Enables "Polka Dots" button, -1 is sham input
             case tunBoxODonutsCurrentCurve% = 2 then
                 tunType2$ := tunTypeLag$;
                 tunUseFile2% := tunLagUseFile%;
