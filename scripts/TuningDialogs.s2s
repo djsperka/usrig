@@ -331,7 +331,7 @@ var tunPDProgression%;  'For now, do not consider randomizing position without a
 var tunPDUseFile%;
 var tunPDTuningFile$;
 var tunPDShowGrating%;  
-var tunPDLagMS;
+var tunPDLagSec;
 var tunPDLagFrames%;
 var tunNColorValues%;
 
@@ -1034,7 +1034,7 @@ proc GetTuningCurvePolkaDotParameters()
     tunPDTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunPDTuningFile$);
     tunPDDiameter := GetFloatRegistryValue(key$, "Diameter", tunPDDiameter);
     tunPDShowGrating% := GetIntRegistryValue%(key$, "ShowGrating", tunPDShowGrating%);
-    tunPDLagMS := GetFloatRegistryValue(key$, "LagMS", tunPDLagMS);
+    tunPDLagSec := GetFloatRegistryValue(key$, "LagSec", tunPDLagSec);
 end;
 
 proc SaveTuningCurvePolkaDotParameters()
@@ -1059,7 +1059,7 @@ proc SaveTuningCurvePolkaDotParameters()
     SetStringRegistryValue(key$, "TuningFile", tunPDTuningFile$);
     SetFloatRegistryValue(key$, "Diameter", tunPDDiameter);
     SetIntRegistryValue(key$, "ShowGrating", tunPDShowGrating%);
-    SetFloatRegistryValue(key$, "LagMS", tunPDLagMS);
+    SetFloatRegistryValue(key$, "LagSec", tunPDLagSec);
 end;
 
 
@@ -2302,7 +2302,7 @@ func TuningCurvePolkaDotANDCRGDialog%()
         endif;
         DlgReal(2, "Polka Dot Diameter (degrees)", 0.01, 30, 36, 3);
         DlgCheck(19, "Show Main Grating",2,4);
-        DlgReal(20, "Stimulus Delay (ms)", 0.01, 5000, 36, 5);
+        DlgReal(20, "Stimulus Delay (s)", 0.001, 10, 36, 5);
         DlgCheck(4, "Use File For Tuning Values",2,7);
         DlgString(5,40,255,"",3,8);  'for visual confirmation of selected seq file
         DlgButton(tundlgSelectTuningFileButton%, " Select Tuning File ", SelectTuningFile%, 2, 9);
@@ -2328,7 +2328,7 @@ func TuningCurvePolkaDotANDCRGDialog%()
         
         i% := DlgShow(tunPDNRepeats%, tunPDDiameter, tunPDProgression%, tunPDUseFile%, tunPDTuningFile$, tunPDNColorSteps%,  
         tunPDRedValue%, tunPDGreenValue%, tunPDBlueValue%, tunPDGunIndex%, tunPDMinGunValue, tunPDMaxGunValue, tunPDNXSteps%, 
-        tunPDMinXPos, tunPDMaxXPos, tunPDNYSteps%, tunPDMinYPos, tunPDMaxYPos, tunPDShowGrating%, tunPDLagMS);
+        tunPDMinXPos, tunPDMaxXPos, tunPDNYSteps%, tunPDMinYPos, tunPDMaxYPos, tunPDShowGrating%, tunPDLagSec);
                
         
         
@@ -2341,7 +2341,7 @@ func TuningCurvePolkaDotANDCRGDialog%()
             tunUseFile% := tunPDUseFile%;
             tunTuningFile$ := tunPDTuningFile$;
         
-            tunPDLagFrames% := tunPDLagMS/dataScreenMSPerFrame;
+            tunPDLagFrames% := 1000*tunPDLagSec/dataScreenMSPerFrame;
             'printlog("tunPDLagFrames% is %d\n",tunPDLagFrames%);
             
 
