@@ -71,6 +71,11 @@ func GetDataCellName$()
     return dataCellName$;
 end
 
+func GetGammaTablePath$()
+    return gammaTableLoc$;
+end
+
+
 func GetCurrentDataPath$(iSlashes%)
     var s$;
     s$ := dataPathRoot$ + "\\" + dataDataSet$;
@@ -137,7 +142,7 @@ func DataParametersDialog%()
 	var i%;
     var idist%;
 	GetDataParameters();
-	DlgCreate("Data Storage Parameters", 25, 10, 50);
+	DlgCreate("Data Storage Parameters", 25, 10, 85);
 	'DlgText("Data root path: " + dataPathRoot$, 0, 1);
     DlgString(1,"Data root path:", 20, "", 0, 1);
     DlgString(2,"Data root path (secondary):", 20, "", 0, 2);
@@ -147,7 +152,7 @@ func DataParametersDialog%()
     DlgReal(5, "Screen Refresh (Hz):", 30, 200, 0, 6);
     DlgString(6, "Work dir path", 20, "", 0, 7);
     DlgString(7, "Work dir path (secondary):", 20, "", 0, 8);
-    DlgString(8, "Gamma Table path:", 20, "", 0, 9);
+    DlgString(8, "Gamma Table path:", 70, "", 0, 9);
     DlgButton(9, "New Data Set", NewDataSet%);
     idist% := val(GetDistanceToScreenMM$());
     var itest%;
@@ -665,5 +670,28 @@ end
 
 
 
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' FileExist%(in$)
+'
+' Determines if requested full-path file exists, returns 1 if file is found  
+' or 0 if not found.  Note that inputs with single backslashes ("\") will
+' fail, use forward slash ("/").
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+func FileExist%(in$)
+    var out%;
+    out% := FileOpen(in$,8,0);  'open as a text file for reading only
+    if out% > 0 then
+        FileClose();
+        out% := 1;
+        printlog("Requested file " + in$ + " exists!\n");
+    else
+        out% := 0;
+        printlog("Requested file " + in$ + " does not exist!\n");
+    endif;
+    return out%;
+end
 
 

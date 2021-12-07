@@ -10,8 +10,19 @@ const slvCVSID$ := "$Id$";
 var cmd$; 
 var h%;
 
+if FileExist%(GetGammaTablePath$()) then
+    Message("Gamma Table path is: " + GetGammaTablePath$());
+else
+    Message("Specified Gamma Table path " + GetGammaTablePath$() + " does not exist!\nRunning with no gamma table!");
+endif
+
+
 if GetUseRemoteStimulus%() = 1 then
-    cmd$ := "cmd /c " + GetBinDir$(1) + "fixstim.exe -b gray -d " + GetDistanceToScreenMM$() + " -u " + GetRemoteStimulusIP$() + ":" + GetRemoteStimulusPort$();
+    if FileExist%(GetGammaTablePath$()) then
+        cmd$ := "cmd /c " + GetBinDir$(1) + "fixstim.exe -b gray -d " + GetDistanceToScreenMM$() + " -u " + GetRemoteStimulusIP$() + ":" + GetRemoteStimulusPort$() + " -M " + GetGammaTablePath$();
+    else        
+        cmd$ := "cmd /c " + GetBinDir$(1) + "fixstim.exe -b gray -d " + GetDistanceToScreenMM$() + " -u " + GetRemoteStimulusIP$() + ":" + GetRemoteStimulusPort$();
+    endif
     LogStatus("StartSlaveFixstim", cmd$);
     h% := ProgRun(cmd$, 1);
 else
