@@ -80,7 +80,7 @@ const stateAcquisitionTO%:=2;          ' Wait through acquisition timeout
 const stateWaitForStimOn%:=3;		   ' Wait for stimulus return trigger (on)
 const stateHoldImage%:=4;		       ' Holding fixation on screen while image is up
 const stateWaitForStimOff%:=5;		   ' Wait for stimulus return trigger (off)
-const stateInterStimulusInterval%:=6;  ' Wait until it is time to present the next stimulus
+const stateInterTrialInterval%:=6;     ' Wait until it is time to present the next trial
 const stateLookAwayTO%:=7;             ' Wait through timeout for breaking fixation
 const stateTrialCompleted%:=8;		   ' trial has been completed successfully
 const statePrepareOpto%:=9;            ' Set up opto on a trial-by-trial basis
@@ -93,6 +93,8 @@ const stateWaitReward%:=15;
 const stateFixptUp%:=16;
 const stateWaitForFixptUp%:=17;
 const stateWaitForBlank%:=18;
+const stateWaitForImageOn%:=19;       ' "Image" is for image series, which are dealt with differently than single images
+const stateWaitForImageOff%:=20;
 
 
 var iState% := stateVSGWait%;	' present state
@@ -112,6 +114,7 @@ var tOpt;
 var fvFileLen%; 
 var fvdlgFileSelectButton% := 100;
 var fvdlgFolderSelectButton% := 101;
+var fvdlgImageSeriesSelectButton% := 102;
 var fvdlgTextItem%;
 var fvStimFolder$;
 var fvStimFile$;
@@ -119,9 +122,19 @@ var fvUseFile%;  '1 if use file, 0 if use folder
 var fvDefaultStimPath$ := "D:\\Images\\";  'Set this folder for Henry's computer - how about just F:\Images?
 var fvDefaultStimFile$ := "DefaultStimFile.txt";  'this file will be updated 
 var fvDialogText$;
-var fvImageList$[2000];  'allow up to 2000 unique images
-var fvImageOrder%[10000];  'allow up to 10000 images to be presented total
-var dummyResult[10000];  'This just lets me run GRPP to get the index order on fvImageOrder%[] instead of writing new code, just allows return of dummy values
+var fvImageList$[5000];  'allow up to 5000 unique images
+var fvImageOrder%[5000];  'allow up to 5000 images to be presented total
+var dummyResult[5000];  'This just lets me run GRPP to get the index order on fvImageOrder%[] instead of writing new code, just allows return of dummy values
+var fvDoImageSeries%;
+var success%;
+var fvImagesPerTrial%[5000];  'for image series, allow up to 5000 trials
+var fvTrialDurEstimate[5000];
+var fvImageIndices%[5000][20];  '[trial][image-index] Xiaomo says max of 3 images per series, so 20 is plenty
+var fvImageDur[5000];  'seconds
+var fvImageDelay[5000];  'seconds
+var fvImageXPos[5000];
+var fvImageYPos[5000];
+
 
 ' Wavemarks and continuous ports
 var fvNWavemarks% := 0;
@@ -150,7 +163,9 @@ var fvLastPeriodStart;      'When did the last period start?
 var fvAlwaysLooking% := 1; ' If set eye signals ignored - subject presumed to be looking always. TESTING ONLY.
 var fvRandomProgression%;
 var fvNRepeats%;
-var fvTrialISI;
+var fvITI;   'The value between trials applies to the time between each "image series" if we are doing image series, and between each image in other cases
+var fvISI;   'This value only applies to the time between images within an image series
+var fvImageDuration;  'this value only applies to image series
 var fvAcquisitionTime;
 var fvAcquisitionTO;
 var fvNumPeriods%;
@@ -172,16 +187,6 @@ var fvUseStimLocation%;
 var fvFixScreen%;
 
 
-'Deprecated variables
-'var fvRewardMinDelay;  'minimum time allowed between rewards
-'var fvRewardMaxDelay;  'maximum time allowed between rewards
-'var fvRewardDelay;     'actual time requested between rewards
-'var fvOptoMaxNumPulses%;
-'var fvOptoMinDelay;
-'var fvOptoMaxDelay;
-'var fvOptoDur;
-'var fvMinTimeForAdvance;
-'var fvMaxImageTime;
 
 
 
@@ -287,10 +292,11 @@ func FreeViewerScriptDialog%()
     var fixscreen$[2];
     fixscreen$[0] := "Use Fixation Point";
     fixscreen$[1] := "Use Screen";
-    var exptype$[3];
+    var exptype$[4];
     exptype$[0] := "Standard Image";
     exptype$[1] := "Opto (blocked)";
     exptype$[2] := "No Opto (blocked)";
+    exptype$[3] := "Image Series";
     
     
     'Since the opto is incorporated into this dialog (for now) we don't have to do a separate parameter grab for opto
@@ -313,57 +319,46 @@ func FreeViewerScriptDialog%()
     
         
     DlgCreate("FreeViewer Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
-    DlgGroup("Stimulus and Fixation", 1, 1, 50, 16);
+    DlgGroup("Stimulus and Fixation", 1, 1, 50, 17);
     DlgInteger(1, "Number of repeats", 1, 1000, 0, 2);
     DlgCheck(2, "Random Progression?", 0, 3);
-    DlgList(3, "View/Opto Condition: ", exptype$, 3, 32, 4);
+    DlgList(3, "View/Opto Condition: ", exptype$, 4, 32, 4);
     DlgReal(4, "Period Duration, s", 0.05, 100, 0, 5);
     DlgInteger(5, "Number of periods per block", 1, 1000, 0, 6);
     DlgInteger(6, "Minimum Viewed Periods To Advance", 0, 1000, 0, 7);
-    DlgReal(7, "Interstimulus Interval, s", 0.05, 100, 0, 8);
-    DlgReal(8, "Fixation Acquisition Time, s", 0.1, 100, 0, 9);
-    DlgReal(9, "Acquisition Time Out, s", 0, 100, 0, 10);
-    DlgReal(10, "Look Away Time Out, s", 0, 100, 0, 11);
-    DlgList(11, "Fixation: ", fixscreen$, 2, 32, 12);
-    DlgCheck(12, "Always Looking?", 0, 13);
-    DlgCheck(13, "Use Stimulus Location From Config?", 0, 14);
-    DlgReal(14, "Image X Position (deg)", -20, 20, 0, 15);
-    DlgReal(15, "Image Y Position (deg)", -20, 20, 0, 16);
+    DlgReal(7, "Image Series Interimage Delay, s", 0.05, 100, 0, 8);
+    DlgReal(8, "Intertrial Interval, s", 0.05, 100, 0, 9);
+    DlgReal(9, "Fixation Acquisition Time, s", 0.1, 100, 0, 10);
+    DlgReal(10, "Acquisition Time Out, s", 0, 100, 0, 11);
+    DlgReal(11, "Look Away Time Out, s", 0, 100, 0, 12);
+    DlgList(12, "Fixation: ", fixscreen$, 2, 32, 13);
+    DlgCheck(13, "Always Looking?", 0, 14);
+    DlgCheck(14, "Use Stimulus Location From Config?", 0, 15);
+    DlgReal(15, "Image X Position (deg)", -20, 20, 0, 16);
+    DlgReal(16, "Image Y Position (deg)", -20, 20, 0, 17);
     
-    DlgGroup("Screen", 1, 17, 50, 3);
-    DlgReal(16, "Screen Width, mm", 10, 3000, 0, 18);
-    DlgReal(17, "Screen Height, mm", 10, 3000, 0, 19);
+    DlgGroup("Screen", 1, 18, 50, 3);
+    DlgReal(17, "Screen Width, mm", 10, 3000, 0, 19);
+    DlgReal(18, "Screen Height, mm", 10, 3000, 0, 20);
     
-    DlgGroup("Reward", 1, 20, 50, 2);
-    DlgReal(18, "Prob of reward each period", 0, 1, 0, 21);
+    DlgGroup("Reward", 1, 21, 50, 2);
+    DlgReal(19, "Prob of reward each period", 0, 1, 0, 22);
     
-    DlgGroup("Optogenetics", 1, 22, 50, 2);
-    'DlgCheck(18, "Use Opto", 0, 22);
-    DlgReal(19, "Opto Voltage Out (V)", 0.0002, 5, 0, 23); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+    DlgGroup("Optogenetics", 1, 23, 50, 2);
+    DlgReal(20, "Opto Voltage Out (V)", 0.0002, 5, 0, 24); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
     
     
-    DlgGroup("Images", 1, 24, 50, 3);
-    fvdlgTextItem% := DlgText(fvDialogText$, 3, 25, 40);
-    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 26);
-    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 23, 26);
-   
-    'these have been removed from the dialog before ever being used, just a guide
-    'DlgReal(4, "Maximum Image Display Time, s", 0.1, 1000, 0, 5);  
-    'DlgReal(7, "Minimum View Time For Advance, s", 0.1, 1000, 0, 8);
-    'DlgReal(12, "Reward minimum delay, s", 0.05, 1000, 0, 15);
-    'DlgReal(13, "Reward maximum delay, s", 0.05, 1000, 0, 16);  
-    'DlgInteger(16, "Max number of pulses per image", 1, 1000, 0, 20);
-    'DlgReal(17, "Opto pulse duration, s", 0.05, 1000, 0, 21);
-    'DlgReal(18, "Opto minimum delay, s", 0.05, 1000, 0, 22);
-    'DlgReal(19, "Opto maximum delay, s", 0.05, 1000, 0, 23);    
-    
-'    DlgButton(tundlgOptogeneticsButton%, "Optogenetics Parameters", TunOptoDialog%, 18, 19);  'for now, keep them in the same dialog   
+    DlgGroup("Images", 1, 25, 50, 3);
+    fvdlgTextItem% := DlgText(fvDialogText$, 3, 26, 40);
+    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 27);
+    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 18, 27);  
+    DlgButton(fvdlgImageSeriesSelectButton% , "Select Image Series", SelectStimFile%, 30, 27);
     
     'Right now we don't seem to need a callback, it's ready directly below if we do 
     DlgAllow(0xffff, 0, FreeViewerScriptDialogChanged%);
 
     i%:=DlgShow(fvNRepeats%, fvRandomProgression%, fvDoOpto%, fvPeriodDuration, fvNumPeriodsPerBlock%, fvMinViewPeriodsForAdvance%, 
-    fvTrialISI, fvAcquisitionTime, fvAcquisitionTO, fvLookAwayTO, fvFixScreen%, fvAlwaysLooking%, fvUseStimLocation%, fvXPos, fvYPos, 
+    fvISI, fvITI, fvAcquisitionTime, fvAcquisitionTO, fvLookAwayTO, fvFixScreen%, fvAlwaysLooking%, fvUseStimLocation%, fvXPos, fvYPos, 
     fvScreenMMX, fvScreenMMY, fvProbRewardEachPeriod, fvOptoVoltageOut);
     
     if i% = 1 then
@@ -374,26 +369,28 @@ func FreeViewerScriptDialog%()
         fvScreenYDeg := (fvScreenMMY/2)/screenMMPerDegree;
         
         'If we are doing the opto blocking (or pseudo-opto blocking) 
-        if fvDoOpto% > 0 then
+        if fvDoOpto% = 2 or fvDoOpto% = 3 then
             fvNumPeriods% := fvNumPeriodsPerBlock%*2;   'two "blocks" per image
-        else
+        else  'for NOW, we are assuming that the image series must be viewed in full to advance, but that's a question to ask
             fvNumPeriods% := 1;  'only one period
             if fvMinViewPeriodsForAdvance% > 1 then
                 fvMinViewPeriodsForAdvance% := 1;
             endif;
         endif;
         
-'        if fvRewardMinDelay > fvRewardMaxDelay then
-'            fvRewardMinDelay := fvRewardMaxDelay;
-'            message("Reward min delay was greater than max delay!\nBoth values set to max delay!");
-'        endif;
+        'Just for code clarity
+        if fvDoOpto% = 3 then
+            fvDoImageSeries% := 1;
+            fvImageDuration := fvPeriodDuration;
+            'fvPeriodCount% := 1;  'hard code period count to 1, we are not splitting each image series into periods - though we probably COULD since we know how many images there are
+            fvDoOpto% := 0;  'hard code opto OFF
+            fvNRepeats% := 1;  'technically this value is ignored, but good to note we don't allow repeats for Image Series, the file can have repeated trials if you want
+        else
+            fvDoImageSeries% := 0;
+            fvImageDuration := 0;  'This is what had been set for the third argument in non-image-series presentations
+            fvISI := 0;  'This is what had been set for the fourth argument in non-image-series presentations
+        endif
         
-        'This is now done in the dialog-changed function
-        'if fvUseStimLocation% = 1 then
-        '    var temp1;
-        '    var temp2;
-        '    ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"),fvXPos,fvYPos,temp1,temp2);
-        'endif
         
         
         iReturn% := 1;  'set return value to success, otherwise we'll just quit.
@@ -407,49 +404,84 @@ func FreeViewerScriptDialogChanged%(item%)
     var gr$;
     var x, y, w, h;
     
+    'If always looking, turn off all fixation variables - this misses some values set later, don't want to mess with it for now, not important
+'    if DlgValue(13) = 1 then
+'        DlgEnable(0,9);
+'        DlgEnable(0,10);
+'        DlgEnable(0,11);
+'        DlgEnable(0,12);
+'    else
+'        DlgEnable(1,9);
+'        DlgEnable(1,10);
+'        DlgEnable(1,11);
+'        DlgEnable(1,12);
+'    endif;
     
     'Grating parameters will be used to set stimulus location
-    if DlgValue(13) = 1 then
+    if DlgValue(14) = 1 then
         gr$ := GetGratingParameters$("Stimulus");
         ParseGratingParametersBrief%(gr$, x, y, w, h);  'w, h are diameters
     endif;
     
     'Enable/disable screen size entries based on using screen/fixation point for fixation
-    if DlgValue(13) = 0 then  
-        DlgEnable(1,14);
+    if DlgValue(14) = 0 then  
         DlgEnable(1,15);
+        DlgEnable(1,16);
     else
-        DlgEnable(0,14);
         DlgEnable(0,15);
-        DlgValue(14,x);
-        DlgValue(15,y);
+        DlgEnable(0,16);
+        DlgValue(15,x);
+        DlgValue(16,y);
     endif;
     
+    
     'Enable/disable screen size entries based on use of fixpt
-    DlgEnable(DlgValue(11),16);
-    DlgEnable(DlgValue(11),17);
+    DlgEnable(DlgValue(12),17);
+    DlgEnable(DlgValue(12),18);
     
     'Enable/disable opto voltage based on using opto
     if DlgValue(3) = 1 then
-        DlgEnable(1,19);
+        DlgEnable(1,20);
     else
-        DlgEnable(0,19);
+        DlgEnable(0,20);
     endif;
     
-    'Change labeling/enable based on using opto-style vs, regular style
-    if DlgValue(3) = 0 then
-        DlgValue$(1004,"Image Duration, s");
-        DlgEnable(0,5);
-        DlgValue$(1006,"New Image On Fix Break? (0/1)");
-        'DlgValue$(1018,"Prob of reward each image");
-        DlgEnable(0,18);
-    else
-        DlgValue$(1004,"Period Duration, s");
-        DlgEnable(1,5);
-        DlgValue$(1006,"Minimum Viewed Periods To Advance");
-        'DlgValue$(1018,"Prob of reward each period");
-        DlgEnable(1,18);
-    endif;
+    'Change labeling/enable based on using opto-style vs, regular style vs. image series style
+    docase
+    case DlgValue(3) = 0 then 'regular style
+        DlgEnable(1,1);  'enable repeats
+        DlgEnable(1,2);  'enable randomization
+        DlgValue$(1004,"Image Duration, s");  'label duration appropriately
+        DlgEnable(0,5);  'disable number of periods
+        DlgValue$(1006,"New Image On Fix Break? (0/1)");  'label appropriately
+        DlgEnable(0,7);  'disable ISI
+        DlgEnable(0,19);  'disable reward
+        DlgEnable(1,-fvdlgFolderSelectButton%);  'enable folder select
+        DlgEnable(1,-fvdlgFileSelectButton%);  'enable standard file select
+        DlgEnable(0,-fvdlgImageSeriesSelectButton%);  'disable image series select
+    case DlgValue(3) = 3 then 'image series style
+        DlgEnable(0,1);  'disable repeats
+        DlgEnable(0,2);  'disable randomization
+        DlgValue$(1004,"Image Duration, s");  'label duration appropriately
+        DlgEnable(0,5);  'disable number of periods
+        DlgValue$(1006,"New Image Series On Fix Break? (0/1)");  'label appropriately
+        DlgEnable(1,7);  'enable ISI
+        DlgEnable(1,19);  'enable reward
+        DlgEnable(0,-fvdlgFolderSelectButton%);  'disable folder select
+        DlgEnable(0,-fvdlgFileSelectButton%);  'disable standard file select
+        DlgEnable(1,-fvdlgImageSeriesSelectButton%);  'enable image series select
+    else 'opto style
+        DlgEnable(1,1);  'enable repeats
+        DlgEnable(1,2);  'enable randomization
+        DlgValue$(1004,"Period Duration, s");  'label duration appropriately
+        DlgEnable(1,5);  'enable number of periods
+        DlgValue$(1006,"Minimum Viewed Periods To Advance");  'label appropriately
+        DlgEnable(0,7);  'disable ISI
+        DlgEnable(1,19);  'enable reward
+        DlgEnable(1,-fvdlgFolderSelectButton%);  'enable folder select
+        DlgEnable(1,-fvdlgFileSelectButton%);  'enable standard file select
+        DlgEnable(0,-fvdlgImageSeriesSelectButton%);  'disable image series select
+    endcase;
     
     
     
@@ -466,7 +498,8 @@ proc GetFreeViewerScriptParameters()
     fvAlwaysLooking% := GetIntRegistryValue%(key$, "AlwaysLooking", fvAlwaysLooking%);
     fvRandomProgression% := GetIntRegistryValue%(key$, "RandomProgression", fvRandomProgression%);
     fvNRepeats% := GetIntRegistryValue%(key$, "NRepeats", fvNRepeats%);
-    fvTrialISI := GetFloatRegistryValue(key$, "TrialISI", fvTrialISI);
+    fvITI := GetFloatRegistryValue(key$, "TrialISI", fvITI);
+    fvISI := GetFloatRegistryValue(key$, "ISI", fvISI);
     fvAcquisitionTime := GetFloatRegistryValue(key$, "AcquisitionTime", fvAcquisitionTime);
     fvAcquisitionTO := GetFloatRegistryValue(key$, "AcquisitionTO", fvAcquisitionTO);
     fvLookAwayTO := GetFloatRegistryValue(key$, "LookAwayTO", fvLookAwayTO);
@@ -486,16 +519,6 @@ proc GetFreeViewerScriptParameters()
     fvYPos := GetFloatRegistryValue(key$, "YPos", fvYPos);
     fvFixScreen% := GetIntRegistryValue%(key$, "FixScreen", fvFixScreen%);
     
-    'from an older conception, not used
-    'fvMinTimeForAdvance := GetFloatRegistryValue(key$, "MinTimeForAdvance", fvMinTimeForAdvance);
-    'fvMaxImageTime := GetFloatRegistryValue(key$, "MaxImageTime", fvMaxImageTime);
-    'fvRewardMinDelay := GetFloatRegistryValue(key$, "RewardMinDelay", fvRewardMinDelay);
-    'fvRewardMaxDelay := GetFloatRegistryValue(key$, "RewardMaxDelay", fvRewardMaxDelay);
-    'fvOptoMaxNumPulses% := GetIntRegistryValue%(key$, "OptoMaxNumPulses", fvOptoMaxNumPulses%);
-    'fvOptoMinDelay := GetFloatRegistryValue(key$, "OptoMinDelay", fvOptoMinDelay);
-    'fvOptoMaxDelay := GetFloatRegistryValue(key$, "OptoMaxDelay", fvOptoMaxDelay);
-    'fvOptoDur := GetFloatRegistryValue(key$, "OptoDur", fvOptoDur);
-    
     
   
 end;
@@ -507,7 +530,8 @@ proc SaveFreeViewerScriptParameters()
     SetIntRegistryValue(key$, "AlwaysLooking", fvAlwaysLooking%);
     SetIntRegistryValue(key$, "RandomProgression", fvRandomProgression%);
     SetIntRegistryValue(key$, "NRepeats", fvNRepeats%);
-    SetFloatRegistryValue(key$, "TrialISI", fvTrialISI);
+    SetFloatRegistryValue(key$, "TrialISI", fvITI);
+    SetFloatRegistryValue(key$, "ISI", fvISI);
     SetFloatRegistryValue(key$, "AcquisitionTime", fvAcquisitionTime);
     SetFloatRegistryValue(key$, "AcquisitionTO", fvAcquisitionTO);
     SetFloatRegistryValue(key$, "LookAwayTO", fvLookAwayTO);
@@ -526,16 +550,6 @@ proc SaveFreeViewerScriptParameters()
     SetFloatRegistryValue(key$, "XPos", fvXPos);
     SetFloatRegistryValue(key$, "YPos", fvYPos);
     SetIntRegistryValue(key$, "FixScreen", fvFixScreen%);
-    
-    'From an older conception, not used
-    'SetFloatRegistryValue(key$, "MinTimeForAdvance", fvMinTimeForAdvance);
-    'SetFloatRegistryValue(key$, "MaxImageTime", fvMaxImageTime);
-    'SetFloatRegistryValue(key$, "RewardMinDelay", fvRewardMinDelay);
-    'SetFloatRegistryValue(key$, "RewardMaxDelay", fvRewardMaxDelay);
-    'SetIntRegistryValue(key$, "OptoMaxNumPulses", fvOptoMaxNumPulses%);
-    'SetFloatRegistryValue(key$, "OptoMinDelay", fvOptoMinDelay);
-    'SetFloatRegistryValue(key$, "OptoMaxDelay", fvOptoMaxDelay);
-    'SetFloatRegistryValue(key$, "OptoDur", fvOptoDur);
     
 end;
 
@@ -851,47 +865,86 @@ func Start%()
     var readTemp$;
     var startSecs := 5;
     
-    'Get list of images, either from folder or from file, and create a randomized order (via list of indices),
-    'write entire randomized trial-by-trial image list to text file for passing to VSG
-    if fvUseFile% = 0 then  'if using folder
-        returnToPath$ := FilePath$();  'keep track of current directory
-        FilePathSet(fvStimFolder$);  'move to selected folder
-        fvFileLen% := FileList(fvImageList$[],-1,"*.bmp");  'return the list of all .bmps and the number in fvFileLen%
-        FilePathSet(returnToPath$);  'return current directory to where it was
-        'and finally, convert fvImageList$[] to full-path
-        for i% := 0 to fvFileLen%-1 do
-            fvImageList$[i%] := fvStimFolder$ + fvImageList$[i%];  'fvStimFolder$ will have the trailing slashie
-        next
-    else 'if using file
-        fvFileLen% := 0;
-        fh% := FileOpen(fvStimFile$,8,0);  'open file for reading only
-        if fh% < 0 then
-            message("File " + fvStimFile$ + " failed to open!!!  Quitting!");
-            halt
+    
+    'If we are loading an IMAGE SERIES file, the entire spec is in the file, otherwise we take a folder 
+    'or list of file names and re-create the file in a known location
+    if fvDoImageSeries% = 1 then
+        ImageFileLoc$ := fvStimFile$;  'directly assign the selected file
+        'Note that this file is NOT randomized, we will be going in the order listed in the file
+        'File format has two sections:
+        '
+        'E:\work\img\grapes-tc.bmp
+        'E:\work\img\lettuce-tc.bmp,-8,-8
+        'E:\work\img\potato-tc.bmp,-8,8,2,1
+        'E:\work\img\radish-tc.bmp
+        'E:\work\img\zuccini-tc.bmp,0,0,3
+        'E:\work\img\potato-tc.bmp,-4,4,2,1
+        '
+        'Groups
+        '0,2,4
+        '1
+        '2,3
+        '3,4,5
+        '
+        'Where the first section is image definitions, and the second section is a list of trials, using
+        'zero-based indexing to ID the N stimuli to present in any trial.  In the image definition section, 
+        'the optional arguments are xpos,ypos,duration,delay_following.  Delay_following is ignored for the
+        'final stimulus in a group ("image series", "trial").  Can give 0, 2, 3, or 4 args (x/y must come
+        'together) with default values used if not specified.  Note that the same image may be defined more
+        'than once with different arguments.
+        
+        'Parse image series file, we need to know how many trials, etc.
+        success% := ParseImageSeriesFile%(fvStimFile$,fvNValues%,fvImagesPerTrial%[],fvTrialDurEstimate[],fvImageList$[],fvImageIndices%[][],fvImageDur[],fvImageDelay[],fvImageXPos[],fvImageYPos[]);
+        if success% = 1 then
+            printlog("Success in reading image series file %s, num trials is %d\n",ImageFileLoc$,fvNValues%);
+        else
+            printlog("Failure in reading image series file %s! \n",ImageFileLoc$);
         endif;
-        while readInputFile% do
-            j% := Read(readTemp$);
-            if j% = 1 then
-                fvImageList$[fvFileLen%] := readTemp$;  'by expectation, these will have full paths
-                fvFileLen% += 1;
-            else
-                readInputFile% := 0;
+    else
+        'Get list of images, either from folder or from file, and create a randomized order (via list of indices),
+        'write entire randomized trial-by-trial image list to text file for passing to VSG
+        if fvUseFile% = 0 then  'if using folder
+            returnToPath$ := FilePath$();  'keep track of current directory
+            FilePathSet(fvStimFolder$);  'move to selected folder
+            fvFileLen% := FileList(fvImageList$[],-1,"*.bmp");  'return the list of all .bmps and the number in fvFileLen%
+            FilePathSet(returnToPath$);  'return current directory to where it was
+            'and finally, convert fvImageList$[] to full-path
+            for i% := 0 to fvFileLen%-1 do
+                fvImageList$[i%] := fvStimFolder$ + fvImageList$[i%];  'fvStimFolder$ will have the trailing slashie
+            next
+        else 'if using file
+            'This file is simply a list of full paths of images, one per line
+            fvFileLen% := 0;
+            fh% := FileOpen(fvStimFile$,8,0);  'open file for reading only
+            if fh% < 0 then
+                message("File " + fvStimFile$ + " failed to open!!!  Quitting!");
+                halt
             endif;
-        wend
-        FileClose(fh%);
+            while readInputFile% do
+                j% := Read(readTemp$);
+                if j% = 1 then
+                    fvImageList$[fvFileLen%] := readTemp$;  'by expectation, these will have full paths
+                    fvFileLen% += 1;
+                else
+                    readInputFile% := 0;
+                endif;
+            wend
+            FileClose(fh%);
+        endif;
+        'Now, regardless of source, fvImageList$ contains a full path to a list of images and fvFileLen% contains the number of images
+        'Use GRPP to get a list of indices determining presentation order - this is easier than writing new code, even if it does some extra stuff
+        fvNValues% := fvFileLen%*fvNRepeats%;
+        GetRepeatedParameterProgression%(fvFileLen%, fvNRepeats%, dummyResult[], fvImageOrder%[], 1, 2, 0, fvRandomProgression%);  'We will ignore dummyResult, which holds values between (1) and (2) that are not logspaced (0)
+        'Create the file to send to the VSG, use order created in line above
+        fh% := FileOpen(ImageFileLoc$,8,1);  'Open a new text file for writing, replace current file
+        printlog("result of opening text file is %d\n",fh%);
+        for j% := 0 to fvNValues% -1 do
+            view(fh%).Print("%s\n",fvImageList$[fvImageOrder%[j%]]);
+        next
+        FileClose(fh%);  'Close the VSG image list file
+        
     endif;
-    'Now, regardless of source, fvImageList$ contains a full path to a list of images and fvFileLen% contains the number of images
-    'Use GRPP to get a list of indices determining presentation order - this is easier than writing new code, even if it does some extra stuff
-    fvNValues% := fvFileLen%*fvNRepeats%;
-    GetRepeatedParameterProgression%(fvFileLen%, fvNRepeats%, dummyResult[], fvImageOrder%[], 1, 2, 0, fvRandomProgression%);  'We will ignore dummyResult, which holds values between (1) and (2) that are not logspaced (0)
-    'Create the file to send to the VSG, use order created in line above
-    fh% := FileOpen(ImageFileLoc$,8,1);  'Open a new text file for writing, replace current file
-    printlog("result of opening text file is %d\n",fh%);
-    for j% := 0 to fvNValues% -1 do
-        view(fh%).Print("%s\n",fvImageList$[fvImageOrder%[j%]]);
-    next
-    FileClose(fh%);  'Close the VSG image list file
-	
+    
     
 	'start sampling
     if UseTwo1401s% = 1 then
@@ -967,7 +1020,10 @@ func Start%()
     'FixationArg$ := "";  'Blank out fixation point, we won't do this, we just won't put it up if we aren't using it
     'FixationArg$ is automatically filled by #including UsreyFixationPoint.s2s
     
-    ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvXPos) + "," + Str$(fvYPos) + ",0,0";
+    'Set image arg - versions prior to adding Image Series had trailing "0,0" hardcoded, now fvImageDuration and
+    'fvISI will be set to zeroes at the dialog unless it is an Image Series scenario
+    ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvXPos) + "," + Str$(fvYPos) + "," + Str$(fvImageDuration) + "," + Str$(fvISI);
+    'ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvXPos) + "," + Str$(fvYPos) + ",0,0";  'old
     
 
     'Build command line, any values that are unnecessary will be empty, so the build should work no matter what type of command line is required
@@ -1102,7 +1158,7 @@ proc WriteParameterFile()
 	parHandle% := FileOpen(parFileName$, 8, 1);
 
 	' write general info - eye coil gains, dist to screen
-	Print("Tuning parameters for %s\n\n", parFileBase$);
+	Print("Parameters for %s\n\n", parFileBase$);
 
 	Print("General information\n");
 	Print("-------------------\n\n");
@@ -1121,11 +1177,18 @@ proc WriteParameterFile()
     Print("Always Looking?                          : %d\n", fvAlwaysLooking%);
 	Print("Random Progression?                      : %d\n", fvRandomProgression%);
 	Print("Number of repeats                        : %d\n", fvNRepeats%);
-    Print("Number of periods per block              : %d\n", fvNumPeriodsPerBlock%);
-    Print("Min number of periods viewed for advance : %d\n", fvMinViewPeriodsForAdvance%);
-    Print("Period duration (s)                      : %f\n", fvPeriodDuration);
+    if fvDoImageSeries% = 1 then
+        Print("Image duration                           : %f\n", fvImageDuration);
+    else
+        Print("Number of periods per block              : %d\n", fvNumPeriodsPerBlock%);
+        Print("Min number of periods viewed for advance : %d\n", fvMinViewPeriodsForAdvance%);
+        Print("Period duration (s)                      : %f\n", fvPeriodDuration);
+    endif
     Print("Probability of reward each period        : %f\n", fvProbRewardEachPeriod);
-	Print("Inter-image interval                     : %f\n", fvTrialISI);
+	Print("Inter-trial interval                     : %f\n", fvITI);
+    if fvDoImageSeries% = 1 then
+        Print("Inter-stimulus interval                  : %f\n", fvISI);
+    endif
     Print("Acquisition time (s)                     : %f\n", fvAcquisitionTime);
     Print("Acquisition time out (s)                 : %f\n", fvAcquisitionTO);
     Print("Look away time out (s)                   : %f\n", fvLookAwayTO);
@@ -1144,11 +1207,16 @@ proc WriteParameterFile()
     endif;    
     
     
-    'Write out image list
-    Print("\nImage List\n");
-    for ii% := 0 to fvFileLen%-1 do 
-        Print("Image %d: %s",ii%+1,fvImageList$[ii%]);
-    next
+    if fvDoImageSeries% = 1 then  'write location of image series file
+        Print("Image Series file                   : %s\n", fvStimFile$);
+    else
+        'Write out image list
+        Print("\nImage List\n");
+        for ii% := 0 to fvFileLen%-1 do 
+            Print("Image %d: %s",ii%+1,fvImageList$[ii%]);
+        next
+    endif;
+        
     
     
 	' close parfile
@@ -1167,14 +1235,6 @@ func IdleProcessing%()
     var yind%;
     
 	tNow := View(DataWindow%).MaxTime();
-    
-    ' First time through (tLast<0) just update tLast. Crosstalk on vsg dig outputs leads to erroneous
-    ' triggers. Maybe this will help. 
-    'unused
-'    if tLast < 0 then
-'        tLast := 1;
-'        return 1;
-'    endif
     
     
 	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
@@ -1262,9 +1322,14 @@ func IdleProcessing%()
             docase
             case LookingAtScreenOrFixpt%(xEye,yEye) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
                 SafeSampleKey("S");  'request stimulus
-                sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tNow);
+                'sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tNow);
                 LogStatus("WaitForAcquisition", "Request stimulus at " + str$(tNow));
-                ChangeStateTo(stateWaitForStimOn%, tNow);
+                if fvDoImageSeries% = 1 then
+                    ChangeStateTo(stateWaitForImageOn%, tNow);
+                    fvNumPeriods% := fvImagesPerTrial%[nTrialsCompleted%];
+                else
+                    ChangeStateTo(stateWaitForStimOn%, tNow);
+                endif
             case tNow - tStateStart > fvAcquisitionTime then
                 LogStatus("WaitForAcquisition", "Acquisition window timed out at " + str$(tNow));
                 if fvFixScreen% = 1 then
@@ -1331,10 +1396,35 @@ func IdleProcessing%()
             ' Stimulus is up
             LogStatus("WaitForStimOn", "Stimulus started at " + str$(tTrigger));
             tLastTrigger := tTrigger;
+            sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tTrigger);
             ChangeStateTo(stateHoldImage%, tTrigger);
             'SampleText("Stim On",tTrigger);  'TODO - see if Henry wants this sampletext
             
         endif
+        
+        
+    case iState% = stateWaitForImageOn% then
+        'Wait for the image to come on, do for each image in image series
+        if stateBegin% = 1 then
+            LogStatus("WaitForImageOn", "Waiting for image on at " + str$(tNow));
+            stateBegin% := 0;
+            fvPeriodCount% += 1;  'Increment period count before image comes on, so fvPeriodCount% is current image
+        endif
+        'Check for fixation break, if broken move out
+        if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+            fvFixationWasBroken% := 1;
+            ChangeStateTo(stateHoldImage%, tTrigger);
+        else 'check for image on
+            if View(DataWindow%).FindRisingEdge%(FrameChannel%, tStateStart, tTrigger) = 0 then
+                ' Image is up
+                LogStatus("WaitForImageOn", "Image started at " + str$(tTrigger));
+                tLastTrigger := tTrigger;
+                sampletext(fvImageList$[fvImageIndices%[nTrialsCompleted%][fvPeriodCount%-1]] + "," + Str$(fvImageXPos[nTrialsCompleted%]) + "," + Str$(fvImageYPos[nTrialsCompleted%]), tTrigger);
+                ChangeStateTo(stateHoldImage%, tTrigger);
+            endif
+        endif
+        
+        
         
         
     case iState% = stateHoldImage% then
@@ -1416,6 +1506,8 @@ func IdleProcessing%()
         tNow := View(DataWindow%).MaxTime();  'update tNow so the duration of the period is as precise as possible
         'Determine if we are in the opto half or no-opto half of the image
         docase
+        case fvDoImageSeries% = 1 then
+            changeStateTo(stateWaitForImageOff%,tNow);
         case fvDoOpto% <> 1 then 'we are not doing opto, it is not an opto period
             ChangeStateTo(stateNoOptoPeriod%,tNow);
         case (fvPeriodCount% < fvNumPeriodsPerBlock% and fvOptoOrderThisTrial% = 1) or (fvPeriodCount% >= fvNumPeriodsPerBlock% and fvOptoOrderThisTrial% = 2) then
@@ -1435,6 +1527,30 @@ func IdleProcessing%()
         endcase;
         
         
+    case iState% = stateWaitForImageOff% then
+        'Wait for the image to turn off, do for each image in image series
+        if stateBegin% = 1 then
+            LogStatus("WaitForImageOff", "Waiting for image off at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        'Check for fixation break, note if broken 
+        if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+            fvFixationWasBroken% := 1;
+        endif;
+        'check for image off
+        if View(DataWindow%).FindRisingEdge%(FrameChannel%, tStateStart, tTrigger) = 0 then
+            ' Image is off
+            LogStatus("WaitForImageOff", "Image ended at " + str$(tTrigger));
+            tLastTrigger := tTrigger;
+            if fvFixationWasBroken% = 1 then  'wait until image is off to continue
+                ChangeStateTo(stateHoldImage%, tNow);
+            else    
+                sampletext("+", tTrigger);  'Indicate successful viewing of image
+                ChangeStateTo(stateWaitForImageOn%, tTrigger);
+            endif
+        endif
+        
+    
     case iState% = stateNoOptoPeriod% then
         'Wait for period to be over
         docase
@@ -1517,21 +1633,21 @@ func IdleProcessing%()
                 fvAdvance% := 0;  'reset advance variable
                 ChangeStateTo(stateTrialCompleted%, tLastTrigger);
             case fvGiveLookingTO% = 0 then  'If we do not advance the stimulus, but do not give a TO penalty, go to ISI
-                ChangeStateTo(stateInterStimulusInterval%, tLastTrigger); 
+                ChangeStateTo(stateInterTrialInterval%, tLastTrigger); 
             else 'otherwise do not advance stimulus, give TO penalty
                 ChangeStateTo(stateLookAwayTO%, tLastTrigger); 
             endcase
         endif
         
         
-    case iState% = stateInterStimulusInterval% then 
+    case iState% = stateInterTrialInterval% then 
         if stateBegin% = 1 then
-            LogStatus("InterStimulusInterval", "InterStimulusInterval began at " + str$(tNow));
+            LogStatus("InterTrialInterval", "InterTrialInterval began at " + str$(tNow));
             stateBegin% := 0;
         endif   
         
-        if tNow > tStateStart + fvTrialISI then
-            LogStatus("InterStimulusInterval", "InterStimulusInterval ended at " + str$(tNow));
+        if tNow > tStateStart + fvITI then
+            LogStatus("InterTrialInterval", "InterTrialInterval ended at " + str$(tNow));
             if fvFixScreen% = 0 then
                 ChangeStateTo(stateFixptUp%,tNow);
             else
@@ -1546,7 +1662,7 @@ func IdleProcessing%()
            stateBegin% := 0;
         endif   
         
-        if tNow > tStateStart + fvLookAwayTO + fvTrialISI then  'this state just encompasses the ISI as well
+        if tNow > tStateStart + fvLookAwayTO + fvITI then  'this state just encompasses the ITI as well
             LogStatus("LookAwayTO", "Timeout for looking away ended at " + str$(tNow));
             if fvFixScreen% > 0 then
                 ChangeStateTo(statePrepareOpto%, tNow);
@@ -1570,7 +1686,7 @@ func IdleProcessing%()
             SafeSampleKey("a");
             LogStatus("TrialCompleted", "Advancing stimulus");
             if fvGiveLookingTO% = 0 then  'go to ISI
-                ChangeStateTo(stateInterStimulusInterval%, tLastTrigger); 
+                ChangeStateTo(stateInterTrialInterval%, tLastTrigger); 
             else 'otherwise give TO penalty
                 ChangeStateTo(stateLookAwayTO%, tLastTrigger); 
             endif
@@ -1592,21 +1708,6 @@ end;
 
 
 
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'proc DoSampleAutoName(key$,long$,short$,master$,slave$)
-'    'This function will do the auto-naming of files.  It will take into account the setup of the system
-'    '(if there are one or two 1401s, and whether this is a micro/power or master/slave relationship)
-'    'The long$ name should be 8 characters or fewer
-'    'The short$ name should be 3 character or fewer
-'    
-'    if UseTwo1401s% = 0 then
-'        SampleAutoName$(dataCellName$ + "_" + long$ + "_000");  'NOTE: maximum of 13 characters!!!
-'    else
-'        EqualizeSMRFilenumbers(dataPathRoot$ + "\\" + dataDataSet$,dataCellName$+"_" + short$ + master$ + "_",dataCellName$+"_" + short$ + slave$ + "_");
-'        SampleAutoName$(dataCellName$ + "_" + short$ + master$ + "_000");  'NOTE: maximum of 13 characters!!!
-'        SetStringRegistryValue(key$, "pref", short$);
-'    endif;    
-'end
 
 
 
@@ -1722,17 +1823,8 @@ func SelectStimFolder%()
     'Put up dialog box to allow user to select stimulus folder to use
     fh%:=FileOpen(fvDefaultStimPath$+"*",9,0, "Select any file in the folder you will use");  'select any stimulus
     if fh% > 0 then
-        stimFolder$ := FileName$(fh%);  'this gets the name of the selected FILE, with path
-        FileClose();  'close the file
-        
-        'Loop to find final slash, so we can get just the folder name
-        while strWhile% <> 0 do
-            strInd% := strWhile%;  'this grabs the index for each '\', after the last one strWhile% will be 0 and will exit out
-            strWhile% := InStr(stimFolder$,"\\",strInd%+1);  'search for ''\'
-        wend
-        'get name of folder containing stimuli to calibrate
-        fvStimFolder$ := Left$(stimFolder$,strInd%);
-        
+        fvStimFolder$ := FileName$(-1);  'this gets the name of the selected FOLDER, with path
+        FileClose();  'close the file        
         temp$ := "Use FOLDER: " + fvStimFolder$;
     else
         fvStimFolder$ := "";  'assign empty folder, will have to select again
@@ -1755,9 +1847,10 @@ func SelectStimFile%()
     'Put up dialog box to allow user to select stimulus file to use
     fh%:=FileOpen(fvDefaultStimPath$+"*.txt",8,0, "Select the stimulus file");  'select the file - we're opening it as a text file, but we're just closing it again right now
     if fh% > 0 then
-        fvStimFile$ := FileName$(fh%);  'this gets the name of the selected file, with path
+        fvStimFile$ := FileName$(0);  'this gets the name of the selected file, with path
+        temp$ := "Use FILE: " + FileName$(-5);  'this chops off the path
         FileClose();  'close the file
-        temp$ := "Use FILE: " + fvStimFile$;
+        
     else
         fvStimFile$ := "";  'assign empty file, will have to select again
         temp$ := "No File/Folder Selected";
@@ -1791,3 +1884,108 @@ proc DrawFix(iDraw%)
 	endif
 
 end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' ParseImageSeriesFile%()
+' 
+' Parses an image series file, returns success/failure and updates number of trials, the number of images
+' per trial, an estimate of the duration of each trial, an index list of images, a list of the indices of
+' the images used on each trial, and lists of the duration, the delay, the xpos and the ypos of each image
+func ParseImageSeriesFile%(imageFile$,&nTrials%,&nImagesPerTrial%[],&trialDurEstimate[],&ImageList$[],&imageIndices%[][],&ImageDur[],&ImageDelay[],&ImageXPos[],&ImageYPos[])
+    var success% := 1;
+    var xpos;  
+    var ypos;  
+    var dur;
+    var delay;
+    var imageID%[1000];  'allow 1000 images per trial (ha ha)
+    var i%;  'trial count
+    var fh%;
+    var numRead% := 1;
+    var imageStr$;
+    'fvXPos, fvYPos, fvImageDuration, fvISI are global
+    
+    'Open text file for reading
+    fh% := FileOpen(imageFile$,8,0);
+    if fh% < 0 then
+        printlog("File open of %s returned error code %d, error is: %s\n",ImageFile$,fh%,Error$(fh%));
+        return 0;
+    endif;
+    
+    'Read images section, using default comma separator
+    ReadSetup("","","","",",");  'Set string separator to comma
+    numRead% := Read(imageStr$,xpos,ypos,dur,delay);  'read image, including dur and delay if present
+    while numRead% > 0 do
+        'fill imageList$[i%] with image name
+        imageList$[i%] := imageStr$;
+        'fill imageXPos[i%], imageYPos[i%] with x/y pos
+        if numRead% > 1 then
+            imageXPos[i%] := xpos;
+            imageYPos[i%] := ypos;
+        else
+            imageXPos[i%] := fvXPos;
+            imageYPos[i%] := fvYPos;
+        endif
+        'fill imageDur[i%] with dur or default
+        if numRead% > 3 then  
+            imageDur[i%] := dur;  
+        else
+            imageDur[i%] := fvImageDuration;
+        endif
+        'fill imageDelay[i%] with dur or default
+        if numread% > 4 then
+            imageDelay[i%] := delay;
+        else
+            imageDelay[i%] := fvISI;
+        endif
+        i% += 1; 'increment index
+        numRead% := Read(imageStr$,xpos,ypos,dur,delay);  'read image, including dur and delay if present
+    wend
+    
+    if i% = 0 then
+        printlog("No images successfully read from file %s, check file, do not allow blank space at beginning!\n",ImageFile$);
+        return 0;
+    endif
+    
+    'printlog("%d images read, dur is %f and delay is %f\n",i%,imageDur[0:i%],imageDelay[0:i%]);
+    
+    
+    'Find "Groups" indicator, don't let loop go infinite if not found
+    i% := 0;
+    while imageStr$ <> "Groups" and i% < 100 do
+        i% += 1;
+        Read(imageStr$);
+    wend
+    
+    if i% > 99 then
+        printlog("\"Groups\" indicator not found in file %s, check file!\n",ImageFile$);
+        return 0;
+    endif
+    
+    
+    'Read image series lists until EOF
+    nTrials% := 0;  'use for trial count, indexing
+    numRead% := Read(imageID%[]);  'read comma-separated string of all image indices
+    while numRead% > 0 do
+        'Fill nImagesPerTrial%[]
+        nImagesPerTrial%[nTrials%] := numRead%;
+        'Fill trialDurEstimate[]
+        for i% := 0 to numRead%-1 do
+            trialDurEstimate[nTrials%] += imageDur[imageID%[i%]];  'Add in image dur
+            trialDurEstimate[nTrials%] += imageDelay[imageID%[i%]];  'Add in delay, including final delay which will be subtracted
+            imageIndices%[nTrials%][i%] := imageID%[i%];  'Keep a list of image indices
+        next
+        'Remove final delay added in, final delay doesn't count
+        trialDurEstimate[nTrials%] -= imageDelay[imageID%[i%]];
+        
+        nTrials% += 1;  'increment trial count
+        numRead% := Read(imageID%[]);  'read comma-separated string of all image indices
+    wend
+    
+    FileClose();
+    
+    return success%;
+end
+
