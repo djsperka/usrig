@@ -134,6 +134,7 @@ var fvImageDur[5000];  'seconds
 var fvImageDelay[5000];  'seconds
 var fvImageXPos[5000];
 var fvImageYPos[5000];
+var fvCurrImageIndex%;
 
 
 ' Wavemarks and continuous ports
@@ -847,7 +848,7 @@ func Start%()
     var TriggerPort$;
     var ImageFileLoc$;  'We can just set this outright
     ImageFileLoc$ := fvDefaultStimPath$ + fvDefaultStimFile$;
-    var FixationArg$;
+    'var FixationArg$;  'NO!  Do not define FixationArg$ here or it will step on the one defined in UsreyFixationPoint.s2s!!
     var ImageArg$;
     var Verbose$:=" -v ";  'For now, verbose is always on 
     'vars for opto setup
@@ -1261,7 +1262,7 @@ func IdleProcessing%()
             Yield(1.0);
             tLastTrigger := tFall;
             fvAdvance% := 0;  'Ensure value is 0 on first run
-            if fvFixScreen% = 0 then
+            if fvFixScreen% = 1 then
                 ChangeStateTo(statePrepareOpto%, tFall);
             else
                 ChangeStateTo(stateFixptUp%, tFall);
@@ -1408,7 +1409,6 @@ func IdleProcessing%()
         if stateBegin% = 1 then
             LogStatus("WaitForImageOn", "Waiting for image on at " + str$(tNow));
             stateBegin% := 0;
-            fvPeriodCount% += 1;  'Increment period count before image comes on, so fvPeriodCount% is current image
         endif
         'Check for fixation break, if broken move out
         if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
@@ -1419,7 +1419,8 @@ func IdleProcessing%()
                 ' Image is up
                 LogStatus("WaitForImageOn", "Image started at " + str$(tTrigger));
                 tLastTrigger := tTrigger;
-                sampletext(fvImageList$[fvImageIndices%[nTrialsCompleted%][fvPeriodCount%-1]] + "," + Str$(fvImageXPos[nTrialsCompleted%]) + "," + Str$(fvImageYPos[nTrialsCompleted%]), tTrigger);
+                fvCurrImageIndex% := fvImageIndices%[nTrialsCompleted%][fvPeriodCount%];
+                sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]), tTrigger);
                 ChangeStateTo(stateHoldImage%, tTrigger);
             endif
         endif
@@ -1542,11 +1543,26 @@ func IdleProcessing%()
             ' Image is off
             LogStatus("WaitForImageOff", "Image ended at " + str$(tTrigger));
             tLastTrigger := tTrigger;
+            fvPeriodCount% += 1;  'Increment period count before image comes on, so fvPeriodCount% is current image
             if fvFixationWasBroken% = 1 then  'wait until image is off to continue
                 ChangeStateTo(stateHoldImage%, tNow);
             else    
-                sampletext("+", tTrigger);  'Indicate successful viewing of image
-                ChangeStateTo(stateWaitForImageOn%, tTrigger);
+            sampletext("+", tTrigger);  'Indicate successful viewing of image
+                if fvPeriodCount% >= fvNumPeriods% then
+                    ' turn off stimulus, get ready to advance
+                    SafeSampleKey("X");  'Turn off all
+                    SampleText("++");  'indicates fully successful trial
+                    LogStatus("WaitForImageOff", "Image time complete. Turn off and advance stimulus at " + str$(tNow));
+            
+                    fvAdvance% := 1;  'Advance, but not until stimulus is off
+                    fvFixationWasBroken% := 0;  'We didn't check to see if there was a fixation break in the last period, but reset just in case there was
+            
+                    'And wait for stim to turn off
+                    fvGiveLookingTO% := 0;  'no timeout on successful fixation
+                    ChangeStateTo(stateWaitForStimOff%, tNow);
+                else
+                    ChangeStateTo(stateWaitForImageOn%, tTrigger);
+                endif
             endif
         endif
         
@@ -1648,10 +1664,10 @@ func IdleProcessing%()
         
         if tNow > tStateStart + fvITI then
             LogStatus("InterTrialInterval", "InterTrialInterval ended at " + str$(tNow));
-            if fvFixScreen% = 0 then
-                ChangeStateTo(stateFixptUp%,tNow);
-            else
+            if fvFixScreen% = 1 then
                 ChangeStateTo(statePrepareOpto%, tNow);
+            else
+                ChangeStateTo(stateFixptUp%,tNow);
             endif;
         endif
         
@@ -1664,7 +1680,7 @@ func IdleProcessing%()
         
         if tNow > tStateStart + fvLookAwayTO + fvITI then  'this state just encompasses the ITI as well
             LogStatus("LookAwayTO", "Timeout for looking away ended at " + str$(tNow));
-            if fvFixScreen% > 0 then
+            if fvFixScreen% = 1 then
                 ChangeStateTo(statePrepareOpto%, tNow);
             else
                 ChangeStateTo(stateFixptUp%, tNow);
@@ -1949,7 +1965,7 @@ func ParseImageSeriesFile%(imageFile$,&nTrials%,&nImagesPerTrial%[],&trialDurEst
         return 0;
     endif
     
-    'printlog("%d images read, dur is %f and delay is %f\n",i%,imageDur[0:i%],imageDelay[0:i%]);
+    'printlog("%d images read, dur is %f and delay is %f and xpos is %f and ypos is %f\n",i%,imageDur[0:i%],imageDelay[0:i%],imageXPos[0:i%],imageYPos[0:i%]);
     
     
     'Find "Groups" indicator, don't let loop go infinite if not found
