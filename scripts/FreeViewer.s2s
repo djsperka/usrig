@@ -374,9 +374,10 @@ func FreeViewerScriptDialog%()
             fvNumPeriods% := fvNumPeriodsPerBlock%*2;   'two "blocks" per image
         else  'for NOW, we are assuming that the image series must be viewed in full to advance, but that's a question to ask
             fvNumPeriods% := 1;  'only one period
-            if fvMinViewPeriodsForAdvance% > 1 then
+            if fvMinViewPeriodsForAdvance% > 1 then 'don't allow this value to be too large
                 fvMinViewPeriodsForAdvance% := 1;
             endif;
+            fvMinViewPeriodsForAdvance% := 1-fvMinViewPeriodsForAdvance%;  'Invert this for standard image/image series, as dialog says "new image on fix break", 0 = no new image, means min view periods is 1
         endif;
         
         'Just for code clarity
@@ -1020,6 +1021,10 @@ func Start%()
     'For now, explicitly no fixation.  For no longer.  Optional fixation point has been requested.
     'FixationArg$ := "";  'Blank out fixation point, we won't do this, we just won't put it up if we aren't using it
     'FixationArg$ is automatically filled by #including UsreyFixationPoint.s2s
+    'If we are using always looking, or if the animal is fixating the screen, do not show fixation point
+    if fvFixScreen% = 1 or fvAlwaysLooking% = 1 then
+        FixationArg$ := "";
+    endif
     
     'Set image arg - versions prior to adding Image Series had trailing "0,0" hardcoded, now fvImageDuration and
     'fvISI will be set to zeroes at the dialog unless it is an Image Series scenario
@@ -1176,6 +1181,7 @@ proc WriteParameterFile()
 	Print("-------------------------\n\n");
 
     Print("Always Looking?                          : %d\n", fvAlwaysLooking%);
+    Print("Fixate Screen?                           : %d\n", fvFixScreen%);
 	Print("Random Progression?                      : %d\n", fvRandomProgression%);
 	Print("Number of repeats                        : %d\n", fvNRepeats%);
     if fvDoImageSeries% = 1 then
@@ -1349,7 +1355,7 @@ func IdleProcessing%()
         
     case iState% = stateWaitForBlank% then
 
-        if View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 1 then
+        if View(DataWindow%).FindFallingEdge%(StimChannel%, tStateStart, tTrigger) = 1 then
             ' Fixation point is off
             tLastTrigger := tTrigger;
             DrawFix(0);	' actually this draws the location of the fixpt.
@@ -1378,7 +1384,7 @@ func IdleProcessing%()
         
         if tNow - tStateStart > fvAcquisitionTO then
             LogStatus("AcquisitionTO", "End acquisition timeout at " + str$(tNow));
-            if fvDoOpto% = 0 then
+            if fvDoOpto% = 0 and fvFixScreen% = 0 then
                 ChangeStateTo(stateFixptUp%,tNow);
             else
                 ChangeStateTo(stateWaitForAcquisition%, tNow); 
@@ -1572,11 +1578,13 @@ func IdleProcessing%()
         docase
         case tNow >= tStateStart + fvPeriodDuration then
             ChangeStateTo(stateRewardPeriod%,tNow);
-        case LookingAtScreenOrFixpt%(xEye,yEye) = 0 and fvDoOpto% = 0 then 'end image if this is the only image
-            SafeSampleKey("X");  'Request everything down
-            fvFixWaitState% := 1;  'will go to hold TO if no advance
-            fvGiveLookingTO% := 1;  'will go to hold TO if advance
-            ChangeStateTo(stateWaitForBlank%, tNow);
+        case LookingAtScreenOrFixpt%(xEye,yEye) = 0 and fvDoOpto% = 0 then 'end image in standard case
+            'SafeSampleKey("X");  'Request everything down
+            'fvFixWaitState% := 1;  'will go to hold TO if no advance
+            'fvGiveLookingTO% := 1;  'will go to hold TO if advance
+            'ChangeStateTo(stateWaitForBlank%, tNow);
+            fvFixationWasBroken% := 1;
+            ChangeStateTo(stateHoldImage%,tNow);
         case LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
             fvFixationWasBroken% := 1;  'but don't end the period, wait it out
         endcase
