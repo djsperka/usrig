@@ -897,9 +897,9 @@ func Start%()
         'Parse image series file, we need to know how many trials, etc.
         success% := ParseImageSeriesFile%(fvStimFile$,fvNValues%,fvImagesPerTrial%[],fvTrialDurEstimate[],fvImageList$[],fvImageIndices%[][],fvImageDur[],fvImageDelay[],fvImageXPos[],fvImageYPos[]);
         if success% = 1 then
-            printlog("Success in reading image series file %s, num trials is %d\n",ImageFileLoc$,fvNValues%);
+            printlog("Success in reading image series file %s, num trials is %d\n",fvStimFile$,fvNValues%);
         else
-            printlog("Failure in reading image series file %s! \n",ImageFileLoc$);
+            printlog("Failure in reading image series file %s! \n",fvStimFile$);
         endif;
     else
         'Get list of images, either from folder or from file, and create a randomized order (via list of indices),
@@ -937,7 +937,7 @@ func Start%()
         fvNValues% := fvFileLen%*fvNRepeats%;
         GetRepeatedParameterProgression%(fvFileLen%, fvNRepeats%, dummyResult[], fvImageOrder%[], 1, 2, 0, fvRandomProgression%);  'We will ignore dummyResult, which holds values between (1) and (2) that are not logspaced (0)
         'Create the file to send to the VSG, use order created in line above
-        fh% := FileOpen(ImageFileLoc$,8,1);  'Open a new text file for writing, replace current file
+        fh% := FileOpen(ImageFileLoc$,8,1);  'Open a new text file for writing, replace current (default) file
         printlog("result of opening text file is %d\n",fh%);
         for j% := 0 to fvNValues% -1 do
             view(fh%).Print("%s\n",fvImageList$[fvImageOrder%[j%]]);
@@ -1214,7 +1214,7 @@ proc WriteParameterFile()
         'Write out image list
         Print("\nImage List\n");
         for ii% := 0 to fvFileLen%-1 do 
-            Print("Image %d: %s",ii%+1,fvImageList$[ii%]);
+            Print("Image %d: %s\n",ii%+1,fvImageList$[ii%]);
         next
     endif;
         
@@ -1608,7 +1608,8 @@ func IdleProcessing%()
             tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
             TotalRewards% += 1;
             fvFixWaitState% := 2;
-            ChangeStateTo(stateWaitForBlank%,tNow);
+            'ChangeStateTo(stateWaitForBlank%,tNow);  'this is hanging up, probably an issue with timing and the trigger line
+            ChangeStateTo(stateWaitReward%,tNow);  'this seems to work fine
         case fvPeriodCount% >= fvNumPeriods% or (Rand() < fvProbRewardEachPeriod) then
             'Give reward if appropriate
             DefaultReward();
@@ -1702,9 +1703,9 @@ func IdleProcessing%()
             SafeSampleKey("a");
             LogStatus("TrialCompleted", "Advancing stimulus");
             if fvGiveLookingTO% = 0 then  'go to ISI
-                ChangeStateTo(stateInterTrialInterval%, tLastTrigger); 
+                ChangeStateTo(stateInterTrialInterval%, tStateStart); 
             else 'otherwise give TO penalty
-                ChangeStateTo(stateLookAwayTO%, tLastTrigger); 
+                ChangeStateTo(stateLookAwayTO%, tStateStart); 
             endif
         endif
         
@@ -1888,12 +1889,13 @@ end
 proc DrawFix(iDraw%)
 
 	if iDraw% > 0 then
-		var xstim, ystim;
-		xstim := FixationX;
-		ystim := FixationY;
+		'var xstim, ystim;
+		'xstim := FixationX;
+		'ystim := FixationY;
 
 		' Draw stimulus in xy window
-		View(XYWindow%).XYAddData(iStimChannel%, xstim, ystim);
+        'View(XYWindow%).XYAddData(iStimChannel%, xstim, ystim);
+        view(XYWindow%).XYAddData(iStimChannel%, FixWindowX[], FixWindowY[]);
 	else 
 		' erase the stim and the window from xy view
 		View(XYWindow%).XYDelete(iStimChannel%);
