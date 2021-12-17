@@ -20,7 +20,7 @@
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
-' Fixation script parameters START
+' Fixation script initialize variables START
 '
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 ' Fixation-script specific control vars.
@@ -43,6 +43,146 @@ var fixPendingCalMode% := 0;        ' Set when user hits Horizontal, Vertical, C
 'var fixSimultaneousLED%;
 var fixSaveData%;                   'If 1, save data to fixSaveDataName$;
 var fixSaveDataName$ := "F:\\Experiments\\fixation\\fixdata.mat";
+
+
+
+
+' Window handles and channel numbers
+var XChannel%,YChannel%;		' Channel number assigned to eye x and y
+var keyboardChannel%:=31;       'this is the number of the keyboard channel
+var TriggerChannel%;			' Channel number assigned to vsg trigger input (i.e. trigger sent by vsg)
+var ReadyChannel%;			' channel number for VSG ready pulse signal
+var TriggerSlaveChannel%;			' Channel number assigned to vsg trigger input (i.e. trigger sent by vsg)
+var ReadySlaveChannel%;			' channel number for VSG ready pulse signal
+var UtilityChannel%;
+var DataWindow%;	' time view
+var XYWindow%;		' window with eye pos shown
+var iStimChannel%;	' channel number for stimulus in xy window
+var iStimWindowChannel%;' channel number for stimulus window in xy window
+var iMonitorChannel%;	' channel number for monitor position display in xy window
+var StimHandle%;	' handle for stimulus application
+var StimHandleSlave%;	' handle for slave stimulus application
+' Experimental control
+var Pause%:=0;		' When 1, expt is paused - no idle processing done
+
+
+' Display stuff
+var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
+var windowX[36], windowY[36];
+' Stimulus location stuff
+var iStimX%[9];
+var iStimY%[9];
+var iStimIndex% := 1;
+
+
+const stateStartTrial%		:= 0;
+const stateWaitForStim%		:= 1;
+const stateWaitForAcquisition%	:= 2;
+const stateHoldFixation%	:= 3;
+const stateSuccess%		:= 4;
+const stateFailure%		:= 5;
+const stateStimOff%		:= 6;
+const stateWaitForBlank%	:= 7;
+const stateCheckTrial%		:= 8;
+const stateInterval%		:= 9;
+const stateDone%		:= 10;
+const stateVSGWait%:=10;		' wait for vsg to send ready signal #1
+const stateVSGWaitConfirm%:=11;		' waif for vsg to send ready signal #2
+'const statePreLEDInterval%:=12;
+'const stateStartLEDTrial%:=13;
+'const stateWaitForLEDAcquisition%:=14;
+'const stateHoldLEDFixation%:=15;
+'const stateLEDFailure%:=16;
+'const stateLEDSuccess%:=17;
+'const stateLEDIsOff%:=18;
+const stateNextAfterFixation%:=19;
+
+var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
+var tLast:=-1;		' last time we checked for a trigger. 
+var xEye, yEye;		' eye positions
+var tLastUpdate:=-1;	' last time view was updated
+var iState%:=stateVSGWait%;		' present state
+var vTrigger;		' set by NextTime to indicate trigger transition
+var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
+var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
+var tTrigger:=-1;	' temp var for newly discovered trigger times
+var nTrialsStarted%:=0;
+var nTrialsSuccess%:=0;
+var nTrialsFail%:=0;
+'var nLEDTrialsStarted%:=0;
+'var nLEDTrialsSuccess%:=0;
+'var nLEDTrialsFail%:=0;
+'var LEDSuccess%:=0;
+var fixSuccess% := 0;
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' Fixation script initialize variables END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' Fixation script execution START
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+' init logging so msgs appear in LogWindow
+LogInit(1);
+
+' Check for valid data file path
+if Len(dataDataSet$) = 0 then
+	Message("No data set is selected! Edit Data parameters...");
+	' Might be nice to open the dialog here....
+	halt;
+endif
+
+
+if FixationScriptDialog%() = 0 then
+    halt;
+endif
+
+'if fixCalibrationFlag% = 1 and fixInterleaveLED% = 1 then
+'    message("Calibration Flag and Interleave LED flag cannot be simultaneously implemented!");
+'    halt;
+'endif
+
+
+' Assign channel numbers for eye X,Y and trigger. 
+XChannel% := 21;
+YChannel% := 22;
+TriggerChannel% := 23;
+ReadyChannel% := 24;
+TriggerSlaveChannel% := 25;
+ReadySlaveChannel% := 26;
+UtilityChannel% := 27;
+ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 27;  'UtilityChannel% is highest non-electrode channel used by this function
+
+
+CreateSampleConfiguration();
+
+
+' Get display windows ready
+InitializeWindows();
+
+' Prepare the toolbar buttons, remainder of program runs inside toolbar
+InitializeToolbar();
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' Fixation script execution END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+
+
+
+
 
 proc GetFixationScriptParameters()
 	var stmp$;
@@ -146,130 +286,7 @@ func FixationScriptDialog%()
 	return i%;
 end;
 
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'
-' Fixation script END
-'
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-
-
-
-
-
-' Window handles and channel numbers
-var XChannel%,YChannel%;		' Channel number assigned to eye x and y
-var keyboardChannel%:=31;       'this is the number of the keyboard channel
-var TriggerChannel%;			' Channel number assigned to vsg trigger input (i.e. trigger sent by vsg)
-var ReadyChannel%;			' channel number for VSG ready pulse signal
-var TriggerSlaveChannel%;			' Channel number assigned to vsg trigger input (i.e. trigger sent by vsg)
-var ReadySlaveChannel%;			' channel number for VSG ready pulse signal
-var UtilityChannel%;
-var DataWindow%;	' time view
-var XYWindow%;		' window with eye pos shown
-var iStimChannel%;	' channel number for stimulus in xy window
-var iStimWindowChannel%;' channel number for stimulus window in xy window
-var iMonitorChannel%;	' channel number for monitor position display in xy window
-var StimHandle%;	' handle for stimulus application
-var StimHandleSlave%;	' handle for slave stimulus application
-' Experimental control
-var Pause%:=0;		' When 1, expt is paused - no idle processing done
-
-
-' Display stuff
-var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
-var windowX[36], windowY[36];
-' Stimulus location stuff
-var iStimX%[9];
-var iStimY%[9];
-var iStimIndex% := 1;
-
-
-' init logging so msgs appear in LogWindow
-LogInit(1);
-
-' Check for valid data file path
-if Len(dataDataSet$) = 0 then
-	Message("No data set is selected! Edit Data parameters...");
-	' Might be nice to open the dialog here....
-	halt;
-endif
-
-
-if FixationScriptDialog%() = 0 then
-    halt;
-endif
-
-'if fixCalibrationFlag% = 1 and fixInterleaveLED% = 1 then
-'    message("Calibration Flag and Interleave LED flag cannot be simultaneously implemented!");
-'    halt;
-'endif
-
-
-' Assign channel numbers for eye X,Y and trigger. 
-XChannel% := 21;
-YChannel% := 22;
-TriggerChannel% := 23;
-ReadyChannel% := 24;
-TriggerSlaveChannel% := 25;
-ReadySlaveChannel% := 26;
-UtilityChannel% := 27;
-ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
-ExcludedChans%[1] := 27;  'UtilityChannel% is highest non-electrode channel used by this function
-CreateSampleConfiguration();
-
-
-' Get display windows ready
-InitializeWindows();
-
-' Prepare the toolbar buttons
-InitializeToolbar();
-
-
-
-
-
-
-
-const stateStartTrial%		:= 0;
-const stateWaitForStim%		:= 1;
-const stateWaitForAcquisition%	:= 2;
-const stateHoldFixation%	:= 3;
-const stateSuccess%		:= 4;
-const stateFailure%		:= 5;
-const stateStimOff%		:= 6;
-const stateWaitForBlank%	:= 7;
-const stateCheckTrial%		:= 8;
-const stateInterval%		:= 9;
-const stateDone%		:= 10;
-const stateVSGWait%:=10;		' wait for vsg to send ready signal #1
-const stateVSGWaitConfirm%:=11;		' waif for vsg to send ready signal #2
-'const statePreLEDInterval%:=12;
-'const stateStartLEDTrial%:=13;
-'const stateWaitForLEDAcquisition%:=14;
-'const stateHoldLEDFixation%:=15;
-'const stateLEDFailure%:=16;
-'const stateLEDSuccess%:=17;
-'const stateLEDIsOff%:=18;
-const stateNextAfterFixation%:=19;
-
-var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
-var tLast:=-1;		' last time we checked for a trigger. 
-var xEye, yEye;		' eye positions
-var tLastUpdate:=-1;	' last time view was updated
-var iState%:=stateVSGWait%;		' present state
-var vTrigger;		' set by NextTime to indicate trigger transition
-var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
-var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
-var tTrigger:=-1;	' temp var for newly discovered trigger times
-var nTrialsStarted%:=0;
-var nTrialsSuccess%:=0;
-var nTrialsFail%:=0;
-'var nLEDTrialsStarted%:=0;
-'var nLEDTrialsSuccess%:=0;
-'var nLEDTrialsFail%:=0;
-'var LEDSuccess%:=0;
-var fixSuccess% := 0;
 
 ' Run real time analysis here. 
 func IdleProcessing%()
@@ -371,6 +388,9 @@ func IdleProcessing%()
                 if vTrigger = 0 then
                     ' Stimulus has been presented. Display stim location and window. Enter state 2
                     DrawStim(1);
+                    if fixCalibrationFlag% = 1 then  'only sample text if the fixation point is moving
+                        SampleText("X = " +  Str$(GetStimX()) + ", Y = " + Str$(GetStimY()),tTrigger);
+                    endif
                     ChangeStateTo(stateWaitForAcquisition%, tTrigger);
                     LogStatus("WaitForStim", "Stim up trig");
                 else
@@ -656,6 +676,9 @@ proc CreateSampleConfiguration()
 	SampleAutoComment(0); 'Prompt for comment after sampling
 	SampleAutoCommit(60); 'Seconds between each file commit
     
+    ' Text marks make extraction easier
+    SampleTextMark(200);  'Channel 30 is textmark channel
+    
 	' Set path for new data files
 	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3, 1);
 	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1, 1);
@@ -924,11 +947,17 @@ func Start%()
 		
 		'CommandLine$ :=bin$ + "\\dFixation " + FixationPoint$ + Distractors$ + Extras$;
 	else
-        var calLocations$;
+        var calLocations$;  'These are pair-wise x,y combinations, illustrated below by breaking them up by line
         calLocations$ := Print$(" -y %.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f ",
-        -fixCalibrationOffset, fixCalibrationOffset, 0, fixCalibrationOffset, fixCalibrationOffset, fixCalibrationOffset, 
-        -fixCalibrationOffset, 0, 0, 0, fixCalibrationOffset, 0, 
-        -fixCalibrationOffset, -fixCalibrationOffset, 0, -fixCalibrationOffset, fixCalibrationOffset, -fixCalibrationOffset);
+        -fixCalibrationOffset, fixCalibrationOffset, 
+        0, fixCalibrationOffset, 
+        fixCalibrationOffset, fixCalibrationOffset, 
+        -fixCalibrationOffset, 0, 
+        0, 0, 
+        fixCalibrationOffset, 0, 
+        -fixCalibrationOffset, -fixCalibrationOffset, 
+        0, -fixCalibrationOffset, 
+        fixCalibrationOffset, -fixCalibrationOffset);
         
         Extras$ := Print$("-b %s -d %s %s ", fixBackgroundColor$, GetDistanceToScreenMM$(), FixationArg$);
         
