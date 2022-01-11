@@ -10,6 +10,7 @@ var bin$;       ' Location of executable vsg programs
 var script$;    ' Location of scripts
 var util$;      ' Location of Spike2 utilities scripts. 
 var stim$;      ' Location of stimulus files (sparse noise, e.g.)
+var demo$;      ' location of demo dir
 var tmp$;
 
 'Profile("", "RemoteBin", "", tmp$);
@@ -34,6 +35,7 @@ script$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2);	' folder conta
 'util$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\..\\Spike2Util";
 util$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\util";
 stim$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\stim";
+demo$ := View(App(3)).FileName$(1) + View(App(3)).FileName$(2) + "..\\demo";
 
 
 '****f* Spike2Util/Directories/GetScriptDir$
@@ -125,6 +127,28 @@ func GetStimDir$(iSlashes%)
     endif
 end
 
+
+'****f* Spike2Util/Directories/GetDemoDir$
+' NAME
+' GetDemoDir$(islashes%)
+' SYNOPSIS
+' Gets the path name to the demo folder
+' INPUTS
+' islashes% : If 0 returns the path without trailing slash, otherwise the trailing
+'             slash is appended. 
+' RETURN VALUE
+' String pathname. 
+' SEE ALSO
+' GetBinDir, GetScriptDir, GetStimDir
+'****
+
+func GetDemoDir$(iSlashes%)
+    if iSlashes% = 0 then
+        return demo$;
+    else
+        return demo$ + "\\";
+    endif
+end
 
 
 '****f* Spike2Util/Directories/GetDriveLetter$
