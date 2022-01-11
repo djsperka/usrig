@@ -1,0 +1,135 @@
+#include "../util/UsreyUtil.s2s"
+#include "FSXaExtractionFunctions.s2s"
+#include "../util/Directories.s2s"
+
+
+
+' launch bat file (optional)
+var fList$[256];
+var nList;
+var saveDir$;
+var i%;
+var iFile% := 0;
+var ok%;
+var batFile$;
+var batCmd$;
+var batHandle%;
+
+saveDir$ := FilePath$();
+FilePathSet(GetDemoDir$(0));
+nList := FileList(fList$[], -1, "*.bat");
+FilePathSet(saveDir$);
+
+LogInfo("bat files found in " + GetDemoDir$(0));
+for i% := 1 to nList do
+    LogInfo(str$(i%) + ": " + fList$[i%]);
+next;
+
+DlgCreate("Select bat to run or Cancel");
+DlgList(1, 40, fList$[]);
+ok% := DlgShow(iFile%);
+if ok% = 1 then
+    ' launch bat
+    batFile$ := GetDemoDir$(1) + fList$[iFile%];
+    batCmd$ := "cmd /c " + batFile$;
+    LogInfo("Cmd: " + batCmd$);
+    batHandle% := ProgRun(batCmd$, 1);
+endif
+
+
+var itrial%;
+var ntrials% := 100;
+var iMS1% := 250;
+var iMS2% := 250;
+var iMS3% := 250;
+var iMS4% := 250;
+
+DlgCreate("Test Parameters");
+DlgInteger(1, "Number of trials", 1, 10000);
+DlgInteger(2, "Delay 1(ms):", 100, 1000);
+DlgInteger(3, "Delay 2(ms):", 100, 1000);
+DlgInteger(4, "Delay 3(ms):", 100, 1000);
+DlgInteger(5, "Delay 3(ms):", 100, 1000);
+i%:=DlgShow(ntrials%, iMS1%, iMS2%, iMS3%, iMS4%);
+if i% <> 1 then
+    halt;
+endif;
+
+
+'Set a juicer sequencer variable so we can use this on any rig
+GetJuicerType%();
+SampleSeqVar(1,200);  'Also need to set the open duration for the juicer
+
+
+'proc CreateSampleConfiguration()
+SampleClear(); 'Set standard sampling state
+SampleAutoFile(0); 'Disable automatic file naming
+SampleAutoComment(0); 'Prompt for comment after sampling
+SampleAutoCommit(60); 'Seconds between each file commit
+
+if SampleSequencer(GetScriptDir$(1) + "TuningTest.pls")<>0 then
+	Message("TuningTest.pls not found!");
+endif
+SampleOptimise(2,2,2,2,50);  'Set optimise mode (do this last)
+SampleMode(1); 'Continuous sampling
+
+
+'----Event Channel recording definitions----
+var FrameChannel% := 1;
+var ReadyChannel% := 2;
+var FixationPointChannel% := 3;
+var StimChannel% := 4;
+var AdvChannel% := 5;
+
+SampleEvent(FrameChannel%, 0, 2, 3600);
+SampleComment$(FrameChannel%,"Frame");
+SampleTitle$(FrameChannel%,"Frame");
+
+SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+SampleComment$(ReadyChannel%,"Ready");
+SampleTitle$(ReadyChannel%,"Ready");
+
+SampleEvent(FixationPointChannel%, 2, 2, 3600); 'Trigger channel, level
+SampleComment$(FixationPointChannel%,"Fixpt");
+SampleTitle$(FixationPointChannel%,"Fixpt");
+
+SampleEvent(StimChannel%, 3, 2, 3600); 'Trigger channel, level
+SampleComment$(StimChannel%,"Stim");
+SampleTitle$(StimChannel%,"Stim");
+
+SampleEvent(AdvChannel%, 4, 2, 3600); 'Trigger channel, level
+SampleComment$(AdvChannel%,"Adv");
+SampleTitle$(AdvChannel%,"Adv");
+
+var DataWindow%;
+DataWindow% := FileNew(0,4);
+Window(-0.235849,52.746,97.2484,99.8856);
+View(DataWindow%).WindowVisible(1);
+XRange(0, 30);
+
+
+SampleStart(0);
+
+
+
+for itrial% := 1 to ntrials% do
+    PrintLog("Trial %d\n", itrial%);
+    SampleKey("F");
+    Yield(iMS1%/1000.0);
+    SampleKey("S");
+    Yield(iMS2%/1000.0);
+    SampleKey("X");
+    Yield(iMS3%/1000.0);
+    SampleKey("a");
+    Yield(iMS4%/1000.0);
+    
+'    SampleSeqVar(5,200);
+'    SampleSeqVar(6,200);
+'    SampleKey("M");
+'    Yield(1.0);
+next
+SampleKey("Q");
+
+SampleStop();
+
+FSXaX%(DataWindow%, "");
