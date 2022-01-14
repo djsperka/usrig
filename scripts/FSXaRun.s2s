@@ -1,44 +1,11 @@
 #include "../util/UsreyUtil.s2s"
 #include "FSXaExtractionFunctions.s2s"
 #include "../util/Directories.s2s"
+#include "../util/ChannelUtilities.s2s"
 
-
-
-' launch bat file (optional)
-var fList$[256];
-var nList;
-var saveDir$;
-var i%;
-var iFile% := 0;
 var ok%;
-var batFile$;
-var batCmd$;
-var batHandle%;
-
-saveDir$ := FilePath$();
-FilePathSet(GetDemoDir$(0));
-nList := FileList(fList$[], -1, "*.bat");
-FilePathSet(saveDir$);
-
-LogInfo("bat files found in " + GetDemoDir$(0));
-for i% := 1 to nList do
-    LogInfo(str$(i%) + ": " + fList$[i%]);
-next;
-
-DlgCreate("Select bat to run or Cancel");
-DlgList(1, 40, fList$[]);
-ok% := DlgShow(iFile%);
-if ok% = 1 then
-    ' launch bat
-    batFile$ := GetDemoDir$(1) + fList$[iFile%];
-    batCmd$ := "cmd /c " + batFile$;
-    LogInfo("Cmd: " + batCmd$);
-    batHandle% := ProgRun(batCmd$, 1);
-endif
-
-
 var itrial%;
-var ntrials% := 100;
+var ntrials% := 5;
 var iMS1% := 250;
 var iMS2% := 250;
 var iMS3% := 250;
@@ -50,8 +17,8 @@ DlgInteger(2, "Delay 1(ms):", 100, 1000);
 DlgInteger(3, "Delay 2(ms):", 100, 1000);
 DlgInteger(4, "Delay 3(ms):", 100, 1000);
 DlgInteger(5, "Delay 3(ms):", 100, 1000);
-i%:=DlgShow(ntrials%, iMS1%, iMS2%, iMS3%, iMS4%);
-if i% <> 1 then
+ok%:=DlgShow(ntrials%, iMS1%, iMS2%, iMS3%, iMS4%);
+if ok% <> 1 then
     halt;
 endif;
 
@@ -67,11 +34,14 @@ SampleAutoFile(0); 'Disable automatic file naming
 SampleAutoComment(0); 'Prompt for comment after sampling
 SampleAutoCommit(60); 'Seconds between each file commit
 
-if SampleSequencer(GetScriptDir$(1) + "TuningTest.pls")<>0 then
+if SampleSequencer(GetScriptDir$(1) + "Tuning.pls")<>0 then
 	Message("TuningTest.pls not found!");
 endif
 SampleOptimise(2,2,2,2,50);  'Set optimise mode (do this last)
 SampleMode(1); 'Continuous sampling
+
+
+
 
 
 '----Event Channel recording definitions----
@@ -112,8 +82,57 @@ SampleStart(0);
 
 
 
+' launch bat file (optional)
+' If launched, we will wait until ready pulse is seen. 
+var fList$[256];
+var nList;
+var saveDir$;
+var iFile% := 0;
+var batFile$;
+var batCmd$;
+var batHandle%;
+var i%;
+
+saveDir$ := FilePath$();
+FilePathSet(GetDemoDir$(0));
+nList := FileList(fList$[], -1, "*.bat");
+FilePathSet(saveDir$);
+
+LogInfo("bat files found in " + GetDemoDir$(0));
+for i% := 1 to nList do
+    LogInfo(str$(i%) + ": " + fList$[i%]);
+next;
+
+DlgCreate("Select bat to run or Cancel");
+DlgList(1, 40, fList$[]);
+ok% := DlgShow(iFile%);
+if ok% = 1 then
+    ' launch bat
+    batFile$ := GetDemoDir$(1) + fList$[iFile%];
+    batCmd$ := "cmd /c " + batFile$;
+    LogInfo("Cmd: " + batCmd$);
+    batHandle% := ProgRun(batCmd$, 1);
+    
+    ' Now wait for ready pulse
+    ok% := 0;
+    i% := 0;
+    var tR, tF;
+    while ok% < 1 and i% < 5 do
+        ok% := FindPulseUp%(ReadyChannel%, -1, tR, tF);
+        Yield(0.2);
+        i% := i% + 1;
+    wend
+        
+endif
+
+
+
+
+
+
+
+
 for itrial% := 1 to ntrials% do
-    PrintLog("Trial %d\n", itrial%);
     SampleKey("F");
     Yield(iMS1%/1000.0);
     SampleKey("S");
