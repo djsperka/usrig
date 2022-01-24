@@ -215,17 +215,24 @@ func DefaultReward%()
 end
 
 'This is the overarching reward function that should be called to get a default reward
+'Now returns the reward duration in seconds, or number of hits
 func DefaultReward()
     if pReward >= Rand() then
         if JuicerType% = 1 then  'open-high juicer, dispense based on ms
             DeliverRewardMS(JuiceRewardMS%);
+            var JuiceMS;  'float for calculation
+            JuiceMS := JuiceRewardMS%;
+            return JuiceMS/1000;
         else
             if JuicerType% = 2 then  'open-low juicer, dispense based on number of hits
                 DeliverRewardNum%(JuicePerReward%);
+                return JuicePerReward%;
             endif;
         endif;
+
     else
         LogStatus("Trial complete", "Random reward not granted!");
+        return 0;
     endif;
 end
 
