@@ -1,0 +1,1412 @@
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' Pursuit script START
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+'Include Files
+
+#include "../util/ChannelUtilities.s2s"
+#include "../util/UsreyUtil.s2s"
+#include "../util/LogUtilities.s2s"
+#include "../util/MiscUtilities.s2s"
+#include "UsreyDAQ.s2s"
+#include "UsreyFixationPoint.s2s"
+
+
+' Overall script control vars
+var Pause% := 0;
+
+
+' Channel numbers and handles
+var StimHandle%;			' handle for stimulus application
+var DataWindow%;		
+var XChannel%;
+var YChannel%;
+var iStimChannel%;
+
+var FrameChannel%;
+var FrameSlaveChannel%;
+var StimChannel%;
+var StimSlaveChannel%;
+var ReadyChannel%;
+var ReadySlaveChannel%;
+var DigitalLaserChannel%;
+var OptoCopyChannel%;
+var SequencerPeriodMS;
+var StimulatorChannel%;
+var UtilityChannel%;
+var TimingChannel%;
+var FixationPointChannel%;
+
+' XY window stuff
+var XYWindow%;			' 
+var iMonitorChannel%;	' channel number for monitor position display in xy window
+var iStimWindowChannel%;
+
+' Display stuff
+var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
+var windowX[36], windowY[36];
+var purBackgroundColor$ := "gray";  'for right now, let's not even allow changing this...
+
+' Wavemarks and continuous ports
+var purNWavemarks% := 0;
+var purWavemarkPorts%[64];
+var purNContinuous% := 0;
+var purContinuousPorts%[64];
+
+' dummy vars
+var iScript%;
+
+
+var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
+var tLast:=-1;		' last time we checked for a trigger. 
+var xEye, yEye;		' eye positions
+var tLastFixPtDisplayUpdate:=-1;	' last time view was updated
+var vTrigger;		' set by NextTime to indicate trigger transition
+var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
+var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
+var tTrigger:=-1;	' temp var for newly discovered trigger times
+var tInterTrialTime := 0;	' Time spent waiting between trials (i.e. after screen is blank, but before image is presented)
+var tRise, tFall;
+var tKludge := 0.06;    ' Add to Fixation time to account for stim sequence. Ugly hack, admittedly, but one does what one must. 
+var purSkipTimeOut%;
+
+    
+
+' State Logic constants
+const stateVSGWait%		       := 0;
+const stateFixptUp%	           := 1;
+const stateWaitForFixptUp%	   := 2;
+const stateWaitForAcquisition% := 3;
+const stateWaitForBlank%	   := 4;
+const stateAcquisitionTO%	   := 5;
+const stateWaitForStimMove%	   := 6;
+const stateHoldPursuit%	       := 7;
+const stateWaitForFixptOff%	   := 8;
+const stateReward%		       := 9;
+const stateWaitReward%		   := 10;
+const stateTrialCompleted%     := 11;		
+const stateInterTrialInterval% := 12;		
+
+var iState% := stateVSGWait%;	' present state
+var stateBegin% := 1;  'For fun, in this script let's keep track of whether it is the first time through a state, for logging purposes
+
+
+var nTrialsStarted%:=0;
+var nTrialsCompleted%:=0;
+var nTrialsAborted% :=0;
+
+
+var tic;  'Set a tick value equal to the duration of one clock tick in seconds, used to prevent finding
+          'the same "pulse" twice
+var pulseFound%;
+var tOpt;
+
+
+' Reward variables
+var purProbRewardEachPeriod;
+var purRewardDurSec;
+'purRewardDurSec := (GetJuiceRewardMS%()+20)/1000;  'Set reward duration up top.  If we have any reason to think this will change through the experiment, then set it say each idle loop
+                                                   'I am paranoid and I'm adding another 20 ms following the reward.
+
+
+' Dialog box variables
+var purNLeftRight%;
+var purNUpDown%;
+var purNRepeats%;
+var purPursuitSpeed;
+var purITI;
+var purRandomProgression%;
+var purAcquisitionTime;
+var purAcquisitionTO;
+var purPursuitWindowRadius;
+var purGracePeriod;    
+var purAlwaysLookingInd%;
+var purAlwaysLooking%;
+var purScreenMMX;  'we will assume that the 0,0 coordinate of fixation is at the center of the screen, and calculate the screen size from there
+var purScreenMMY;
+var purPctScreenUsed;
+var purScreenXDeg;  'Defined as the distance from the center of the screen to the edge
+var purScreenYDeg;
+var purPctRewardEachPeriod;
+
+var purFixptMoving%;  'If 0, fixpt has not yet started moving.  If 1, fixpt is moving.  If 2, fixpt has stopped.  Note that currently 0/2 are not used differently, but maybe someday so I'm keeping it
+var purNValues%;
+const purMaxTrials% := 1000;  'like that's plenty
+const purMaxXYLocs% := 20;  'Also should be plenty
+var trialInd%;
+var purPursuitDur[purMaxTrials%];
+var purCurrentDur;
+var purStartX[purMaxTrials%];
+var purStartY[purMaxTrials%];
+var purEndX[purMaxTrials%];
+var purEndY[purMaxTrials%];
+var purDirection[purMaxTrials%];
+var purTrialOrder%[purMaxTrials%];
+var purThisStartX;
+var purThisStartY;
+var purThisSpeed;
+var purThisDir;
+
+
+GetPursuitScriptParameters();  'We will just get these right off the bat
+
+
+' Init logging
+LogInit(1);
+
+UseTwo1401s% := DoWeUseTwo1401s%();
+GetPortsAndNumWMsWFs%(purNWavemarks%,purNContinuous%,purWavemarkPorts%[],purContinuousPorts%[]);
+
+
+
+iScript% := PursuitScriptDialog%();
+
+
+'halt;  'this is just so I can test out the dialog box but not go any farther...
+
+if iScript% = 1 then
+    LogInfo("Proceed with DAQ.");
+else
+	LogInfo("User cancel - exit gracefully\n");
+	Halt;
+endif;
+
+
+
+' Assign channel numbers for eye X,Y and trigger. 
+XChannel% := 25;
+YChannel% := 26;
+TimingChannel% := 38;
+UtilityChannel% := 39;
+ReadyChannel% := 40;
+FrameChannel% := 41;
+StimChannel% := 42;
+FixationPointChannel% := 43;
+ReadySlaveChannel% := 44;
+FrameSlaveChannel% := 45;
+StimSlaveChannel% := 46;
+StimulatorChannel% := 47;
+DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
+OptoCopyChannel% := 49;  'A  bunch of this stuff is unused, but just sitting here waiting
+
+ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
+
+
+
+'If we are not linking the two 1401s together, just use the standard order of operations:
+'1) create sampling configuration, 2) Initialize windows, 3) Initialize/run toolbar.
+'However, if we are linking the 1401s we have to do this in a different order, because we have to open up the second
+'instance of Spike 2 BEFORE setting up the sampling configuration/windows on the first instance.  Doing this in the
+'wrong order results in a non-fatal error in the second Spike2 instance indicating that the file which is preparing
+'to be recorded in the first instance cannot be accessed, despite no explicit attempt to access any such thing.
+'Hence, for the dual-1401 setups, we first initialize the toolbar, which has a specialty button "Start Plexon".  StartPlexon%()
+'launches the second instance and the associated script, and both scripts move forward independently to create their own
+'sampling configuration, initialize their own windows and are ready to have sampling started.  Note well that sampling
+'must be started on the POWER 1401/SLAVE 1401 (the second, non-dominant instance of Spike2) FIRST and on the 
+'MICRO 1401/MASTER 1401 (the first,  dominant instance of Spike 2) SECOND.  Starting sampling on the Micro will run 
+'the VSG program (Fixstim) which gives the sampling trigger and sets the experiment in motion.
+if UseTwo1401s% = 0 then
+    CreateSampleConfiguration();
+
+    ' Get display windows ready
+    InitializeWindows();
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+    Start%();
+else
+    InitializeToolbar();
+endif;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' Pursuit script END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+'From here on out, it's just various necessary functions
+
+
+' PursuitScriptDialog
+
+func PursuitScriptDialog%()
+	var i%;
+	var iReturn%;
+    var screenMMPerDegree;
+    var pi := 3.141592653589793;  'There is a pre-defined constant "_pi", but only on 8.03 and beyond, explicitly defining pi for back-compatibility
+    var fixtype$[3];
+    
+    fixtype$[0] := "Always Looking";
+    fixtype$[1] := "Enforce Acquisition";
+    fixtype$[2] := "Enforce Acq+Pursuit";
+    
+    GetPursuitScriptParameters();
+    
+'This might be useful for file-based pursuit schemes in the future if we decide to make them    
+'    if purUseFile% = 0 then
+'        if Len(purStimFile$) > 0 then
+'            purDialogText$ := "Use FILE: " + purStimFile$;
+'        else
+'            purDialogText$ := "No File/Folder Selected";
+'        endif
+'    endif
+    
+        
+    DlgCreate("Pursuit Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
+    DlgGroup("Stimulus", 1, 1, 50, 7);
+    DlgInteger(1, "Number of L/R pursuits", 1, purMaxXYLocs%, 0, 2);
+    DlgInteger(2, "Number of U/D pursuits", 1, purMaxXYLocs%, 0, 3);
+    DlgInteger(3, "Number of repeats", 1, 100, 0, 4);
+    DlgReal(4, "Speed, deg/s", 0.05, 100, 0, 5);
+    DlgReal(5, "Intertrial Interval, s", 0.05, 100, 0, 6);
+    DlgCheck(6, "Random Progression?", 0, 7);
+    
+    DlgGroup("Fixation", 1, 8, 50, 6);
+    DlgReal(7, "Fixation Acquisition Time, s", 0.1, 100, 0, 9);
+    DlgReal(8, "Acquisition Time Out, s", 0, 100, 0, 10);
+    DlgReal(9, "Pursuit Window, deg", 0.1, 100, 0, 11);
+    DlgReal(10, "Pursuit Start Grace Period, s", 0, 100, 0, 12);
+    DlgList(11, "Fixation Enforcement: ", fixtype$, 3, 32, 13);
+    
+    DlgGroup("Screen", 1, 14, 50, 4);
+    DlgReal(12, "Screen Width, mm", 10, 3000, 0, 15);
+    DlgReal(13, "Screen Height, mm", 10, 3000, 0, 16);
+    DlgReal(14, "Percent Screen Used, 0-100", 0.1, 100, 0, 17);
+    
+    DlgGroup("Reward", 1, 18, 50, 2);
+    DlgReal(15, "Prob of reward each pursuit, 0-100", 0, 100, 0, 19);
+     
+    DlgAllow(0xffff, 0, PursuitScriptDialogChanged%);
+
+    i%:=DlgShow(purNLeftRight%,purNUpDown%,purNRepeats%,purPursuitSpeed,purITI,purRandomProgression%,
+    purAcquisitionTime,purAcquisitionTO,purPursuitWindowRadius,purGracePeriod,purAlwaysLookingInd%,
+    purScreenMMX,purScreenMMY,purPctScreenUsed,purPctRewardEachPeriod);
+    
+    if i% = 1 then
+        
+        if 2*(purNLeftRight%+purNUpDown%)*purNRepeats% > purMaxTrials% then
+            message("Too Many Trials (" + Str$(2*(purNLeftRight%+purNUpDown%)*purNRepeats%) + ") Requested!  Max is " + Str$(purMaxTrials%) +"!  Quitting!");
+            return 0
+        endif;
+        
+		SavePursuitScriptParameters();
+        'Calculate screen values in degrees here
+        screenMMPerDegree := Val(GetDistanceToScreenMM$())*pi/180;  
+        purScreenXDeg := (purScreenMMX/2)/screenMMPerDegree;  'we are defining purScreenX(Y)Deg as HALF the screen so it is the distance from center to the edge
+        purScreenYDeg := (purScreenMMY/2)/screenMMPerDegree;
+        
+        purAlwaysLooking% := 2-purAlwaysLookingInd%;  '2 = always looking, 1 = enforce acquisition only, 0 = enforce acquisition and pursuit
+                
+        iReturn% := 1;  'set return value to success, otherwise we'll just quit.
+        
+	endif;
+
+	return iReturn%;
+end;
+
+
+
+func PursuitScriptDialogChanged%(item%) 
+    
+    'If always looking, turn off all fixation variables - this misses some values set later, don't want to mess with it for now, not important
+    docase
+    case DlgValue(11) = 0 then
+        DlgEnable(0,7);
+        DlgEnable(0,8);
+        DlgEnable(0,9);
+        DlgEnable(0,10);
+    case DlgValue(11) = 1 then
+        DlgEnable(1,7);
+        DlgEnable(1,8);
+        DlgEnable(0,9);
+        DlgEnable(0,10);
+    case DlgValue(11) = 2 then
+        DlgEnable(1,7);
+        DlgEnable(1,8);
+        DlgEnable(1,9);
+        DlgEnable(1,10);
+    endcase;
+    
+    return 1;
+end
+
+
+proc GetPursuitScriptParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Pursuit";   
+    
+    purNLeftRight% := GetIntRegistryValue%(key$, "NLeftRight", purNLeftRight%);
+    purNUpDown% := GetIntRegistryValue%(key$, "NUpDown", purNUpDown%);
+    purNRepeats% := GetIntRegistryValue%(key$, "NRepeats", purNRepeats%);
+    purPursuitSpeed := GetFloatRegistryValue(key$, "PursuitSpeed", purPursuitSpeed);
+    purITI := GetFloatRegistryValue(key$, "ITI", purITI);
+    purRandomProgression% := GetIntRegistryValue%(key$, "RandomProgression", purRandomProgression%);
+    purAcquisitionTime := GetFloatRegistryValue(key$, "AcquisitionTime", purAcquisitionTime);
+    purAcquisitionTO := GetFloatRegistryValue(key$, "AcquisitionTO", purAcquisitionTO);
+    purPursuitWindowRadius := GetFloatRegistryValue(key$, "PursuitWindowRadius", purPursuitWindowRadius);
+    purGracePeriod := GetFloatRegistryValue(key$, "GracePeriod", purGracePeriod);
+    purAlwaysLookingInd% := GetIntRegistryValue%(key$, "AlwaysLookingInd", purAlwaysLookingInd%);
+    purScreenMMX := GetFloatRegistryValue(key$, "ScreenMMX", purScreenMMX);
+    purScreenMMY := GetFloatRegistryValue(key$, "ScreenMMY", purScreenMMY);
+    purPctScreenUsed := GetFloatRegistryValue(key$, "PctScreenUsed", purPctScreenUsed);
+    purPctRewardEachPeriod := GetFloatRegistryValue(key$, "PctRewardEachPeriod", purPctRewardEachPeriod);
+  
+end;
+
+proc SavePursuitScriptParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Pursuit";   
+    
+    SetIntRegistryValue(key$, "NLeftRight", purNLeftRight%);
+    SetIntRegistryValue(key$, "NUpDown", purNUpDown%);
+    SetIntRegistryValue(key$, "NRepeats", purNRepeats%);
+    SetFloatRegistryValue(key$, "PursuitSpeed", purPursuitSpeed);
+    SetFloatRegistryValue(key$, "ITI", purITI);
+    SetIntRegistryValue(key$, "RandomProgression", purRandomProgression%);
+    SetFloatRegistryValue(key$, "AcquisitionTime", purAcquisitionTime);
+    SetFloatRegistryValue(key$, "AcquisitionTO", purAcquisitionTO);
+    SetFloatRegistryValue(key$, "PursuitWindowRadius", purPursuitWindowRadius);
+    SetFloatRegistryValue(key$, "GracePeriod", purGracePeriod);
+    SetIntRegistryValue(key$, "AlwaysLookingInd", purAlwaysLookingInd%);
+    SetFloatRegistryValue(key$, "ScreenMMX", purScreenMMX);
+    SetFloatRegistryValue(key$, "ScreenMMY", purScreenMMY);
+    SetFloatRegistryValue(key$, "PctScreenUsed", purPctScreenUsed);
+    SetFloatRegistryValue(key$, "PctRewardEachPeriod", purPctRewardEachPeriod);
+  
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc CreateSampleConfiguration()
+	var i%;
+    var temp1$;
+    var temp2$;
+    var od;
+    var key$;
+    var eof% := 1;
+    
+    var primaryTxt$;
+    var secondaryTxt$;
+    
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
+    
+	SampleClear(); 'Set standard sampling state
+    SampleChannels(64);  '32 does not work, we need more!
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    
+    ' Set path for new data files, and for those saved automatically
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    
+    
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    
+    DoSampleAutoName(key$,"pursuit","pur",primaryTxt$,secondaryTxt$);
+       
+    SampleAutoFile(1);  'Enable automatic file naming
+    
+    ' Text marks make extraction easier
+    SampleTextMark(200);  'Channel 30 is textmark channel
+    
+
+	'----Event Channel recording definitions----
+    
+   	SampleEvent(FrameChannel%, 0, 2, 3600);
+	SampleComment$(FrameChannel%,"Frame");
+	SampleTitle$(FrameChannel%,"Frame");
+
+	SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+	SampleComment$(ReadyChannel%,"Ready");
+	SampleTitle$(ReadyChannel%,"Ready");
+    
+    SampleEvent(FixationPointChannel%, 2, 2, 3600); 'Trigger channel, level
+	SampleComment$(FixationPointChannel%,"Fixpt");
+	SampleTitle$(FixationPointChannel%,"Fixpt");
+	
+	SampleEvent(StimChannel%, 3, 2, 3600); 'Trigger channel, level
+	SampleComment$(StimChannel%,"Stim");
+	SampleTitle$(StimChannel%,"Stim");
+    
+    if UseTwo1401s% = 1 then
+    
+        SampleEvent(FrameSlaveChannel%, 4, 2, 3600);
+        SampleComment$(FrameSlaveChannel%,"Frame-Slave");
+        SampleTitle$(FrameSlaveChannel%,"Frame-Slave");
+    
+        SampleEvent(ReadySlaveChannel%, 5, 2, 3600); 'Trigger channel, level
+        SampleComment$(ReadySlaveChannel%,"Ready-Slave");
+        SampleTitle$(ReadySlaveChannel%,"Ready-Slave");
+	
+        SampleEvent(StimSlaveChannel%, 7, 2,3600); 'Trigger channel, level
+        SampleComment$(StimSlaveChannel%,"Stim-Slave");
+        SampleTitle$(StimSlaveChannel%,"Stim-Slave");
+        
+    endif
+    
+    SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+	SampleTitle$(XChannel%,EyeXPortLabel$);
+	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+	SampleTitle$(YChannel%,EyeYPortLabel$);
+    
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);       
+        SampleTitle$(UtilityChannel%,UtilityPortLabel$);
+    endif;
+
+    
+    if UseTwo1401s% = 1 then
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+    endif;
+
+    
+    
+    '----Set up "spiking" Electrode Channels----
+    SetUpElectrodeConfiguration(purNWavemarks%,ExcludedChans%[]);
+    
+        
+	
+    
+	if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+
+	DoSampleOptimise();
+	SampleMode(1); 'Continuous sampling
+    
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc InitializeWindows()
+    var i%;
+    var WindowStep;
+    
+    ' Make spike2 use all of monitor 1
+    View(App()).Window(0, 0, 100, 100, 1);
+    
+	'Open the data sampling window
+    DataWindow% := FileNew(0,4);
+    if DataWindow% < 0 then
+        PrintLog("FileNew Error: %s\n", Error$(DataWindow%));
+    endif
+
+	Window(0,48,50,95);
+    XRange(0, 30);
+	View(DataWindow%).WindowVisible(1);
+            
+
+	'Open an XY view to display eye position
+	XYWindow% := FileNew(12);
+	XRange(-30,30);
+	YRange(-2,-30,30);
+	XYDrawMode(0,5,0);
+	WindowVisible(1);
+	Window(0, 0, 50, 47);
+	XYColour(1,16);
+	XYSize(1,-1);
+
+
+	'Calcuate the fixation window - now not done here because the fixation window moves, will calculate on the fly
+'	var index%;
+'	var twopi;
+'	twopi := 2.0*4.0*ATan(1.0);
+'	
+'	for index% := 0 to 35 do
+'		FixWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
+'		FixWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
+'	next;
+
+	'Create a new channel in the XY view to display the fixation window
+	iStimChannel% := XYSetChan(0);
+	XYColour(2,13);
+	XYDrawMode(2,2,1);
+	XYJoin(2,1);
+	'Draw the fixation window - nope, don't draw now as fixation obviously moves
+	'XYAddData(2, FixWindowX[], FixWindowY[]);
+
+
+	'Create a new channel in the XY view to show the monitor's location
+	iMonitorChannel% := XYSetChan(0);
+	XYColour(iMonitorChannel%,13);
+	XYDrawMode(iMonitorChannel%,3,1);
+	XYJoin(iMonitorChannel%,2);
+    XYAddData(iMonitorChannel%,-purScreenXDeg,-purScreenYDeg);  'this uses the calculated screen size
+	XYAddData(iMonitorChannel%,purScreenXDeg,-purScreenYDeg);
+	XYAddData(iMonitorChannel%,purScreenXDeg,purScreenYDeg);
+	XYAddData(iMonitorChannel%,-purScreenXDeg,purScreenYDeg);
+    
+    tic := View(DataWindow%).BinSize(ReadyChannel%);
+
+end;
+
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitializeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+    if UseTwo1401s% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
+        ToolbarSet(1,"Sample start",Start%);
+    endif;
+	ToolbarSet(2,"Sample stop", Stop%);
+	ToolbarSet(3,"Juice", Juice%);
+	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
+	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
+    ToolbarSet(6,"Select Wavemarks",SelectWavemarkDialog%);
+	ToolbarSet(7,"Quit",Quit%);
+	ToolbarEnable(2,0);
+	ToolbarEnable(4,0);
+	ToolbarEnable(5,0);
+	Toolbar("Go",0x3ff);
+
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func StartPlexon%()
+    
+    
+    'Start the Power1401!  This is a bit cumbersome, and I'm not sure it's transferable, but it's a start, perhaps.
+    var fp$;  'to hold current file path
+    fp$ := SetPathToScriptDirectory$();
+    
+    'Must run this BEFORE the PROGRUN command, because both this sequence AND SetPlexon...
+    'access the same directory, and this was causing conflicts because they were running
+    'simultaneously.  Here, CreateSampleConfiguration is done accessing the directory before
+    'SetPlexon... is started, and everything is kosher.
+    CreateSampleConfiguration();    
+    
+    StartSecondInstanceOfSpike2();
+    
+    FilePathSet(fp$);  'change the file path back to what it was
+    fp$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp$); 'and tell the world to verify
+    
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+
+    ' Get display windows ready
+    InitializeWindows();    
+    
+    return 1; 'stay in toolbar
+    
+end
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+	var cmdLine$;
+    var Opener$;
+    var ProgName$;
+    var RemoteArg$:="";     'Extra arg needed if vsg is not on local machine...
+    var XYArg$;
+    var PursuitArg$;
+    var BGColor$;
+    var Dist2Screen$;
+    var TriggerPort$;
+    var Verbose$:=" -v ";  'For now, verbose is always on 
+    var i%;
+    var j%;
+    var returnToPath$;  'this is where we start, we'll move back here after reading the folder
+    var fh%;
+    var startSecs := 5;
+    var xmax;
+    var ymax;
+    var xlocs[purMaxXYLocs%]; 
+    var ylocs[purMaxXYLocs%];
+    var trash%[purMaxXYLocs%];
+    var count%;
+    var XYStr$;
+    var purStr$;
+    var purSpeedVec[purMaxTrials%];
+    
+    xmax := purScreenXDeg*purPctScreenUsed/100;  'Get x/y screen extent (from center) in degrees
+    ymax := purScreenYDeg*purPctScreenUsed/100;
+    GetRepeatedParameterProgression%(purNUpDown%, 1, xlocs[], trash%[], xmax, -xmax, 0, 0);  'Get locations of x/y starting points, spread across usable screen
+    GetRepeatedParameterProgression%(purNLeftRight%, 1, ylocs[], trash%[], ymax, -ymax, 0, 0);
+    
+    count% := 0;
+    for j% := 1 to purNRepeats% do
+        'do left-to-right
+        for i% := 0 to purNLeftRight%-1 do
+            purStartX[count%] := -xmax;
+            purEndX[count%] := xmax;
+            purStartY[count%] := ylocs[i%];
+            purEndY[count%] := ylocs[i%];
+            purDirection[count%] := 0;  'note that if we do something more complicated we have to calculate this
+            purPursuitDur[count%] := 2*xmax/purPursuitSpeed;  'in seconds
+            count% += 1;
+        next
+        'do down-to-up
+        for i% := 0 to purNUpDown%-1 do
+            purStartX[count%] := xlocs[i%];
+            purEndX[count%] := xlocs[i%];
+            purStartY[count%] := -ymax;
+            purEndY[count%] := ymax;
+            purDirection[count%] := 90;  'note that if we do something more complicated we have to calculate this
+            purPursuitDur[count%] := 2*ymax/purPursuitSpeed;  'in seconds
+            count% += 1;
+        next
+        'do right-to-left
+        for i% := 0 to purNLeftRight%-1 do
+            purStartX[count%] := xmax;
+            purEndX[count%] := -xmax;
+            purStartY[count%] := ylocs[i%];
+            purEndY[count%] := ylocs[i%];
+            purDirection[count%] := 180;  'note that if we do something more complicated we have to calculate this
+            purPursuitDur[count%] := 2*xmax/purPursuitSpeed;  'in seconds
+            count% += 1;
+        next
+        'do up-to-down
+        for i% := 0 to purNUpDown%-1 do
+            purStartX[count%] := xlocs[i%];
+            purEndX[count%] := xlocs[i%];
+            purStartY[count%] := ymax;
+            purEndY[count%] := -ymax;
+            purDirection[count%] := 270;  'note that if we do something more complicated we have to calculate this
+            purPursuitDur[count%] := 2*ymax/purPursuitSpeed;  'in seconds
+            count% += 1;
+        next
+    next
+    purNValues% := count%;
+    'Initialize a vector of indices for trial order, will shuffle if requested
+    for i% := 0 to purNValues%-1 do
+        purTrialOrder%[i%] := i%;
+    next
+    'Shuffle trial order if requested, do this blockwise (do one whole LR, RL, UD, DU set before repeat)
+    if purRandomProgression% = 1 then
+        for i% := 1 to purNRepeats% do
+            Shuffle%(purNValues%/purNRepeats%,purTrialOrder%[(i%-1)*purNValues%/purNRepeats%:purNValues%/purNRepeats%]);
+        next
+    endif;
+    
+    'Create a speed vector to make use of StringifyProgression3$(), for this script there is only one speed
+    arrconst(purSpeedVec[],purPursuitSpeed);
+    
+    XYStr$ := StringifyProgression2$(purNValues%, purStartX[], PurStartY[], purTrialOrder%[]);
+    purStr$ := StringifyProgression3$(purNValues%, purPursuitDur[], purDirection[], purSpeedVec[], purTrialOrder%[]);
+    
+'    printlog("X values are %f\n",xlocs[0:purNUpDown%]);
+'    printlog("Y values are %f\n",ylocs[0:purNLeftRight%]);
+'    for i% := 0 to purNValues%-1 do
+'        printlog("Trial %d: StartXY = %0.2f,%0.2f, EndXY = %0.2f,%0.2f, Direction = %d, Duration = %0.2f\n",
+'        i%+1,purStartX[purTrialOrder%[i%]],purStartY[purTrialOrder%[i%]],purEndX[purTrialOrder%[i%]],purEndY[purTrialOrder%[i%]],purDirection[purTrialOrder%[i%]],purPursuitDur[purTrialOrder%[i%]]);
+'    next
+'    
+'    printlog("XYStr$ is %s\n",XYStr$);
+'    printlog("purStr$ is %s\n",purStr$);
+'    
+'    halt;
+
+    
+    
+	'start sampling
+    if UseTwo1401s% = 1 then
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        if startSecs <= 0 then
+            message("Handshake not found in 5 seconds!  Quitting!");
+            halt;
+        endif
+        'Send timing pulse
+        SafeSampleKey("T");
+    else
+    	SampleStart(0); 'Start sampling now
+    endif;
+    
+    'Set sequencer variable 5, this value is appropriate for no rivalry
+    SampleSeqVar(5, 0);
+    
+	' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");
+    
+    SequencerPeriodMS := SampleSeqClock(1);  'Get the clock period of the sequencer, in MS, must do this after starting sampling
+    
+    
+    'Begin building the command line argument
+    Opener$ := "cmd /k " + bin$;
+    
+    ' Get remote args if needed
+    if GetUseRemoteStimulus%() = 1 then
+        RemoteArg$  := " " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
+    endif;
+        
+    if GetUseRemoteStimulus%() = 1 then
+        ProgName$ := "\\remote.exe "; 'set program name for one VSG
+    else
+        ProgName$ := "\\fixstim.exe "; 'set program name for one VSG
+    endif;
+        
+    
+    'Set background color
+    BGColor$ := " -b " + purBackgroundColor$;
+    
+    'Set distance to screen
+    Dist2Screen$ := " -d " + GetDistanceToScreenMM$();
+    
+    'Set trigger port
+    TriggerPort$ := " -p 2 ";  'This one's hard-coded for now
+    
+    'Turn on verbose
+    Verbose$ := " -v ";
+    
+    'FixationArg$ is automatically filled by #including UsreyFixationPoint.s2s
+    
+    
+    'Get XY and pursuit arguments
+    XYArg$ := " -y " + XYStr$;
+    PursuitArg$ := " -pursuit " +  purStr$;
+    
+    'Build command line
+    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + XYArg$ + PursuitArg$;  
+    
+    
+    ' Initial text marks
+    ' djs Always version 3. NO difference if maintainmode is used or not. 
+    SampleText("Pursuit,3," + str$(Len(cmdLine$)));
+    for i% := 1 to Len(cmdLine$) step 100 do
+        SampleText(Mid$(cmdLine$, i%, 100));
+    next
+  
+
+    StimHandle% := ProgRun(cmdLine$, 1);
+    if StimHandle% <0 then 
+        Message("Could not start stimulus."); 
+        halt; 
+    endif
+    
+	
+	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);  'Enable Stop - we will use stop and not quit from here on out
+	ToolbarEnable(1,0);  'Disable Start
+	ToolbarEnable(6,0);  'Disable Select Wavemark
+	ToolbarEnable(7,0);  'Disable Quit
+	View(DataWindow%); 
+	Yield(5);
+return 1;
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+    
+	' Disable idle process func
+	ToolbarSet(0,"");
+    
+    ' Tell stim app to shut down.
+	SafeSampleKey("Q");
+	SampleStop();
+    
+    ' Kill Fixstim
+    ProgKill(StimHandle%);
+    while ProgStatus(StimHandle%) > 0 do
+        Yield();
+    wend
+
+	' Write parameter file
+	WriteParameterFile();
+
+	' Increment daily totals and save then
+	TotalTrials% += nTrialsStarted%;
+	SaveDailyTotals();
+    
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func PauseStimuli%();
+    Pause% :=1;
+    ToolbarEnable(4,0);  'Disable Pause
+    ToolbarEnable(5,1);  'Enable Resume
+    return 1;
+end
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func ResumeStimuli%();
+    Pause% :=0;
+    ToolbarEnable(4,1);  'Enable Pause
+    ToolbarEnable(5,0);  'Disable Resume
+    return 1;
+end
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func SelectWavemarkDialog%()
+	var iReturn%:=1;
+	var i%;
+    var whichWaveMark% := 1;
+	DlgCreate("Select Wavemark");
+	DlgInteger(1, "Input Wavemark to view, -1 for all", -1, 256);  'max is based on highest possible wavemark value
+    
+	i% := DlgShow(whichWaveMark%);
+
+	if i% = 1 then
+		PrintLog("SelectWavemarkDialog - user hit OK\n");
+        for i% := 0 to purNWavemarks%-1 do  'for each wavemark channel
+            View(DataWindow%).MarkMask(i%+1,0,0,-1);  'exclude all codes on layer 0
+            View(DataWindow%).MarkMask(i%+1,0,1,whichWaveMark%);  'then include requested code (or all, if -1) on layer 0
+        next;       
+	endif;
+	if i% = 0 then
+		PrintLog("SelectWavemarkDialog - user hit Cancel\n");
+	endif;
+    'PrintLog("Return value is %d\n", iReturn%);  'always return 1, so don't bother reporting this
+	return iReturn%;
+end;
+
+
+
+
+
+
+func IdleProcessing%()
+	var iStatus% := 1;	
+    
+	tNow := View(DataWindow%).MaxTime();
+
+	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+	yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+
+	' Don't update display every time....
+	if tNow-tLastFixPtDisplayUpdate > .005 then
+		View(XYWindow%).XYAddData(1,xEye,yEye);
+		tLastFixPtDisplayUpdate := tNow;
+        
+        'Here we will want to redraw the pursuit window as well
+        if purFixptMoving% = 1 then 'if the fixation point is currently moving on screen
+            DrawPur(1);
+        endif
+        
+        
+	endif
+
+	docase 
+    case iState% = stateVSGWait% then
+        ' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
+        if stateBegin% = 1 then
+            LogStatus("VSGWait", "Begin waiting for Ready Pulse from VSG at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
+        
+        if pulseFound% = 1 then
+            LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
+            Yield(1.0);
+            tLastTrigger := tFall;
+            ChangeStateTo(stateFixptUp%, tFall);
+        else
+            if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
+                LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
+                tLastTrigger := tFall;
+            endif;
+        endif;
+        
+    case iState% = stateFixptUp% then
+        ' If experiment is paused, this is where we should wait 
+        if Pause% = 0 then
+            'When we are ready  to put the fixpt up, determine trial values for this trial
+            purCurrentDur := 0;
+            purThisStartX := purStartX[purTrialOrder%[trialInd%]];
+            purThisStartY := purStartY[purTrialOrder%[trialInd%]];
+            purThisSpeed := purPursuitSpeed;  'always the same right now, but will need to be updated here if speed changes by trial
+            purThisDir := purDirection[purTrialOrder%[trialInd%]];
+            
+            LogStatus("RequestFixpt", "Request fixpt");
+            SafeSampleKey("F");
+            ChangeStateTo(stateWaitForFixptUp%, tNow);
+        else 'if we are paused, reset tStateStart so that when pause comes off there is a full acquisition window
+            tStateStart := tNow;
+        endif
+            
+       
+    case iState% = stateWaitForFixptUp% then
+        if View(DataWindow%).FindRisingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 0 then
+            ' Fixation point is up
+            LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
+            tLastTrigger := tTrigger;
+            ChangeStateTo(stateWaitForAcquisition%, tTrigger);
+            purFixptMoving% := 0;  'Reset, fixpt has not started moving
+            DrawPur(1);	' this draws the initial location of the pursuit window on the Spike2 window
+        endif
+
+    case iState% = stateWaitForAcquisition% then
+        ' Wait for animal to acquire the screen
+        if stateBegin% = 1 then
+            LogStatus("WaitForAcquisition", "Begin waiting for screen/fixpt acquisition at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        docase
+        case Looking2%(xEye,yEye) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
+            SafeSampleKey("S");  'request stimulus to move
+            LogStatus("WaitForAcquisition", "Request stimulus at " + str$(tNow));
+            ChangeStateTo(stateWaitForStimMove%, tNow);
+        case tNow - tStateStart > purAcquisitionTime then
+            LogStatus("WaitForAcquisition", "Acquisition window timed out at " + str$(tNow));
+            'request fixpt down
+            SafeSampleKey("X");
+            purSkipTimeOut% := 0;  'indicate to go to acquisition TO
+            ChangeStateTo(stateWaitForBlank%,tNow);
+        endcase
+        
+        
+        
+    case iState% = stateWaitForBlank% then
+
+        if View(DataWindow%).FindFallingEdge%(StimChannel%, tStateStart, tTrigger) = 1 then
+            ' Fixation point is off
+            tLastTrigger := tTrigger;
+            DrawPur(0);	'remove pursuit window
+            docase
+            case purSkipTimeOut% = 0 then
+                ChangeStateTo(stateAcquisitionTO%, tTrigger);
+            case purSkipTimeOut% = 1 then    'if we want to skip the timeout
+                ChangeStateTo(stateInterTrialInterval%, tTrigger);                
+            endcase
+            
+        endif    
+        
+        
+    case iState% = stateAcquisitionTO% then
+        'If the animal fails to acquire, then administer timeout
+        if stateBegin% = 1 then
+            LogStatus("AcquisitionTO", "Begin acquisition timeout at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        if tNow - tStateStart > purAcquisitionTO then
+            LogStatus("AcquisitionTO", "End acquisition timeout at " + str$(tNow));
+            ChangeStateTo(stateInterTrialInterval%,tNow);
+        endif
+        
+         
+    case iState% = stateWaitForStimMove% then
+        'Wait for the fixation point to start moving
+        if stateBegin% = 1 then
+            LogStatus("WaitForStimMove", "Waiting for fixation point to start moving on at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        'Check for fixation break, if broken move out
+        if Looking2%(xEye,yEye) = 0 then
+            'request fixpt down
+            SafeSampleKey("X");
+            purSkipTimeOut% := 0;  'indicate to go to acquisition TO
+            ChangeStateTo(stateWaitForBlank%,tNow);
+        else 
+            if View(DataWindow%).FindRisingEdge%(StimChannel%, tStateStart, tTrigger) = 0 then
+                ' Stimulus is up
+                LogStatus("WaitForStimMove", "Stimulus started moving at " + str$(tTrigger));
+                tLastTrigger := tTrigger;
+                sampletext(Str$(trialInd%+1) + "," + Str$(purThisStartX) + "," + Str$(purThisStartY) + "," + Str$(purThisSpeed) + "," + Str$(purThisDir), tTrigger);
+                ChangeStateTo(stateHoldPursuit%, tTrigger);
+                purFixptMoving% := 1;
+            endif
+        endif        
+        
+       
+    case iState% = stateHoldPursuit% then
+        if stateBegin% = 1 then
+            LogStatus("HoldPursuit", "Pursuit has begun at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        purCurrentDur := tNow - tStateStart;
+        docase
+        case purCurrentDur >= purPursuitDur[trialInd%] then  'pursuit is over
+            purFixptMoving% := 2;  'Indicate fixpt is no longer moving
+            'request fixpt down
+            SafeSampleKey("X");
+            ChangeStateTo(stateWaitForFixptOff%,tNow);
+        case purCurrentDur < purGracePeriod then  'still in grace period, do not check pursuit
+            'do nothing, stay in this state
+        case Pursuing%(xEye,yEye) = 0 then  'loss of pursuit
+            purFixptMoving% := 0;  'Indicate fixpt is no longer moving, different value than successful trial, does it matter?
+            'request fixpt down
+            SafeSampleKey("X");
+            purSkipTimeOut% := 0;  'indicate to go to acquisition TO ???  May change this to skip the TO, ask Hank.
+            ChangeStateTo(stateWaitForBlank%,tNow);
+            'don't advance without success
+        endcase
+        
+              
+        
+    case iState% = stateWaitForFixptOff% then  'differs from WaitForBlank in that we can move to reward/next trial
+        'Wait for the fixpt to turn off
+        if stateBegin% = 1 then
+            LogStatus("WaitForFixptOff", "Waiting for fixpt off at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        if View(DataWindow%).FindFallingEdge%(StimChannel%, tLastTrigger, tTrigger) = 1 then 'is stimchannel right for this?
+            tLastTrigger := tTrigger;
+            DrawPur(0);  'And remove the pursuit window
+            LogStatus("WaitForFixptOff", "Fixpt off at " + str$(tLastTrigger));
+            ChangeStateTo(stateReward%, tLastTrigger);
+        endif
+        
+        
+       
+     case iState% = stateReward% then
+
+        purRewardDurSec := DefaultReward() + 0.020;  'Give reward, return how long the reward was, 0 is legal if no reward
+        tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
+        if purRewardDurSec > 0 then  'increment TotalRewards if reward is given
+            TotalRewards% += 1;
+            purRewardDurSec += 0.020;  'add 20 ms for "safety", only do this if reward given
+        endif
+        ChangeStateTo(stateWaitReward%,tNow);       
+        
+        
+        
+    case iState% = stateWaitReward% then
+        if tNow > tStateStart + purRewardDurSec then
+            ChangeStateTo(stateTrialCompleted%,tNow);
+        endif;
+        
+          
+    case iState% = stateTrialCompleted% then
+        nTrialsCompleted% += 1; 
+        printlog("Number of stimuli completed is %d\n",nTrialsCompleted%);
+        ToolbarText(str$(nTrialsCompleted%) + "/" + str$(purNValues%) + " stimuli completed.");
+        if nTrialsCompleted% = purNValues% then
+            ' We're all done
+            LogStatus("TrialCompleted", "All stimuli complete!");
+            Stop%();
+            iStatus% := 0;  
+        else
+            'Advance Stimulus
+            SafeSampleKey("a");
+            trialInd% += 1;
+            LogStatus("TrialCompleted", "Advancing stimulus");
+            ChangeStateTo(stateInterTrialInterval%, tStateStart); 
+        endif   
+             
+       
+    case iState% = stateInterTrialInterval% then 
+        if stateBegin% = 1 then
+            LogStatus("InterTrialInterval", "InterTrialInterval began at " + str$(tNow));
+            stateBegin% := 0;
+        endif   
+        
+        if tNow > tStateStart + purITI then
+            LogStatus("InterTrialInterval", "InterTrialInterval ended at " + str$(tNow));
+            ChangeStateTo(stateFixptUp%,tNow);
+        endif
+    
+
+    else
+        
+        ' Unknown state!
+        Message("Unknown state=" + str$(iState%));
+        SafeSampleKey("o");  'turn opto off, just in case
+        halt;
+
+	endcase;
+
+	'tLast := tNow;  'unused
+	return iStatus%;
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Used for the initial acquisition of the fixation point
+'This is an updated version of Looking%() that uses the correct start points on each trial,
+'not really intended to be ported to other scripts
+func Looking2%(EyePosX,EyePosY)
+	'Determine if the eye position is within the fixation window
+    if purAlwaysLooking% = 2 then 'purAlwaysLooking% = 1 means "enforce acquisition", so only purAlwaysLooking% = 2 applies here
+        return 1; 
+    endif;
+    
+    if (Pow(EyePosX-purThisStartX,2) + Pow(EyePosY-purThisStartY,2)) <= Pow(WindowRadius,2) then 
+        return 1; 
+    else 
+        return 0; 
+    endif
+
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Used for the pursuit of the fixation point
+func Pursuing%(EyePosX,EyePosY)
+    var PursuitX;
+    var PursuitY;
+	'Determine if the eye position is within the fixation window
+    if purAlwaysLooking% >= 1 then 'purAlwaysLooking% = 1 means "enforce acquisition", purAlwaysLooking% = 2 means "enforce nothing", both apply here
+        return 1; 
+    endif;
+    
+    'calculate real time PursuitX and PursuitY position of the pursuit point
+    PursuitPointLoc(PursuitX,PursuitY,purThisStartX,purThisStartY,purThisSpeed,purThisDir,purCurrentDur)
+    
+    if (Pow(EyePosX-PursuitX,2) + Pow(EyePosY-PursuitY,2)) <= Pow(purPursuitWindowRadius,2) then 
+        return 1; 
+    else 
+        return 0; 
+    endif
+
+end;
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Used to calculate the position of the fixation point when pursuing (calling it "pursuit
+'point" here for clarity)
+'PPX and PPY will be filled with the X/Y position, in degrees, of the pursuit point
+'StartX and StartY are in degrees
+'PPSpeed is in deg/sec
+'PPDir is the direction in degrees using standard trig coordinates (0 = right, 90 = up)
+'PPTotalTime is the amount of time the pursuit point has been moving, in seconds
+func PursuitPointLoc(&PPX,&PPY,StartX,StartY,PPSpeed,PPDir,PPTotalTime)
+'    var deltaX;
+'    var deltaY;
+'    var speedX;
+'    var speedY;
+    var pi := 3.1415926;
+    
+    PPDir := PPDir*pi/180;
+    'retained to demonstrate calculation, but using one line is easier
+'    speedX := Cos(PPDir)*PPSpeed;
+'    speedY := Sin(PPDir)*PPSpeed;
+'    deltaX := speedX*PPTotalTime;
+'    deltaY := speedY*PPTotalTime;
+'    PPX := StartX+deltaX;
+'    PPY := StartY+deltaY;
+    
+    PPX := StartX+(Cos(PPDir)*PPSpeed*PPTotalTime);
+    PPY := StartY+(Sin(PPDir)*PPSpeed*PPTotalTime);
+end;
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc WriteParameterFile()
+	var parFileName$;
+	var parFileBase$;
+	var parHandle%;
+    var ii%;
+
+
+	' get filename for parfile (data file + "par" extension) and open it
+	View(DataWindow%);
+	parFileBase$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
+	parFileName$ := parFileBase$ + ".par";
+	PrintLog("par filename is " + parFileName$ + "\n");
+	parHandle% := FileOpen(parFileName$, 8, 1);
+
+	' write general info - eye coil gains, dist to screen
+	Print("Parameters for %s\n\n", parFileBase$);
+
+	Print("General information\n");
+	Print("-------------------\n\n");
+	Print("Distance to screen (MM)    : %s\n", GetDistanceToScreenMM$());
+	Print("Eye coil software gain (X) : %f\n", DegreesPerVoltX);
+	Print("Eye coil software gain (Y) : %f\n", DegreesPerVoltY);
+	Print("Eye coil sampling freq (Hz): %d\n", EyeCoilSamplingFrequency%);
+    Print("Wavemark ports             : %s\n", GetWavemarkPorts$());
+    Print("Continuous ports           : %s\n", GetContinuousPorts$());
+	Print("Reward size (ms)           : %d\n", GetJuiceRewardMS%());
+	Print("Background color           : %s\n", purBackgroundColor$);
+    
+	Print("\nExperimental parameters\n");
+	Print("-------------------------\n\n");
+
+    Print("Always Looking?                          : %d\n", purAlwaysLooking%);
+	Print("Random Progression?                      : %d\n", purRandomProgression%);
+    Print("Number of left-right steps               : %d\n", purNLeftRight%);
+    Print("Number of up-down steps                  : %d\n", purNUpDown%);
+	Print("Number of repeats                        : %d\n", purNRepeats%);
+    Print("Percent of trials rewarded               : %f\n", purPctRewardEachPeriod);
+    Print("Pursuit Speed (deg/s)                    : %f\n", purPursuitSpeed);
+    Print("Pursuit window radius (deg)              : %f\n", purPursuitWindowRadius);
+    Print("Pursuit grace period (s)                 : %f\n", purGracePeriod);
+	Print("Inter-trial interval                     : %f\n", purITI);
+    Print("Acquisition time (s)                     : %f\n", purAcquisitionTime);
+    Print("Acquisition time out (s)                 : %f\n", purAcquisitionTO);
+    Print("Screen width (mm)                        : %f\n", purScreenMMX);
+    Print("Screen Height (mm)                       : %f\n", purScreenMMY);
+    Print("Percent of screen used                   : %f\n", purPctScreenUsed);
+    
+        
+	' close parfile
+	FileClose(0);
+
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Juice%()  'note that this function is only used for Toolbar-based juice delivery
+    if JuicerType% = 1 then  'open-high juicer, dispense based on ms
+        DeliverReward();
+    else
+        if JuicerType% = 2 then  'open-low juicer, dispense based on number of hits
+            DeliverRewardNumber();
+        endif;
+    endif;
+    return 1;
+end;
+
+
+
+' Used to hard-quit from toolbar. This will close data files without saving!!! 
+' It is important that this function be disabled once sampling is started!!!
+
+func Quit%()
+    
+	FileClose(-1,-1);
+	return 0;
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+    stateBegin% := 1;  'Reset for next state - this line allows us to do a bit more specific logging
+	if tStart > 0 then 
+        tStateStart := tStart; 
+    endif;
+end;
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawFix
+' 
+' Draws Fixation window in xy window (iDraw%==1) or blanks it (0). 
+' Function is currently unused, replaced by DrawPur()
+'proc DrawFix(iDraw%)
+'
+'	if iDraw% > 0 then
+'		' Draw fixation window in xy window
+'        view(XYWindow%).XYAddData(iStimChannel%, FixWindowX[], FixWindowY[]);
+'	else 
+'		' erase the window from xy view
+'		View(XYWindow%).XYDelete(iStimChannel%);
+'	endif
+'
+'end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawPur
+' 
+' Blanks then draws Pursuit window in xy window (iDraw%==1) or simply blanks it (0). 
+proc DrawPur(iDraw%)
+
+	if iDraw% > 0 then        
+        ' erase the previous window from xy view
+		View(XYWindow%).XYDelete(iStimChannel%);
+        
+        'Calcuate the pursuit window
+        var index%;
+        var twopi;
+        twopi := 2.0*4.0*ATan(1.0);
+        var PursuitX;
+        var PursuitY;
+        
+        'calculate real time PursuitX and PursuitY position of the pursuit point
+        PursuitPointLoc(PursuitX,PursuitY,purThisStartX,purThisStartY,purThisSpeed,purThisDir,purCurrentDur)
+        
+        for index% := 0 to 35 do
+            FixWindowX[index%] := PursuitX + purPursuitWindowRadius * Cos(index% * twopi/36.0);
+            FixWindowY[index%] := PursuitY + purPursuitWindowRadius * Sin(index% * twopi/36.0);
+        next;
+        
+		' Draw pursuit window in xy window
+        view(XYWindow%).XYAddData(iStimChannel%, FixWindowX[], FixWindowY[]);
+	else 
+		' erase the window from xy view
+		View(XYWindow%).XYDelete(iStimChannel%);
+	endif
+
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Put two vectors of numbers into a comma separated string
+Func StringifyProgression2$(n%, vec1[], vec2[], ind%[])
+	var s$;
+	var i%;
+    
+    if n% > purMaxTrials% then
+        message("You have requested " + Str$(n%) + " trials, max is " + Str$(purMaxTrials%) + "!  Quitting!");
+        halt
+    endif;
+    
+    
+	for i% := 0 to n%-1 do
+		if i% > 0 then 
+			s$ += ",";
+		endif
+		s$ += str$(vec1[ind%[i%]]);
+        s$ += ",";
+        s$ += str$(vec2[ind%[i%]]);
+	next
+	return s$;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Put three vectors of numbers into a comma separated string
+Func StringifyProgression3$(n%, vec1[], vec2[], vec3[], ind%[])
+	var s$;
+	var i%;
+    
+    if n% > purMaxTrials% then
+        message("You have requested " + Str$(n%) + " trials, max is " + Str$(purMaxTrials%) + "!  Quitting!");
+        halt
+    endif;
+    
+    
+	for i% := 0 to n%-1 do
+		if i% > 0 then 
+			s$ += ",";
+		endif
+		s$ += str$(vec1[ind%[i%]]);
+        s$ += ",";
+        s$ += str$(vec2[ind%[i%]]);
+        s$ += ",";
+        s$ += str$(vec3[ind%[i%]]);
+	next
+	return s$;
+end;
