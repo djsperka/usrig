@@ -117,6 +117,16 @@ func FSXaStart%()
     var iGotPulse% := 0;
     var iCount%;
     var iReturn% := 1;
+    var serialcmd$;
+    var serialresp$;
+    
+    ' Open serial
+    if SerialOpen(9, 115200) < 0 then
+        Message("Cannot open serial port com9!");
+        halt;
+    endif
+    
+    
     SampleStart(0);
     if inobat% = 0 then
         batFile$ := GetDemoDir$(1) + fList$[iFile%];
@@ -142,14 +152,25 @@ func FSXaStart%()
             if imanual% = 0 then
                 for itrial% := 0 to ntrials%-1 do
                     SampleText(str$(itrial%));
+                    
+                    serialcmd$ := "g " + str$(ntrials% - (itrial% + 1)) + ";";
+                    PrintLog("Write serial cmd: " + serialcmd$ + "\n");
+                    SerialWrite(9, serialcmd$);
+'                    if SerialRead(9, serialresp$) > 0 then
+'                        PrintLog("got serial response: " + serialresp$ + "\n");
+'                    else
+'                        PrintLog("error in serial read\n");
+'                    endif
+                    Yield(iMS4%/1000.0);
+                    
+                    
                     SampleKey("F");
                     Yield(iMS1%/1000.0);
                     SampleKey("S");
                     Yield(iMS2%/1000.0);
                     SampleKey("X");
                     Yield(iMS3%/1000.0);
-                    SampleKey("a");
-                    Yield(iMS4%/1000.0);
+                    
                     if iStop% <> 0 then
                         break;
                     endif
