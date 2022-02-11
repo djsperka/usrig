@@ -384,7 +384,8 @@ func FreeViewerScriptDialog%()
         if fvDoOpto% = 3 then
             fvDoImageSeries% := 1;
             fvImageDuration := fvPeriodDuration;
-            'fvPeriodCount% := 1;  'hard code period count to 1, we are not splitting each image series into periods - though we probably COULD since we know how many images there are
+            'fvNumPeriodsPerBlock% := 1;  'Unused in image series logic
+            'fvNumPeriods is set in the idle loop for image series
             fvDoOpto% := 0;  'hard code opto OFF
             fvNRepeats% := 1;  'technically this value is ignored, but good to note we don't allow repeats for Image Series, the file can have repeated trials if you want
         else
@@ -463,7 +464,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgEnable(0,-fvdlgImageSeriesSelectButton%);  'disable image series select
     case DlgValue(3) = 3 then 'image series style
         DlgEnable(0,1);  'disable repeats
-        DlgEnable(0,2);  'disable randomization
+        DlgEnable(1,2);  'enable randomization (changed to enable)
         DlgValue$(1004,"Image Duration, s");  'label duration appropriately
         DlgEnable(0,5);  'disable number of periods
         DlgValue$(1006,"New Image Series On Fix Break? (0/1)");  'label appropriately
@@ -843,7 +844,7 @@ func Start%()
 	var cmdLine$;
     var Opener$;
     var ProgName$;
-    var RemoteArg$:="";     'Extra arg needed if vsg is not on local machine...
+    var RemoteArg$ := "";     'Extra arg needed if vsg is not on local machine...
     var BGColor$;
     var Dist2Screen$;
     var TriggerPort$;
@@ -851,7 +852,7 @@ func Start%()
     ImageFileLoc$ := fvDefaultStimPath$ + fvDefaultStimFile$;
     'var FixationArg$;  'NO!  Do not define FixationArg$ here or it will step on the one defined in UsreyFixationPoint.s2s!!
     var ImageArg$;
-    var Verbose$:=" -v ";  'For now, verbose is always on 
+    var Verbose$ := " -v ";  'For now, verbose is always on 
     'vars for opto setup
     var voltageInteger%;
     var stimRemaining;
@@ -902,6 +903,8 @@ func Start%()
         else
             printlog("Failure in reading image series file %s! \n",fvStimFile$);
         endif;
+        'Potentially randomize, use fvImageOrder%[] to hold randomized indices
+        GetRepeatedParameterProgression%(fvNValues%, fvNRepeats%, dummyResult[], fvImageOrder%[], 1, 2, 0, fvRandomProgression%);  'We will ignore dummyResult, which holds values between (1) and (2) that are not logspaced (0)
     else
         'Get list of images, either from folder or from file, and create a randomized order (via list of indices),
         'write entire randomized trial-by-trial image list to text file for passing to VSG
@@ -947,6 +950,9 @@ func Start%()
         
     endif;
     
+    
+    ' Open serial port for VSG comms re: stimulus jump-advance
+    OpenSerialPortToVSG();
     
 	'start sampling
     if UseTwo1401s% = 1 then
@@ -1037,7 +1043,7 @@ func Start%()
     'cmdLine$ := "remote.exe 127.0.0.1 7000 fixstim -v -d 500 -i c:/Users/location/stimulus-images.txt";  'This has no fixation point
     'cmdLine$ := "remote.exe 127.0.0.1 7000 fixstim -v -d 500 -f 0,0,1,red -i c:/Users/location/stimulus-images.txt";  'This has a fixation point
     ' ------ So that looks like this ------
-    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + ImageArg$;  'Not sure about the TriggerPort and BGColor but this might work.
+    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + ImageArg$ + SerialArg$;  'Not sure about the TriggerPort and BGColor but this might work.
     
     
     ' Initial text marks
@@ -1333,7 +1339,7 @@ func IdleProcessing%()
                 LogStatus("WaitForAcquisition", "Request stimulus at " + str$(tNow));
                 if fvDoImageSeries% = 1 then
                     ChangeStateTo(stateWaitForImageOn%, tNow);
-                    fvNumPeriods% := fvImagesPerTrial%[nTrialsCompleted%];
+                    fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
                 else
                     ChangeStateTo(stateWaitForStimOn%, tNow);
                 endif
@@ -1425,7 +1431,7 @@ func IdleProcessing%()
                 ' Image is up
                 LogStatus("WaitForImageOn", "Image started at " + str$(tTrigger));
                 tLastTrigger := tTrigger;
-                fvCurrImageIndex% := fvImageIndices%[nTrialsCompleted%][fvPeriodCount%];
+                fvCurrImageIndex% := fvImageIndices%[fvImageOrder%[nTrialsCompleted%]][fvPeriodCount%];
                 sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]), tTrigger);
                 ChangeStateTo(stateHoldImage%, tTrigger);
             endif
@@ -1461,6 +1467,8 @@ func IdleProcessing%()
             fvGiveLookingTO% := 0;  'no timeout on successful fixation
             ChangeStateTo(stateWaitForStimOff%, tNow);
             
+            
+            'Only for opto
         case fvPeriodCount% >= fvMinViewPeriodsForAdvance% and (LookingAtScreenOrFixpt%(xEye,yEye) = 0 or fvFixationWasBroken% = 1) and fvDoOpto% > 0 then 'if fixation is held through enough periods to advance, then broken
             ' turn off stimulus, get ready to advance
             SafeSampleKey("X");  'Turn off all
@@ -1549,10 +1557,10 @@ func IdleProcessing%()
             ' Image is off
             LogStatus("WaitForImageOff", "Image ended at " + str$(tTrigger));
             tLastTrigger := tTrigger;
-            fvPeriodCount% += 1;  'Increment period count before image comes on, so fvPeriodCount% is current image
             if fvFixationWasBroken% = 1 then  'wait until image is off to continue
                 ChangeStateTo(stateHoldImage%, tNow);
-            else    
+            else 
+            fvPeriodCount% += 1;  'Increment period count before image comes on, so fvPeriodCount% is current image, only increment on successful hold of fixation               
             sampletext("+", tTrigger);  'Indicate successful viewing of image
                 if fvPeriodCount% >= fvNumPeriods% then
                     ' turn off stimulus, get ready to advance
@@ -1692,6 +1700,10 @@ func IdleProcessing%()
             if fvFixScreen% = 1 then
                 ChangeStateTo(statePrepareOpto%, tNow);
             else
+                'if image series, shuffle uncompleted trial back in
+                if fvDoImageSeries% = 1 then
+                    SendTrialToMiddle%(fvNValues%,nTrialsCompleted%,5,fvImageOrder%[])  'nTrialsCompleted% has not been incremented so is the index of the uncompleted trial, skip at least 5 trials
+                endif
                 ChangeStateTo(stateFixptUp%, tNow);
             endif;
         endif   
@@ -1708,8 +1720,12 @@ func IdleProcessing%()
             iStatus% := 0;  
         else
             'Advance Stimulus
-            SafeSampleKey("a");
+            'SafeSampleKey("a");
             LogStatus("TrialCompleted", "Advancing stimulus");
+            
+            'Advance/Jump Stimulus
+            JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
+            
             if fvGiveLookingTO% = 0 then  'go to ISI
                 ChangeStateTo(stateInterTrialInterval%, tStateStart); 
             else 'otherwise give TO penalty

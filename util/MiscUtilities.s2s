@@ -1396,3 +1396,131 @@ func Byte2Binary(byte%,&binary%[])
         
     return 1;
 end
+
+
+
+'====== Serial Utilities ======
+'
+'
+
+'New Feb 2022
+
+'In order to allow "jumping" from one stimulus on the VSG to another (rather than simply "advancing")
+'we have implemented a serial communication  (via virtual, not physical ports) that allows us to send
+'a command to the VSG.  There are a few things that must be done for this to all work, better to 
+'collect them all in a function included in every script than to recapitulate them in each script.
+'
+'Each script that wishes to implement non-sequential stimulus order will need to do three things:
+'1) Run OpenSerialPortToVSG() before the start of sampling
+'2) Include " + SerialArg$ + " in the command-line arguments.  SerialArg$ will be defined here and 
+'   need not be defined in the script. (This is similar to FixationArg$, which is added to basically 
+'   all command lines but generated in a util script.)  
+'3) Call JumpOrAdvance%() with a zero-based trial index to jump to that trial, or no argument (or -1)
+'   to advance to the next trial
+
+
+' Variables for serial comms 
+var serialcmd$;
+var serialIsOpen%;
+var lastStimulusIndex%;
+var SerialArg$ := " --serial COM8 ";  'Include SerialArg$ in command line arguments to use JumpOrAdvance%()
+
+
+' Functions for serial comms
+
+func OpenSerialPortToVSG()
+    ' Open serial port for VSG comms re: stimulus jump-advance
+    if SerialOpen(9, 115200) < 0 then
+        Message("Cannot open serial port com9!");
+        halt;
+    endif
+    serialIsOpen% := 1;
+    return 0;
+end
+
+
+func JumpOrAdvance%(n% := -1)
+    if serialIsOpen% = 1 then
+        if n% < 0 then  'if no value entered, simply advance
+            n% := lastStimulusIndex% + 1;
+        endif
+        lastStimulusIndex% := n%;
+        serialcmd$ := "g " + str$(n%) + ";";   'zero-based - what happens on VSG if this value exceeds the number of stimuli defined?
+        'PrintLog("Write serial cmd: " + serialcmd$ + "\n");
+        SerialWrite(9, serialcmd$);
+        return lastStimulusIndex%;
+    else
+        message("JumpOrAdvance%() cannot be used without opening the serial port with OpenSerialPortToVSG()!");
+        return -1;  'return failure
+    endif
+end
+
+
+
+'
+'
+'====== End Serial Utilities ======
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' SendTrialToMiddle%(nTrials%,unfinishedTrial%,minToSkip%,&trialOrder%[])
+'
+' This function may be used after an interrupt or otherwise rejected/unfinished  
+' trial.  The default behavior will be to send the unfinished trial to a random
+' middle position in the remainder of the trials.  For instance, if the 34th of
+' 200 defined trials is unfinished, it will be placed in a random position between
+' #34 and #199.  If it were to be placed at trial #42, then trials #35-42 would
+' be bumped forward one position to #34-41, the old #34 is placed at #42, and 
+' #43-199 are unchanged.  The trial counter is not advanced, so old trial #35
+' (now trial #34) will be the next stimulus.
+'
+' nTrials% is the total number of trials
+' unfinishedTrial% is the trial to reorder
+' minToSkip% is the minimum number of trials to elapse before reinsertion
+' trialOrder%[] is the current trial order, which will be updated
+'
+' If minToSkip% is set, the unfinished trial will not be inserted until at least
+' that many trials have elapsed, if possible.  If there are not enough trials remaining
+' to obey minToSkip%, the unfinished trial will be placed at the end.
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func SendTrialToMiddle%(nTrials%,unfinishedTrial%,minToSkip%,&trialOrder%[])
+    
+    var status% := -1;  '-1 is failure status
+    var minpos%;
+    var maxpos%;
+    var newpos%;
+    var tempTrialOrder%;
+    
+    if unfinishedTrial% < nTrials%-1 then  'unfinishedTrial% is an index, but nTrials% is a count
+        minpos% := unfinishedTrial% + minToSkip%;  'in index units
+        maxpos% := nTrials%-1;  'now also in index units
+        'determine new position in which to put unfinishedTrial%
+        if minpos% < maxpos% then
+            newpos% := floor(rand(maxpos%-minpos%+1,minpos%));  'this works, in index units
+            status% := 1;  'status indicates full success
+        else
+            newpos% := maxpos%;  'if minimum position is beyond the end of trials, just put at the end
+            status% := 0;  'status indicates success in returning a legal value, but failure to randomize due to being at end of trials
+        endif;
+        'now insert trial, shifting as required
+        docase
+        case newpos% = unfinishedTrial% then
+            'do nothing, trial will repeat
+        case newpos% = maxpos% then
+            tempTrialOrder% := trialOrder%[unfinishedTrial%];
+            arrconst(trialOrder%[unfinishedTrial%:maxpos%-unfinishedTrial%],trialOrder%[unfinishedTrial%+1:maxpos%-unfinishedTrial%]); 
+            trialOrder%[newpos%] := tempTrialOrder%;  
+        else
+            tempTrialOrder% := trialOrder%[unfinishedTrial%];
+            arrconst(trialOrder%[unfinishedTrial%:newpos%-unfinishedTrial%],trialOrder%[unfinishedTrial%+1:newpos%-unfinishedTrial%]); 
+            trialOrder%[newpos%] := tempTrialOrder%; 
+        endcase        
+    else
+        'Don't do anything here - if it is the last trial it will automatically repeat, that's the only option
+        status% := 0;  'status indicates success in returning a legal value, but failure to randomize due to being at end of trials
+    endif;
+      
+    return status%;
+end
