@@ -305,14 +305,14 @@ func FreeViewerScriptDialog%()
     
     
     if fvUseFile% = 0 then
-        if Len(fvStimFile$) > 0 then
-            fvDialogText$ := "Use FILE: " + fvStimFile$;
+        if Len(fvStimFolder$) > 0 then
+            fvDialogText$ := "Use FOLDER: " + fvStimFolder$;
         else
             fvDialogText$ := "No File/Folder Selected";
         endif
     else
-        if Len(fvStimFolder$) > 0 then
-            fvDialogText$ := "Use FOLDER: " + fvStimFolder$;
+        if Len(fvStimFile$) > 0 then
+            fvDialogText$ := "Use FILE: " + fvStimFile$;
         else
             fvDialogText$ := "No File/Folder Selected";
         endif
@@ -902,6 +902,7 @@ func Start%()
             printlog("Success in reading image series file %s, num trials is %d\n",fvStimFile$,fvNValues%);
         else
             printlog("Failure in reading image series file %s! \n",fvStimFile$);
+            halt;  'no point in going on if the file is bad!
         endif;
         'Potentially randomize, use fvImageOrder%[] to hold randomized indices
         GetRepeatedParameterProgression%(fvNValues%, fvNRepeats%, dummyResult[], fvImageOrder%[], 1, 2, 0, fvRandomProgression%);  'We will ignore dummyResult, which holds values between (1) and (2) that are not logspaced (0)
@@ -1028,7 +1029,7 @@ func Start%()
     'FixationArg$ := "";  'Blank out fixation point, we won't do this, we just won't put it up if we aren't using it
     'FixationArg$ is automatically filled by #including UsreyFixationPoint.s2s
     'If we are using always looking, or if the animal is fixating the screen, do not show fixation point
-    if fvFixScreen% = 1 or fvAlwaysLooking% = 1 then
+    if fvFixScreen% = 1 then      'or fvAlwaysLooking% = 1 then
         FixationArg$ := "";
     endif
     
@@ -1274,6 +1275,8 @@ func IdleProcessing%()
             Yield(1.0);
             tLastTrigger := tFall;
             fvAdvance% := 0;  'Ensure value is 0 on first run
+            'Advance/Jump Stimulus to correct value for first stimulus (using serial version)
+            JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
             if fvFixScreen% = 1 then
                 ChangeStateTo(statePrepareOpto%, tFall);
             else
@@ -1505,11 +1508,11 @@ func IdleProcessing%()
             fvFixationWasBroken% := 0;  'Reset, we got this fixation break
             
             ' Now wait until stim is off
-            if fvDoOpto% = 0 then
+            if fvDoImageSeries% = 1 or fvDoOpto% = 1 then
+                ChangeStateTo(stateWaitForStimOff%, tNow);
+            else
                 fvFixWaitState% := 1;
                 ChangeStateTo(stateWaitForBlank%, tNow);  'This is both stim and fixpt
-            else
-                ChangeStateTo(stateWaitForStimOff%, tNow); 
             endif;
   
         else
@@ -1560,11 +1563,12 @@ func IdleProcessing%()
             if fvFixationWasBroken% = 1 then  'wait until image is off to continue
                 ChangeStateTo(stateHoldImage%, tNow);
             else 
-            fvPeriodCount% += 1;  'Increment period count before image comes on, so fvPeriodCount% is current image, only increment on successful hold of fixation               
-            sampletext("+", tTrigger);  'Indicate successful viewing of image
+                fvPeriodCount% += 1;  'Increment period count before image comes on, so fvPeriodCount% is current image, only increment on successful hold of fixation               
+                sampletext("+", tTrigger);  'Indicate successful viewing of image
                 if fvPeriodCount% >= fvNumPeriods% then
                     ' turn off stimulus, get ready to advance
                     SafeSampleKey("X");  'Turn off all
+                    'SafeSampleKey("s");  'Turn off just fixpt - this does NOT work, fixpt goes off anyway (is part of stimulus?), also WaitForFixptUp gets stuck
                     SampleText("++");  'indicates fully successful trial
                     LogStatus("WaitForImageOff", "Image time complete. Turn off and advance stimulus at " + str$(tNow));
             
@@ -1702,7 +1706,11 @@ func IdleProcessing%()
             else
                 'if image series, shuffle uncompleted trial back in
                 if fvDoImageSeries% = 1 then
-                    SendTrialToMiddle%(fvNValues%,nTrialsCompleted%,5,fvImageOrder%[])  'nTrialsCompleted% has not been incremented so is the index of the uncompleted trial, skip at least 5 trials
+                    printlog("\n\n\nBefore shuffling, nTrialsCompleted is %d and trial order is %d\n",nTrialsCompleted%,fvImageOrder%[0:fvNValues%]);
+                    SendTrialToMiddle%(fvNValues%,nTrialsCompleted%,5,fvImageOrder%[]);  'nTrialsCompleted% has not been incremented so is the index of the uncompleted trial, skip at least 5 trials
+                    printlog("After shuffling, nTrialsCompleted is %d and trial order is %d\n\n\n\n",nTrialsCompleted%,fvImageOrder%[0:fvNValues%]);
+                    'Jump Stimulus to new "current" trial
+                    JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
                 endif
                 ChangeStateTo(stateFixptUp%, tNow);
             endif;
@@ -2027,7 +2035,10 @@ func ParseImageSeriesFile%(imageFile$,&nTrials%,&nImagesPerTrial%[],&trialDurEst
     wend
     
     FileClose();
-    
+    if nTrials% = 0 then
+        success% := -1;  'return failure
+        message("No groups found!  Is there a blank line between 'Groups' and the first group??");
+    endif
     return success%;
 end
 
