@@ -1,0 +1,1 @@
+%~dp0\..\bin\remote.exe 127.0.0.1 7000 fixstim -f 0,0,1.0,red -b gray -d 813 -p 2 -f 0,0,1,red --serial COM8 -i %~dp0\images-groups-test.txt,8,0,.2,.2
