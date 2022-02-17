@@ -43,6 +43,8 @@ var StimulatorChannel%;
 var UtilityChannel%;
 var TimingChannel%;
 var FixationPointChannel%;
+var IntanMarkChannel%;
+var IntanTrialChannel%;
 
 ' XY window stuff
 var XYWindow%;			' 
@@ -95,7 +97,10 @@ const stateWaitForFixptUp%:=17;
 const stateWaitForBlank%:=18;
 const stateWaitForImageOn%:=19;       ' "Image" is for image series, which are dealt with differently than single images
 const stateWaitForImageOff%:=20;
-
+const stateHoldAcquisition%:=21;
+const stateLogTrialStart%:=22;
+const stateIntanPreRecPause%:=23;
+const stateIntanPostRecPause%:=24;
 
 var iState% := stateVSGWait%;	' present state
 var stateBegin% := 1;  'For fun, in this script let's keep track of whether it is the first time through a state, for logging purposes
@@ -149,6 +154,7 @@ var fvProbRewardEachPeriod;
 var fvRewardDurSec;
 fvRewardDurSec := (GetJuiceRewardMS%()+20)/1000;  'Set reward duration up top.  If we have any reason to think this will change through the experiment, then set it say each idle loop
                                                   'I am paranoid and I'm adding another 20 ms following the reward.
+var fvJuiceRewardMSorig%;
 
 
 ' Optogenetics variables
@@ -186,7 +192,9 @@ var fvXPos;
 var fvYPos;
 var fvUseStimLocation%;
 var fvFixScreen%;
-
+var fvHoldAcquisitionTime;
+var fvSendINTANPulse%;
+var fvMaintainFixation%;
 
 
 
@@ -239,6 +247,8 @@ OptoCopyChannel% := 49;
 UtilityChannel% := 39;
 TimingChannel% := 38;
 FixationPointChannel% := 45;
+IntanMarkChannel% := 27;
+IntanTrialChannel% := 28;
 
 ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
@@ -298,10 +308,19 @@ func FreeViewerScriptDialog%()
     exptype$[1] := "Opto (blocked)";
     exptype$[2] := "No Opto (blocked)";
     exptype$[3] := "Image Series";
+    var sixReals[6];
     
     
     'Since the opto is incorporated into this dialog (for now) we don't have to do a separate parameter grab for opto
     GetFreeViewerScriptParameters();
+    
+    'Fill sixReals[]
+    sixReals[0] := fvISI;
+    sixReals[1] := fvITI;
+    sixReals[2] := fvAcquisitionTime;
+    sixReals[3] := fvHoldAcquisitionTime;
+    sixReals[4] := fvAcquisitionTO;
+    sixReals[5] := fvLookAwayTO;
     
     
     if fvUseFile% = 0 then
@@ -320,7 +339,7 @@ func FreeViewerScriptDialog%()
     
         
     DlgCreate("FreeViewer Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
-    DlgGroup("Stimulus and Fixation", 1, 1, 50, 17);
+    DlgGroup("Stimulus and Fixation", 1, 1, 50, 19);
     DlgInteger(1, "Number of repeats", 1, 1000, 0, 2);
     DlgCheck(2, "Random Progression?", 0, 3);
     DlgList(3, "View/Opto Condition: ", exptype$, 4, 32, 4);
@@ -330,40 +349,52 @@ func FreeViewerScriptDialog%()
     DlgReal(7, "Image Series Interimage Delay, s", 0.05, 100, 0, 8);
     DlgReal(8, "Intertrial Interval, s", 0.05, 100, 0, 9);
     DlgReal(9, "Fixation Acquisition Time, s", 0.1, 100, 0, 10);
-    DlgReal(10, "Acquisition Time Out, s", 0, 100, 0, 11);
-    DlgReal(11, "Look Away Time Out, s", 0, 100, 0, 12);
-    DlgList(12, "Fixation: ", fixscreen$, 2, 32, 13);
-    DlgCheck(13, "Always Looking?", 0, 14);
-    DlgCheck(14, "Use Stimulus Location From Config?", 0, 15);
-    DlgReal(15, "Image X Position (deg)", -20, 20, 0, 16);
-    DlgReal(16, "Image Y Position (deg)", -20, 20, 0, 17);
+    DlgReal(10, "Fixation Hold Time, s", 0, 100, 0, 11);
+    DlgReal(11, "Acquisition/Hold Time Out, s", 0, 100, 0, 12);
+    DlgReal(12, "Look Away Time Out, s", 0, 100, 0, 13);
+    DlgList(13, "Fixation: ", fixscreen$, 2, 32, 14);
+    DlgCheck(14, "Always Looking?", 0, 15);
+    DlgCheck(15, "Maintain Fixation?", 0, 16);
+    DlgCheck(16, "Use Stimulus Location From Config?", 0, 17);
+    DlgReal(17, "Image X Position (deg)", -20, 20, 0, 18);
+    DlgReal(18, "Image Y Position (deg)", -20, 20, 0, 19);
     
-    DlgGroup("Screen", 1, 18, 50, 3);
-    DlgReal(17, "Screen Width, mm", 10, 3000, 0, 19);
-    DlgReal(18, "Screen Height, mm", 10, 3000, 0, 20);
+    DlgGroup("Screen", 1, 20, 50, 3);
+    DlgReal(19, "Screen Width, mm", 10, 3000, 0, 21);
+    DlgReal(20, "Screen Height, mm", 10, 3000, 0, 22);
     
-    DlgGroup("Reward", 1, 21, 50, 2);
-    DlgReal(19, "Prob of reward each period", 0, 1, 0, 22);
+    DlgGroup("Reward", 1, 23, 50, 2);
+    DlgReal(21, "Prob of reward each period", 0, 1, 0, 24);
     
-    DlgGroup("Optogenetics", 1, 23, 50, 2);
-    DlgReal(20, "Opto Voltage Out (V)", 0.0002, 5, 0, 24); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+    DlgGroup("Optogenetics", 1, 25, 50, 2);
+    DlgReal(22, "Opto Voltage Out (V)", 0.0002, 5, 0, 26); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
     
+    DlgGroup("Images", 1, 27, 50, 3);
+    fvdlgTextItem% := DlgText(fvDialogText$, 3, 28, 40);
+    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 29);
+    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 18, 29);  
+    DlgButton(fvdlgImageSeriesSelectButton% , "Select Image Series", SelectStimFile%, 30, 29);
     
-    DlgGroup("Images", 1, 25, 50, 3);
-    fvdlgTextItem% := DlgText(fvDialogText$, 3, 26, 40);
-    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 27);
-    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 18, 27);  
-    DlgButton(fvdlgImageSeriesSelectButton% , "Select Image Series", SelectStimFile%, 30, 27);
+    DlgCheck(23, "Send digital pulse to INTAN", 0,30);
     
     'Right now we don't seem to need a callback, it's ready directly below if we do 
     DlgAllow(0xffff, 0, FreeViewerScriptDialogChanged%);
 
     i%:=DlgShow(fvNRepeats%, fvRandomProgression%, fvDoOpto%, fvPeriodDuration, fvNumPeriodsPerBlock%, fvMinViewPeriodsForAdvance%, 
-    fvISI, fvITI, fvAcquisitionTime, fvAcquisitionTO, fvLookAwayTO, fvFixScreen%, fvAlwaysLooking%, fvUseStimLocation%, fvXPos, fvYPos, 
-    fvScreenMMX, fvScreenMMY, fvProbRewardEachPeriod, fvOptoVoltageOut);
+    sixReals[], fvFixScreen%, fvAlwaysLooking%, fvMaintainFixation%, fvUseStimLocation%, fvXPos, fvYPos, 
+    fvScreenMMX, fvScreenMMY, fvProbRewardEachPeriod, fvOptoVoltageOut, fvSendINTANPulse%);
     
     if i% = 1 then
+        'Unpack sixReals[]
+        fvISI := sixReals[0];
+        fvITI := sixReals[1];
+        fvAcquisitionTime := sixReals[2];
+        fvHoldAcquisitionTime := sixReals[3];
+        fvAcquisitionTO := sixReals[4];
+        fvLookAwayTO := sixReals[5];
+        
 		SaveFreeViewerScriptParameters();
+
         'Calculate screen values in degrees here
         screenMMPerDegree := Val(GetDistanceToScreenMM$())*pi/180;  
         fvScreenXDeg := (fvScreenMMX/2)/screenMMPerDegree;  'we are defining fvScreenX(Y)Deg as HALF the screen so it is the distance from fixation to the edge
@@ -413,40 +444,53 @@ func FreeViewerScriptDialogChanged%(item%)
 '        DlgEnable(0,10);
 '        DlgEnable(0,11);
 '        DlgEnable(0,12);
+'        DlgEnable(0,13);
 '    else
 '        DlgEnable(1,9);
 '        DlgEnable(1,10);
 '        DlgEnable(1,11);
 '        DlgEnable(1,12);
+'        DlgEnable(1,13);
 '    endif;
     
     'Grating parameters will be used to set stimulus location
-    if DlgValue(14) = 1 then
+    if DlgValue(16) = 1 then
         gr$ := GetGratingParameters$("Stimulus");
         ParseGratingParametersBrief%(gr$, x, y, w, h);  'w, h are diameters
     endif;
     
     'Enable/disable screen size entries based on using screen/fixation point for fixation
-    if DlgValue(14) = 0 then  
-        DlgEnable(1,15);
-        DlgEnable(1,16);
+    if DlgValue(16) = 0 then  
+        DlgEnable(1,17);
+        DlgEnable(1,18);
     else
-        DlgEnable(0,15);
-        DlgEnable(0,16);
-        DlgValue(15,x);
-        DlgValue(16,y);
+        DlgEnable(0,17);
+        DlgEnable(0,18);
+        DlgValue(17,x);
+        DlgValue(18,y);
     endif;
     
     
     'Enable/disable screen size entries based on use of fixpt
-    DlgEnable(DlgValue(12),17);
-    DlgEnable(DlgValue(12),18);
+    DlgEnable(DlgValue(13),19);
+    DlgEnable(DlgValue(13),20);
+    
+    'Set fixation hold time to zero and disable if fixating screen
+    if DlgValue(13) = 1 then
+        DlgValue(10,0);  'Set hold time to zero
+        DlgEnable(0,10);  'And disable
+    else
+        DlgEnable(1,10);  'Enable
+        if item% = 13 then
+            DlgValue(10,fvHoldAcquisitionTime);  'And set the value back to the most recent registry value - but ONLY if we just changed the list, otherwise change any value and it pops back!
+        endif
+    endif
     
     'Enable/disable opto voltage based on using opto
     if DlgValue(3) = 1 then
-        DlgEnable(1,20);
+        DlgEnable(1,22);
     else
-        DlgEnable(0,20);
+        DlgEnable(0,22);
     endif;
     
     'Change labeling/enable based on using opto-style vs, regular style vs. image series style
@@ -458,7 +502,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgEnable(0,5);  'disable number of periods
         DlgValue$(1006,"New Image On Fix Break? (0/1)");  'label appropriately
         DlgEnable(0,7);  'disable ISI
-        DlgEnable(0,19);  'disable reward
+        DlgEnable(0,20);  'disable reward
         DlgEnable(1,-fvdlgFolderSelectButton%);  'enable folder select
         DlgEnable(1,-fvdlgFileSelectButton%);  'enable standard file select
         DlgEnable(0,-fvdlgImageSeriesSelectButton%);  'disable image series select
@@ -469,7 +513,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgEnable(0,5);  'disable number of periods
         DlgValue$(1006,"New Image Series On Fix Break? (0/1)");  'label appropriately
         DlgEnable(1,7);  'enable ISI
-        DlgEnable(1,19);  'enable reward
+        DlgEnable(1,20);  'enable reward
         DlgEnable(0,-fvdlgFolderSelectButton%);  'disable folder select
         DlgEnable(0,-fvdlgFileSelectButton%);  'disable standard file select
         DlgEnable(1,-fvdlgImageSeriesSelectButton%);  'enable image series select
@@ -480,7 +524,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgEnable(1,5);  'enable number of periods
         DlgValue$(1006,"Minimum Viewed Periods To Advance");  'label appropriately
         DlgEnable(0,7);  'disable ISI
-        DlgEnable(1,19);  'enable reward
+        DlgEnable(1,20);  'enable reward
         DlgEnable(1,-fvdlgFolderSelectButton%);  'enable folder select
         DlgEnable(1,-fvdlgFileSelectButton%);  'enable standard file select
         DlgEnable(0,-fvdlgImageSeriesSelectButton%);  'disable image series select
@@ -521,8 +565,9 @@ proc GetFreeViewerScriptParameters()
     fvXPos := GetFloatRegistryValue(key$, "XPos", fvXPos);
     fvYPos := GetFloatRegistryValue(key$, "YPos", fvYPos);
     fvFixScreen% := GetIntRegistryValue%(key$, "FixScreen", fvFixScreen%);
-    
-    
+    fvHoldAcquisitionTime := GetFloatRegistryValue(key$, "HoldAcquisitionTime", fvHoldAcquisitionTime);
+    fvSendINTANPulse% := GetIntRegistryValue%(key$, "SendINTANPulse", fvSendINTANPulse%);
+    fvMaintainFixation% := GetIntRegistryValue%(key$, "MaintainFixation", fvMaintainFixation%);
   
 end;
 
@@ -553,6 +598,9 @@ proc SaveFreeViewerScriptParameters()
     SetFloatRegistryValue(key$, "XPos", fvXPos);
     SetFloatRegistryValue(key$, "YPos", fvYPos);
     SetIntRegistryValue(key$, "FixScreen", fvFixScreen%);
+    SetFloatRegistryValue(key$, "HoldAcquisitionTime", fvHoldAcquisitionTime);
+    SetIntRegistryValue(key$, "SendINTANPulse", fvSendINTANPulse%);
+    SetIntRegistryValue(key$, "MaintainFixation", fvMaintainFixation%);
     
 end;
 
@@ -630,6 +678,17 @@ proc CreateSampleConfiguration()
         
     endif
     
+    if fvSendINTANPulse% = 1 then
+        SampleEvent(IntanMarkChannel%, 5, 2, 3600); 'Trigger channel, level
+        SampleComment$(IntanMarkChannel%,"INTAN-M");
+        SampleTitle$(IntanMarkChannel%,"INTAN-M");
+        
+        SampleEvent(IntanTrialChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(IntanTrialChannel%,"INTAN-T");
+        SampleTitle$(IntanTrialChannel%,"INTAN-T");
+    endif
+    
+    
     
     
     'Add a digital marker channel for pulsing optogenetics
@@ -642,6 +701,10 @@ proc CreateSampleConfiguration()
     case UseTwo1401s% = 1 then
         SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
         SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32
+    case fvSendINTANPulse% = 1 then
+        'will record '11' for reward onset and '55' for trial onset
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"INTAN");  'Digital marker is by definition channel 32
     endcase
     
     
@@ -869,6 +932,13 @@ func Start%()
     var startSecs := 5;
     
     
+    'Grab current Juice Reward size if we are using the INTAN system, we will be manipulating the
+    'reward size to 0 to turn off the reward but NOT turn off the pulse that comes with the reward.
+    if fvSendINTANPulse% = 1 then
+        fvJuiceRewardMSorig% := JuiceRewardMS%;
+    endif
+    
+    
     'If we are loading an IMAGE SERIES file, the entire spec is in the file, otherwise we take a folder 
     'or list of file names and re-create the file in a known location
     if fvDoImageSeries% = 1 then
@@ -996,6 +1066,12 @@ func Start%()
         SampleSeqVar(4,voltageInteger%);
         printlog("Voltage integer is %d\n",voltageInteger%);        
     endif;
+    
+    if fvSendINTANPulse% =  1 then
+        'set sequencer variable 11 for INTAN pulses
+        SampleSeqVar(11,1);
+    endif
+    
     
 
     'Begin building the command line argument
@@ -1204,6 +1280,7 @@ proc WriteParameterFile()
         Print("Inter-stimulus interval                  : %f\n", fvISI);
     endif
     Print("Acquisition time (s)                     : %f\n", fvAcquisitionTime);
+    Print("Fixpt hold time (s)                      : %f\n", fvHoldAcquisitionTime);
     Print("Acquisition time out (s)                 : %f\n", fvAcquisitionTO);
     Print("Look away time out (s)                   : %f\n", fvLookAwayTO);
     Print("Screen width (mm)                        : %f\n", fvScreenMMX);
@@ -1277,16 +1354,28 @@ func IdleProcessing%()
             fvAdvance% := 0;  'Ensure value is 0 on first run
             'Advance/Jump Stimulus to correct value for first stimulus (using serial version)
             JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
-            if fvFixScreen% = 1 then
+            docase
+            case fvSendINTANPulse% = 1 then
+                ChangeStateTo(stateIntanPreRecPause%, tFall);
+            case fvFixScreen% = 1 then
                 ChangeStateTo(statePrepareOpto%, tFall);
             else
                 ChangeStateTo(stateFixptUp%, tFall);
-            endif;
+            endcase;
         else
             if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                 LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
                 tLastTrigger := tFall;
             endif;
+        endif;
+        
+    case iState% = stateIntanPreRecPause% then
+        LogStatus("IntanPreRecPause", "Pausing to start INTAN recording");
+        message("Start INTAN recording!");
+        if fvFixScreen% = 1 then
+            ChangeStateTo(statePrepareOpto%, tFall);
+        else
+            ChangeStateTo(stateFixptUp%, tFall);
         endif;
         
     case iState% = stateFixptUp% then
@@ -1302,7 +1391,7 @@ func IdleProcessing%()
             LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
             tLastTrigger := tTrigger;
             if fvDoOpto% = 0 then
-                ChangeStateTo(stateWaitForAcquisition%, tTrigger);
+                ChangeStateTo(stateLogTrialStart%, tTrigger);
                 DrawFix(1);	' this draws the location of the fixpt on the Spike2 window
             else
                 ChangeStateTo(statePrepareOpto%, tTrigger);
@@ -1324,8 +1413,17 @@ func IdleProcessing%()
         
         fvOptoState% := 0;  'This value will toggle, but we need to start at zero for each trial
         fvPeriodCount% := 0; 'Also reset period count
+        ChangeStateTo(stateLogTrialStart%, tNow);
+        
+        
+    case iState% = stateLogTrialStart% then
+        if fvSendINTANPulse% = 1 then
+            SafeSampleKey("T");  'Send a pulse
+            'Not sure how to read the digmark channel, help is not much help, just going to go with a non-timed Sampletext for now
+            Sampletext("Image series " + Str$(nTrialsCompleted%+1) + " start");
+        endif
         ChangeStateTo(stateWaitForAcquisition%, tNow);
-
+        
     case iState% = stateWaitForAcquisition% then
         ' Wait for animal to acquire the screen
         ' If experiment is paused, this is where we should wait 
@@ -1337,14 +1435,19 @@ func IdleProcessing%()
             
             docase
             case LookingAtScreenOrFixpt%(xEye,yEye) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
-                SafeSampleKey("S");  'request stimulus
-                'sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tNow);
-                LogStatus("WaitForAcquisition", "Request stimulus at " + str$(tNow));
-                if fvDoImageSeries% = 1 then
-                    ChangeStateTo(stateWaitForImageOn%, tNow);
-                    fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
-                else
-                    ChangeStateTo(stateWaitForStimOn%, tNow);
+                if fvHoldAcquisitionTime > 0 then
+                    LogStatus("WaitForAcquisition", "Fixpt Acquired at " + str$(tNow));
+                    ChangeStateTo(stateHoldAcquisition%, tNow);
+                else  'if we don't require holding acquisition, just start the stimulus now rather than waiting through a potential OS time slice
+                    SafeSampleKey("S");  'request stimulus
+                    'sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tNow);
+                    LogStatus("WaitForAcquisition", "Fixpt Acquired, Request stimulus at " + str$(tNow));
+                    if fvDoImageSeries% = 1 then
+                        ChangeStateTo(stateWaitForImageOn%, tNow);
+                        fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
+                    else
+                        ChangeStateTo(stateWaitForStimOn%, tNow);
+                    endif
                 endif
             case tNow - tStateStart > fvAcquisitionTime then
                 LogStatus("WaitForAcquisition", "Acquisition window timed out at " + str$(tNow));
@@ -1360,6 +1463,26 @@ func IdleProcessing%()
         else 'if we are paused, reset tStateStart so that when pause comes off there is a full acquisition window
             tStateStart := tNow;
         endif
+        
+        
+    case iState% = stateHoldAcquisition% then
+        'Check for fixation break, if broken move out
+        if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+            SafeSampleKey("X");  'turn off fixation point
+            ChangeStateTo(stateAcquisitionTO%, tNow);
+        else
+            if tNow - tStateStart > fvHoldAcquisitionTime then
+                SafeSampleKey("S");  'request stimulus
+                LogStatus("HoldAcquisition", "Fixpt Held, Request stimulus at " + str$(tNow));
+                if fvDoImageSeries% = 1 then
+                    ChangeStateTo(stateWaitForImageOn%, tNow);
+                    fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
+                else
+                    ChangeStateTo(stateWaitForStimOn%, tNow);
+                endif
+            endif
+        endif
+        
         
         
     case iState% = stateWaitForBlank% then
@@ -1396,7 +1519,7 @@ func IdleProcessing%()
             if fvDoOpto% = 0 and fvFixScreen% = 0 then
                 ChangeStateTo(stateFixptUp%,tNow);
             else
-                ChangeStateTo(stateWaitForAcquisition%, tNow); 
+                ChangeStateTo(stateLogTrialStart%, tNow); 
             endif;
         endif
         
@@ -1459,7 +1582,11 @@ func IdleProcessing%()
         docase
         case fvPeriodCount% >= fvNumPeriods% then 'if fixation is held through all periods
             ' turn off stimulus, get ready to advance
-            SafeSampleKey("X");  'Turn off all
+            if fvMaintainFixation% = 1 then
+                SafeSampleKey("s");  'Take stim down, leave fixpt up
+            else
+                SafeSampleKey("X");  'Turn off all
+            endif;
             SampleText("++");  'indicates fully successful trial
             LogStatus("HoldImage", "Image time complete. Turn off and advance stimulus at " + str$(tNow));
             
@@ -1474,7 +1601,11 @@ func IdleProcessing%()
             'Only for opto
         case fvPeriodCount% >= fvMinViewPeriodsForAdvance% and (LookingAtScreenOrFixpt%(xEye,yEye) = 0 or fvFixationWasBroken% = 1) and fvDoOpto% > 0 then 'if fixation is held through enough periods to advance, then broken
             ' turn off stimulus, get ready to advance
-            SafeSampleKey("X");  'Turn off all
+            if fvMaintainFixation% = 1 then
+                SafeSampleKey("s");  'Take stim down, leave fixpt up
+            else
+                SafeSampleKey("X");  'Turn off all
+            endif;
             SampleText("+");  'indicates successful trial  TODO - check to see if that's what Henry wants
             LogStatus("HoldImage", "Fixation broken after minimum view time. Turn off and advance stimulus at " + str$(tNow));
             
@@ -1487,7 +1618,11 @@ func IdleProcessing%()
             
         case Pause% = 1 then  'putting PAUSE here.  Image done will supercede PAUSE, but magnanimously, PAUSE will supercede fixation break
             'If pause is pressed, turn off image, do not penalize, do not advance
-            SafeSampleKey("X");  'Turn off all, do not advance
+            if fvMaintainFixation% = 1 then
+                SafeSampleKey("s");  'Take stim down, leave fixpt up
+            else
+                SafeSampleKey("X");  'Turn off all
+            endif;
             LogStatus("HoldImage", "Experiment paused, removing image at " + str$(tNow));
             'SampleText("-");  'indicates failed trial, TODO I don't think we want to call this a failure
             
@@ -1567,8 +1702,11 @@ func IdleProcessing%()
                 sampletext("+", tTrigger);  'Indicate successful viewing of image
                 if fvPeriodCount% >= fvNumPeriods% then
                     ' turn off stimulus, get ready to advance
-                    SafeSampleKey("X");  'Turn off all
-                    'SafeSampleKey("s");  'Turn off just fixpt - this does NOT work, fixpt goes off anyway (is part of stimulus?), also WaitForFixptUp gets stuck
+                    if fvMaintainFixation% = 1 then
+                        SafeSampleKey("s");  'Take stim down, leave fixpt up
+                    else
+                        SafeSampleKey("X");  'Turn off all
+                    endif;
                     SampleText("++");  'indicates fully successful trial
                     LogStatus("WaitForImageOff", "Image time complete. Turn off and advance stimulus at " + str$(tNow));
             
@@ -1622,12 +1760,33 @@ func IdleProcessing%()
         fvPeriodCount% += 1;  'increment number of periods
         'Determine if reward should be given (random, or if all periods finished)
         docase
+        case fvSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
+            if fvMaintainFixation% = 1 then  'if maintaining, do not take down fixation point
+                SafeSampleKey("s");
+            else
+                SafeSampleKey("X");
+            endif;
+            if (Rand() < fvProbRewardEachPeriod) then  'give reward
+                JuiceRewardMS% := fvJuiceRewardMSorig%;  'reset reward to original value
+                DefaultReward();  'give reward
+                TotalRewards% += 1;
+            else 'don't give reward, BUT call it
+                JuiceRewardMS% := 0;  'set reward to zero, this will prevent reward from being given, but the INTAN pulse for trial end will happen
+                DefaultReward();  'give INTAN pulse
+            endif
+            
+            tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
+            ChangeStateTo(stateWaitReward%,tNow);  'wait for reward to be done
         case fvDoOpto% = 0 then  'If just doing an image, take down image and reward
-            SafeSampleKey("X");
+            if fvMaintainFixation% = 1 then  'if maintaining, do not take down fixation point
+                SafeSampleKey("s");
+            else
+                SafeSampleKey("X");
+            endif;
             DefaultReward();
             tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
             TotalRewards% += 1;
-            fvFixWaitState% := 2;
+            'fvFixWaitState% := 2;  'Don't  need this as we're not going to stateWaitForBlank%
             'ChangeStateTo(stateWaitForBlank%,tNow);  'this is hanging up, probably an issue with timing and the trigger line
             ChangeStateTo(stateWaitReward%,tNow);  'this seems to work fine
         case fvPeriodCount% >= fvNumPeriods% or (Rand() < fvProbRewardEachPeriod) then
@@ -1635,8 +1794,7 @@ func IdleProcessing%()
             DefaultReward();
             tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
             TotalRewards% += 1;
-            ChangeStateTo(stateWaitReward%,tNow);
-            'wait for reward to be done
+            ChangeStateTo(stateWaitReward%,tNow);  'wait for reward to be done
         else
             ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
         endcase;
@@ -1668,7 +1826,11 @@ func IdleProcessing%()
             docase
             case fvAdvance% = 1 then 'If we advance the stimulus
                 fvAdvance% := 0;  'reset advance variable
-                ChangeStateTo(stateTrialCompleted%, tLastTrigger);
+                if fvDoImageSeries% = 1 then  'image series sidestep the "(no)opto period" steps, to give reward we ahve to explicitly go there
+                    ChangeStateTo(stateRewardPeriod%, tLastTrigger);
+                else 'if not image series, reward has already been taken care of through "(no)opto period" steps
+                    ChangeStateTo(stateTrialCompleted%, tLastTrigger);
+                endif
             case fvGiveLookingTO% = 0 then  'If we do not advance the stimulus, but do not give a TO penalty, go to ISI
                 ChangeStateTo(stateInterTrialInterval%, tLastTrigger); 
             else 'otherwise do not advance stimulus, give TO penalty
@@ -1685,11 +1847,14 @@ func IdleProcessing%()
         
         if tNow > tStateStart + fvITI then
             LogStatus("InterTrialInterval", "InterTrialInterval ended at " + str$(tNow));
-            if fvFixScreen% = 1 then
+            docase
+            case fvFixScreen% = 1 then
                 ChangeStateTo(statePrepareOpto%, tNow);
+            case fvMaintainFixation% = 1 then  'if maintaining, skip fixpt up, cannot get to stateIntertrialInterval if fix is broken
+                ChangeStateTo(stateLogTrialStart%,tNow);
             else
                 ChangeStateTo(stateFixptUp%,tNow);
-            endif;
+            endcase;
         endif
         
         
@@ -1724,8 +1889,13 @@ func IdleProcessing%()
         if nTrialsCompleted% = fvNValues% then
             ' We're all done
             LogStatus("TrialCompleted", "All stimuli complete!");
-            Stop%();
-            iStatus% := 0;  
+            if fvSendINTANPulse% = 1 then
+                ChangeStateTo(stateIntanPostRecPause%,tStateStart);
+            else
+                Stop%();
+                iStatus% := 0;  
+            endif;
+            
         else
             'Advance Stimulus
             'SafeSampleKey("a");
@@ -1734,12 +1904,19 @@ func IdleProcessing%()
             'Advance/Jump Stimulus
             JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
             
-            if fvGiveLookingTO% = 0 then  'go to ISI
+            if fvGiveLookingTO% = 0 then  'go to ITI
                 ChangeStateTo(stateInterTrialInterval%, tStateStart); 
             else 'otherwise give TO penalty
                 ChangeStateTo(stateLookAwayTO%, tStateStart); 
             endif
         endif
+        
+    case iState% = stateIntanPostRecPause% then
+        LogStatus("IntanPostRecPause", "Pausing to stop INTAN recording");
+        message("Stop INTAN recording!");
+        LogStatus("IntanPostRecPause", "INTAN Recording stopped");
+        Stop%();
+        iStatus% := 0; 
         
 
     else
