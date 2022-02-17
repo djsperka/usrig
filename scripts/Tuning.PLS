@@ -141,7 +141,7 @@
 ;Trial start, puts in a digital marker, and sends a DIGLOW pulse to INTAN system
 0100 TRIAL: 'T  MOVI   V2,1            ;Log that sequencer is in use
 0101            MARK   55              ;Mark onset of trial
-0102            BLT    V3,11,TDONE     ;Branch, if V11 is 0, go to TDONE, don't pulse
+0102            BLT    V11,1,TDONE     ;Branch, if V11 is 0, go to TDONE, don't pulse
 0103            DIGLOW [....1...]      ;Pulse for INTAN to indicate reward
 0104            DELAY  s(0.005)-1      ;Delay for 5 ms to indiacte trial-start
 0105            DIGLOW [....0...]      ;Pulse off

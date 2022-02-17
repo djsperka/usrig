@@ -679,13 +679,13 @@ proc CreateSampleConfiguration()
     endif
     
     if fvSendINTANPulse% = 1 then
-        SampleEvent(IntanMarkChannel%, 5, 2, 3600); 'Trigger channel, level
-        SampleComment$(IntanMarkChannel%,"INTAN-M");
-        SampleTitle$(IntanMarkChannel%,"INTAN-M");
-        
-        SampleEvent(IntanTrialChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleEvent(IntanTrialChannel%, 5, 2, 3600); 'Trigger channel, level
         SampleComment$(IntanTrialChannel%,"INTAN-T");
         SampleTitle$(IntanTrialChannel%,"INTAN-T");
+    
+        SampleEvent(IntanMarkChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(IntanMarkChannel%,"INTAN-M");
+        SampleTitle$(IntanMarkChannel%,"INTAN-M");
     endif
     
     
@@ -1422,6 +1422,8 @@ func IdleProcessing%()
             'Not sure how to read the digmark channel, help is not much help, just going to go with a non-timed Sampletext for now
             Sampletext("Image series " + Str$(nTrialsCompleted%+1) + " start");
         endif
+        fvPeriodCount% := 0; 'Also reset period count
+        fvGiveLookingTO% := 0;  'Also reset looking TO
         ChangeStateTo(stateWaitForAcquisition%, tNow);
         
     case iState% = stateWaitForAcquisition% then
@@ -1487,7 +1489,7 @@ func IdleProcessing%()
         
     case iState% = stateWaitForBlank% then
 
-        if View(DataWindow%).FindFallingEdge%(StimChannel%, tStateStart, tTrigger) = 1 then
+        if View(DataWindow%).FindFallingEdge%(StimChannel%, tStateStart, tTrigger) = 1 or View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 1 then
             ' Fixation point is off
             tLastTrigger := tTrigger;
             DrawFix(0);	' actually this draws the location of the fixpt.
@@ -1761,18 +1763,20 @@ func IdleProcessing%()
         'Determine if reward should be given (random, or if all periods finished)
         docase
         case fvSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
-            if fvMaintainFixation% = 1 then  'if maintaining, do not take down fixation point
-                SafeSampleKey("s");
-            else
-                SafeSampleKey("X");
-            endif;
+            'if fvMaintainFixation% = 1 then  'if maintaining, do not take down fixation point  - this is redundant
+            '    SafeSampleKey("s");
+            'else
+            '    SafeSampleKey("X");
+            'endif;
             if (Rand() < fvProbRewardEachPeriod) then  'give reward
                 JuiceRewardMS% := fvJuiceRewardMSorig%;  'reset reward to original value
                 DefaultReward();  'give reward
                 TotalRewards% += 1;
+                SampleText("Reward",tNow);
             else 'don't give reward, BUT call it
                 JuiceRewardMS% := 0;  'set reward to zero, this will prevent reward from being given, but the INTAN pulse for trial end will happen
                 DefaultReward();  'give INTAN pulse
+                SampleText("No Reward",tNow);
             endif
             
             tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
