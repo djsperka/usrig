@@ -425,7 +425,15 @@ func FreeViewerScriptDialog%()
             fvISI := 0;  'This is what had been set for the fourth argument in non-image-series presentations
         endif
         
-        
+        'Recode pReward (value from DAQ parameters dialog) because we are setting the per-period value here 
+        '(It's weird, but we need to be able to get an "R" without actually giving a reward for the INTAN
+        'experiments, so we set the "size" of the reward to Full/Zero and make sure that the "R" always comes.
+        if fvSendINTANPulse% = 1 then
+            pReward := 1;  'For INTAN, set pReward to 1, and use fvProbRewardEachPeriod below in state logic
+                           'to set reward size to 0 for non-reward trials, always give "R"
+        else            
+            pReward := fvProbRewardEachPeriod;  'For other experiments, set pReward to value in local dialog box, will work as normal, but override value in DAQ dialog
+        endif;
         
         iReturn% := 1;  'set return value to success, otherwise we'll just quit.
         
@@ -682,10 +690,11 @@ proc CreateSampleConfiguration()
         SampleEvent(IntanTrialChannel%, 5, 2, 3600); 'Trigger channel, level
         SampleComment$(IntanTrialChannel%,"INTAN-T");
         SampleTitle$(IntanTrialChannel%,"INTAN-T");
-    
-        SampleEvent(IntanMarkChannel%, 6, 2, 3600); 'Trigger channel, level
-        SampleComment$(IntanMarkChannel%,"INTAN-M");
-        SampleTitle$(IntanMarkChannel%,"INTAN-M");
+        
+        'Under the new conception, we will not be receiving a pulse from the INTAN machine
+'        SampleEvent(IntanMarkChannel%, 6, 2, 3600); 'Trigger channel, level
+'        SampleComment$(IntanMarkChannel%,"INTAN-M");
+'        SampleTitle$(IntanMarkChannel%,"INTAN-M");
     endif
     
     
@@ -702,7 +711,7 @@ proc CreateSampleConfiguration()
         SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
         SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32
     case fvSendINTANPulse% = 1 then
-        'will record '11' for reward onset and '55' for trial onset
+        'will record '11' for reward onset and '55' for trial onset, these values are hardcoded as MARK 11/55 commands in the PLS file
         SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
         SampleTitle$(32,"INTAN");  'Digital marker is by definition channel 32
     endcase
@@ -1068,8 +1077,8 @@ func Start%()
     endif;
     
     if fvSendINTANPulse% =  1 then
-        'set sequencer variable 11 for INTAN pulses
-        SampleSeqVar(11,1);
+        'set sequencer variable 11 to 20, the duration of the initial "FreeViewer" indicator pulse
+        SampleSeqVar(11,20);
     endif
     
     
@@ -1355,13 +1364,20 @@ func IdleProcessing%()
             'Advance/Jump Stimulus to correct value for first stimulus (using serial version)
             JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
             docase
-            case fvSendINTANPulse% = 1 then
-                ChangeStateTo(stateIntanPreRecPause%, tFall);
+            'case fvSendINTANPulse% = 1 then  'pause to start INTAN recording, under the new conception we will not do this
+            '    ChangeStateTo(stateIntanPreRecPause%, tFall);
             case fvFixScreen% = 1 then
                 ChangeStateTo(statePrepareOpto%, tFall);
             else
                 ChangeStateTo(stateFixptUp%, tFall);
             endcase;
+            
+            if fvSendINTANPulse% = 1 then
+                'set sequencer variable 11 to 20 to indicate 20-ms session-start pulse
+                SampleSeqVar(11,20);
+                SafeSampleKey("T");  'Send a pulse
+            endif;
+            
         else
             if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                 LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
@@ -1369,14 +1385,15 @@ func IdleProcessing%()
             endif;
         endif;
         
-    case iState% = stateIntanPreRecPause% then
-        LogStatus("IntanPreRecPause", "Pausing to start INTAN recording");
-        message("Start INTAN recording!");
-        if fvFixScreen% = 1 then
-            ChangeStateTo(statePrepareOpto%, tFall);
-        else
-            ChangeStateTo(stateFixptUp%, tFall);
-        endif;
+        'Under the new conception we will not pause to start an INTAN recording
+'    case iState% = stateIntanPreRecPause% then
+'        LogStatus("IntanPreRecPause", "Pausing to start INTAN recording");
+'        message("Start INTAN recording!");
+'        if fvFixScreen% = 1 then
+'            ChangeStateTo(statePrepareOpto%, tFall);
+'        else
+'            ChangeStateTo(stateFixptUp%, tFall);
+'        endif;
         
     case iState% = stateFixptUp% then
         LogStatus("RequestFixpt", "Request fixpt");
@@ -1418,8 +1435,10 @@ func IdleProcessing%()
         
     case iState% = stateLogTrialStart% then
         if fvSendINTANPulse% = 1 then
+            'set sequencer variable 11 to 3 to indicate 3-ms trial-start pulse
+            SampleSeqVar(11,3);
             SafeSampleKey("T");  'Send a pulse
-            'Not sure how to read the digmark channel, help is not much help, just going to go with a non-timed Sampletext for now
+            'Not sure how to read the time off of the digmark channel, help is not much help, just going to go with a non-timed Sampletext for now
             Sampletext("Image series " + Str$(nTrialsCompleted%+1) + " start");
         endif
         fvPeriodCount% := 0; 'Also reset period count
@@ -1768,14 +1787,17 @@ func IdleProcessing%()
             'else
             '    SafeSampleKey("X");
             'endif;
+            'set sequencer variable 11 to 6 to indicate 6-ms trial-success pulse
+            SampleSeqVar(11,6);
+            SafeSampleKey("T");  'Send a pulse
             if (Rand() < fvProbRewardEachPeriod) then  'give reward
                 JuiceRewardMS% := fvJuiceRewardMSorig%;  'reset reward to original value
-                DefaultReward();  'give reward
+                DefaultReward();  'give reward, pReward has been set to 1 above, so once we get in here it's not random
                 TotalRewards% += 1;
                 SampleText("Reward",tNow);
-            else 'don't give reward, BUT call it
+            else 'don't give reward, BUT call it - this won't work unless pReward (from DAQ dialog) is recoded to 1
                 JuiceRewardMS% := 0;  'set reward to zero, this will prevent reward from being given, but the INTAN pulse for trial end will happen
-                DefaultReward();  'give INTAN pulse
+                DefaultReward();  'do not give reward (duration is 0) but make sure "R" is sent for marking the file at the time the reward would have happened
                 SampleText("No Reward",tNow);
             endif
             
@@ -1894,7 +1916,13 @@ func IdleProcessing%()
             ' We're all done
             LogStatus("TrialCompleted", "All stimuli complete!");
             if fvSendINTANPulse% = 1 then
-                ChangeStateTo(stateIntanPostRecPause%,tStateStart);
+                'ChangeStateTo(stateIntanPostRecPause%,tStateStart);
+                'set sequencer variable 11 to 10 to indicate the end-of-session pulse
+                SampleSeqVar(11,10);
+                SafeSampleKey("T");
+                SampleText("End of session",tNow);
+                Stop%();
+                iStatus% := 0;
             else
                 Stop%();
                 iStatus% := 0;  
@@ -1915,12 +1943,12 @@ func IdleProcessing%()
             endif
         endif
         
-    case iState% = stateIntanPostRecPause% then
-        LogStatus("IntanPostRecPause", "Pausing to stop INTAN recording");
-        message("Stop INTAN recording!");
-        LogStatus("IntanPostRecPause", "INTAN Recording stopped");
-        Stop%();
-        iStatus% := 0; 
+'    case iState% = stateIntanPostRecPause% then
+'        LogStatus("IntanPostRecPause", "Pausing to stop INTAN recording");
+'        message("Stop INTAN recording!");
+'        LogStatus("IntanPostRecPause", "INTAN Recording stopped");
+'        Stop%();
+'        iStatus% := 0; 
         
 
     else
