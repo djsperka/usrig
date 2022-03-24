@@ -54,6 +54,7 @@ var StimulatorChannel%;
 var UtilityChannel%;
 var JoyChannel%;
 var TimingChannel%;
+var IntanTrialChannel%;
 
 ' xy windows for plotting (TuningWindow) and PSTH. 
 var TuningWindow%[16];	' one for each wavemark channel
@@ -278,6 +279,7 @@ OptoCopyChannel% := 49;
 StimulatorChannel% := 39;
 UtilityChannel% := 38;
 TimingChannel% := 37;
+IntanTrialChannel% := 36;
 
 ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
@@ -392,7 +394,13 @@ func IdleProcessing%()
         if tunDoRivalry% = 0 then
             if pulseFound% = 1 then
                 LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
-                Yield(1.0);
+                
+                if tunSendINTANPulse% = 1 then
+                    'sequencer variable 11 is already set to the correct session-start pulse length for this tuning curve type
+                    SafeSampleKey("T");  'Send a pulse
+                endif;
+                
+                Yield(1.0);  'Note, this yield is useful for giving a delay following the INTAN pulse, but it was present before that was added
                 tLastTrigger := tFall;
                 ChangeStateTo(stateStartTrial%, tFall);
                 if RecordEyeTrackerOutputFile% = 1 then
@@ -484,8 +492,14 @@ func IdleProcessing%()
             tLastTrigger := tTrigger;
             ChangeStateTo(stateWaitForAcquisition%, tTrigger);
             DrawStim(1);	' actually this draws the location of the fixpt.
+            
+            if tunSendINTANPulse% = 1 then
+                'set sequencer variable 11 to 3 to indicate 3-ms trial-start pulse
+                SampleSeqVar(11,3);
+                SafeSampleKey("T");  'Send a pulse
+            endif
 '        else
- '           LogStatus("WaitForFixPtOn", "Waiting at " + str$(tLast));
+'           LogStatus("WaitForFixPtOn", "Waiting at " + str$(tLast));        
         endif
 
     case iState% = stateWaitForAcquisition% then
@@ -800,6 +814,12 @@ func IdleProcessing%()
                 
                 Yield();
                 
+                if tunSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
+                    'set sequencer variable 11 to 6 to indicate 6-ms trial-success pulse
+                    SampleSeqVar(11,6);
+                    SafeSampleKey("T");  'Send a pulse
+                endif
+                
                 ' Reward
                 DefaultReward();
                 nTrialsRewarded% += 1;
@@ -1017,6 +1037,12 @@ func IdleProcessing%()
             if tNow - tStateStart > tunMaintainFixation then
 
                 LogStatus("MaintainFixation", "success");
+                
+                if tunSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
+                    'set sequencer variable 11 to 6 to indicate 6-ms trial-success pulse
+                    SampleSeqVar(11,6);
+                    SafeSampleKey("T");  'Send a pulse
+                endif
                 
                 if tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4 then  'Only give juice if requested in original dialog
                     if JuicerType% = 1 then  'open-high juicer, dispense based on ms
@@ -2630,6 +2656,16 @@ proc CreateSampleConfiguration()
         SampleTitle$(TimingChannel%,"Hndshk");
     endif;
     
+    if tunSendINTANPulse% = 1 then
+        SampleEvent(IntanTrialChannel%, 5, 2, 3600); 'Trigger channel, level
+        SampleComment$(IntanTrialChannel%,"INTAN-T");
+        SampleTitle$(IntanTrialChannel%,"INTAN-T");
+        
+        'Under the new conception, we will not be receiving a pulse from the INTAN machine
+'        SampleEvent(IntanMarkChannel%, 6, 2, 3600); 'Trigger channel, level
+'        SampleComment$(IntanMarkChannel%,"INTAN-M");
+'        SampleTitle$(IntanMarkChannel%,"INTAN-M");
+    endif
     
     
     '----Analog, non-spiking electrode recording conditions
@@ -2744,6 +2780,15 @@ func Stop%()
         yield(0.1);
         SafeSampleKey("i");  'Close the file
         SafeSampleKey("Z");  'zero the DIGLOWs
+    endif
+    
+    'If we are sending INTAN pulses, send one last pulse before closing down
+    if tunSendINTANPulse% = 1 then
+        'set sequencer variable 11 to 10 to indicate the end-of-session pulse
+        SampleSeqVar(11,10);
+        SafeSampleKey("T");
+        SampleText("End of session");
+        yield(0.2); 'wait for the 10 ms pulse to be complete before stopping sampling
     endif
     
     ' Tell stim app to shut down.
@@ -3882,6 +3927,10 @@ func Start%()
     endcase
     
     
+    if tunSendINTANPulse% =  1 then
+        'set sequencer variable 11 to default 0, no pulse.  Pulse durations for various tuning curves will be set in CASE below
+        SampleSeqVar(11,0);
+    endif
     
      
     'Get default tuning curve values - these may get changed!
@@ -3904,6 +3953,10 @@ func Start%()
             MValues$ := tun1ValuesStringified$;
             SValues$ := tun2ValuesStringified$;
         endif;
+        if tunSendINTANPulse% =  1 then
+            'set sequencer variable 11 to 35, the duration of the initial "Contrast" indicator pulse
+            SampleSeqVar(11,35);
+        endif
         
    
         
@@ -3916,6 +3969,10 @@ func Start%()
             'based on tunDualTuningType%, allows dual to produce tuning curve on both, only master, or only slave
             ClearMasterOrSlaveIfNecessary(SGrat$,SGratParam$,SlaveIndicator$,TunCurveSArg$,SValues$,MGrat$,MGratParam$,MasterIndicator$,TunCurveMArg$,MValues$);  
         endif;
+        if tunSendINTANPulse% =  1 then
+            'set sequencer variable 11 to 30, the duration of the initial "Orientation" indicator pulse
+            SampleSeqVar(11,30);
+        endif
 
     case tunType$ = tunTypeSpatial$ then
         TunCurveMArg$ := " -S ";
@@ -3926,6 +3983,10 @@ func Start%()
             'based on tunDualTuningType%, allows dual to produce tuning curve on both, only master, or only slave
             ClearMasterOrSlaveIfNecessary(SGrat$,SGratParam$,SlaveIndicator$,TunCurveSArg$,SValues$,MGrat$,MGratParam$,MasterIndicator$,TunCurveMArg$,MValues$);  
         endif;
+        if tunSendINTANPulse% =  1 then
+            'set sequencer variable 11 to 45, the duration of the initial "Spatial Frequency" indicator pulse
+            SampleSeqVar(11,45);
+        endif
 
     case tunType$ = tunTypeTemporal$ then
         TunCurveMArg$ := " -T ";
@@ -3936,6 +3997,10 @@ func Start%()
             'based on tunDualTuningType%, allows dual to produce tuning curve on both, only master, or only slave
             ClearMasterOrSlaveIfNecessary(SGrat$,SGratParam$,SlaveIndicator$,TunCurveSArg$,SValues$,MGrat$,MGratParam$,MasterIndicator$,TunCurveMArg$,MValues$);  
         endif;
+        if tunSendINTANPulse% =  1 then
+            'set sequencer variable 11 to 50, the duration of the initial "Temporal Frequency" indicator pulse
+            SampleSeqVar(11,50);
+        endif
         
     case tunType$ = tunTypeFixptColor$ then
         TunCurveMArg$ := " -U ";
@@ -3962,7 +4027,11 @@ func Start%()
             TunCurveSArg$ := " -A ";
             MValues$ := tun1ValuesStringified$;
             SValues$ := tun2ValuesStringified$;
-        endif;        
+        endif;  
+        if tunSendINTANPulse% =  1 then
+            'set sequencer variable 11 to 40, the duration of the initial "Area" indicator pulse
+            SampleSeqVar(11,40);
+        endif        
         
         
     case tunType$ = tunTypeXPos$ then
@@ -3978,6 +4047,10 @@ func Start%()
     case tunType$ = tunTypeXYPos$ then
         tunCurveMArg$ := " -Z ";
         'tunDoRivalry cannot be 1 in this case because dualstim does not have this function
+        if tunSendINTANPulse% =  1 then
+            'set sequencer variable 11 to 55, the duration of the initial "XY Position" indicator pulse
+            SampleSeqVar(11,55);
+        endif
         
     case tunType$ = tunTypePolkaDot$ then
         tunCurveMArg$ := " -D ";
@@ -4186,6 +4259,10 @@ func Start%()
             SGratParam$ := "";
             
         endcase;
+        if tunSendINTANPulse% =  1 then
+            'set sequencer variable 11 to 20, the duration of the initial "Box'O'Donuts" indicator pulse
+            SampleSeqVar(11,20);
+        endif
         
         
     case tunType$ = tunTypeGonzago$ then
@@ -4322,6 +4399,10 @@ func Start%()
         
     case tunType$ = tunTypeBakersDozen$ then
         'Do nothing here, file has been specified
+        if tunSendINTANPulse% =  1 then
+            'set sequencer variable 11 to 25, the duration of the initial "Baker's Dozen" indicator pulse
+            SampleSeqVar(11,25);
+        endif
         
     else
 

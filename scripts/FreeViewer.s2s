@@ -1077,8 +1077,8 @@ func Start%()
     endif;
     
     if fvSendINTANPulse% =  1 then
-        'set sequencer variable 11 to 20, the duration of the initial "FreeViewer" indicator pulse
-        SampleSeqVar(11,20);
+        'set sequencer variable 11 to 15, the duration of the initial "FreeViewer" indicator pulse
+        SampleSeqVar(11,15);
     endif
     
     
@@ -1175,6 +1175,15 @@ func Stop%()
     if fvDoOpto% = 1 then
         SafeSampleKey("o");
     endif;
+    
+    'If we are sending INTAN pulses, send one last pulse before closing down
+    if fvSendINTANPulse% = 1 then
+        'set sequencer variable 11 to 10 to indicate the end-of-session pulse
+        SampleSeqVar(11,10);
+        SafeSampleKey("T");
+        SampleText("End of session");
+        yield(0.2); 'wait for the 10 ms pulse to be complete before stopping sampling
+    endif
     
     ' Tell stim app to shut down.
 	SafeSampleKey("Q");
@@ -1782,11 +1791,6 @@ func IdleProcessing%()
         'Determine if reward should be given (random, or if all periods finished)
         docase
         case fvSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
-            'if fvMaintainFixation% = 1 then  'if maintaining, do not take down fixation point - this is redundant
-            '    SafeSampleKey("s");
-            'else
-            '    SafeSampleKey("X");
-            'endif;
             'set sequencer variable 11 to 6 to indicate 6-ms trial-success pulse
             SampleSeqVar(11,6);
             SafeSampleKey("T");  'Send a pulse
@@ -1915,18 +1919,8 @@ func IdleProcessing%()
         if nTrialsCompleted% = fvNValues% then
             ' We're all done
             LogStatus("TrialCompleted", "All stimuli complete!");
-            if fvSendINTANPulse% = 1 then
-                'ChangeStateTo(stateIntanPostRecPause%,tStateStart);
-                'set sequencer variable 11 to 10 to indicate the end-of-session pulse
-                SampleSeqVar(11,10);
-                SafeSampleKey("T");
-                SampleText("End of session",tNow);
-                Stop%();
-                iStatus% := 0;
-            else
-                Stop%();
-                iStatus% := 0;  
-            endif;
+            Stop%();  'Call a stop
+            iStatus% := 0;  
             
         else
             'Advance Stimulus

@@ -379,6 +379,7 @@ var tunMaximalDiam;
 var tunSlaveMaximalDiam;
 
 var tunAlwaysLooking% := 1; ' If set eye signals ignored - subject presumed to be looking always. TESTING ONLY.
+var tunSendINTANPulse%;     'Used to send pulses to INTAN machine
 
 var tunFixationDuration := 2.0;	' Time required to hold fixation for reward (stim ON) - this is the stimulus duration
 var tunUseMaintainMode% := 1;  ' If 1, maintain fixation point on screen through stimuli, if zero, force "restart" on each stimulus
@@ -3756,6 +3757,8 @@ proc GetTuningCurveScriptParameters()
     tunConstantLagFrames% := GetIntRegistryValue%(key$, "ConstantLagFrames", tunConstantLagFrames%);
     tunDoOpto% := GetIntRegistryValue%(key$, "DoOpto", tunDoOpto%);
     tunSetStationary% := GetIntRegistryValue%(key$, "SetStationary", tunSetStationary%);
+    tunSendINTANPulse% := GetIntRegistryValue%(key$, "SendINTANPulse", tunSendINTANPulse%);
+    
     
 end;
 
@@ -3786,6 +3789,7 @@ proc SaveTuningCurveScriptParameters()
     SetIntRegistryValue(key$, "DoTuningHist", tunDoTuningHist%);
     SetIntRegistryValue(key$, "DoOpto", tunDoOpto%);
     SetIntRegistryValue(key$, "SetStationary", tunSetStationary%);
+    SetIntRegistryValue(key$, "SendINTANPulse", tunSendINTANPulse%);
     
 
     PrintLog("Saved DoRivalry=%d\n", tunDoRivalry%);
@@ -3814,8 +3818,15 @@ func TuningCurveScriptDialog%()
     var tempParam$;
     var tempPhase;
     var boxOK% := 1;  'do the stimulus/crosshairs boxes overlap?
+    var twoInts%[2];
+    
 	GetTuningCurveScriptParameters();
     GetTunOptoParameters();  'We must get these or the user has to open the opto dialog every time.
+    
+    'Pack twoInts%[]
+    twoInts%[0] := tunDoOpto%;
+    twoInts%[1] := tunSendINTANPulse%;
+    
     docase 'And recalculate tunOptoState, in case the user doesn't click on opto parameters button
     case tunOptoStartState% = 3 then
         dontToggleOpto% := 1;
@@ -3922,6 +3933,9 @@ func TuningCurveScriptDialog%()
     DlgButton(tundlgDanishButton%, "  Danishes!  ", TuningCurveDanishDialog%, 2, 25);
     DlgButton(tundlgDSSButton%,"        DSS        ",TuningCurveDSSDialog%, 18, 25);
     DlgButton(tundlgNullTestANDLagButton%,"      Null Test     ",TuningCurveNullTestANDLagDialog%, 36, 25);
+    
+    DlgCheck(21,"Send INTAN pulses?",2,26);
+    
     DlgAllow(0xffff, 0, TuningCurveScriptDialogChanged%);
 	
     if JuicerType% = 1 then
@@ -3929,13 +3943,13 @@ func TuningCurveScriptDialog%()
         tunStdInterTrialTime, tunMaintainFixation, tunMaintainFailTime,
         ibcl%, JuiceRewardMS%, tunDoRivalry%,  
         tunDualTuningType%, tunUseMaintainMode%, tunSetStationary%, tunDoTuningHist%, tunButtonCollect%,
-        tunUseConstantLag%,tunConstantLagFrames%,tunConstantLagMS$,tunDoOpto%);
+        tunUseConstantLag%,tunConstantLagFrames%,tunConstantLagMS$,twoInts%[]);
     else
         i%:=DlgShow(tunAcquisitionTime, tunAcqFailTime, tunStimulusOnsetDelay, tunFixationDuration, tunHoldFailTime, 
         tunStdInterTrialTime, tunMaintainFixation, tunMaintainFailTime, 
         ibcl%, JuicePerReward%, tunDoRivalry%,  
         tunDualTuningType%, tunUseMaintainMode%, tunSetStationary%, tunDoTuningHist%, tunButtonCollect%,
-        tunUseConstantLag%,tunConstantLagFrames%,tunConstantLagMS$,tunDoOpto%);
+        tunUseConstantLag%,tunConstantLagFrames%,tunConstantLagMS$,twoInts%[]);
     endif;
     
     
@@ -3976,7 +3990,11 @@ func TuningCurveScriptDialog%()
     
     'PrintLog("Tuning Curve Parameters Dialog - return from DlgShow is %d\n", i%);
     '	if i%=tundlgOrientationButton% or i%=tundlgContrastButton% or i%=tundlgSpatialButton% or i%=tundlgTemporalButton% or i%=tundlgAreaButton% then
-if i% = 1 then
+    if i% = 1 then
+        'unpack twoInts%[]
+        tunDoOpto% := twoInts%[0];
+        tunSendINTANPulse% := twoInts%[1];
+        
 		tunBackgroundColor$ := bcl$[ibcl%];
 		SaveTuningCurveScriptParameters();
         SaveDAQParameters();  'Now saving DAQ parameters because juicer variables can change
