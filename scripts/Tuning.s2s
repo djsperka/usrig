@@ -493,11 +493,7 @@ func IdleProcessing%()
             ChangeStateTo(stateWaitForAcquisition%, tTrigger);
             DrawStim(1);	' actually this draws the location of the fixpt.
             
-            if tunSendINTANPulse% = 1 then
-                'set sequencer variable 11 to 3 to indicate 3-ms trial-start pulse
-                SampleSeqVar(11,3);
-                SafeSampleKey("T");  'Send a pulse
-            endif
+            
 '        else
 '           LogStatus("WaitForFixPtOn", "Waiting at " + str$(tLast));        
         endif
@@ -506,6 +502,11 @@ func IdleProcessing%()
 
         ' Waiting for eye to fall inside of fixation window
         if Looking%(xEye, yEye) = 1 then
+            if tunSendINTANPulse% = 1 then
+                'set sequencer variable 11 to 3 to indicate 3-ms trial-start pulse
+                SampleSeqVar(11,3);
+                SafeSampleKey("T");  'Send a pulse
+            endif
             if tunStimulusOnsetDelay = 0 then
                 'LogStatus("WaitForAcquisition", "Eye in fixation window; request stim");
                 'docase
@@ -1038,13 +1039,14 @@ func IdleProcessing%()
 
                 LogStatus("MaintainFixation", "success");
                 
-                if tunSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
-                    'set sequencer variable 11 to 6 to indicate 6-ms trial-success pulse
-                    SampleSeqVar(11,6);
-                    SafeSampleKey("T");  'Send a pulse
-                endif
+                
                 
                 if tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4 then  'Only give juice if requested in original dialog
+                    if tunSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
+                        'set sequencer variable 11 to 8 to indicate 8-ms pre-secondary-reward pulse
+                        SampleSeqVar(11,8);
+                        SafeSampleKey("T");  'Send a pulse
+                    endif
                     if JuicerType% = 1 then  'open-high juicer, dispense based on ms
                         DeliverReward();
                     else
@@ -1053,7 +1055,7 @@ func IdleProcessing%()
                         endif;
                     endif;
                 endif;
-                
+            
                 'this is redundant with code that happens at the time of stimulus request, removing, will ask Henry
 '                docase
 '                case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ then
