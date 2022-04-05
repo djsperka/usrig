@@ -130,7 +130,6 @@ var purScreenMMY;
 var purPctScreenUsed;
 var purScreenXDeg;  'Defined as the distance from the center of the screen to the edge
 var purScreenYDeg;
-var purPctRewardEachPeriod;
 
 var purFixptMoving%;  'If 0, fixpt has not yet started moving.  If 1, fixpt is moving.  If 2, fixpt has stopped.  Note that currently 0/2 are not used differently, but maybe someday so I'm keeping it
 var purNValues%;
@@ -279,15 +278,16 @@ func PursuitScriptDialog%()
     DlgReal(12, "Screen Width, mm", 10, 3000, 0, 15);
     DlgReal(13, "Screen Height, mm", 10, 3000, 0, 16);
     DlgReal(14, "Percent Screen Used, 0-100", 0.1, 100, 0, 17);
-    
-    DlgGroup("Reward", 1, 18, 50, 2);
-    DlgReal(15, "Prob of reward each pursuit, 0-100", 0, 100, 0, 19);
+
+    'This can be done from Config, looks like it was carried over from FreeViewer, which has different, within-stimulus requirements, not necessary here.
+    'DlgGroup("Reward", 1, 18, 50, 2);
+    'DlgReal(15, "Prob of reward each pursuit, 0-100", 0, 100, 0, 19);
      
     DlgAllow(0xffff, 0, PursuitScriptDialogChanged%);
 
     i%:=DlgShow(purNLeftRight%,purNUpDown%,purNRepeats%,purPursuitSpeed,purITI,purRandomProgression%,
     purAcquisitionTime,purAcquisitionTO,purPursuitWindowRadius,purGracePeriod,purAlwaysLookingInd%,
-    purScreenMMX,purScreenMMY,purPctScreenUsed,purPctRewardEachPeriod);
+    purScreenMMX,purScreenMMY,purPctScreenUsed);
     
     if i% = 1 then
         
@@ -325,7 +325,7 @@ func PursuitScriptDialogChanged%(item%)
     case DlgValue(11) = 1 then
         DlgEnable(1,7);
         DlgEnable(1,8);
-        DlgEnable(0,9);
+        DlgEnable(1,9);
         DlgEnable(0,10);
     case DlgValue(11) = 2 then
         DlgEnable(1,7);
@@ -356,7 +356,6 @@ proc GetPursuitScriptParameters()
     purScreenMMX := GetFloatRegistryValue(key$, "ScreenMMX", purScreenMMX);
     purScreenMMY := GetFloatRegistryValue(key$, "ScreenMMY", purScreenMMY);
     purPctScreenUsed := GetFloatRegistryValue(key$, "PctScreenUsed", purPctScreenUsed);
-    purPctRewardEachPeriod := GetFloatRegistryValue(key$, "PctRewardEachPeriod", purPctRewardEachPeriod);
   
 end;
 
@@ -378,7 +377,6 @@ proc SavePursuitScriptParameters()
     SetFloatRegistryValue(key$, "ScreenMMX", purScreenMMX);
     SetFloatRegistryValue(key$, "ScreenMMY", purScreenMMY);
     SetFloatRegistryValue(key$, "PctScreenUsed", purPctScreenUsed);
-    SetFloatRegistryValue(key$, "PctRewardEachPeriod", purPctRewardEachPeriod);
   
 end;
 
@@ -985,16 +983,23 @@ func IdleProcessing%()
         
         
     case iState% = stateWaitForBlank% then
-
-        if View(DataWindow%).FindFallingEdge%(StimChannel%, tStateStart, tTrigger) = 1 then
+    
+        if stateBegin% = 1 then
+            LogStatus("WaitForBlank", "Begin waiting for blank at " + str$(tStateStart));
+            stateBegin% := 0;
+        endif
+    
+        if View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 1 then  'fixpt channel will register blank whether a stimulus is up or not
             ' Fixation point is off
             tLastTrigger := tTrigger;
             DrawPur(0);	'remove pursuit window
             docase
             case purSkipTimeOut% = 0 then
                 ChangeStateTo(stateAcquisitionTO%, tTrigger);
+                LogStatus("WaitForBlank", "Fixpt Channel blanked at " + str$(tTrigger));
             case purSkipTimeOut% = 1 then    'if we want to skip the timeout
-                ChangeStateTo(stateInterTrialInterval%, tTrigger);                
+                ChangeStateTo(stateInterTrialInterval%, tTrigger); 
+                LogStatus("WaitForBlank", "Fixpt Channel blanked at " + str$(tTrigger));            
             endcase
             
         endif    
@@ -1050,6 +1055,7 @@ func IdleProcessing%()
             'request fixpt down
             SafeSampleKey("X");
             ChangeStateTo(stateWaitForFixptOff%,tNow);
+            LogStatus("HoldPursuit", "Pursuit complete at " + str$(tNow));
         case purCurrentDur < purGracePeriod then  'still in grace period, do not check pursuit
             'do nothing, stay in this state
         case Pursuing%(xEye,yEye) = 0 then  'loss of pursuit
@@ -1058,6 +1064,7 @@ func IdleProcessing%()
             SafeSampleKey("X");
             purSkipTimeOut% := 0;  'indicate to go to acquisition TO ???  May change this to skip the TO, ask Hank.
             ChangeStateTo(stateWaitForBlank%,tNow);
+            LogStatus("HoldPursuit", "Pursuit failed at " + str$(tNow));
             'don't advance without success
         endcase
         
@@ -1070,7 +1077,7 @@ func IdleProcessing%()
             stateBegin% := 0;
         endif
         
-        if View(DataWindow%).FindFallingEdge%(StimChannel%, tLastTrigger, tTrigger) = 1 then 'is stimchannel right for this?
+        if View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tLastTrigger, tTrigger) = 1 then 
             tLastTrigger := tTrigger;
             DrawPur(0);  'And remove the pursuit window
             LogStatus("WaitForFixptOff", "Fixpt off at " + str$(tLastTrigger));
@@ -1253,7 +1260,7 @@ proc WriteParameterFile()
     Print("Number of left-right steps               : %d\n", purNLeftRight%);
     Print("Number of up-down steps                  : %d\n", purNUpDown%);
 	Print("Number of repeats                        : %d\n", purNRepeats%);
-    Print("Percent of trials rewarded               : %f\n", purPctRewardEachPeriod);
+    Print("Percent of trials rewarded               : %f\n", pReward*100);
     Print("Pursuit Speed (deg/s)                    : %f\n", purPursuitSpeed);
     Print("Pursuit window radius (deg)              : %f\n", purPursuitWindowRadius);
     Print("Pursuit grace period (s)                 : %f\n", purGracePeriod);
