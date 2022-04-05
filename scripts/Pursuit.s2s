@@ -1046,7 +1046,7 @@ func IdleProcessing%()
         purCurrentDur := tNow - tStateStart;
         docase
         case purCurrentDur >= purPursuitDur[purTrialOrder%[trialInd%]] then  'pursuit is over
-            purFixptMoving% := 2;  'Indicate fixpt is no longer moving
+            purFixptMoving% := 2;  'Indicate fixpt is no longer moving - this could be 0 as there is no need to indicate that fixpt is in "end" position, but it's OK
             'request fixpt down
             SafeSampleKey("X");
             ChangeStateTo(stateWaitForFixptOff%,tNow);
@@ -1081,7 +1081,7 @@ func IdleProcessing%()
        
      case iState% = stateReward% then
 
-        purRewardDurSec := DefaultReward() + 0.020;  'Give reward, return how long the reward was, 0 is legal if no reward
+        purRewardDurSec := DefaultReward();  'Give reward, return how long the reward was, 0 is legal if no reward
         tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
         if purRewardDurSec > 0 then  'increment TotalRewards if reward is given
             TotalRewards% += 1;
@@ -1148,7 +1148,7 @@ end;
 'not really intended to be ported to other scripts
 func Looking2%(EyePosX,EyePosY)
 	'Determine if the eye position is within the fixation window
-    if purAlwaysLooking% = 2 then 'purAlwaysLooking% = 1 means "enforce acquisition", so only purAlwaysLooking% = 2 applies here
+    if purAlwaysLooking% = 2 then 'purAlwaysLooking% = 1 means "enforce acquisition only", so only purAlwaysLooking% = 2 applies here
         return 1; 
     endif;
     
@@ -1167,7 +1167,7 @@ func Pursuing%(EyePosX,EyePosY)
     var PursuitX;
     var PursuitY;
 	'Determine if the eye position is within the fixation window
-    if purAlwaysLooking% >= 1 then 'purAlwaysLooking% = 1 means "enforce acquisition", purAlwaysLooking% = 2 means "enforce nothing", both apply here
+    if purAlwaysLooking% >= 1 then 'purAlwaysLooking% = 1 means "enforce acquisition only", purAlwaysLooking% = 2 means "enforce nothing", both apply here
         return 1; 
     endif;
     
