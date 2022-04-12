@@ -1,0 +1,163 @@
+#include "../util/LogUtilities.s2s"
+#include "../util/ChannelUtilities.s2s"
+#include "../util/FileUtilities.s2s"
+#include "ExtractionUtilities.s2s"
+
+func IntanX%(window%, args$)
+    var tlast := -1;
+    var t0, t1;     ' frame times
+    var txt$;
+    var unused%[3];
+    var markers%[4];
+    const MAX_IMAGES% := 3;
+    var tOnOff[MAX_IMAGES% * 2];
+    var sImages$[MAX_IMAGES%];
+    var typeFileMarker% := 0;   ' file type sync marker
+    var tFileMarker := -1;      ' timestamp on sync marker
+    var istate%;            ' 0 = W3, 1 = W6
+    var outhndl;
+    var i%;
+    var iGroup%;
+    var iReward%;
+    var sCommandLine$, sCommandLine2$;
+    
+    LogInfo(FileName$(-3));
+    outhndl := FileOpen(FileName$(-3) + ".inx", 8, 1); 
+    View(window%);
+
+
+    ' get RE ready
+    if InStrRE(0, "Image series (\\d+) start") < 0 then
+        LogError("IntanX", "Error compiling RE");
+        return -1;
+    endif
+    
+    ' First INTAN marker is the file type marker
+    tFileMarker := NextTime(32, tlast, markers%);
+    if (tFileMarker < 0) then
+        LogError("IntanX", "No markers found in channel 32!");
+        return -1;
+    else
+        typeFileMarker% := markers%[0];
+    endif
+    
+    ' Find the command line
+    tlast := NextTextMark(-1, sCommandLine$);
+    if tlast < 0 then
+        sCommandLine$ := "No command line found.";
+    else
+        while InStr(sCommandLine$, "cmd") <> 1 and tlast > 0 do
+            tlast := NextTextMark(tlast, sCommandLine$);
+        wend
+        if tlast > 0 then
+            NextTextMark(tlast, sCommandLine2$);
+        endif
+    endif
+    
+    ' First two lines of output are the file type marker (line 1) and the command line (line 2)
+    View(outhndl).Print("%f,%d\n", tFileMarker, typeFileMarker%);
+    View(outhndl).Print("%s %s", sCommandLine$, sCommandLine2$);
+
+    istate% := 0;
+    t0 := -1;
+    t1 := -1;
+    tlast := NextTime(32, tlast, markers%);
+    while (tlast >= 0) do
+    
+        docase
+        case istate% = 0 then
+            if markers%[0] = 3 then
+                t0 := tlast;
+                istate% := 1;
+            endif
+        case istate% = 1 then
+            docase
+            case markers%[0] = 3 then
+                t0 := tlast;
+            case markers%[0] = 6 then
+                t1 := tlast;
+                ' now fetch image information
+                if extractImageTrials%(t0, t1, tOnOff, sImages$, iGroup%, iReward%) <> MAX_IMAGES% then
+                    LogError("IntanX", "Incorrect number of image files found in trial at " + str$(t0) + "-" + str$(t1));
+                    return -1;
+                else
+                    'LogInfo("Trial " + str$(t0) + "-" + str$(t1) + ": group " + str$(iGroup%));
+                    for i% := 0 to MAX_IMAGES%-1 do
+                        'LogInfo("Image " + str$(tOnOff[i%*2]) + "-" + str$(tOnOff[i%*2+1]) + ": " + sImages$[i%]);
+                        txt$ := Print$("%f,%f,%f,%f,%d,%d,%s\n", t0, t1, tOnOff[i%*2], tOnOff[i%*2+1], iGroup%, iReward%, sImages$[i%]);
+                        View(outhndl).Print("%s", txt$);
+                    next
+                    istate% := 0;
+                endif
+            endcase;
+        endcase;
+        tlast := NextTime(32, tlast, markers%);
+    wend
+    View(outhndl).FileClose();
+    return 0;
+end
+
+func extractImageTrials%(t0, t1, times[], fnames$[], &group%, &reward%)
+    var count% := 0;
+    var i%;
+    var tlast := t0;
+    var tsample, t;
+    var trise, tfall;
+    var istatus%;
+    var samp$;
+    var iseries%;
+    var spos%[2], ssiz%[2];
+    
+    'tf := NextTime(41, ta);
+    istatus% := FindPulseUp%(41, tlast, trise, tfall)
+    while istatus% = 1 and count% < Len(times) and tFall < t1 do
+    
+        'Save rise time of pulse. 
+        tlast := tfall;
+        times[count%] := tRise;
+        count% += 1;
+        istatus% := FindPulseUp%(41, tlast, trise, tfall);
+
+    wend
+    
+    if count% = Len(times) then
+    
+        ' First, try to get the series#
+        tsample := NextTextMark(t0-.05, samp$);
+        if tsample > 0 and abs(tsample - t0) < 0.05 then
+            'LogInfo("Got series text: " + samp$);
+            if InStrRE(samp$) <> 2 then
+                LogError("IntanX", "Error extracting image set number from sample text: " + samp$);
+            else
+                InStrRE(spos%, ssiz%);
+                group% := val(Mid$(samp$, spos%[1], ssiz%[1]));
+                'LogInfo("Got " + Mid$(samp$, spos%[1], ssiz%[1]) + ":" + str$(group%));
+            endif
+        endif
+        
+        ' Now get filenames
+        for i% := 0 to 2 do
+            tsample := NextTextMark(times[i%*2]-.05, samp$);
+            fnames$[i%] := Left$(samp$, InStr(samp$, ",")-1);
+            'LogInfo("extractImageTrials: " + str$(times[i%]) + "-" + str$(times[i%+1]) + ", " + Left$(samp$, InStr(samp$, ",")) + " delta " + str$(tsample - times[i%]));
+        next
+        
+        ' Check if reward was delivered
+        tlast := times[Len(times)-1];
+        t := NextTextMark(tlast, samp$);
+        while t > 0 and t < t1 and samp$ <> "Reward" do
+            tlast := t;
+            t := NextTextMark(tlast, samp$);
+        wend
+        if samp$ = "Reward" then
+            reward% := 1;
+        else
+            reward% := 0;
+        endif
+        
+    endif
+        
+    'LogInfo("extractImageTrials: " + str$(frames[0]) + "-" + str$(frames[1]) + ", " + str$(frames[2]) + "-" + str$(frames[3]) + ", " + str$(frames[4]) + "-" + str$(frames[5]));
+    
+    return count%/2;
+end
