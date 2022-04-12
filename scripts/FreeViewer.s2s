@@ -194,6 +194,7 @@ var fvUseStimLocation%;
 var fvFixScreen%;
 var fvHoldAcquisitionTime;
 var fvSendINTANPulse%;
+var fvDisableGamma%;
 var fvMaintainFixation%;
 
 
@@ -369,20 +370,21 @@ func FreeViewerScriptDialog%()
     DlgGroup("Optogenetics", 1, 25, 50, 2);
     DlgReal(22, "Opto Voltage Out (V)", 0.0002, 5, 0, 26); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
     
-    DlgGroup("Images", 1, 27, 50, 3);
+    DlgGroup("Images", 1, 27, 50, 4);
     fvdlgTextItem% := DlgText(fvDialogText$, 3, 28, 40);
     DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 29);
     DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 18, 29);  
     DlgButton(fvdlgImageSeriesSelectButton% , "Select Image Series", SelectStimFile%, 30, 29);
+    DlgCheck(23,"Disable Gamma",0,30);
     
-    DlgCheck(23, "Send digital pulse to INTAN", 0,30);
+    DlgCheck(24, "Send digital pulse to INTAN", 0,31);
     
     'Right now we don't seem to need a callback, it's ready directly below if we do 
     DlgAllow(0xffff, 0, FreeViewerScriptDialogChanged%);
 
     i%:=DlgShow(fvNRepeats%, fvRandomProgression%, fvDoOpto%, fvPeriodDuration, fvNumPeriodsPerBlock%, fvMinViewPeriodsForAdvance%, 
     sixReals[], fvFixScreen%, fvAlwaysLooking%, fvMaintainFixation%, fvUseStimLocation%, fvXPos, fvYPos, 
-    fvScreenMMX, fvScreenMMY, fvProbRewardEachPeriod, fvOptoVoltageOut, fvSendINTANPulse%);
+    fvScreenMMX, fvScreenMMY, fvProbRewardEachPeriod, fvOptoVoltageOut, fvDisableGamma%, fvSendINTANPulse%);
     
     if i% = 1 then
         'Unpack sixReals[]
@@ -575,6 +577,7 @@ proc GetFreeViewerScriptParameters()
     fvFixScreen% := GetIntRegistryValue%(key$, "FixScreen", fvFixScreen%);
     fvHoldAcquisitionTime := GetFloatRegistryValue(key$, "HoldAcquisitionTime", fvHoldAcquisitionTime);
     fvSendINTANPulse% := GetIntRegistryValue%(key$, "SendINTANPulse", fvSendINTANPulse%);
+    fvDisableGamma% := GetIntRegistryValue%(key$, "DisableGamma", fvDisableGamma%);
     fvMaintainFixation% := GetIntRegistryValue%(key$, "MaintainFixation", fvMaintainFixation%);
   
 end;
@@ -608,6 +611,7 @@ proc SaveFreeViewerScriptParameters()
     SetIntRegistryValue(key$, "FixScreen", fvFixScreen%);
     SetFloatRegistryValue(key$, "HoldAcquisitionTime", fvHoldAcquisitionTime);
     SetIntRegistryValue(key$, "SendINTANPulse", fvSendINTANPulse%);
+    SetIntRegistryValue(key$, "DisableGamma", fvDisableGamma%);
     SetIntRegistryValue(key$, "MaintainFixation", fvMaintainFixation%);
     
 end;
@@ -924,6 +928,7 @@ func Start%()
     ImageFileLoc$ := fvDefaultStimPath$ + fvDefaultStimFile$;
     'var FixationArg$;  'NO!  Do not define FixationArg$ here or it will step on the one defined in UsreyFixationPoint.s2s!!
     var ImageArg$;
+    var GammaArg$ := "";
     var Verbose$ := " -v ";  'For now, verbose is always on 
     'vars for opto setup
     var voltageInteger%;
@@ -1123,13 +1128,19 @@ func Start%()
     ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvXPos) + "," + Str$(fvYPos) + "," + Str$(fvImageDuration) + "," + Str$(fvISI);
     'ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvXPos) + "," + Str$(fvYPos) + ",0,0";  'old
     
-
+    'Set GammaArg$ - we may turn off the gamma table, particularly for Xiaomo's images
+    if fvDisableGamma% = 1 then
+        GammaArg$ := " --no-gamma ";  'GammaArg$ is empty otherwise
+    endif
+    
+    
+    
     'Build command line, any values that are unnecessary will be empty, so the build should work no matter what type of command line is required
     ' ------ Here is a sample command line ------
     'cmdLine$ := "remote.exe 127.0.0.1 7000 fixstim -v -d 500 -i c:/Users/location/stimulus-images.txt";  'This has no fixation point
     'cmdLine$ := "remote.exe 127.0.0.1 7000 fixstim -v -d 500 -f 0,0,1,red -i c:/Users/location/stimulus-images.txt";  'This has a fixation point
     ' ------ So that looks like this ------
-    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + ImageArg$ + SerialArg$;  'Not sure about the TriggerPort and BGColor but this might work.
+    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + ImageArg$ + SerialArg$ + GammaArg$;  'Not sure about the TriggerPort and BGColor but this might work.
     
     
     ' Initial text marks
@@ -1303,6 +1314,8 @@ proc WriteParameterFile()
     Print("Look away time out (s)                   : %f\n", fvLookAwayTO);
     Print("Screen width (mm)                        : %f\n", fvScreenMMX);
     Print("Screen Height (mm)                       : %f\n", fvScreenMMY);
+    Print("Send Pulse to INTAN?                     : %d\n", fvSendINTANPulse%);
+    Print("Disable Gamma Table?                     : %d\n", fvDisableGamma%);
      
     
     
