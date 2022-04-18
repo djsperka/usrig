@@ -73,6 +73,7 @@ var tRise, tFall;
 var tKludge := 0.06;    ' Add to Fixation time to account for stim sequence. Ugly hack, admittedly, but one does what one must. 
 var fvFixationWasBroken% := 0;  'this allows us to monitor fixation through the individual image "periods"
 var fvFixWaitState%;
+var HBCycle% := 1;
 
 ' Constants for states
 
@@ -718,6 +719,9 @@ proc CreateSampleConfiguration()
         'will record '11' for reward onset and '55' for trial onset, these values are hardcoded as MARK 11/55 commands in the PLS file
         SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
         SampleTitle$(32,"INTAN");  'Digital marker is by definition channel 32
+    case RecordEyeTrackerOutputFile% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
     endcase
     
     
@@ -1163,6 +1167,15 @@ func Start%()
         halt; 
     endif
     
+    
+    'If we are asking the eyetracker to record an output file, open the file and start recording
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("I");  'Open the file (this is done by setting a DIGLOW bit), file name will be saved in a sampletext
+        yield(0.5);
+        SafeSampleKey("W");  'Begin recording the file
+        yield(0.5);
+    endif
+    
 	
 	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
 	ToolbarEnable(2,1);
@@ -1186,6 +1199,14 @@ func Stop%()
     if fvDoOpto% = 1 then
         SafeSampleKey("o");
     endif;
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
+    endif
     
     'If we are sending INTAN pulses, send one last pulse before closing down
     if fvSendINTANPulse% = 1 then
@@ -1400,6 +1421,20 @@ func IdleProcessing%()
                 SafeSampleKey("T");  'Send a pulse
             endif;
             
+            
+            Yield(1.0);  'Note, this yield is useful for giving a delay following the INTAN pulse
+            if RecordEyeTrackerOutputFile% = 1 then
+                'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+            endif;
+            
         else
             if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                 LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
@@ -1456,6 +1491,34 @@ func IdleProcessing%()
         
         
     case iState% = stateLogTrialStart% then
+        
+        'put timing marker in both eyetracker file, smr file
+        if RecordEyeTrackerOutputFile% = 1 then
+            'SafeSampleKey("1");
+            docase
+            case HBCycle% = 1 then
+                SafeSampleKey("1");
+            case HBCycle% = 2 then
+                SafeSampleKey("2");
+            case HBCycle% = 3 then
+                SafeSampleKey("3");
+            case HBCycle% = 4 then
+                SafeSampleKey("4");
+            case HBCycle% = 5 then
+                SafeSampleKey("5");
+            case HBCycle% = 6 then
+                SafeSampleKey("6");
+            case HBCycle% = 7 then
+                SafeSampleKey("7");
+            endcase
+            HBCycle% += 1;  'increment HBCycle%
+            if HBCycle% = 8 then  'and cycle when necessary
+                HBCycle% := 1;
+            endif
+            yield(0.01);  'this will likely be positioned very close to the "T" below, so give a tiny bit of time, 10 ms should be enough
+        endif;
+        
+        
         if fvSendINTANPulse% = 1 then
             'set sequencer variable 11 to 3 to indicate 3-ms trial-start pulse
             SampleSeqVar(11,3);
@@ -1963,6 +2026,15 @@ func IdleProcessing%()
         ' Unknown state!
         Message("Unknown state=" + str$(iState%));
         SafeSampleKey("o");  'turn opto off, just in case
+        
+        'If the eyetracker is recording an output file, stop recording and close the file
+        if RecordEyeTrackerOutputFile% = 1 then
+            SafeSampleKey("w");  'Stop recording
+            yield(0.1);
+            SafeSampleKey("i");  'Close the file
+            SafeSampleKey("Z");  'zero the DIGLOWs
+        endif
+        
         halt;
 
 	endcase;
@@ -2028,6 +2100,14 @@ func Quit%()
     if fvDoOpto% = 1 then
         SafeSampleKey("o");
     endif;
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
+    endif
     
 	FileClose(-1,-1);
 	return 0;
