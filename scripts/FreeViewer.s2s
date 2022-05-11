@@ -1758,7 +1758,13 @@ func IdleProcessing%()
                 fvFixWaitState% := 1;
                 ChangeStateTo(stateWaitForBlank%, tNow);  'This is both stim and fixpt
             endif;
-  
+            
+        case fvDoImageSeries% = 1 then 
+            'If no other cases are met, and this is an image series, go straight to wait for image off
+            'Do not go to intervening stateBeginImagePeriod or if there is a long delay between idle
+            'cycles we can miss the frame pulse.  Use tLastTrigger as state start time for additional security
+            changeStateTo(stateWaitForImageOff%,tLastTrigger);
+            
         else
             'If no other cases are met, begin next image period
             ChangeStateTo(stateBeginImagePeriod%, tNow); 
@@ -1768,8 +1774,6 @@ func IdleProcessing%()
         tNow := View(DataWindow%).MaxTime();  'update tNow so the duration of the period is as precise as possible
         'Determine if we are in the opto half or no-opto half of the image
         docase
-        case fvDoImageSeries% = 1 then
-            changeStateTo(stateWaitForImageOff%,tNow);
         case fvDoOpto% <> 1 then 'we are not doing opto, it is not an opto period
             ChangeStateTo(stateNoOptoPeriod%,tNow);
         case (fvPeriodCount% < fvNumPeriodsPerBlock% and fvOptoOrderThisTrial% = 1) or (fvPeriodCount% >= fvNumPeriodsPerBlock% and fvOptoOrderThisTrial% = 2) then
