@@ -140,6 +140,8 @@ var fvImageDur[5000];  'seconds
 var fvImageDelay[5000];  'seconds
 var fvImageXPos[5000];
 var fvImageYPos[5000];
+var fvImageHeightPix%[5000];
+var fvImageWidthPix%[5000];
 var fvCurrImageIndex%;
 
 
@@ -1040,6 +1042,13 @@ func Start%()
         next
         FileClose(fh%);  'Close the VSG image list file
         
+        'Load each image in turn to get height/width, currently disabled, but should work out of the box, will take about 25 ms per image, so for 1000 images, it's half a minute
+        'for j% := 0 to fvFileLen%-1 do
+        '    EditImageLoad(fvImageList$[j%]);
+        '    EditPaste(1,fvImageWidthPix%[j%],fvImageHeightPix%[j%]);  'This will only work on a bitmap, but I believe that is the only type expected
+        'next
+        
+        
     endif;
     
     
@@ -1318,6 +1327,10 @@ proc WriteParameterFile()
 
     Print("Always Looking?                          : %d\n", fvAlwaysLooking%);
     Print("Fixate Screen?                           : %d\n", fvFixScreen%);
+    if fvFixScreen% = 0 then
+        Print("Fixation X                               : %f\n", FixationX);
+        Print("Fixation Y                               : %f\n", FixationY);
+    endif
 	Print("Random Progression?                      : %d\n", fvRandomProgression%);
 	Print("Number of repeats                        : %d\n", fvNRepeats%);
     if fvDoImageSeries% = 1 then
@@ -1668,6 +1681,9 @@ func IdleProcessing%()
                 tLastTrigger := tTrigger;
                 fvCurrImageIndex% := fvImageIndices%[fvImageOrder%[nTrialsCompleted%]][fvPeriodCount%];
                 sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]), tTrigger);
+                'If we want to note the size of the image in the sampletext, uncomment below line(s) - too long for one line
+                'sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]) + "," 
+                '+ Str$(fvImageWidthPix%[fvCurrImageIndex%]) + "," + Str$(fvImageHeightPix%[fvCurrImageIndex%]), tTrigger);
                 ChangeStateTo(stateHoldImage%, tTrigger);
             endif
         endif
