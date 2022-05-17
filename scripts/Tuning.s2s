@@ -161,6 +161,7 @@ var tOpt;
 var tunFileLen%;
 var tun1FileLen%;
 var tun2FileLen%;
+var BDFullText$; 
 
 
 ' Init logging
@@ -655,6 +656,8 @@ func IdleProcessing%()
         case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ or (tunType$ = tunTypeContrast$ and tunContrastDualScreenCombo% = 1) or (tunType$ = tunTypeArea$ and tunAreaDualScreenCombo% = 1) then
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
             SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
+        case TunType$ = tunTypeBakersDozen$ then  'We want to give the stimulus number
+            SampleText("T," + str$(nTrialsCompleted%+1));
         else
             SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
         endcase;
@@ -3029,6 +3032,7 @@ proc WriteParameterFile()
     case tunType$ = tunTypeBakersDozen$ then
         Print("Type                  : BakersDozen\n");
         Print("File                  : " + tunBakersDozenFileLoc$ + "\n");
+        Print("Values are            : " + BDFullText$ + "\n");
         Print("\n");
         
         
@@ -4431,6 +4435,7 @@ func Start%()
         'Phase          -P      [0 360], degrees phase 
         'XYPosition     -Z      [-14 14], degrees from center. For XYPos args are paired and comma separated: x1,y1,x2,y2,...xN,yN
         'XPosition      -X      [-14 14], degrees from center
+        'Width/Height   --wh    [0.01 100], degrees width/height.  For W/H args are paired and comma separated: w1,h1,w2,h2,...wN,hN
         'DonutHole      -M      [0 100], degrees diameter of center hole
         '---Non-Grating values---
         'FixPtPosition  -y      [-14 14], degrees from center. For FixPtPos args are paired and comma separated: x1,y1,x2,y2,...xN,yN
@@ -4443,7 +4448,6 @@ func Start%()
         var BakersDozenLoc2$;
         var tempstr$;
         var tempchar$;
-        var FullText$;  
         var numRead%;
         
         ReadSetup(Chr$(7),Chr$(7));  'Setting hard/soft separators to nonsense "bell" character so no sepaarator will be found, empty 3/4 arg defaults to string delimited by double quotes
@@ -4451,7 +4455,7 @@ func Start%()
         FileOpen(tunBakersDozenFileLoc$,8,0);  'Open user-generated file, is NOT command-line ready
         
         'Ensure format of user-generated file seems legit
-        numRead% := Read(FullText$);
+        numRead% := Read(BDFullText$);
         FileClose();  'Close file once it's read
         if numRead% <> 1 then
             message("Expected one string in Bakers Dozen file, got " + Str$(numRead%) + "!!  Quitting!!");
@@ -4476,7 +4480,7 @@ func Start%()
         tempstr$ := tempstr$ + MGrat$ + MGratParam$;  'Master grating only, tuning curve values are in the file
         
         'Print to the new file
-        print("%s %s",tempstr$,FullText$);
+        print("%s %s",tempstr$,BDFullText$);
 
         FileClose();
         
