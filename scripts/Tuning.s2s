@@ -162,6 +162,7 @@ var tunFileLen%;
 var tun1FileLen%;
 var tun2FileLen%;
 var BDFullText$; 
+var BDNumStim%;
 
 
 ' Init logging
@@ -657,7 +658,7 @@ func IdleProcessing%()
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
             SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
         case TunType$ = tunTypeBakersDozen$ then  'We want to give the stimulus number
-            SampleText("T," + str$(nTrialsCompleted%+1));
+            SampleText("T," + str$(nTrialsCompleted%+1 mod BDNumStim%));  
         else
             SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
         endcase;
@@ -4449,6 +4450,8 @@ func Start%()
         var tempstr$;
         var tempchar$;
         var numRead%;
+        var spaceLoc%;
+        var valsPerSpec%;
         
         ReadSetup(Chr$(7),Chr$(7));  'Setting hard/soft separators to nonsense "bell" character so no sepaarator will be found, empty 3/4 arg defaults to string delimited by double quotes
     
@@ -4481,8 +4484,52 @@ func Start%()
         
         'Print to the new file
         print("%s %s",tempstr$,BDFullText$);
-
         FileClose();
+        
+        
+        
+        'Parse BDFullText$ to figure out how many stimuli there are
+        tempstr$ := BDFullText$;  'Make copy of the Baker's Dozen string, just reuse tempstr$
+        Trim(tempstr$);  'Trim leading/trailing white space
+        
+        'With white space trimmed, first space should delimit leading grating spec, we only NEED to check the first one as the VSG will break if the number of values doesn't match
+        spaceLoc% := InStr(tempstr$," ");
+        if spaceLoc% > 0 then
+            tempchar$ := Left$(tempstr$,spaceLoc%-1);  'Get leading character(s) corresponding to grating type
+            tempstr$ := DelStr$(tempstr$,1,spaceLoc%);  'Decrement string
+            'printlog("Grating spec is %s\n",tempchar$);
+        else
+            printlog("Problem with Baker's Dozen file syntax, did not find expected grating spec!  Quitting!\n");
+            halt
+        endif
+        
+        'Determine the number of values per grating spec
+        docase
+        case tempchar$ = "-O" or tempchar$ = "-T" or tempchar$ = "-S" or tempchar$ = "-C" or tempchar$ = "-U" or tempchar$ = "-A" then
+            valsPerSpec% := 1;  'These grating specs have a single value per spec
+        case tempchar$ = "-P" or tempchar$ = "-X" or tempchar$ = "-M" or tempchar$ = "-E" or tempchar$ = "-t" then
+            valsPerSpec% := 1;  'These grating specs also have a single value per spec
+        case tempchar$ = "-Z" or tempchar$ = "--wh" or tempchar$ = "-y" then
+            valsPerSpec% := 2;  'These grating specs have a pair of values per spec
+        else
+            printlog("Grating spec " + tempchar$ + " unknown!  Quitting!\n");
+            halt
+        endcase
+        
+        'Count number of values in first spec list (count commas, start with one as there are N-1 commas)
+        BDNumStim% := 1;
+        while tempchar$ <> " " and len(tempstr$) > 0 do
+            tempchar$ := Left$(tempstr$,1);  'Get leading character
+            tempstr$ := DelStr$(tempstr$,1,1);  'Decrement string
+            if tempchar$ = "," then
+                BDNumStim% += 1;
+            endif
+        wend
+        
+        BDNumStim% := BDNumStim%/valsPerSpec%;
+        
+        
+        
         
         'Create command line, referencing new file
         cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + " -F " + BakersDozenLoc2$;
