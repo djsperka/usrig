@@ -175,6 +175,7 @@ var fvRandomProgression%;
 var fvNRepeats%;
 var fvITI;   'The value between trials applies to the time between each "image series" if we are doing image series, and between each image in other cases
 var fvISI;   'This value only applies to the time between images within an image series
+var fvBlitzMode% := 0;  'If 1 (set if ITI is negative), try Blitz Mode, will aggressively pursue wait periods
 var fvImageDuration;  'this value only applies to image series
 var fvAcquisitionTime;
 var fvAcquisitionTO;
@@ -351,7 +352,7 @@ func FreeViewerScriptDialog%()
     DlgInteger(5, "Number of periods per block", 1, 1000, 0, 6);
     DlgInteger(6, "Minimum Viewed Periods To Advance", 0, 1000, 0, 7);
     DlgReal(7, "Image Series Interimage Delay, s", 0.05, 100, 0, 8);
-    DlgReal(8, "Intertrial Interval, s", 0.05, 100, 0, 9);
+    DlgReal(8, "Intertrial Interval, s (-1 for Blitz Mode)", -1, 100, 0, 9);
     DlgReal(9, "Fixation Acquisition Time, s", 0.1, 100, 0, 10);
     DlgReal(10, "Fixation Hold Time, s", 0, 100, 0, 11);
     DlgReal(11, "Acquisition/Hold Time Out, s", 0, 100, 0, 12);
@@ -397,6 +398,10 @@ func FreeViewerScriptDialog%()
         fvHoldAcquisitionTime := sixReals[3];
         fvAcquisitionTO := sixReals[4];
         fvLookAwayTO := sixReals[5];
+        
+        if fvITI < 0 then
+            fvBlitzMode% := 1;
+        endif
         
 		SaveFreeViewerScriptParameters();
 
@@ -1392,676 +1397,1055 @@ func IdleProcessing%()
     var yval;
     var xind%;
     var yind%;
+    var remainInIdleLoop% := 1;  'must initialize to 1 to get INTO idle loop, regardless of Blitz Mode setting
+    var tBlitz;  'tNow when entering each state for blitz mode
+    var blitzNow%;  'For Blitz Mode, will break blitz by time (tBlitz) or if event found
+    var blitzTO%;  'If we don't find our pulses, we gotta quit
     
 	tNow := View(DataWindow%).MaxTime();
+    tBlitz := tNow;
     
     
-	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
-	yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
-
-	' Don't update display every time....
-	if tNow-tLastFixPtDisplayUpdate > .005 then
-		View(XYWindow%).XYAddData(1,xEye,yEye);
-		tLastFixPtDisplayUpdate := tNow;
-	endif
-
-	docase 
-    case iState% = stateVSGWait% then
-        ' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
-        if stateBegin% = 1 then
-            LogStatus("VSGWait", "Begin waiting for Ready Pulse from VSG at " + str$(tNow));
-            stateBegin% := 0;
-        endif
+    
+    
+    
+    
+    while remainInIdleLoop% = 1 and tBlitz+5 > tNow do  'run idle cycles for 5 seconds max if in blitz mode before ceding time to OS, if tBlitz is not updated
         
-        pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
-        
-        if pulseFound% = 1 then
-            LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
-            Yield(1.0);
-            tLastTrigger := tFall;
-            fvAdvance% := 0;  'Ensure value is 0 on first run
-            'Advance/Jump Stimulus to correct value for first stimulus (using serial version)
-            JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
-            docase
-            'case fvSendINTANPulse% = 1 then  'pause to start INTAN recording, under the new conception we will not do this
-            '    ChangeStateTo(stateIntanPreRecPause%, tFall);
-            case fvFixScreen% = 1 then
-                ChangeStateTo(statePrepareOpto%, tFall);
-            else
-                ChangeStateTo(stateFixptUp%, tFall);
-            endcase;
-            
-            if fvSendINTANPulse% = 1 then
-                'set sequencer variable 11 to 20 to indicate 20-ms session-start pulse
-                SampleSeqVar(11,20);
-                SafeSampleKey("T");  'Send a pulse
-            endif;
-            
-            
-            Yield(1.0);  'Note, this yield is useful for giving a delay following the INTAN pulse
-            if RecordEyeTrackerOutputFile% = 1 then
-                'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
-                SafeSampleKey("1");
-                yield(0.2);
-                SafeSampleKey("1");
-                yield(0.2);
-                SafeSampleKey("1");
-                yield(0.2);
-                SafeSampleKey("1");
-                yield(0.2);
-            endif;
-            
-        else
-            if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
-                LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
-                tLastTrigger := tFall;
-            endif;
-        endif;
-        
-        'Under the new conception we will not pause to start an INTAN recording
-'    case iState% = stateIntanPreRecPause% then
-'        LogStatus("IntanPreRecPause", "Pausing to start INTAN recording");
-'        message("Start INTAN recording!");
-'        if fvFixScreen% = 1 then
-'            ChangeStateTo(statePrepareOpto%, tFall);
-'        else
-'            ChangeStateTo(stateFixptUp%, tFall);
-'        endif;
-        
-    case iState% = stateFixptUp% then
-        LogStatus("RequestFixpt", "Request fixpt");
-        SafeSampleKey("F");
-        fvPeriodCount% := 0; 'Also reset period count
-        fvGiveLookingTO% := 0;  'Also reset looking TO
-        ChangeStateTo(stateWaitForFixptUp%, tNow);
-        
-    case iState% = stateWaitForFixptUp% then
-        if View(DataWindow%).FindRisingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 0 then
-            ' Fixation point is up
-            LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
-            tLastTrigger := tTrigger;
-            if fvDoOpto% = 0 then
-                ChangeStateTo(stateLogTrialStart%, tTrigger);
-                DrawFix(1);	' this draws the location of the fixpt on the Spike2 window
-            else
-                ChangeStateTo(statePrepareOpto%, tTrigger);
-            endif;
-            
-        endif
-        
-    case iState% = statePrepareOpto% then
-        if fvDoOpto% = 1 then
-            fvOptoOrderThisTrial% := round(rand(1,1));  'set this to 1 or 2 (1 = opto first, 2 = opto second)
-            if fvOptoOrderThisTrial% = 1 then
-                LogStatus("PrepareOpto", "Opto order for trial " + Str$(nTrialsCompleted%+1) + "is opto first");
-            else
-                LogStatus("PrepareOpto", "Opto order for trial " + Str$(nTrialsCompleted%+1) + "is opto second");
-            endif;
-        else
-            LogStatus("PrepareOpto", "No opto in this experiment")
-        endif;
-        
-        fvOptoState% := 0;  'This value will toggle, but we need to start at zero for each trial
-        fvPeriodCount% := 0; 'Also reset period count
-        ChangeStateTo(stateLogTrialStart%, tNow);
-        
-        
-    case iState% = stateLogTrialStart% then
-        
-        'put timing marker in both eyetracker file, smr file
-        if RecordEyeTrackerOutputFile% = 1 then
-            'SafeSampleKey("1");
-            docase
-            case HBCycle% = 1 then
-                SafeSampleKey("1");
-            case HBCycle% = 2 then
-                SafeSampleKey("2");
-            case HBCycle% = 3 then
-                SafeSampleKey("3");
-            case HBCycle% = 4 then
-                SafeSampleKey("4");
-            case HBCycle% = 5 then
-                SafeSampleKey("5");
-            case HBCycle% = 6 then
-                SafeSampleKey("6");
-            case HBCycle% = 7 then
-                SafeSampleKey("7");
-            endcase
-            HBCycle% += 1;  'increment HBCycle%
-            if HBCycle% = 8 then  'and cycle when necessary
-                HBCycle% := 1;
-            endif
-            yield(0.01);  'this will likely be positioned very close to the "T" below, so give a tiny bit of time, 10 ms should be enough
-        endif;
-        
-        
-        if fvSendINTANPulse% = 1 then
-            'set sequencer variable 11 to 3 to indicate 3-ms trial-start pulse
-            SampleSeqVar(11,3);
-            SafeSampleKey("T");  'Send a pulse
-            'Not sure how to read the time off of the digmark channel, help is not much help, just going to go with a non-timed Sampletext for now
-            Sampletext("Image series " + Str$(nTrialsCompleted%+1) + " start");
-        endif
-        fvPeriodCount% := 0; 'Also reset period count
-        fvGiveLookingTO% := 0;  'Also reset looking TO
-        ChangeStateTo(stateWaitForAcquisition%, tNow);
-        
-    case iState% = stateWaitForAcquisition% then
-        ' Wait for animal to acquire the screen
-        ' If experiment is paused, this is where we should wait 
-        if Pause% = 0 then
-            if stateBegin% = 1 then
-                LogStatus("WaitForAcquisition", "Begin waiting for screen/fixpt acquisition at " + str$(tNow));
-                stateBegin% := 0;
-            endif
-            
-            docase
-            case LookingAtScreenOrFixpt%(xEye,yEye) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
-                if fvHoldAcquisitionTime > 0 then
-                    LogStatus("WaitForAcquisition", "Fixpt Acquired at " + str$(tNow));
-                    ChangeStateTo(stateHoldAcquisition%, tNow);
-                else  'if we don't require holding acquisition, just start the stimulus now rather than waiting through a potential OS time slice
-                    SafeSampleKey("S");  'request stimulus
-                    'sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tNow);
-                    LogStatus("WaitForAcquisition", "Fixpt Acquired, Request stimulus at " + str$(tNow));
-                    if fvDoImageSeries% = 1 then
-                        ChangeStateTo(stateWaitForImageOn%, tNow);
-                        fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
-                    else
-                        ChangeStateTo(stateWaitForStimOn%, tNow);
-                    endif
-                endif
-            case tNow - tStateStart > fvAcquisitionTime then
-                LogStatus("WaitForAcquisition", "Acquisition window timed out at " + str$(tNow));
-                if fvFixScreen% = 1 then
-                    ChangeStateTo(stateAcquisitionTO%, tNow);
-                else
-                    'request fixpt down
-                    SafeSampleKey("X");
-                    fvFixWaitState% := 0;  'indicate to go to acquisition TO
-                    ChangeStateTo(stateWaitForBlank%,tNow);
-                endif
-            endcase
-        else 'if we are paused, reset tStateStart so that when pause comes off there is a full acquisition window
-            tStateStart := tNow;
-        endif
-        
-        
-    case iState% = stateHoldAcquisition% then
-        'Check for fixation break, if broken move out
-        if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
-            SafeSampleKey("X");  'turn off fixation point
-            ChangeStateTo(stateAcquisitionTO%, tNow);
-        else
-            if tNow - tStateStart > fvHoldAcquisitionTime then
-                SafeSampleKey("S");  'request stimulus
-                LogStatus("HoldAcquisition", "Fixpt Held, Request stimulus at " + str$(tNow));
-                if fvDoImageSeries% = 1 then
-                    ChangeStateTo(stateWaitForImageOn%, tNow);
-                    fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
-                else
-                    ChangeStateTo(stateWaitForStimOn%, tNow);
-                endif
-            endif
-        endif
-        
-        
-        
-    case iState% = stateWaitForBlank% then
-
-        if View(DataWindow%).FindFallingEdge%(StimChannel%, tStateStart, tTrigger) = 1 or View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 1 then
-            ' Fixation point is off
-            tLastTrigger := tTrigger;
-            DrawFix(0);	' actually this draws the location of the fixpt.
-            docase
-            case fvFixWaitState% = 0 then
-                ChangeStateTo(stateAcquisitionTO%, tTrigger);
-            case fvFixWaitState% = 1 then
-                if fvMinViewPeriodsForAdvance% = 0 then
-                    ChangeStateTo(stateTrialCompleted%, tTrigger);
-                else
-                    ChangeStateTo(stateLookAwayTO%, tTrigger);
-                endif;
-            case fvFixWaitState% = 2 then
-                ChangeStateTo(stateWaitReward%, tTrigger);                
-            endcase
-            
+        if fvBlitzMode% = 0 then
+            remainInIdleLoop% := 0;  'only run one idle cycle if not in blitz mode  
         endif    
         
         
-    case iState% = stateAcquisitionTO% then
-        'If the animal fails to acquire, then administer timeout
-        if stateBegin% = 1 then
-            LogStatus("AcquisitionTO", "Begin acquisition timeout at " + str$(tNow));
-            stateBegin% := 0;
-        endif
+        xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+        yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
         
-        if tNow - tStateStart > fvAcquisitionTO then
-            LogStatus("AcquisitionTO", "End acquisition timeout at " + str$(tNow));
-            if fvDoOpto% = 0 and fvFixScreen% = 0 then
-                ChangeStateTo(stateFixptUp%,tNow);
-            else
-                ChangeStateTo(stateLogTrialStart%, tNow); 
-            endif;
+        ' Don't update display every time....
+        if tNow-tLastFixPtDisplayUpdate > .005 then
+            View(XYWindow%).XYAddData(1,xEye,yEye);
+            tLastFixPtDisplayUpdate := tNow;
         endif
         
         
-    case iState% = stateWaitForStimOn% then
-        'Wait for the stimulus to come on
-        if stateBegin% = 1 then
-            LogStatus("WaitForStimOn", "Waiting for stimulus on at " + str$(tNow));
-            stateBegin% := 0;
-        endif
         
-        if View(DataWindow%).FindRisingEdge%(StimChannel%, tStateStart, tTrigger) = 0 then
-            ' Stimulus is up
-            LogStatus("WaitForStimOn", "Stimulus started at " + str$(tTrigger));
-            tLastTrigger := tTrigger;
-            sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tTrigger);
-            ChangeStateTo(stateHoldImage%, tTrigger);
-            'SampleText("Stim On",tTrigger);  'TODO - see if Henry wants this sampletext
-            
-        endif
-        
-        
-    case iState% = stateWaitForImageOn% then
-        'Wait for the image to come on, do for each image in image series
-        if stateBegin% = 1 then
-            LogStatus("WaitForImageOn", "Waiting for image on at " + str$(tNow));
-            stateBegin% := 0;
-        endif
-        'Check for fixation break, if broken move out
-        if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
-            fvFixationWasBroken% := 1;
-            ChangeStateTo(stateHoldImage%, tTrigger);
-        else 'check for image on
-            if View(DataWindow%).FindRisingEdge%(FrameChannel%, tStateStart, tTrigger) = 0 then
-                ' Image is up
-                LogStatus("WaitForImageOn", "Image started at " + str$(tTrigger));
-                tLastTrigger := tTrigger;
-                fvCurrImageIndex% := fvImageIndices%[fvImageOrder%[nTrialsCompleted%]][fvPeriodCount%];
-                sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]), tTrigger);
-                'If we want to note the size of the image in the sampletext, uncomment below line(s) - too long for one line
-                'sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]) + "," 
-                '+ Str$(fvImageWidthPix%[fvCurrImageIndex%]) + "," + Str$(fvImageHeightPix%[fvCurrImageIndex%]), tTrigger);
-                ChangeStateTo(stateHoldImage%, tTrigger);
+        docase 
+        case iState% = stateVSGWait% then  'no blitz mode for VSGWait, we haven't "started" yet
+            ' Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
+            if stateBegin% = 1 then
+                LogStatus("VSGWait", "Begin waiting for Ready Pulse from VSG at " + str$(tNow));
+                stateBegin% := 0;
+                
             endif
-        endif
-        
-        
-        
-        
-    case iState% = stateHoldImage% then
-        'Probably not useful to put a log statement up top here...
-        
-        'Note that the structure here is somewhat interesting (and will be a pain in the rear if...when...Henry
-        'decides to mix it up).  We are breaking each image up into two halves.  Each half is broken into a 
-        'number of periods, the same number for each half.  One half will have no opto presentations - during all
-        'periods the laser will be off.  The other half will have alternating opto and non-opto periods, with the
-        'laser on for one period and off for the next.  There will be a short (however long it takes) inter-period
-        'time during which we will randomly determine if the animal is rewarded.  Any reward will be administered
-        'during the inter-period time, so that the sequencer is not asked to deliver both laser and reward 
-        'simultaneously (greatly easing the process).  After each period, we will return to this state to 
-        'determine what to do next (image done, fixation broken, paused, image continues).
-        
-        docase
-        case fvPeriodCount% >= fvNumPeriods% then 'if fixation is held through all periods
-            ' turn off stimulus, get ready to advance
-            if fvMaintainFixation% = 1 then
-                SafeSampleKey("s");  'Take stim down, leave fixpt up
+            
+            remainInIdleLoop% := 0;  'do not blitz stateVSGWait
+            
+            pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
+            
+            if pulseFound% = 1 then
+                LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
+                Yield(1.0);
+                tLastTrigger := tFall;
+                fvAdvance% := 0;  'Ensure value is 0 on first run
+                'Advance/Jump Stimulus to correct value for first stimulus (using serial version)
+                JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
+                docase
+                    'case fvSendINTANPulse% = 1 then  'pause to start INTAN recording, under the new conception we will not do this
+                    '    ChangeStateTo(stateIntanPreRecPause%, tFall);
+                case fvFixScreen% = 1 then
+                    ChangeStateTo(statePrepareOpto%, tFall);
+                else
+                    ChangeStateTo(stateFixptUp%, tFall);
+                endcase;
+                
+                if fvSendINTANPulse% = 1 then
+                    'set sequencer variable 11 to 20 to indicate 20-ms session-start pulse
+                    SampleSeqVar(11,20);
+                    SafeSampleKey("T");  'Send a pulse
+                endif;
+                
+                
+                Yield(1.0);  'Note, this yield is useful for giving a delay following the INTAN pulse
+                if RecordEyeTrackerOutputFile% = 1 then
+                    'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+                    SafeSampleKey("1");
+                    yield(0.2);
+                    SafeSampleKey("1");
+                    yield(0.2);
+                    SafeSampleKey("1");
+                    yield(0.2);
+                    SafeSampleKey("1");
+                    yield(0.2);
+                endif;
+                
             else
-                SafeSampleKey("X");  'Turn off all
-            endif;
-            SampleText("++");  'indicates fully successful trial
-            LogStatus("HoldImage", "Image time complete. Turn off and advance stimulus at " + str$(tNow));
-            
-            fvAdvance% := 1;  'Advance, but not until stimulus is off
-            fvFixationWasBroken% := 0;  'We didn't check to see if there was a fixation break in the last period, but reset just in case there was
-            
-            'And wait for stim to turn off
-            fvGiveLookingTO% := 0;  'no timeout on successful fixation
-            ChangeStateTo(stateWaitForStimOff%, tNow);
-            
-            
-            'Only for opto
-        case fvPeriodCount% >= fvMinViewPeriodsForAdvance% and (LookingAtScreenOrFixpt%(xEye,yEye) = 0 or fvFixationWasBroken% = 1) and fvDoOpto% > 0 then 'if fixation is held through enough periods to advance, then broken
-            ' turn off stimulus, get ready to advance
-            if fvMaintainFixation% = 1 then
-                SafeSampleKey("s");  'Take stim down, leave fixpt up
-            else
-                SafeSampleKey("X");  'Turn off all
-            endif;
-            SampleText("+");  'indicates successful trial  TODO - check to see if that's what Henry wants
-            LogStatus("HoldImage", "Fixation broken after minimum view time. Turn off and advance stimulus at " + str$(tNow));
-            
-            fvAdvance% := 1;  'Advance, but not until stimulus is off
-            fvFixationWasBroken% := 0;  'Reset, we got this fixation break
-            
-            ' Now wait until stim is off
-            fvGiveLookingTO% := 0; 'TODO - Not sure about setting this to 0, animal might try to look for minimum no-TO time
-            ChangeStateTo(stateWaitForStimOff%, tNow);
-            
-        case Pause% = 1 then  'putting PAUSE here.  Image done will supercede PAUSE, but magnanimously, PAUSE will supercede fixation break
-            'If pause is pressed, turn off image, do not penalize, do not advance
-            if fvMaintainFixation% = 1 then
-                SafeSampleKey("s");  'Take stim down, leave fixpt up
-            else
-                SafeSampleKey("X");  'Turn off all
-            endif;
-            LogStatus("HoldImage", "Experiment paused, removing image at " + str$(tNow));
-            'SampleText("-");  'indicates failed trial, TODO I don't think we want to call this a failure
-            
-            ' Now wait until stim is off
-            fvGiveLookingTO% := 0;
-            fvAdvance% := 0;
-            fvFixationWasBroken% := 0;  'Reset, in case there was a break.  Benevolence!
-            ChangeStateTo(stateWaitForStimOff%, tNow); 
-            
-        case LookingAtScreenOrFixpt%(xEye,yEye) = 0 or fvFixationWasBroken% = 1 then
-            'If animal breaks fixation, turn off image and penalize, do not advance
-            SafeSampleKey("X");  'Turn off all, do not advance
-            LogStatus("HoldImage", "Fixation broken, aborting trial at " + str$(tNow));
-            SampleText("-");  'indicates failed trial
-
-            fvGiveLookingTO% := 1;
-            fvAdvance% := 0;
-            fvFixationWasBroken% := 0;  'Reset, we got this fixation break
-            
-            ' Now wait until stim is off
-            if fvDoImageSeries% = 1 or fvDoOpto% = 1 then
-                ChangeStateTo(stateWaitForStimOff%, tNow);
-            else
-                fvFixWaitState% := 1;
-                ChangeStateTo(stateWaitForBlank%, tNow);  'This is both stim and fixpt
+                if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
+                    LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
+                    tLastTrigger := tFall;
+                endif;
             endif;
             
-        case fvDoImageSeries% = 1 then 
-            'If no other cases are met, and this is an image series, go straight to wait for image off
-            'Do not go to intervening stateBeginImagePeriod or if there is a long delay between idle
-            'cycles we can miss the frame pulse.  Use tLastTrigger as state start time for additional security
-            changeStateTo(stateWaitForImageOff%,tLastTrigger);
+            'Under the new conception we will not pause to start an INTAN recording
+            '    case iState% = stateIntanPreRecPause% then
+            '        LogStatus("IntanPreRecPause", "Pausing to start INTAN recording");
+            '        message("Start INTAN recording!");
+            '        if fvFixScreen% = 1 then
+            '            ChangeStateTo(statePrepareOpto%, tFall);
+            '        else
+            '            ChangeStateTo(stateFixptUp%, tFall);
+            '        endif;
             
-        else
-            'If no other cases are met, begin next image period
-            ChangeStateTo(stateBeginImagePeriod%, tNow); 
-        endcase        
-           
-    case iState% = stateBeginImagePeriod% then
-        tNow := View(DataWindow%).MaxTime();  'update tNow so the duration of the period is as precise as possible
-        'Determine if we are in the opto half or no-opto half of the image
-        docase
-        case fvDoOpto% <> 1 then 'we are not doing opto, it is not an opto period
-            ChangeStateTo(stateNoOptoPeriod%,tNow);
-        case (fvPeriodCount% < fvNumPeriodsPerBlock% and fvOptoOrderThisTrial% = 1) or (fvPeriodCount% >= fvNumPeriodsPerBlock% and fvOptoOrderThisTrial% = 2) then
-            'If we are in an opto block
-            fvOptoState% := 1-fvOptoState%;  'toggle opto state
-            if fvOptoState% = 1 then
-                'toggle opto on
-                SafeSampleKey("O");  'turn on opto
-                tOpt := View(DataWindow%).MaxTime();
-                SampleText("OptoOn",tOpt);
-                ChangeStateTo(stateOptoPeriod%,tNow);
-            else 'this time it is not an opto period
-                ChangeStateTo(stateNoOptoPeriod%,tNow);
-            endif;
-        else 'we are not in an opto block, it is not an opto period
-            ChangeStateTo(stateNoOptoPeriod%,tNow);
-        endcase;
-        
-        
-    case iState% = stateWaitForImageOff% then
-        'Wait for the image to turn off, do for each image in image series
-        if stateBegin% = 1 then
-            LogStatus("WaitForImageOff", "Waiting for image off at " + str$(tNow));
-            stateBegin% := 0;
-        endif
-        'Check for fixation break, note if broken 
-        if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
-            fvFixationWasBroken% := 1;
-        endif;
-        'check for image off
-        if View(DataWindow%).FindRisingEdge%(FrameChannel%, tStateStart, tTrigger) = 0 then
-            ' Image is off
-            LogStatus("WaitForImageOff", "Image ended at " + str$(tTrigger));
-            tLastTrigger := tTrigger;
-            if fvFixationWasBroken% = 1 then  'wait until image is off to continue
-                ChangeStateTo(stateHoldImage%, tNow);
-            else 
-                fvPeriodCount% += 1;  'Increment period count before image comes on, so fvPeriodCount% is current image, only increment on successful hold of fixation               
-                sampletext("+", tTrigger);  'Indicate successful viewing of image
-                if fvPeriodCount% >= fvNumPeriods% then
-                    ' turn off stimulus, get ready to advance
-                    if fvMaintainFixation% = 1 then
-                        SafeSampleKey("s");  'Take stim down, leave fixpt up
-                    else
-                        SafeSampleKey("X");  'Turn off all
+        case iState% = stateFixptUp% then
+            LogStatus("RequestFixpt", "Request fixpt");
+            SafeSampleKey("F");
+            fvPeriodCount% := 0; 'Also reset period count
+            fvGiveLookingTO% := 0;  'Also reset looking TO
+            ChangeStateTo(stateWaitForFixptUp%, tNow);
+            if fvBlitzMode% = 1 then
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1) 
+            endif 
+            
+        case iState% = stateWaitForFixptUp% then
+            if fvBlitzMode% = 1 then
+                tBlitz := tNow;  'reset tBlitz
+                blitzNow% := 1;
+                while tBlitz+1 > tNow  and blitzNow% = 1 do  'give one second for the trigger before giving up
+                    blitzTO% := 1;  'assume failure, if we succeed, fix this
+                    if View(DataWindow%).FindRisingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 0 then
+                        ' Fixation point is up
+                        LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
+                        tLastTrigger := tTrigger;
+                        if fvDoOpto% = 0 then
+                            ChangeStateTo(stateLogTrialStart%, tTrigger);
+                            DrawFix(1);	' this draws the location of the fixpt on the Spike2 window
+                        else
+                            ChangeStateTo(statePrepareOpto%, tTrigger);
+                        endif;
+                        blitzNow% := 0;  'end blitz
+                        blitzTO% := 0;  'blitz succeeded
                     endif;
-                    SampleText("++");  'indicates fully successful trial
-                    LogStatus("WaitForImageOff", "Image time complete. Turn off and advance stimulus at " + str$(tNow));
+                wend
+                if blitzTO% = 1 then
+                    LogStatus("waitForFixptUp", "Failure during Blitz Mode!");
+                    message("Failed to find fixation point trigger in Blitz Mode!  Press OK to quit.");
+                    Stop%();  'Call a stop
+                    iStatus% := 0;  
+                endif;
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)
+            else 'not blitz mode, this is the original code
+                if View(DataWindow%).FindRisingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 0 then
+                    ' Fixation point is up
+                    LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
+                    tLastTrigger := tTrigger;
+                    if fvDoOpto% = 0 then
+                        ChangeStateTo(stateLogTrialStart%, tTrigger);
+                        DrawFix(1);	' this draws the location of the fixpt on the Spike2 window
+                    else
+                        ChangeStateTo(statePrepareOpto%, tTrigger);
+                    endif; 
+                endif
+            endif
             
-                    fvAdvance% := 1;  'Advance, but not until stimulus is off
-                    fvFixationWasBroken% := 0;  'We didn't check to see if there was a fixation break in the last period, but reset just in case there was
+        case iState% = statePrepareOpto% then
+            if fvDoOpto% = 1 then
+                fvOptoOrderThisTrial% := round(rand(1,1));  'set this to 1 or 2 (1 = opto first, 2 = opto second)
+                if fvOptoOrderThisTrial% = 1 then
+                    LogStatus("PrepareOpto", "Opto order for trial " + Str$(nTrialsCompleted%+1) + "is opto first");
+                else
+                    LogStatus("PrepareOpto", "Opto order for trial " + Str$(nTrialsCompleted%+1) + "is opto second");
+                endif;
+            else
+                LogStatus("PrepareOpto", "No opto in this experiment")
+            endif;
             
-                    'And wait for stim to turn off
-                    fvGiveLookingTO% := 0;  'no timeout on successful fixation
+            fvOptoState% := 0;  'This value will toggle, but we need to start at zero for each trial
+            fvPeriodCount% := 0; 'Also reset period count
+            ChangeStateTo(stateLogTrialStart%, tNow);
+            if fvBlitzMode% = 1 then
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)  
+            endif 
+            
+            
+        case iState% = stateLogTrialStart% then
+            'put timing marker in both eyetracker file, smr file
+            if RecordEyeTrackerOutputFile% = 1 then
+                'SafeSampleKey("1");
+                docase
+                case HBCycle% = 1 then
+                    SafeSampleKey("1");
+                case HBCycle% = 2 then
+                    SafeSampleKey("2");
+                case HBCycle% = 3 then
+                    SafeSampleKey("3");
+                case HBCycle% = 4 then
+                    SafeSampleKey("4");
+                case HBCycle% = 5 then
+                    SafeSampleKey("5");
+                case HBCycle% = 6 then
+                    SafeSampleKey("6");
+                case HBCycle% = 7 then
+                    SafeSampleKey("7");
+                endcase
+                HBCycle% += 1;  'increment HBCycle%
+                if HBCycle% = 8 then  'and cycle when necessary
+                    HBCycle% := 1;
+                endif
+                if fvBlitzMode% = 0 then  'for blitz mode, just let it blitz
+                    yield(0.01);  'this will likely be positioned very close to the "T" below, so give a tiny bit of time, 10 ms should be enough
+                endif
+            endif;
+            
+            
+            if fvSendINTANPulse% = 1 then
+                'set sequencer variable 11 to 3 to indicate 3-ms trial-start pulse
+                SampleSeqVar(11,3);
+                SafeSampleKey("T");  'Send a pulse
+                'Not sure how to read the time off of the digmark channel, help is not much help, just going to go with a non-timed Sampletext for now
+                Sampletext("Image series " + Str$(nTrialsCompleted%+1) + " start");
+            endif
+            fvPeriodCount% := 0; 'Also reset period count
+            fvGiveLookingTO% := 0;  'Also reset looking TO
+            ChangeStateTo(stateWaitForAcquisition%, tNow);
+            if fvBlitzMode% = 1 then
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1) 
+            endif 
+            
+        case iState% = stateWaitForAcquisition% then
+            ' Wait for animal to acquire the screen
+            ' If experiment is paused, this is where we should wait 
+            if Pause% = 0 then
+                if stateBegin% = 1 then
+                    LogStatus("WaitForAcquisition", "Begin waiting for screen/fixpt acquisition at " + str$(tNow));
+                    stateBegin% := 0;
+                endif
+                
+                if fvBlitzMode% = 1 then
+                    tBlitz := tNow;  'reset tBlitz
+                    blitzNow% := 1;
+                    while blitzNow% = 1 do  'This one has a built-in time out in the CASE statement
+                        'have to update tNow and xEye/yEye if we are checking eye position in the Blitz
+                        tNow := View(DataWindow%).MaxTime();
+                        xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+                        yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+                        docase
+                        case LookingAtScreenOrFixpt%(xEye,yEye) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
+                            if fvHoldAcquisitionTime > 0 then
+                                LogStatus("WaitForAcquisition", "Fixpt Acquired at " + str$(tNow));
+                                ChangeStateTo(stateHoldAcquisition%, tNow);
+                                remainInIdleLoop% := 0;  'if we are holding acquisition, take opportunity to give system idle time
+                            else  'if we don't require holding acquisition, just start the stimulus now rather than waiting through a potential OS time slice
+                                SafeSampleKey("S");  'request stimulus
+                                'sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tNow);
+                                LogStatus("WaitForAcquisition", "Fixpt Acquired, Request stimulus at " + str$(tNow));
+                                if fvDoImageSeries% = 1 then
+                                    ChangeStateTo(stateWaitForImageOn%, tNow);
+                                    fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
+                                else
+                                    ChangeStateTo(stateWaitForStimOn%, tNow);
+                                endif
+                                remainInIdleLoop% := 1;  'go straight to next state in blitz mode if stimulus requested (redundant, is already 1)
+                            endif
+                            blitzNow% := 0;  'end blitz
+                        case tNow - tStateStart > fvAcquisitionTime then
+                            LogStatus("WaitForAcquisition", "Acquisition window timed out at " + str$(tNow));
+                            if fvFixScreen% = 1 then
+                                ChangeStateTo(stateAcquisitionTO%, tNow);
+                            else
+                                'request fixpt down
+                                SafeSampleKey("X");
+                                fvFixWaitState% := 0;  'indicate to go to acquisition TO
+                                ChangeStateTo(stateWaitForBlank%,tNow);
+                            endif
+                            remainInIdleLoop% := 0;   'cede time to operating system if animal breaks sequence 
+                            blitzNow% := 0;  'end blitz
+                        endcase
+                    wend 
+                else 'not blitz mode, this is the original code
+                    docase
+                    case LookingAtScreenOrFixpt%(xEye,yEye) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
+                        if fvHoldAcquisitionTime > 0 then
+                            LogStatus("WaitForAcquisition", "Fixpt Acquired at " + str$(tNow));
+                            ChangeStateTo(stateHoldAcquisition%, tNow);
+                        else  'if we don't require holding acquisition, just start the stimulus now rather than waiting through a potential OS time slice
+                            SafeSampleKey("S");  'request stimulus
+                            'sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tNow);
+                            LogStatus("WaitForAcquisition", "Fixpt Acquired, Request stimulus at " + str$(tNow));
+                            if fvDoImageSeries% = 1 then
+                                ChangeStateTo(stateWaitForImageOn%, tNow);
+                                fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
+                            else
+                                ChangeStateTo(stateWaitForStimOn%, tNow);
+                            endif
+                        endif
+                    case tNow - tStateStart > fvAcquisitionTime then
+                        LogStatus("WaitForAcquisition", "Acquisition window timed out at " + str$(tNow));
+                        if fvFixScreen% = 1 then
+                            ChangeStateTo(stateAcquisitionTO%, tNow);
+                        else
+                            'request fixpt down
+                            SafeSampleKey("X");
+                            fvFixWaitState% := 0;  'indicate to go to acquisition TO
+                            ChangeStateTo(stateWaitForBlank%,tNow);
+                        endif
+                    endcase
+                endif;
+            else 'if we are paused, reset tStateStart so that when pause comes off there is a full acquisition window
+                tStateStart := tNow;
+            endif
+            
+            
+        case iState% = stateHoldAcquisition% then
+            'Check for fixation break, if broken move out
+            
+            if fvBlitzMode% = 1 then
+                tBlitz := tNow;  'reset tBlitz
+                blitzNow% := 1;
+                while blitzNow% = 1 do  'no timeout, will succeed on hold time or break fixation
+                    'have to update tNow and xEye/yEye if we are checking eye position in the Blitz
+                    tNow := View(DataWindow%).MaxTime();
+                    xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+                    yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+                    if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                        SafeSampleKey("X");  'turn off fixation point
+                        ChangeStateTo(stateAcquisitionTO%, tNow);
+                        blitzNow% := 0;  'end blitz
+                    else
+                        if tNow - tStateStart > fvHoldAcquisitionTime then
+                            SafeSampleKey("S");  'request stimulus
+                            LogStatus("HoldAcquisition", "Fixpt Held, Request stimulus at " + str$(tNow));
+                            if fvDoImageSeries% = 1 then
+                                ChangeStateTo(stateWaitForImageOn%, tNow);
+                                fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
+                            else
+                                ChangeStateTo(stateWaitForStimOn%, tNow);
+                            endif
+                        endif
+                        blitzNow% := 0;  'end blitz
+                    endif;
+                wend
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)
+            else 'not blitz mode, this is the original code
+                if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                    SafeSampleKey("X");  'turn off fixation point
+                    ChangeStateTo(stateAcquisitionTO%, tNow);
+                else
+                    if tNow - tStateStart > fvHoldAcquisitionTime then
+                        SafeSampleKey("S");  'request stimulus
+                        LogStatus("HoldAcquisition", "Fixpt Held, Request stimulus at " + str$(tNow));
+                        if fvDoImageSeries% = 1 then
+                            ChangeStateTo(stateWaitForImageOn%, tNow);
+                            fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
+                        else
+                            ChangeStateTo(stateWaitForStimOn%, tNow);
+                        endif
+                    endif
+                endif
+            endif
+            
+                                    
+            
+            
+            
+        case iState% = stateWaitForBlank% then
+            'This state only happens when the animal breaks fixation
+            if fvBlitzMode% = 1 then
+                remainInIdleLoop% := 0;  'do not use blitz mode  
+            endif
+            
+            if View(DataWindow%).FindFallingEdge%(StimChannel%, tStateStart, tTrigger) = 1 or View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 1 then
+                ' Fixation point is off
+                tLastTrigger := tTrigger;
+                DrawFix(0);	' actually this draws the location of the fixpt.
+                docase
+                case fvFixWaitState% = 0 then
+                    ChangeStateTo(stateAcquisitionTO%, tTrigger);
+                case fvFixWaitState% = 1 then
+                    if fvMinViewPeriodsForAdvance% = 0 then
+                        ChangeStateTo(stateTrialCompleted%, tTrigger);
+                    else
+                        ChangeStateTo(stateLookAwayTO%, tTrigger);
+                    endif;
+                case fvFixWaitState% = 2 then
+                    ChangeStateTo(stateWaitReward%, tTrigger);                
+                endcase
+                
+            endif    
+            
+            
+        case iState% = stateAcquisitionTO% then
+            'If the animal fails to acquire, then administer timeout
+            if fvBlitzMode% = 1 then
+                remainInIdleLoop% := 0;  'do not use blitz mode  
+            endif
+            
+            if stateBegin% = 1 then
+                LogStatus("AcquisitionTO", "Begin acquisition timeout at " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            if tNow - tStateStart > fvAcquisitionTO then
+                LogStatus("AcquisitionTO", "End acquisition timeout at " + str$(tNow));
+                if fvDoOpto% = 0 and fvFixScreen% = 0 then
+                    ChangeStateTo(stateFixptUp%,tNow);
+                else
+                    ChangeStateTo(stateLogTrialStart%, tNow); 
+                endif;
+            endif
+            
+            
+        case iState% = stateWaitForStimOn% then
+            'Wait for the stimulus to come on
+            if stateBegin% = 1 then
+                LogStatus("WaitForStimOn", "Waiting for stimulus on at " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            if fvBlitzMode% = 1 then
+                tBlitz := tNow;  'reset tBlitz
+                blitzNow% := 1;
+                while tBlitz+1 > tNow  and blitzNow% = 1 do  'if stimulus does not come on in 1 second, quit
+                    blitzTO% := 1;  'assume failure, if we succeed, fix this
+                    if View(DataWindow%).FindRisingEdge%(StimChannel%, tStateStart, tTrigger) = 0 then
+                        ' Stimulus is up
+                        LogStatus("WaitForStimOn", "Stimulus started at " + str$(tTrigger));
+                        tLastTrigger := tTrigger;
+                        sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tTrigger);
+                        ChangeStateTo(stateHoldImage%, tTrigger);
+                        'SampleText("Stim On",tTrigger);  'TODO - see if Henry wants this sampletext
+                        blitzNow% := 0;  'end blitz
+                        blitzTO% := 0;  'blitz succeeded
+                    endif
+                wend
+                if blitzTO% = 1 then
+                    LogStatus("waitForStimOn", "Failure during Blitz Mode!");
+                    message("Failed to find Stimulus Onset trigger in Blitz Mode!  Press OK to quit.");
+                    Stop%();  'Call a stop
+                    iStatus% := 0;  
+                endif;
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)
+            else 'not blitz mode, this is the original code
+                if View(DataWindow%).FindRisingEdge%(StimChannel%, tStateStart, tTrigger) = 0 then
+                    ' Stimulus is up
+                    LogStatus("WaitForStimOn", "Stimulus started at " + str$(tTrigger));
+                    tLastTrigger := tTrigger;
+                    sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tTrigger);
+                    ChangeStateTo(stateHoldImage%, tTrigger);
+                    'SampleText("Stim On",tTrigger);  'TODO - see if Henry wants this sampletext
+                endif
+            endif
+            
+            
+            
+            
+        case iState% = stateWaitForImageOn% then
+            'Wait for the image to come on, do for each image in image series
+            if stateBegin% = 1 then
+                LogStatus("WaitForImageOn", "Waiting for image on at " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            
+            if fvBlitzMode% = 1 then
+                tBlitz := tNow;  'reset tBlitz
+                blitzNow% := 1;
+                while tBlitz+1 > tNow  and blitzNow% = 1 do
+                    blitzTO% := 1;  'assume failure, if we succeed, fix this
+                    'have to update tNow and xEye/yEye if we are checking eye position in the Blitz
+                    tNow := View(DataWindow%).MaxTime();
+                    xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+                    yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+                    'Check for fixation break, if broken move out
+                    if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                        fvFixationWasBroken% := 1;
+                        ChangeStateTo(stateHoldImage%, tTrigger);
+                        blitzNow% := 0;  'end blitz
+                        blitzTO% := 0;  'blitz succeeded
+                    else 'check for image on
+                        if View(DataWindow%).FindRisingEdge%(FrameChannel%, tStateStart, tTrigger) = 0 then
+                            ' Image is up
+                            LogStatus("WaitForImageOn", "Image started at " + str$(tTrigger));
+                            tLastTrigger := tTrigger;
+                            fvCurrImageIndex% := fvImageIndices%[fvImageOrder%[nTrialsCompleted%]][fvPeriodCount%];
+                            sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]), tTrigger);
+                            'If we want to note the size of the image in the sampletext, uncomment below line(s) - too long for one line
+                            'sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]) + "," 
+                            '+ Str$(fvImageWidthPix%[fvCurrImageIndex%]) + "," + Str$(fvImageHeightPix%[fvCurrImageIndex%]), tTrigger);
+                            ChangeStateTo(stateHoldImage%, tTrigger);
+                            blitzNow% := 0;  'end blitz
+                            blitzTO% := 0;  'blitz succeeded
+                        endif
+                    endif
+                wend
+                if blitzTO% = 1 then
+                    LogStatus("waitForImageOn", "Failure during Blitz Mode!");
+                    message("Failed to find Image Onset trigger in Blitz Mode!  Press OK to quit.");
+                    Stop%();  'Call a stop
+                    iStatus% := 0;  
+                endif;
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)
+            else 
+                'Check for fixation break, if broken move out
+                if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                    fvFixationWasBroken% := 1;
+                    ChangeStateTo(stateHoldImage%, tTrigger);
+                else 'check for image on
+                    if View(DataWindow%).FindRisingEdge%(FrameChannel%, tStateStart, tTrigger) = 0 then
+                        ' Image is up
+                        LogStatus("WaitForImageOn", "Image started at " + str$(tTrigger));
+                        tLastTrigger := tTrigger;
+                        fvCurrImageIndex% := fvImageIndices%[fvImageOrder%[nTrialsCompleted%]][fvPeriodCount%];
+                        sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]), tTrigger);
+                        'If we want to note the size of the image in the sampletext, uncomment below line(s) - too long for one line
+                        'sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]) + "," 
+                        '+ Str$(fvImageWidthPix%[fvCurrImageIndex%]) + "," + Str$(fvImageHeightPix%[fvCurrImageIndex%]), tTrigger);
+                        ChangeStateTo(stateHoldImage%, tTrigger);
+                    endif
+                endif
+            endif
+            
+            
+            
+            
+            
+            
+        case iState% = stateHoldImage% then
+            'Probably not useful to put a log statement up top here...
+            
+            'Note that the structure here is somewhat interesting (and will be a pain in the rear if...when...Henry
+            'decides to mix it up).  We are breaking each image up into two halves.  Each half is broken into a 
+            'number of periods, the same number for each half.  One half will have no opto presentations - during all
+            'periods the laser will be off.  The other half will have alternating opto and non-opto periods, with the
+            'laser on for one period and off for the next.  There will be a short (however long it takes) inter-period
+            'time during which we will randomly determine if the animal is rewarded.  Any reward will be administered
+            'during the inter-period time, so that the sequencer is not asked to deliver both laser and reward 
+            'simultaneously (greatly easing the process).  After each period, we will return to this state to 
+            'determine what to do next (image done, fixation broken, paused, image continues).
+            
+            if fvBlitzMode% = 1 then
+                remainInIdleLoop% := 1;  'If we are in blitz mode go to next state immediately no matter what the result (redundant, is already 1)  
+            endif
+            
+            docase
+            case fvPeriodCount% >= fvNumPeriods% then 'if fixation is held through all periods
+                ' turn off stimulus, get ready to advance
+                if fvMaintainFixation% = 1 then
+                    SafeSampleKey("s");  'Take stim down, leave fixpt up
+                else
+                    SafeSampleKey("X");  'Turn off all
+                endif;
+                SampleText("++");  'indicates fully successful trial
+                LogStatus("HoldImage", "Image time complete. Turn off and advance stimulus at " + str$(tNow));
+                
+                fvAdvance% := 1;  'Advance, but not until stimulus is off
+                fvFixationWasBroken% := 0;  'We didn't check to see if there was a fixation break in the last period, but reset just in case there was
+                
+                'And wait for stim to turn off
+                fvGiveLookingTO% := 0;  'no timeout on successful fixation
+                ChangeStateTo(stateWaitForStimOff%, tNow);
+                
+                
+                'Only for opto
+            case fvPeriodCount% >= fvMinViewPeriodsForAdvance% and (LookingAtScreenOrFixpt%(xEye,yEye) = 0 or fvFixationWasBroken% = 1) and fvDoOpto% > 0 then 'if fixation is held through enough periods to advance, then broken
+                ' turn off stimulus, get ready to advance
+                if fvMaintainFixation% = 1 then
+                    SafeSampleKey("s");  'Take stim down, leave fixpt up
+                else
+                    SafeSampleKey("X");  'Turn off all
+                endif;
+                SampleText("+");  'indicates successful trial  TODO - check to see if that's what Henry wants
+                LogStatus("HoldImage", "Fixation broken after minimum view time. Turn off and advance stimulus at " + str$(tNow));
+                
+                fvAdvance% := 1;  'Advance, but not until stimulus is off
+                fvFixationWasBroken% := 0;  'Reset, we got this fixation break
+                
+                ' Now wait until stim is off
+                fvGiveLookingTO% := 0; 'TODO - Not sure about setting this to 0, animal might try to look for minimum no-TO time
+                ChangeStateTo(stateWaitForStimOff%, tNow);
+                
+            case Pause% = 1 then  'putting PAUSE here.  Image done will supercede PAUSE, but magnanimously, PAUSE will supercede fixation break
+                'If pause is pressed, turn off image, do not penalize, do not advance
+                if fvMaintainFixation% = 1 then
+                    SafeSampleKey("s");  'Take stim down, leave fixpt up
+                else
+                    SafeSampleKey("X");  'Turn off all
+                endif;
+                LogStatus("HoldImage", "Experiment paused, removing image at " + str$(tNow));
+                'SampleText("-");  'indicates failed trial, TODO I don't think we want to call this a failure
+                
+                ' Now wait until stim is off
+                fvGiveLookingTO% := 0;
+                fvAdvance% := 0;
+                fvFixationWasBroken% := 0;  'Reset, in case there was a break.  Benevolence!
+                ChangeStateTo(stateWaitForStimOff%, tNow); 
+                
+            case LookingAtScreenOrFixpt%(xEye,yEye) = 0 or fvFixationWasBroken% = 1 then
+                'If animal breaks fixation, turn off image and penalize, do not advance
+                SafeSampleKey("X");  'Turn off all, do not advance
+                LogStatus("HoldImage", "Fixation broken, aborting trial at " + str$(tNow));
+                SampleText("-");  'indicates failed trial
+                
+                fvGiveLookingTO% := 1;
+                fvAdvance% := 0;
+                fvFixationWasBroken% := 0;  'Reset, we got this fixation break
+                
+                ' Now wait until stim is off
+                if fvDoImageSeries% = 1 or fvDoOpto% = 1 then
                     ChangeStateTo(stateWaitForStimOff%, tNow);
                 else
-                    ChangeStateTo(stateWaitForImageOn%, tTrigger);
-                endif
-            endif
-        endif
-        
-    
-    case iState% = stateNoOptoPeriod% then
-        'Wait for period to be over
-        docase
-        case tNow >= tStateStart + fvPeriodDuration then
-            ChangeStateTo(stateRewardPeriod%,tNow);
-        case LookingAtScreenOrFixpt%(xEye,yEye) = 0 and fvDoOpto% = 0 then 'end image in standard case
-            'SafeSampleKey("X");  'Request everything down
-            'fvFixWaitState% := 1;  'will go to hold TO if no advance
-            'fvGiveLookingTO% := 1;  'will go to hold TO if advance
-            'ChangeStateTo(stateWaitForBlank%, tNow);
-            fvFixationWasBroken% := 1;
-            ChangeStateTo(stateHoldImage%,tNow);
-        case LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
-            fvFixationWasBroken% := 1;  'but don't end the period, wait it out
-        endcase
-
-        
-        
-    case iState% = stateOptoPeriod% then
-        'Wait for period to be over, opto is already on
-        docase
-        case tNow >= tStateStart + fvPeriodDuration then
-            'toggle opto off
-            SafeSampleKey("o");  'turn it off
-            tOpt := View(DataWindow%).MaxTime();
-            SampleText("OptoOff",tOpt);
-            ChangeStateTo(stateRewardPeriod%,tNow);
-        case LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
-            fvFixationWasBroken% := 1;  'but don't end the period, wait it out, turn off the opto once we're done
-        endcase
-
-        
-        
-    case iState% = stateRewardPeriod% then
-        fvPeriodCount% += 1;  'increment number of periods
-        'Determine if reward should be given (random, or if all periods finished)
-        docase
-        case fvSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
-            'set sequencer variable 11 to 6 to indicate 6-ms trial-success pulse
-            SampleSeqVar(11,6);
-            SafeSampleKey("T");  'Send a pulse
-            if (Rand() < fvProbRewardEachPeriod) then  'give reward
-                JuiceRewardMS% := fvJuiceRewardMSorig%;  'reset reward to original value
-                DefaultReward();  'give reward, pReward has been set to 1 above, so once we get in here it's not random
-                TotalRewards% += 1;
-                SampleText("Reward",tNow);
-            else 'don't give reward, BUT call it - this won't work unless pReward (from DAQ dialog) is recoded to 1
-                JuiceRewardMS% := 0;  'set reward to zero, this will prevent reward from being given, but the INTAN pulse for trial end will happen
-                DefaultReward();  'do not give reward (duration is 0) but make sure "R" is sent for marking the file at the time the reward would have happened
-                SampleText("No Reward",tNow);
+                    fvFixWaitState% := 1;
+                    ChangeStateTo(stateWaitForBlank%, tNow);  'This is both stim and fixpt
+                endif;
+                
+            case fvDoImageSeries% = 1 then 
+                'If no other cases are met, and this is an image series, go straight to wait for image off
+                'Do not go to intervening stateBeginImagePeriod or if there is a long delay between idle
+                'cycles we can miss the frame pulse.  Use tLastTrigger as state start time for additional security
+                changeStateTo(stateWaitForImageOff%,tLastTrigger);
+                
+            else
+                'If no other cases are met, begin next image period
+                ChangeStateTo(stateBeginImagePeriod%, tNow); 
+            endcase        
+            
+            
+            
+            
+            
+        case iState% = stateBeginImagePeriod% then
+            tNow := View(DataWindow%).MaxTime();  'update tNow so the duration of the period is as precise as possible
+            'Determine if we are in the opto half or no-opto half of the image
+            docase
+            case fvDoOpto% <> 1 then 'we are not doing opto, it is not an opto period
+                ChangeStateTo(stateNoOptoPeriod%,tNow);
+            case (fvPeriodCount% < fvNumPeriodsPerBlock% and fvOptoOrderThisTrial% = 1) or (fvPeriodCount% >= fvNumPeriodsPerBlock% and fvOptoOrderThisTrial% = 2) then
+                'If we are in an opto block
+                fvOptoState% := 1-fvOptoState%;  'toggle opto state
+                if fvOptoState% = 1 then
+                    'toggle opto on
+                    SafeSampleKey("O");  'turn on opto
+                    tOpt := View(DataWindow%).MaxTime();
+                    SampleText("OptoOn",tOpt);
+                    ChangeStateTo(stateOptoPeriod%,tNow);
+                else 'this time it is not an opto period
+                    ChangeStateTo(stateNoOptoPeriod%,tNow);
+                endif;
+            else 'we are not in an opto block, it is not an opto period
+                ChangeStateTo(stateNoOptoPeriod%,tNow);
+            endcase;
+            if fvBlitzMode% = 1 then
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)  
             endif
             
-            tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
-            ChangeStateTo(stateWaitReward%,tNow);  'wait for reward to be done
-        case fvDoOpto% = 0 then  'If just doing an image, take down image and reward
-            'if fvMaintainFixation% = 1 then  'if maintaining, do not take down fixation point - this is redundant
-            '    SafeSampleKey("s");
-            'else
-            '    SafeSampleKey("X");
-            'endif;
-            DefaultReward();
-            tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
-            TotalRewards% += 1;
-            'fvFixWaitState% := 2;  'Don't  need this as we're not going to stateWaitForBlank%
-            'ChangeStateTo(stateWaitForBlank%,tNow);  'this is hanging up, probably an issue with timing and the trigger line
-            ChangeStateTo(stateWaitReward%,tNow);  'this seems to work fine
-        case fvPeriodCount% >= fvNumPeriods% or (Rand() < fvProbRewardEachPeriod) then
-            'Give reward if appropriate
-            DefaultReward();
-            tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
-            TotalRewards% += 1;
-            ChangeStateTo(stateWaitReward%,tNow);  'wait for reward to be done
-        else
-            ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
-        endcase;
-        
-        
-    case iState% = stateWaitReward% then
-        if tNow > tStateStart + fvRewardDurSec then
-            if fvDoOpto% = 0 then
-                ChangeStateTo(stateTrialCompleted%,tNow);
+            
+        case iState% = stateWaitForImageOff% then
+            'Wait for the image to turn off, do for each image in image series
+            if stateBegin% = 1 then
+                LogStatus("WaitForImageOff", "Waiting for image off at " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            if fvBlitzMode% = 1 then
+                tBlitz := tNow;  'reset tBlitz
+                blitzNow% := 1;
+                while tBlitz+10 > tNow  and blitzNow% = 1 do  'we don't know how long the image will be in the image series, give 10 seconds
+                    blitzTO% := 1;  'assume failure, if we succeed, fix this
+                    'have to update tNow and xEye/yEye if we are checking eye position in the Blitz
+                    tNow := View(DataWindow%).MaxTime();
+                    xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+                    yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+                    'Check for fixation break, note if broken 
+                    if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                        fvFixationWasBroken% := 1;
+                    endif;
+                    'check for image off
+                    if View(DataWindow%).FindRisingEdge%(FrameChannel%, tStateStart, tTrigger) = 0 then
+                        ' Image is off
+                        LogStatus("WaitForImageOff", "Image ended at " + str$(tTrigger));
+                        tLastTrigger := tTrigger;
+                        if fvFixationWasBroken% = 1 then  'wait until image is off to continue
+                            ChangeStateTo(stateHoldImage%, tNow);
+                        else 
+                            fvPeriodCount% += 1;  'Increment period count before image comes on, so fvPeriodCount% is current image, only increment on successful hold of fixation               
+                            sampletext("+", tTrigger);  'Indicate successful viewing of image
+                            if fvPeriodCount% >= fvNumPeriods% then
+                                ' turn off stimulus, get ready to advance
+                                if fvMaintainFixation% = 1 then
+                                    SafeSampleKey("s");  'Take stim down, leave fixpt up
+                                else
+                                    SafeSampleKey("X");  'Turn off all
+                                endif;
+                                SampleText("++");  'indicates fully successful trial
+                                LogStatus("WaitForImageOff", "Image time complete. Turn off and advance stimulus at " + str$(tNow));
+                                
+                                fvAdvance% := 1;  'Advance, but not until stimulus is off
+                                fvFixationWasBroken% := 0;  'We didn't check to see if there was a fixation break in the last period, but reset just in case there was
+                                
+                                'And wait for stim to turn off
+                                fvGiveLookingTO% := 0;  'no timeout on successful fixation
+                                ChangeStateTo(stateWaitForStimOff%, tNow);
+                            else
+                                ChangeStateTo(stateWaitForImageOn%, tTrigger);
+                            endif
+                        endif
+                        blitzNow% := 0;  'end blitz
+                        blitzTO% := 0;  'blitz succeeded
+                    endif;
+                wend
+                if blitzTO% = 1 then
+                    LogStatus("waitForImageOff", "Failure during Blitz Mode!");
+                    message("Failed to find Image Off trigger in Blitz Mode!  Press OK to quit.");
+                    Stop%();  'Call a stop
+                    iStatus% := 0;  
+                endif;
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)
+            else 
+                'Check for fixation break, note if broken 
+                if LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                    fvFixationWasBroken% := 1;
+                endif;
+                'check for image off
+                if View(DataWindow%).FindRisingEdge%(FrameChannel%, tStateStart, tTrigger) = 0 then
+                    ' Image is off
+                    LogStatus("WaitForImageOff", "Image ended at " + str$(tTrigger));
+                    tLastTrigger := tTrigger;
+                    if fvFixationWasBroken% = 1 then  'wait until image is off to continue
+                        ChangeStateTo(stateHoldImage%, tNow);
+                    else 
+                        fvPeriodCount% += 1;  'Increment period count before image comes on, so fvPeriodCount% is current image, only increment on successful hold of fixation               
+                        sampletext("+", tTrigger);  'Indicate successful viewing of image
+                        if fvPeriodCount% >= fvNumPeriods% then
+                            ' turn off stimulus, get ready to advance
+                            if fvMaintainFixation% = 1 then
+                                SafeSampleKey("s");  'Take stim down, leave fixpt up
+                            else
+                                SafeSampleKey("X");  'Turn off all
+                            endif;
+                            SampleText("++");  'indicates fully successful trial
+                            LogStatus("WaitForImageOff", "Image time complete. Turn off and advance stimulus at " + str$(tNow));
+                            
+                            fvAdvance% := 1;  'Advance, but not until stimulus is off
+                            fvFixationWasBroken% := 0;  'We didn't check to see if there was a fixation break in the last period, but reset just in case there was
+                            
+                            'And wait for stim to turn off
+                            fvGiveLookingTO% := 0;  'no timeout on successful fixation
+                            ChangeStateTo(stateWaitForStimOff%, tNow);
+                        else
+                            ChangeStateTo(stateWaitForImageOn%, tTrigger);
+                        endif
+                    endif
+                endif
+            endif
+            
+            
+            
+            
+        case iState% = stateNoOptoPeriod% then
+            'Wait for period to be over
+            
+            if fvBlitzMode% = 1 then
+                remainInIdleLoop% := 0;  'for now, only intended to blitz on image series, won't get here on image series.  If we blitz on opto for some reason...don't blitz here...for now
+            endif
+            
+            docase
+            case tNow >= tStateStart + fvPeriodDuration then
+                ChangeStateTo(stateRewardPeriod%,tNow);
+            case LookingAtScreenOrFixpt%(xEye,yEye) = 0 and fvDoOpto% = 0 then 'end image in standard case
+                fvFixationWasBroken% := 1;
+                ChangeStateTo(stateHoldImage%,tNow);
+            case LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                fvFixationWasBroken% := 1;  'but don't end the period, wait it out
+            endcase
+            
+            
+            
+        case iState% = stateOptoPeriod% then
+            'Wait for period to be over, opto is already on
+            
+            if fvBlitzMode% = 1 then
+                remainInIdleLoop% := 0;  'for now, only intended to blitz on image series, won't get here on image series.  If we blitz on opto for some reason...don't blitz here...for now
+            endif
+            
+            docase
+            case tNow >= tStateStart + fvPeriodDuration then
+                'toggle opto off
+                SafeSampleKey("o");  'turn it off
+                tOpt := View(DataWindow%).MaxTime();
+                SampleText("OptoOff",tOpt);
+                ChangeStateTo(stateRewardPeriod%,tNow);
+            case LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                fvFixationWasBroken% := 1;  'but don't end the period, wait it out, turn off the opto once we're done
+            endcase
+            
+            
+            
+        case iState% = stateRewardPeriod% then
+            
+            if fvBlitzMode% = 1 then
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)  
+            endif
+            
+            fvPeriodCount% += 1;  'increment number of periods
+            'Determine if reward should be given (random, or if all periods finished)
+            docase
+            case fvSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
+                'set sequencer variable 11 to 6 to indicate 6-ms trial-success pulse
+                SampleSeqVar(11,6);
+                SafeSampleKey("T");  'Send a pulse
+                if (Rand() < fvProbRewardEachPeriod) then  'give reward
+                    JuiceRewardMS% := fvJuiceRewardMSorig%;  'reset reward to original value
+                    DefaultReward();  'give reward, pReward has been set to 1 above, so once we get in here it's not random
+                    TotalRewards% += 1;
+                    SampleText("Reward",tNow);
+                else 'don't give reward, BUT call it - this won't work unless pReward (from DAQ dialog) is recoded to 1
+                    JuiceRewardMS% := 0;  'set reward to zero, this will prevent reward from being given, but the INTAN pulse for trial end will happen
+                    DefaultReward();  'do not give reward (duration is 0) but make sure "R" is sent for marking the file at the time the reward would have happened
+                    SampleText("No Reward",tNow);
+                endif
+                
+                tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
+                ChangeStateTo(stateWaitReward%,tNow);  'wait for reward to be done
+            case fvDoOpto% = 0 then  'If just doing an image, take down image and reward
+                DefaultReward();
+                tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
+                TotalRewards% += 1;
+                ChangeStateTo(stateWaitReward%,tNow);  'this seems to work fine
+            case fvPeriodCount% >= fvNumPeriods% or (Rand() < fvProbRewardEachPeriod) then
+                'Give reward if appropriate
+                DefaultReward();
+                tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
+                TotalRewards% += 1;
+                ChangeStateTo(stateWaitReward%,tNow);  'wait for reward to be done
             else
                 ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
-            endif;
-        endif;
-        
-        
-        
-        
-    case iState% = stateWaitForStimOff% then
-        'Wait for the stimulus to turn off
-        if stateBegin% = 1 then
-            LogStatus("WaitForStimOff", "Waiting for stimulus off at " + str$(tNow));
-            stateBegin% := 0;
-        endif
-        
-        if View(DataWindow%).FindFallingEdge%(StimChannel%, tLastTrigger, tTrigger) = 1 then
-            tLastTrigger := tTrigger;
-            LogStatus("WaitForStimOff", "Stimulus off at " + str$(tLastTrigger));
-            ' Decide what state to go to
-            docase
-            case fvAdvance% = 1 then 'If we advance the stimulus
-                fvAdvance% := 0;  'reset advance variable
-                if fvDoImageSeries% = 1 then  'image series sidestep the "(no)opto period" steps, to give reward we ahve to explicitly go there
-                    ChangeStateTo(stateRewardPeriod%, tLastTrigger);
-                else 'if not image series, reward has already been taken care of through "(no)opto period" steps
-                    ChangeStateTo(stateTrialCompleted%, tLastTrigger);
-                endif
-            case fvGiveLookingTO% = 0 then  'If we do not advance the stimulus, but do not give a TO penalty, go to ISI
-                ChangeStateTo(stateInterTrialInterval%, tLastTrigger); 
-            else 'otherwise do not advance stimulus, give TO penalty
-                ChangeStateTo(stateLookAwayTO%, tLastTrigger); 
-            endcase
-        endif
-        
-        
-    case iState% = stateInterTrialInterval% then 
-        if stateBegin% = 1 then
-            LogStatus("InterTrialInterval", "InterTrialInterval began at " + str$(tNow));
-            stateBegin% := 0;
-        endif   
-        
-        if tNow > tStateStart + fvITI then
-            LogStatus("InterTrialInterval", "InterTrialInterval ended at " + str$(tNow));
-            docase
-            case fvFixScreen% = 1 then
-                ChangeStateTo(statePrepareOpto%, tNow);
-            case fvMaintainFixation% = 1 then  'if maintaining, skip fixpt up, cannot get to stateIntertrialInterval if fix is broken
-                ChangeStateTo(stateLogTrialStart%,tNow);
-            else
-                ChangeStateTo(stateFixptUp%,tNow);
             endcase;
-        endif
-        
-        
-    case iState% = stateLookAwayTO% then  
-        if stateBegin% = 1 then
-           LogStatus("LookAwayTO", "Timeout for looking away began at " + str$(tNow));
-           stateBegin% := 0;
-        endif   
-        
-        if tNow > tStateStart + fvLookAwayTO + fvITI then  'this state just encompasses the ITI as well
-            LogStatus("LookAwayTO", "Timeout for looking away ended at " + str$(tNow));
-            if fvFixScreen% = 1 then
-                ChangeStateTo(statePrepareOpto%, tNow);
-            else
-                'if image series, shuffle uncompleted trial back in
-                if fvDoImageSeries% = 1 then
-                    printlog("\n\n\nBefore shuffling, nTrialsCompleted is %d and trial order is %d\n",nTrialsCompleted%,fvImageOrder%[0:fvNValues%]);
-                    SendTrialToMiddle%(fvNValues%,nTrialsCompleted%,5,fvImageOrder%[]);  'nTrialsCompleted% has not been incremented so is the index of the uncompleted trial, skip at least 5 trials
-                    printlog("After shuffling, nTrialsCompleted is %d and trial order is %d\n\n\n\n",nTrialsCompleted%,fvImageOrder%[0:fvNValues%]);
-                    'Jump Stimulus to new "current" trial
-                    JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
+            
+            
+        case iState% = stateWaitReward% then
+            
+            if fvBlitzMode% = 1 then
+                blitzNow% := 1;
+                while blitzNow% = 1 do  'don't need a timeout, this is based on a wait time already
+                    'have to update tNow if we are checking time in the Blitz
+                    tNow := View(DataWindow%).MaxTime();
+                    if tNow > tStateStart + fvRewardDurSec then
+                         blitzNow% := 0;  'end blitz
+                        if fvDoOpto% = 0 then
+                            ChangeStateTo(stateTrialCompleted%,tNow);
+                        else
+                            ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
+                        endif;
+                    endif;
+                wend
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)
+            else 
+                if tNow > tStateStart + fvRewardDurSec then
+                    if fvDoOpto% = 0 then
+                        ChangeStateTo(stateTrialCompleted%,tNow);
+                    else
+                        ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
+                    endif;
+                endif;
+            endif
+            
+            
+            
+            
+        case iState% = stateWaitForStimOff% then
+            'Wait for the stimulus to turn off
+            if stateBegin% = 1 then
+                LogStatus("WaitForStimOff", "Waiting for stimulus off at " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            if fvBlitzMode% = 1 then
+                tBlitz := tNow;  'reset tBlitz
+                blitzNow% := 1;
+                while tBlitz+1 > tNow  and blitzNow% = 1 do
+                    'have to update tNow if we are checking time in the Blitz
+                    tNow := View(DataWindow%).MaxTime();
+                    blitzTO% := 1;  'assume failure, if we succeed, fix this
+                    if View(DataWindow%).FindFallingEdge%(StimChannel%, tLastTrigger, tTrigger) = 1 then
+                        tLastTrigger := tTrigger;
+                        LogStatus("WaitForStimOff", "Stimulus off at " + str$(tLastTrigger));
+                        ' Decide what state to go to
+                        docase
+                        case fvAdvance% = 1 then 'If we advance the stimulus
+                            fvAdvance% := 0;  'reset advance variable
+                            if fvDoImageSeries% = 1 then  'image series sidestep the "(no)opto period" steps, to give reward we ahve to explicitly go there
+                                ChangeStateTo(stateRewardPeriod%, tLastTrigger);
+                            else 'if not image series, reward has already been taken care of through "(no)opto period" steps
+                                ChangeStateTo(stateTrialCompleted%, tLastTrigger);
+                            endif
+                        case fvGiveLookingTO% = 0 then  'If we do not advance the stimulus, but do not give a TO penalty, go to ISI
+                            ChangeStateTo(stateInterTrialInterval%, tLastTrigger); 
+                        else 'otherwise do not advance stimulus, give TO penalty
+                            ChangeStateTo(stateLookAwayTO%, tLastTrigger); 
+                        endcase
+                        blitzNow% := 0;  'end blitz
+                        blitzTO% := 0;  'blitz succeeded
+                    endif
+                wend
+                if blitzTO% = 1 then
+                    LogStatus("waitForStimOff", "Failure during Blitz Mode!");
+                    message("Failed to find Stimulus Offset trigger in Blitz Mode!  Press OK to quit.");
+                    Stop%();  'Call a stop
+                    iStatus% := 0;  
+                endif;
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)
+            else 
+                if View(DataWindow%).FindFallingEdge%(StimChannel%, tLastTrigger, tTrigger) = 1 then
+                    tLastTrigger := tTrigger;
+                    LogStatus("WaitForStimOff", "Stimulus off at " + str$(tLastTrigger));
+                    ' Decide what state to go to
+                    docase
+                    case fvAdvance% = 1 then 'If we advance the stimulus
+                        fvAdvance% := 0;  'reset advance variable
+                        if fvDoImageSeries% = 1 then  'image series sidestep the "(no)opto period" steps, to give reward we ahve to explicitly go there
+                            ChangeStateTo(stateRewardPeriod%, tLastTrigger);
+                        else 'if not image series, reward has already been taken care of through "(no)opto period" steps
+                            ChangeStateTo(stateTrialCompleted%, tLastTrigger);
+                        endif
+                    case fvGiveLookingTO% = 0 then  'If we do not advance the stimulus, but do not give a TO penalty, go to ISI
+                        ChangeStateTo(stateInterTrialInterval%, tLastTrigger); 
+                    else 'otherwise do not advance stimulus, give TO penalty
+                        ChangeStateTo(stateLookAwayTO%, tLastTrigger); 
+                    endcase
                 endif
-                ChangeStateTo(stateFixptUp%, tNow);
-            endif;
-        endif   
-        
-        
-    case iState% = stateTrialCompleted% then
-        nTrialsCompleted% += 1; 
-        printlog("Number of stimuli completed is %d\n",nTrialsCompleted%);
-        ToolbarText(str$(nTrialsCompleted%) + "/" + str$(fvNValues%) + " stimuli completed.");
-        if nTrialsCompleted% = fvNValues% then
-            ' We're all done
-            LogStatus("TrialCompleted", "All stimuli complete!");
-            Stop%();  'Call a stop
-            iStatus% := 0;  
+            endif
+            
+            
+            
+            
+        case iState% = stateInterTrialInterval% then 
+            if stateBegin% = 1 then
+                LogStatus("InterTrialInterval", "InterTrialInterval began at " + str$(tNow));
+                stateBegin% := 0;
+            endif   
+            
+            if fvBlitzMode% = 1 then
+                blitzNow% := 1;
+                while blitzNow% = 1 do
+                    'have to update tNow if we are checking time in the Blitz
+                    tNow := View(DataWindow%).MaxTime();
+                    if tNow > tStateStart + fvITI then
+                        LogStatus("InterTrialInterval", "InterTrialInterval ended at " + str$(tNow));
+                        docase
+                        case fvFixScreen% = 1 then
+                            ChangeStateTo(statePrepareOpto%, tNow);
+                        case fvMaintainFixation% = 1 then  'if maintaining, skip fixpt up, cannot get to stateIntertrialInterval if fix is broken
+                            ChangeStateTo(stateLogTrialStart%,tNow);
+                        else
+                            ChangeStateTo(stateFixptUp%,tNow);
+                        endcase;
+                        blitzNow% := 0;  'end blitz
+                    endif;
+                wend
+                remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)
+            else 
+                if tNow > tStateStart + fvITI then
+                    LogStatus("InterTrialInterval", "InterTrialInterval ended at " + str$(tNow));
+                    docase
+                    case fvFixScreen% = 1 then
+                        ChangeStateTo(statePrepareOpto%, tNow);
+                    case fvMaintainFixation% = 1 then  'if maintaining, skip fixpt up, cannot get to stateIntertrialInterval if fix is broken
+                        ChangeStateTo(stateLogTrialStart%,tNow);
+                    else
+                        ChangeStateTo(stateFixptUp%,tNow);
+                    endcase;
+                endif
+            endif
+            
+            
+            
+            
+            
+        case iState% = stateLookAwayTO% then  
+            if stateBegin% = 1 then
+                LogStatus("LookAwayTO", "Timeout for looking away began at " + str$(tNow));
+                stateBegin% := 0;
+            endif   
+            
+            if fvBlitzMode% = 1 then
+                remainInIdleLoop% := 0;  'do not blitz on timeouts  
+            endif
+            
+            if tNow > tStateStart + fvLookAwayTO + fvITI then  'this state just encompasses the ITI as well
+                LogStatus("LookAwayTO", "Timeout for looking away ended at " + str$(tNow));
+                if fvFixScreen% = 1 then
+                    ChangeStateTo(statePrepareOpto%, tNow);
+                else
+                    'if image series, shuffle uncompleted trial back in
+                    if fvDoImageSeries% = 1 then
+                        printlog("\n\n\nBefore shuffling, nTrialsCompleted is %d and trial order is %d\n",nTrialsCompleted%,fvImageOrder%[0:fvNValues%]);
+                        SendTrialToMiddle%(fvNValues%,nTrialsCompleted%,5,fvImageOrder%[]);  'nTrialsCompleted% has not been incremented so is the index of the uncompleted trial, skip at least 5 trials
+                        printlog("After shuffling, nTrialsCompleted is %d and trial order is %d\n\n\n\n",nTrialsCompleted%,fvImageOrder%[0:fvNValues%]);
+                        'Jump Stimulus to new "current" trial
+                        JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
+                    endif
+                    ChangeStateTo(stateFixptUp%, tNow);
+                endif;
+            endif   
+            
+            
+        case iState% = stateTrialCompleted% then
+            
+            'We have to step out of blitz mode SOMEWHERE to let the OS catch up...so, here?
+            if fvBlitzMode% = 1 then
+                remainInIdleLoop% := 0;  'step out of blitz mode  
+            endif
+            
+            nTrialsCompleted% += 1; 
+            printlog("Number of stimuli completed is %d\n",nTrialsCompleted%);
+            ToolbarText(str$(nTrialsCompleted%) + "/" + str$(fvNValues%) + " stimuli completed.");
+            if nTrialsCompleted% = fvNValues% then
+                ' We're all done
+                LogStatus("TrialCompleted", "All stimuli complete!");
+                Stop%();  'Call a stop
+                iStatus% := 0;  
+                
+            else
+                'Advance Stimulus
+                'SafeSampleKey("a");
+                LogStatus("TrialCompleted", "Advancing stimulus");
+                
+                'Advance/Jump Stimulus
+                JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
+                
+                if fvGiveLookingTO% = 0 then  'go to ITI
+                    ChangeStateTo(stateInterTrialInterval%, tStateStart); 
+                else 'otherwise give TO penalty
+                    ChangeStateTo(stateLookAwayTO%, tStateStart); 
+                endif
+            endif
+            
+            '    case iState% = stateIntanPostRecPause% then
+            '        LogStatus("IntanPostRecPause", "Pausing to stop INTAN recording");
+            '        message("Stop INTAN recording!");
+            '        LogStatus("IntanPostRecPause", "INTAN Recording stopped");
+            '        Stop%();
+            '        iStatus% := 0; 
+            
             
         else
-            'Advance Stimulus
-            'SafeSampleKey("a");
-            LogStatus("TrialCompleted", "Advancing stimulus");
             
-            'Advance/Jump Stimulus
-            JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
+            ' Unknown state!
+            Message("Unknown state=" + str$(iState%));
+            SafeSampleKey("o");  'turn opto off, just in case
             
-            if fvGiveLookingTO% = 0 then  'go to ITI
-                ChangeStateTo(stateInterTrialInterval%, tStateStart); 
-            else 'otherwise give TO penalty
-                ChangeStateTo(stateLookAwayTO%, tStateStart); 
+            'If the eyetracker is recording an output file, stop recording and close the file
+            if RecordEyeTrackerOutputFile% = 1 then
+                SafeSampleKey("w");  'Stop recording
+                yield(0.1);
+                SafeSampleKey("i");  'Close the file
+                SafeSampleKey("Z");  'zero the DIGLOWs
             endif
-        endif
+            
+            halt;
+            
+        endcase;
         
-'    case iState% = stateIntanPostRecPause% then
-'        LogStatus("IntanPostRecPause", "Pausing to stop INTAN recording");
-'        message("Stop INTAN recording!");
-'        LogStatus("IntanPostRecPause", "INTAN Recording stopped");
-'        Stop%();
-'        iStatus% := 0; 
+        tNow := View(DataWindow%).MaxTime();  'update tNow for blitz mode    
+    wend        
         
-
-    else
-        
-        ' Unknown state!
-        Message("Unknown state=" + str$(iState%));
-        SafeSampleKey("o");  'turn opto off, just in case
-        
-        'If the eyetracker is recording an output file, stop recording and close the file
-        if RecordEyeTrackerOutputFile% = 1 then
-            SafeSampleKey("w");  'Stop recording
-            yield(0.1);
-            SafeSampleKey("i");  'Close the file
-            SafeSampleKey("Z");  'zero the DIGLOWs
-        endif
-        
-        halt;
-
-	endcase;
-
 	'tLast := tNow;  'unused
 	return iStatus%;
 end;
