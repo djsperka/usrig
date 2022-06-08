@@ -140,9 +140,13 @@ func IntanBD%(window%, args$)
                     LogError("IntanBD", "Unknown marker: " + str$(markers%[0]));
                     halt;
                 endcase
-            else
-                LogError("IntanBD", "Unknown input marker type " + str$(markers%[0]));
-                halt;
+            else 
+                if markers%[0] > 99 && markers%[0] < 200 then
+                    LogInfo("Unexpected input marker: " + str$(markers%[0]));
+                else
+                    LogError("IntanBD", "Unknown input marker type " + str$(markers%[0]));
+                    halt;
+                endif
             endif
         endcase;
         tlast := NextTime(32, tlast, markers%);
