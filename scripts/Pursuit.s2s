@@ -66,6 +66,7 @@ var xEye, yEye;		' eye positions
 var tLastFixPtDisplayUpdate:=-1;	' last time view was updated
 var vTrigger;		' set by NextTime to indicate trigger transition
 var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
+var tPursuitStart;  'what time did pursuit start?  Cannot rely on tStateStart due to potential multiple-state paths
 var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
 var tTrigger:=-1;	' temp var for newly discovered trigger times
 var tInterTrialTime := 0;	' Time spent waiting between trials (i.e. after screen is blank, but before image is presented)
@@ -88,7 +89,9 @@ const stateWaitForFixptOff%	   := 8;
 const stateReward%		       := 9;
 const stateWaitReward%		   := 10;
 const stateTrialCompleted%     := 11;		
-const stateInterTrialInterval% := 12;		
+const stateInterTrialInterval% := 12;	
+const statePursuitGrace%       := 13;
+const stateIntermediateReward% := 14;
 
 var iState% := stateVSGWait%;	' present state
 var stateBegin% := 1;  'For fun, in this script let's keep track of whether it is the first time through a state, for logging purposes
@@ -97,6 +100,8 @@ var stateBegin% := 1;  'For fun, in this script let's keep track of whether it i
 var nTrialsStarted%:=0;
 var nTrialsCompleted%:=0;
 var nTrialsAborted% :=0;
+var nIntermediateRewards%;
+var intermediateRewardsGiven% := 0;
 
 
 var tic;  'Set a tick value equal to the duration of one clock tick in seconds, used to prevent finding
@@ -110,6 +115,9 @@ var purProbRewardEachPeriod;
 var purRewardDurSec;
 'purRewardDurSec := (GetJuiceRewardMS%()+20)/1000;  'Set reward duration up top.  If we have any reason to think this will change through the experiment, then set it say each idle loop
                                                    'I am paranoid and I'm adding another 20 ms following the reward.
+const purMaxIntRews% := 20;
+var purIntermediateRewardTime[purMaxIntRews%];
+
 
 
 ' Dialog box variables
@@ -130,6 +138,9 @@ var purScreenMMY;
 var purPctScreenUsed;
 var purScreenXDeg;  'Defined as the distance from the center of the screen to the edge
 var purScreenYDeg;
+var purMinInterveningRewards%;
+var purMaxInterveningRewards%;
+var purMeanInterveningRewardInterval;
 
 var purFixptMoving%;  'If 0, fixpt has not yet started moving.  If 1, fixpt is moving.  If 2, fixpt has stopped.  Note that currently 0/2 are not used differently, but maybe someday so I'm keeping it
 var purNValues%;
@@ -278,6 +289,11 @@ func PursuitScriptDialog%()
     DlgReal(12, "Screen Width, mm", 10, 3000, 0, 15);
     DlgReal(13, "Screen Height, mm", 10, 3000, 0, 16);
     DlgReal(14, "Percent Screen Used, 0-100", 0.1, 100, 0, 17);
+    
+    DlgGroup("Intervening Rewards", 1, 18, 50, 4);
+    DlgReal(15, "Minimum Int Rewards", 0, 5, 0, 19);
+    DlgReal(16, "Maximum Int Rewards (0 for none)", 0, purMaxIntRews%, 0, 20);
+    DlgReal(17, "Int Reward Interval, s", 0.1, 10, 0, 21);
 
     'This can be done from Config, looks like it was carried over from FreeViewer, which has different, within-stimulus requirements, not necessary here.
     'DlgGroup("Reward", 1, 18, 50, 2);
@@ -287,9 +303,17 @@ func PursuitScriptDialog%()
 
     i%:=DlgShow(purNLeftRight%,purNUpDown%,purNRepeats%,purPursuitSpeed,purITI,purRandomProgression%,
     purAcquisitionTime,purAcquisitionTO,purPursuitWindowRadius,purGracePeriod,purAlwaysLookingInd%,
-    purScreenMMX,purScreenMMY,purPctScreenUsed);
+    purScreenMMX,purScreenMMY,purPctScreenUsed,purMinInterveningRewards%,purMaxInterveningRewards%,purMeanInterveningRewardInterval);
+    
+
     
     if i% = 1 then
+        
+        if purMinInterveningRewards% > purMaxInterveningRewards% and purMaxInterveningRewards% > 0 then
+            message("Min intervening rewards cannot be more than max!  Setting NO intervening rewards!");
+            purMaxInterveningRewards% := 0;
+        endif;
+        
         
         if 2*(purNLeftRight%+purNUpDown%)*purNRepeats% > purMaxTrials% then
             message("Too Many Trials (" + Str$(2*(purNLeftRight%+purNUpDown%)*purNRepeats%) + ") Requested!  Max is " + Str$(purMaxTrials%) +"!  Quitting!");
@@ -356,7 +380,11 @@ proc GetPursuitScriptParameters()
     purScreenMMX := GetFloatRegistryValue(key$, "ScreenMMX", purScreenMMX);
     purScreenMMY := GetFloatRegistryValue(key$, "ScreenMMY", purScreenMMY);
     purPctScreenUsed := GetFloatRegistryValue(key$, "PctScreenUsed", purPctScreenUsed);
-  
+    purMinInterveningRewards% := GetIntRegistryValue%(key$, "MinInterveningRewards", purMinInterveningRewards%);
+    purMaxInterveningRewards% := GetIntRegistryValue%(key$, "MaxInterveningRewards", purMaxInterveningRewards%);
+    purMeanInterveningRewardInterval := GetFloatRegistryValue(key$, "MeanInterveningRewardInterval", purMeanInterveningRewardInterval);
+    
+    
 end;
 
 proc SavePursuitScriptParameters()
@@ -377,6 +405,9 @@ proc SavePursuitScriptParameters()
     SetFloatRegistryValue(key$, "ScreenMMX", purScreenMMX);
     SetFloatRegistryValue(key$, "ScreenMMY", purScreenMMY);
     SetFloatRegistryValue(key$, "PctScreenUsed", purPctScreenUsed);
+    SetIntRegistryValue(key$, "MinInterveningRewards", purMinInterveningRewards%);
+    SetIntRegistryValue(key$, "MaxInterveningRewards", purMaxInterveningRewards%);
+    SetFloatRegistryValue(key$, "MeanInterveningRewardInterval", purMeanInterveningRewardInterval);
   
 end;
 
@@ -1037,27 +1068,47 @@ func IdleProcessing%()
                 LogStatus("WaitForStimMove", "Stimulus started moving at " + str$(tTrigger));
                 tLastTrigger := tTrigger;
                 sampletext(Str$(trialInd%+1) + "," + Str$(purThisStartX) + "," + Str$(purThisStartY) + "," + Str$(purThisSpeed) + "," + Str$(purThisDir), tTrigger);
-                ChangeStateTo(stateHoldPursuit%, tTrigger);
+                if purGracePeriod > 0 then  'if there is a grace period, wait out grace period without checking eye position
+                    ChangeStateTo(statePursuitGrace%, tTrigger);
+                else
+                    ChangeStateTo(stateHoldPursuit%, tTrigger);  'if there is no grace period, go straight to fixation hold
+                endif
                 purFixptMoving% := 1;
+                tPursuitStart := tStateStart;  'tStateStart was reset by ChangeStateTo above, need to hold pursuit start time across states
+                nIntermediateRewards% := CalcIntermediateRewardTimes%(purIntermediateRewardTime[],purMinInterveningRewards%,purMaxInterveningRewards%,purMeanInterveningRewardInterval,purGracePeriod,purPursuitDur[purTrialOrder%[trialInd%]]);
+                intermediateRewardsGiven% := 0;  'reset intermediate reward count
             endif
         endif        
+        
+        
+        
+    case iState% = statePursuitGrace% then
+        if stateBegin% = 1 then
+            LogStatus("PursuitGrace", "Pursuit grace period has begun at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        purCurrentDur := tNow - tPursuitStart;
+        if purCurrentDur >= purGracePeriod then
+            ChangeStateTo(stateHoldPursuit%, tNow);
+        endif;
         
        
     case iState% = stateHoldPursuit% then
         if stateBegin% = 1 then
-            LogStatus("HoldPursuit", "Pursuit has begun at " + str$(tNow));
+            LogStatus("HoldPursuit", "Pursuit enforcement has begun at " + str$(tNow));
             stateBegin% := 0;
         endif
-        purCurrentDur := tNow - tStateStart;
+        purCurrentDur := tNow - tPursuitStart;
         docase
+        case purCurrentDur >= purIntermediateRewardTime[intermediateRewardsGiven%] and nIntermediateRewards% > intermediateRewardsGiven% then  'give intermediate reward    GetJuiceRewardMS%(), 
+            intermediateRewardsGiven% += 1;  'increment intermediate reward count
+            ChangeStateTo(stateIntermediateReward%,tNow);
         case purCurrentDur >= purPursuitDur[purTrialOrder%[trialInd%]] then  'pursuit is over
             purFixptMoving% := 2;  'Indicate fixpt is no longer moving - this could be 0 as there is no need to indicate that fixpt is in "end" position, but it's OK
             'request fixpt down
             SafeSampleKey("X");
             ChangeStateTo(stateWaitForFixptOff%,tNow);
             LogStatus("HoldPursuit", "Pursuit complete at " + str$(tNow));
-        case purCurrentDur < purGracePeriod then  'still in grace period, do not check pursuit
-            'do nothing, stay in this state
         case Pursuing%(xEye,yEye) = 0 then  'loss of pursuit
             purFixptMoving% := 0;  'Indicate fixpt is no longer moving, different value than successful trial, does it matter?
             'request fixpt down
@@ -1085,9 +1136,19 @@ func IdleProcessing%()
         endif
         
         
+        
+    case iState% = stateIntermediateReward% then
+        LogStatus("IntermediateReward", "Delivering intermediate reward at " + str$(tNow));
+        purRewardDurSec := DefaultReward();  'Give reward, return how long the reward was, 0 is legal if no reward
+        if purRewardDurSec > 0 then  'increment TotalRewards if reward is given
+            TotalRewards% += 1;
+        endif
+        ChangeStateTo(stateHoldPursuit%,tNow);  'just go back to HoldPursuit, don't worry about any reward duration delay, that will all be dealt with when calculating the times of the reward
+        
+        
        
      case iState% = stateReward% then
-
+        LogStatus("Reward", "Delivering reward at " + str$(tNow));
         purRewardDurSec := DefaultReward();  'Give reward, return how long the reward was, 0 is legal if no reward
         tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
         if purRewardDurSec > 0 then  'increment TotalRewards if reward is given
@@ -1397,7 +1458,7 @@ end;
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 ' Put three vectors of numbers into a comma separated string
-Func StringifyProgression3$(n%, vec1[], vec2[], vec3[], ind%[])
+func StringifyProgression3$(n%, vec1[], vec2[], vec3[], ind%[])
 	var s$;
 	var i%;
     
@@ -1419,3 +1480,53 @@ Func StringifyProgression3$(n%, vec1[], vec2[], vec3[], ind%[])
 	next
 	return s$;
 end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Return times of intermediate rewards
+func CalcIntermediateRewardTimes%(&times[],mymin%,mymax%,mymean,mystart,myend)
+    var count% := 0;
+    var isOK% := 0;
+    var nRew% := 0;
+    var i% := 0;
+    
+    'if there are not any rewards, just return
+    if mymax% = 0 then
+        return nRew%;
+    endif
+    
+    'otherwise calculate reward times
+    ArrConst(times[],0);  'clear times[]
+    while isOK% = 0 and count% < 1000 do  'do this up to 1000 times to get it right
+        count% += 1;  'Increment count so we don't get stuck in WHILE if we don't get it right
+        randexp(times[],mymean);  'calculate exponential random intervals (e.g. follows a Poisson distribution)
+        ArrIntgl(times[]);  'get cumulative sum of intervals = times
+        ArrAdd(times[],mystart);  'add in grace-period offset to each calculated time
+        
+        'Count rewards falling during pursuit window (excluding grace period), cut off 100 ms before end
+        nRew% := 0;
+        for i% := 0 to len(times[])-1 do  'go through all calculated times
+            if times[i%] <= myend-0.1 then  'if this reward is before the end of the pursuit (-100 ms)
+                nRew% += 1;  'Count this reward!
+            endif;
+        next
+        
+        'Make sure the number of rewards is acceptable (by minumum), otherwise, try again with new random roll!
+        if nRew% >= mymin% then  
+            isOK% := 1;  'break out of WHILE if we got an acceptable number
+        endif
+        
+    wend
+    
+    'If the total number of rewards is OVER the max, just include the first MAX rewards rather than recalculate
+    if nRew% > mymax% then
+        nRew% := mymax%;
+    endif
+    
+    'If we went 1000 times and didn't get an acceptable set of rewards, give up - really this shouldn't happen without bizarre values
+    if isOK% = 0 then
+        nRew% := 0;
+    endif
+    
+    return nRew%;
+end
