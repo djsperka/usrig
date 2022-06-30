@@ -6,12 +6,15 @@
 func IntanX%(window%, args$)
     var tlast := -1;
     var t0, t1;     ' frame times
-    var txt$;
+    var txt$, txt2$;
     var unused%[3];
     var markers%[4];
     const MAX_IMAGES% := 3;
     var tOnOff[MAX_IMAGES% * 2];
+    var iNum%[MAX_IMAGES%];
+    var iScore%[MAX_IMAGES%];
     var sImages$[MAX_IMAGES%];
+    var iImages%[MAX_IMAGES%];
     var typeFileMarker% := 0;   ' file type sync marker
     var tFileMarker := -1;      ' timestamp on sync marker
     var istate%;            ' 0 = W3, 1 = W6
@@ -19,15 +22,17 @@ func IntanX%(window%, args$)
     var i%;
     var iGroup%;
     var iReward%;
+    var tReward;
     var sCommandLine$, sCommandLine2$;
+    var nShown%, nNames%;
     
     LogInfo(FileName$(-3));
     outhndl := FileOpen(FileName$(-3) + ".inx", 8, 1); 
     View(window%);
 
 
-    ' get RE ready
-    if InStrRE(0, "Image series (\\d+) start") < 0 then
+    ' get RE ready for getting image number 
+    if InStrRE(0, "Image(\\d+).bmp") < 0 then
         LogError("IntanX", "Error compiling RE");
         return -1;
     endif
@@ -56,7 +61,7 @@ func IntanX%(window%, args$)
     
     ' First two lines of output are the file type marker (line 1) and the command line (line 2)
     View(outhndl).Print("%f,%d\n", tFileMarker, typeFileMarker%);
-    View(outhndl).Print("%s %s", sCommandLine$, sCommandLine2$);
+    View(outhndl).Print("%s %s\n", sCommandLine$, sCommandLine2$);
 
     istate% := 0;
     t0 := -1;
@@ -71,25 +76,36 @@ func IntanX%(window%, args$)
                 istate% := 1;
             endif
         case istate% = 1 then
-            docase
-            case markers%[0] = 3 then
-                t0 := tlast;
-            case markers%[0] = 6 then
+            if markers%[0] = 3 or markers%[0] = 6 then
                 t1 := tlast;
-                ' now fetch image information
-                if extractImageTrials%(t0, t1, tOnOff, sImages$, iGroup%, iReward%) <> MAX_IMAGES% then
-                    LogError("IntanX", "Incorrect number of image files found in trial at " + str$(t0) + "-" + str$(t1));
-                    return -1;
-                else
-                    'LogInfo("Trial " + str$(t0) + "-" + str$(t1) + ": group " + str$(iGroup%));
-                    for i% := 0 to MAX_IMAGES%-1 do
-                        'LogInfo("Image " + str$(tOnOff[i%*2]) + "-" + str$(tOnOff[i%*2+1]) + ": " + sImages$[i%]);
-                        txt$ := Print$("%f,%f,%f,%f,%d,%d,%s\n", t0, t1, tOnOff[i%*2], tOnOff[i%*2+1], iGroup%, iReward%, sImages$[i%]);
-                        View(outhndl).Print("%s", txt$);
-                    next
-                    istate% := 0;
+                nNames% := extractImageFiles%(t0, t1, iNum%, iScore%, iReward%);
+                nShown% := extractImageTrials%(t0, t1, tOnOff);
+                if nNames% <> nShown% then
+                    LogWarn("st=1", "names=" + str$(nNames%) + ", shown=" + str$(nShown%));
                 endif
-            endcase;
+
+                if markers%[0] = 6 then
+                    ' get the reward time
+                    tReward := extractRewardTime(t1);
+                else
+                    tReward := -1;
+                endif
+                
+                ' hardcoded for 3 images
+                txt$ := Print$("%f,%f,%f,%f,%f,%f,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d", t0, tOnOff[0], tOnOff[1], tOnOff[2], tOnOff[3], tOnOff[4], tOnOff[5], t1, iReward%, tReward, iNum%[0], iNum%[1], iNum%[2], iScore%[0], iScore%[1], iScore%[2]);
+                View(outhndl).Print("%s\n", txt$);
+
+
+
+                ' for case where new trial marker comes, previous trial ended prematurely. Update trial start time.
+                ' for end trial case, change state to 0
+                if markers%[0] = 3 then
+                    t0 := tlast;
+                else
+                    iState% := 0;
+                endif
+                
+            endif
         endcase;
         tlast := NextTime(32, tlast, markers%);
     wend
@@ -97,7 +113,26 @@ func IntanX%(window%, args$)
     return 0;
 end
 
-func extractImageTrials%(t0, t1, times[], fnames$[], &group%, &reward%)
+func extractRewardTime(&t1)
+    ' look for R in sample key, within 2 second of the time given
+    var trwd := -1;
+    var tlast := t1;
+    var s$;
+    tlast := NextKey(tlast, s$, "");
+    while tlast > 0 and tlast < t1+2 do
+        if s$ = "R" then
+            trwd := tlast;
+            break;
+        else
+            LogWarn("extractRewardTime", "Got key " + s$ + " at " + str$(tlast));
+        endif
+        tlast := NextKey(tlast, s$, "");
+    wend
+    return trwd;
+end
+            
+func extractImageTrials%(t0, t1, times[])
+', fnames$[], &group%, &reward%)
     var count% := 0;
     var i%;
     var tlast := t0;
@@ -107,6 +142,9 @@ func extractImageTrials%(t0, t1, times[], fnames$[], &group%, &reward%)
     var samp$;
     var iseries%;
     var spos%[2], ssiz%[2];
+    
+    ' initialize times
+    ArrConst(times[], -1);
     
     'tf := NextTime(41, ta);
     istatus% := FindPulseUp%(41, tlast, trise, tfall)
@@ -120,44 +158,53 @@ func extractImageTrials%(t0, t1, times[], fnames$[], &group%, &reward%)
 
     wend
     
-    if count% = Len(times) then
-    
-        ' First, try to get the series#
-        tsample := NextTextMark(t0-.05, samp$);
-        if tsample > 0 and abs(tsample - t0) < 0.05 then
-            'LogInfo("Got series text: " + samp$);
-            if InStrRE(samp$) <> 2 then
-                LogError("IntanX", "Error extracting image set number from sample text: " + samp$);
-            else
-                InStrRE(spos%, ssiz%);
-                group% := val(Mid$(samp$, spos%[1], ssiz%[1]));
-                'LogInfo("Got " + Mid$(samp$, spos%[1], ssiz%[1]) + ":" + str$(group%));
-            endif
-        endif
-        
-        ' Now get filenames
-        for i% := 0 to 2 do
-            tsample := NextTextMark(times[i%*2]-.05, samp$);
-            fnames$[i%] := Left$(samp$, InStr(samp$, ",")-1);
-            'LogInfo("extractImageTrials: " + str$(times[i%]) + "-" + str$(times[i%+1]) + ", " + Left$(samp$, InStr(samp$, ",")) + " delta " + str$(tsample - times[i%]));
-        next
-        
-        ' Check if reward was delivered
-        tlast := times[Len(times)-1];
-        t := NextTextMark(tlast, samp$);
-        while t > 0 and t < t1 and samp$ <> "Reward" do
-            tlast := t;
-            t := NextTextMark(tlast, samp$);
-        wend
-        if samp$ = "Reward" then
-            reward% := 1;
-        else
-            reward% := 0;
-        endif
-        
-    endif
-        
-    'LogInfo("extractImageTrials: " + str$(frames[0]) + "-" + str$(frames[1]) + ", " + str$(frames[2]) + "-" + str$(frames[3]) + ", " + str$(frames[4]) + "-" + str$(frames[5]));
-    
     return count%/2;
+end
+
+func extractImageFiles%(t0, t1, fnums%[], fscore%[], &iReward%)
+    var samp$;
+    var ncount% := 0;
+    var scount% := 0;
+    var tlast;
+    var i%;
+    
+    ' initialize
+    ArrConst(fnums%[], -1);
+    ArrConst(fscore%[], -1);
+    iReward% := -1;
+    
+    tlast := NextTextMark(t0-.05, samp$);
+    while tlast > 0 and tlast < t1 do
+    
+        ' look for easy stuff
+        docase
+        case samp$ = "+" then
+            fscore%[scount%] := 1;
+            scount% += 1;
+        case samp$ = "-" then
+            fscore%[scount%] := 0;
+            scount% += 1;
+        case samp$ = "Reward" then
+            iReward% := 1;
+        case samp$ = "No Reward" then
+            iReward% := 0;
+        else
+            i% := InStrRE(samp$);
+            'LogInfo("Got text: " + samp$ + " " + str$(i%));
+            if i% = 2 then
+                var pos%[4],sz%[4];
+                InStrRE(pos%, sz%);        'get positions and sizes
+                'PrintLog("Number %s\n", Mid$(samp$, pos%[1], sz%[1]));
+                fnums%[ncount%] := val(Mid$(samp$, pos%[1], sz%[1]));
+                ncount% += 1;
+            else
+                if InStr(samp$, "Image series") = 0 and InStr(samp$, "++") = 0 then
+                    LogInfo("Text not handled: " + samp$);
+                endif
+            endif
+        endcase
+        tlast := NextTextMark(tlast, samp$);
+    wend
+    
+    return ncount%;
 end

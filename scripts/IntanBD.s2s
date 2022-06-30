@@ -1,0 +1,240 @@
+#include "../util/LogUtilities.s2s"
+#include "../util/ChannelUtilities.s2s"
+#include "../util/FileUtilities.s2s"
+#include "ExtractionUtilities.s2s"
+
+func IntanBD%(window%, args$)
+    var tlast := -1;
+    var txt$, txt2$;
+    var unused%[3];
+    var markers%[4];
+    var istate%;            ' 0 = W3, 1 = W6
+    var outhndl, parhndl;
+    var istatus%;
+    var i%;
+    var sCommandLine$, sCommandLine2$;
+    var sTargetDir$;
+    var sBDInputFile$;
+    var sBDInputFileCopyBase$;
+    var sBDXFile$;
+    var sBDXFileCopyBase$;
+    
+    ' per-trial vars
+    var t0, t1;     ' trial start mark time, trial end mark time (or next trial start time)
+    var tStimOn, tStimOff;
+    var tSuccess;
+    var iTrialNum%;
+    
+    ' file data
+    const MAX_TRIALS% := 1024;
+    var stimIndex%[MAX_TRIALS%];
+    var times[MAX_TRIALS%][5];
+    var nTrials% := 0;
+    var typeFileMarker% := 0;   ' file type sync marker
+    var tFileMarker := -1;      ' timestamp on sync marker
+    var tFileEndMarker := -1;
+    
+    LogInfo(FileName$(-3));
+    
+    sBDInputFile$ := getBDInputFile$(FileName$(-3) + ".par");
+    LogInfo("Got bd input filename: " + sBDInputFile$);
+    sBDInputFileCopyBase$ := FileName$(3) + FileName$(4) + ".bdi";
+    sBDXFile$ := FileName$(-3) + ".bdx";
+    sBDXFileCopyBase$ := FileName$(-4) + ".bdx";
+    outhndl := FileOpen(sBDXFile$, 8, 1); 
+    View(window%);
+    
+    ' First INTAN marker is the file type marker
+    tFileMarker := NextTime(32, tlast, markers%);
+    if (tFileMarker < 0) then
+        LogError("IntanX", "No markers found in channel 32!");
+        return -1;
+    else
+        typeFileMarker% := markers%[0];
+    endif
+    
+    ' Find the command line
+    tlast := NextTextMark(-1, sCommandLine$);
+    if tlast < 0 then
+        sCommandLine$ := "No command line found.";
+    else
+        while InStr(sCommandLine$, "cmd") <> 1 and tlast > 0 do
+            tlast := NextTextMark(tlast, sCommandLine$);
+        wend
+        if tlast > 0 then
+            NextTextMark(tlast, sCommandLine2$);
+        endif
+    endif
+    
+    ' First two lines of output are the file type marker (line 1) and the command line (line 2)
+    'View(outhndl).Print("%f,%d\n", tFileMarker, typeFileMarker%);
+    'View(outhndl).Print("%s %s\n", sCommandLine$, sCommandLine2$);
+
+    istate% := 0;   ' 0: expecting trial start, 1: inside trial (expect 3 or 6, will trigger more stuff)
+    t0 := -1;
+    t1 := -1;
+    tStimOn := -1;
+    tStimOff := -1;
+    tSuccess := -1;
+    iTrialNum% := -1;
+    tlast := tFileMarker;
+    nTrials% := 0;
+    ArrConst(stimIndex%[], -1);
+    ArrConst(times[][], -1);
+
+    ' In BD files, the only markers in channel 32 are a bunch of 0xe (4 of them) - ignore them
+    ' Otherwise its just 3 (trial start), 6 (trial end), and 10 (session end)
+    tlast := NextTime(32, tlast, markers%);
+    while (tlast >= 0 and istate% > -1) do
+    
+        docase
+        case istate% = 0 then
+            if markers%[0] = 3 then
+                t0 := tlast;
+                istate% := 1;
+            else
+                LogInfo("Expect trial start, ignore marker " + str$(markers%[0]));
+            endif
+        case istate% = 1 then
+            if markers%[0] = 3 or markers%[0] = 6 or markers%[0] = 10 then
+                t1 := tlast;
+                
+                ' Find Stim on, stim off if available
+                istatus% := FindPulseUp%(43, t0, tStimOn, tStimOff);
+                if istatus% < 0 then
+                    tStimOn := -1;
+                    tStimOff := -1;
+                endif
+                
+                ' Find success time, if possible. And trial number.
+                extractStuff(t0, t1, iTrialNum%, tSuccess);
+
+                ' write
+                stimIndex%[nTrials%] := iTrialNum%;
+                times[nTrials%][0] := t0;
+                times[nTrials%][1] := tStimOn;
+                times[nTrials%][2] := tSuccess;
+                times[nTrials%][3] := tStimOff;
+                times[nTrials%][4] := t1;
+                nTrials% := nTrials% + 1;
+                
+                'txt$ := Print$("%d,%f,%f,%f,%f,%f", iTrialNum%, t0, tStimOn, tSuccess, tStimOff, t1);
+                'View(outhndl).Print("%s\n", txt$);
+
+                ' for case where new trial marker comes, previous trial ended prematurely. Update trial start time.
+                ' for end trial case, change state to 0
+                docase
+                case markers%[0] = 3 then
+                    t0 := tlast;
+                    t1 := -1;
+                    tStimOn := -1;
+                    tStimOff := -1;
+                    tSuccess := -1;
+                    iTrialNum% := -1;
+                case markers%[0] = 6 then
+                    iState% := 0;
+                case markers%[0] = 10 then
+                    tFileEndMarker := tlast;
+                    iState% := -1;
+                else
+                    LogError("IntanBD", "Unknown marker: " + str$(markers%[0]));
+                    halt;
+                endcase
+            else 
+                if markers%[0] > 99 && markers%[0] < 200 then
+                    LogInfo("Unexpected input marker: " + str$(markers%[0]));
+                else
+                    LogError("IntanBD", "Unknown input marker type " + str$(markers%[0]));
+                    halt;
+                endif
+            endif
+        endcase;
+        tlast := NextTime(32, tlast, markers%);
+    wend
+    
+    ' now write    
+    View(outhndl).Print("%f,%f,%d\n", tFileMarker, tFileEndMarker, typeFileMarker%);
+    for i% := 0 to nTrials%-1 do
+        txt$ := Print$("%d,%f,%f,%f,%f,%f", stimIndex%[i%], times[i%][0], times[i%][1], times[i%][2], times[i%][3], times[i%][4]);
+        View(outhndl).Print("%s\n", txt$);
+    next
+    View(outhndl).FileClose();
+
+    ' copy to target dir if needed
+    sTargetDir$ := Input$("target folder, empty to cancel", "");
+    if Len(sTargetDir$) > 0 then
+        FileCopy(sBDXFile$, sTargetDir$ + "\\" + sBDXFileCopyBase$, 1);
+        FileCopy(sBDInputFile$, sTargetDir$ + "\\" + sBDInputFileCopyBase$, 1);
+        PrintLog(">>%s<<\n", sTargetDir$ + "\\" + sBDInputFileCopyBase$);
+    endif
+    
+    return 0;
+end
+
+func getBDInputFile$(parfile$)
+
+    var hndl;
+    var sFilename$;
+    var line$;
+    var n%;
+    var state% := 0;
+    hndl := FileOpen(parfile$, 8, 0);
+    if hndl > 0 then
+        ' read lines from par file
+        'Debug();
+        View(hndl).ReadSetup("", "");
+        n% := View(hndl).Read(line$);
+        state% := 1;
+        while n% >= 0 and state% > 0 do
+        
+            if n% = 1 then
+                docase
+                case state% = 1 then
+                    if InStr(line$, "Tuning parameters") = 1 and InStr(line$, "for") = 0 then
+                        state% := 2;
+                    endif
+                case state% = 2 then
+                    if InStr(line$, "Type") = 1 then
+                        if InStr(line$, "BakersDozen") > 0 then
+                            state% := 3;
+                        else
+                            LogError("getBDInputFile$", "Expecting par file to have \"Type : BakersDozen\"");
+                            state% := -1;
+                            break;
+                        endif
+                    endif
+                case state% = 3 then
+                    if InStr(line$, "File") = 1 then
+                        sFilename$ := Mid$(line$, InStr(line$, ":")+2);
+                        LogInfo("Got bd file: " + sFilename$);
+                        break;
+                    endif
+                endcase
+            endif
+            n% := View(hndl).Read(line$);
+        wend
+        FileClose(hndl);
+    endif
+    return sFilename$;
+end        
+
+func extractStuff(t0, t1, &itrial%, &tSuccess)
+
+    ' Look for text marks between t0 and t1
+    var tlast;
+    var s$;
+    
+    if t1 < 0 then return -1; endif
+    
+    tlast := NextTextMark(t0, s$);
+    while tlast > 0 and tlast < t1 do
+        if s$ = "+" then
+            tSuccess := tlast;
+        else
+            if InStr(s$, "T,") = 1 then
+                itrial% := val(Mid$(s$, 3));
+            endif
+        endif
+        tlast := NextTextMark(tlast, s$);
+    wend
+end

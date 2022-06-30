@@ -1,9 +1,12 @@
 #include "IntanX.s2s"
+#include "IntanBD.s2s"
+
 
 var hData%;
 var hTxt;
 var sInit$ := "";
 var iCode%[4];
+var iType%;
 
 ' Get data file. The "current" view must be a time view, otherwise we bail. 
 hData% := View(0);
@@ -12,6 +15,37 @@ if (ViewKind(hData%) <> 0) then
     halt;
 endif
 
+if extractIntanFileMarker(32, -1, iType%) < 0 then
+    LogError("IntanExtract", "Cannot find INTAN file marker in channel 32");
+endif
 
-' do extraction on this file
-IntanX%(hData%, "");
+docase
+case iType% = 25 then
+    LogInfo("Found a baker's dozen file");
+    IntanBD%(hData%, "");
+    
+case iType% = 20 then
+    LogInfo("Found a freeview data file");
+    IntanX%(hData%, "");
+
+else
+    LogWarn("IntanExtract", "intan type marker (" + str$(iType%) + ") not handled");
+endcase
+    
+
+func extractIntanFileMarker(ch%, tlast, &ityp%)
+
+    ' First INTAN marker is the file type marker
+    var tFileMarker;
+    var markers%[4];
+
+    tFileMarker := NextTime(ch%, tlast, markers%);
+    if (tFileMarker < 0) then
+        LogError("extractIntanFileMarker", "No markers found in channel " + str$(ch%));
+        return -1;
+    else
+        ityp% := markers%[0];
+    endif
+    return 1;
+end
+    
