@@ -7,8 +7,6 @@
 '
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-#include "../util/UsreyUtil.s2s"
-#include "../util/DlgUtilities.s2s"
 
 
 var DistanceToScreenMM$;		' Distance to screen in MM 
@@ -57,6 +55,10 @@ var RecordEyeTrackerOutputFile%;  'if checked, use 1401 to start/stop eyetracke 
 'var NumWavemarkPorts%;
 'var ContinuousPorts%[16];
 'var NumContinuousPorts%;
+
+#include "../util/UsreyUtil.s2s"
+#include "../util/DlgUtilities.s2s"
+
 GetDAQParameters();
 this1401Type% := Determine1401Type%();
 
@@ -536,7 +538,8 @@ proc GetDAQParameters()
     DegreesPerVoltX := GetFloatRegistryValue(key$, "DegreesPerVoltX", 0.0);
     DegreesPerVoltY := GetFloatRegistryValue(key$, "DegreesPerVoltY", 0.0);
     CalibrationOffsetDegrees := GetFloatRegistryValue(key$, "CalibrationOffsetDegrees", 8);
-    CalibrationComPort% := GetIntRegistryValue%(globalKey$, "CalibrationComPort", GetIntRegistryValue%(key$, "CalibrationComPort", 2));    'We get the value from the global key, if it does not exist, the default is the value from the config-specific key, if THAT does not exist, default as default
+    CalibrationComPort% := GetIntRegistryValue%(globalKey$, "CalibrationComPort", GetIntRegistryValue%(key$, "CalibrationComPort", 2));    'We get the value from the global key, if it does not exist, the default is the value from the 
+                                                                                                                                           'config-specific key, if THAT does not exist, default as default
     CalibrationConfigFile$ := GetStringRegistryValue$(key$, "CalibrationConfigFile", "NONE_SELECTED");
     EyeCoilSamplingFrequency% := GetIntRegistryValue%(key$, "EyeCoilSamplingFrequency", 1000);
     NumberOfElectrodes% := GetIntRegistryValue%(key$, "NumberOfElectrodes", 1);
