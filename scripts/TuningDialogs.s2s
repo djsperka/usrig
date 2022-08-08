@@ -4202,7 +4202,7 @@ func TunOptoDialog%()
     DlgReal(7, "PostStimulus Opto On (s)",0,100,20,9);
     DlgCheck(8, "Keep Opto on between stims",2,10);
     DlgGroup("Pulsing Opto", 1, 11, 38, 5);
-    DlgInteger(9, "Opto # Pulses ",0,1000,20,12);
+    DlgInteger(9, "Opto # Pulses ",1,1000,20,12);
     DlgReal(10, "Opto Period Onset (s)",0,stimdur,20,13);
     DlgReal(11, "Opto Pulse Width (s)",0,stimdur,20,14);
     DlgReal(12, "Opto Interpulse Interval (s)",0,1000,20,15);
@@ -4240,7 +4240,8 @@ func TunOptoDialog%()
             stimdur := stimdur - tunPulsedOptoOnset;  'duration of stimulus after onset delay
             stimdur := stimdur - tunPulsedOptoWidth;  'duration of stimulus after first opto pulse
             if stimdur < 0 then  'if first pulse will extend beyond stimulus duration
-                tunOptoNPulses% := 0;  'turn off opto by using no pulses
+                'tunOptoNPulses% := 0;  'turn off opto by using no pulses, eek, no.
+                tunDoOpto% := 0;  'this is how you turn off opto
                 'tell user to try again
                 Message("The first opto pulse will extend beyond the stimulus!  There will be no pulses!  Please try again!");
             else

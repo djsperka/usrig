@@ -3764,7 +3764,8 @@ func Start%()
             stimRemaining := stimRemaining - tunPulsedOptoOnset;  'duration of stimulus after onset delay
             stimRemaining := stimRemaining - tunPulsedOptoWidth;  'duration of stimulus after first opto pulse
             if stimRemaining < 0 then  'if first pulse will extend beyond stimulus duration
-                tunOptoNPulses% := 0;  'turn off opto by using no pulses
+                'tunOptoNPulses% := 0;  'turn off opto by using no pulses, no, that is bad.  But it should quit, so...
+                tunDoOpto% := 0;  'this is how you turn off opto
                 'tell user they blew it
                 Message("The first opto pulse will extend beyond the stimulus!  Quitting!!!");
                 Quit%();
@@ -3801,8 +3802,8 @@ func Start%()
             printlog("Opto width is %d\n",tempSeqVarValue%);
             
             tempSeqVarValue := tunPulsedOptoIPI*1000/SequencerPeriodMS;  'do math in float
-            tempSeqVarValue% := tempSeqVarValue-3;  'now convert to integer, subtract three ticks for sequencer instructions
-            if tempSeqVarValue% < 0 then  'Do not give sequencer variable a negative duration, minimum IPI width is 4 ticks
+            tempSeqVarValue% := tempSeqVarValue-4;  'now convert to integer, subtract three ticks for sequencer instructions
+            if tempSeqVarValue% < 0 then  'Do not give sequencer variable a negative duration, minimum IPI width is 5 ticks
                 tempSeqVarValue% := 0;
             endif;
             SampleSeqVar(8,tempSeqVarValue%);  'set interpulse interval in clock ticks
