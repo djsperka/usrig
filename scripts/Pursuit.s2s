@@ -191,6 +191,7 @@ var VperDX;                                                 'Temporary value bec
 var VperDY;                                                 'etc.
 var Xr2;                                                    'R-squared value for the linear regression in X
 var Yr2;                                                    'etc.
+var calibrationCompleted%:=0;                               'Keep track of completion of calibration, don't calibrate twice in Stop%()
 
 
 GetPursuitScriptParameters();  'We will just get these right off the bat
@@ -930,6 +931,9 @@ end;
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Stop%()
+    var i%, j%;
+    var tempCount%;
+    var calCalcOK% := 1;  'Assume calibration calculation is OK to do (will only calculate if appropriate)
     
 	' Disable idle process func
 	ToolbarSet(0,"");
@@ -944,6 +948,67 @@ func Stop%()
     while ProgStatus(StimHandle%) > 0 do
         Yield();
     wend
+    
+    
+    'If stop was called midway through a calibration run, determine whether there is enough data to just make the calculation
+    'Right now the cutoff is *any* data for each point, but this could be changed to be a bit more restrictive
+    if purDoCalibrationRun% = 1 and calibrationCompleted% = 0 then
+        
+        'Calculate weighted mean of eye position
+        for i% := 0 to purCalibrationNUpDown%-1 do 'We get X position from up/down pursuits
+            tempCount% := 0;
+            if purXMeanIndices%[i%] = 0 then
+                message("There is an X direction for which no data was collected, we cannot do calibration calculations!");
+                calCalcOK% := 0;
+                break
+            endif;
+            for j% := 0 to (purXMeanIndices%[i%])-1 do
+                purEyeXPositionStatic[i%] += purXMean[i%][j%]*purXMeanNPoints%[i%][j%];  'Add in mean*count
+                tempCount% += purXMeanNPoints%[i%][j%];  'Keep track of count
+            next
+            purEyeXPositionStatic[i%] := purEyeXPositionStatic[i%]/tempCount%;  'Divide total by count to get weighted mean
+        next
+        for i% := 0 to purCalibrationNLeftRight%-1 do 'We get Y position from left/right pursuits
+            tempCount% := 0;
+            if purXMeanIndices%[i%] = 0 then
+                message("There is a Y direction for which no data was collected, we cannot do calibration calculations!");
+                calCalcOK% := 0;
+                break
+            endif;
+            for j% := 0 to (purYMeanIndices%[i%])-1 do
+                purEyeYPositionStatic[i%] += purYMean[i%][j%]*purYMeanNPoints%[i%][j%];  'Add in mean*count
+                tempCount% += purYMeanNPoints%[i%][j%];  'Keep track of count
+            next
+            purEyeYPositionStatic[i%] := purEyeYPositionStatic[i%]/tempCount%;  'Divide total by count to get weighted mean
+        next
+        
+        if calCalcOK% = 1 then
+            'Do linear regression, get offset and gain
+            linearRegression%(purFixptXPositionStatic[],purEyeXPositionStatic[],VperDX,XVoltOffset,Xr2);  'Regressing eye position (in Volts) against actual fixpt position (in Degrees)
+            linearRegression%(purFixptYPositionStatic[],purEyeYPositionStatic[],VperDY,YVoltOffset,Yr2);  'Return values are in Volts Per Degree (reciprocal of what we want) and Volts offset (what we want)
+            DegreesPerVoltX := 1/VperDX;
+            DegreesPerVoltY := 1/VperDY;
+            
+            'Check offset/gain for sanity
+            'Do what here?  Dunno.  It would be nice to have an r^2 value, though I don't really know what a bad one is.
+            'With the "good" data from Henry, the worst I've seen is 0.996!
+            
+            'Put values into registry
+            SaveEyetrackerCalibrationValues();
+            printlog("Eyetracker calibration values:\n");
+            printlog("DegreesPerVoltX: %f\n",DegreesPerVoltX);
+            printlog("DegreesPerVoltY: %f\n",DegreesPerVoltY);
+            printlog("XVoltOffset: %f\n",XVoltOffset);
+            printlog("YVoltOffset: %f\n",YVoltOffset);
+            printlog("R-squared is %f in X and %f in Y\n",Xr2,Yr2);
+            message("Eyetracker values saved to registry!");
+        endif;
+        
+    endif;
+    
+    
+    
+    
 
 	' Write parameter file
 	WriteParameterFile();
@@ -1330,6 +1395,8 @@ func IdleProcessing%()
                 printlog("YVoltOffset: %f\n",YVoltOffset);
                 printlog("R-squared is %f in X and %f in Y\n",Xr2,Yr2);
                 message("Eyetracker values saved to registry!");
+                
+                calibrationCompleted% := 1;  'don't re-do calibration in Stop%()
             endif
        
             ' We're all done
@@ -1493,6 +1560,15 @@ proc WriteParameterFile()
     Print("Screen width (mm)                        : %f\n", purScreenMMX);
     Print("Screen Height (mm)                       : %f\n", purScreenMMY);
     Print("Percent of screen used                   : %f\n", purPctScreenUsed);
+    
+    if purDoCalibrationRun% = 1 then
+        Print("Calibration Results\n");
+        Print("-------------------\n\n");
+        Print("Eye coil software gain, deg/V (X) : %f\n", DegreesPerVoltX);
+        Print("Eye coil software gain, deg/V (Y) : %f\n", DegreesPerVoltY);
+        Print("Eye coil offset, V (X)            : %f\n", XVoltOffset);
+        Print("Eye coil offset, V (Y)            : %f\n", YVoltOffset);
+    endif;
     
         
 	' close parfile
