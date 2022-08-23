@@ -74,7 +74,7 @@ var tInterTrialTime := 0;	' Time spent waiting between trials (i.e. after screen
 var tRise, tFall;
 var tKludge := 0.06;    ' Add to Fixation time to account for stim sequence. Ugly hack, admittedly, but one does what one must. 
 var purSkipTimeOut%;
-
+var eyeTrackerSampleRate := 1000;
     
 
 ' State Logic constants
@@ -131,7 +131,10 @@ var purRandomProgression%;
 var purAcquisitionTime;
 var purAcquisitionTO;
 var purPursuitWindowRadius;
-var purGracePeriod;    
+var purGracePeriod;  
+var purGracePeriodPoints%;     'How long is the grace period in points?   Used for excluding values in calibration
+var purLRPoints%;              'How long is a left-right pursuit in points?
+var purUDPoints%;              'How long is an up-down pursuit in points?
 var purAlwaysLookingInd%;
 var purAlwaysLooking%;
 var purScreenMMX;  'we will assume that the 0,0 coordinate of fixation is at the center of the screen, and calculate the screen size from there
@@ -142,6 +145,8 @@ var purScreenYDeg;
 var purMinInterveningRewards%;
 var purMaxInterveningRewards%;
 var purMeanInterveningRewardInterval;
+var purDoCalibrationRun%;
+var purCalibrationAdvance%;
 
 var purFixptMoving%;  'If 0, fixpt has not yet started moving.  If 1, fixpt is moving.  If 2, fixpt has stopped.  Note that currently 0/2 are not used differently, but maybe someday so I'm keeping it
 var purNValues%;
@@ -160,6 +165,32 @@ var purThisStartX;
 var purThisStartY;
 var purThisSpeed;
 var purThisDir;
+
+'Calibration variables
+var purCalibrationNLeftRight% := 5;   'Set number of L/R for calibration, 5 should be best (should be odd so there is one on the x=0 axis)
+var purCalibrationNUpDown% := 5;      'Set number of U/D for calibration, 5 should be best (should be odd so there is one on the y=0 axis)
+var purCalibrationNRepeats% := 3;     'Set number of repeats for calibration, not sure if 3 is best
+var purXMean[purCalibrationNUpDown%][purCalibrationNRepeats%*2];       'To hold the mean x value for each pursuit on the y-axis, both U-D and D-U
+var purYMean[purCalibrationNLeftRight%][purCalibrationNRepeats%*2];    'To hold the mean y value for each pursuit on the x-axis, both L-R and R-L
+var purXMeanNPoints%[purCalibrationNUpDown%][purCalibrationNRepeats%*2];       'To hold the number of points contributing to the means above
+var purYMeanNPoints%[purCalibrationNLeftRight%][purCalibrationNRepeats%*2];    'etc.
+var purFixptXPositionStatic[purCalibrationNUpDown%];        'Fixpt X location for y-axis pursuits, will be the "X" for linear regression
+var purFixptYPositionStatic[purCalibrationNLeftRight%];     'Fixpt Y Location for x-axis pursuits, will be the "X" for linear regression
+var purEyeXPositionStatic[purCalibrationNUpDown%];          'Eye X Location for y-axis pursuits, will be the "Y" for linear regression
+var purEyeYPositionStatic[purCalibrationNLeftRight%];       'Eye Y Location for x-axis pursuits, will be the "Y" for linear regression
+var purXorYIndex%;                                          'Index variable, for first dimension of purXMean[][], etc.
+var purXMeanIndices%[purCalibrationNUpDown%];               'Set of indices, keeps track of how many of each x position have been run, for second dimension of purXMean[][], etc.
+var purYMeanIndices%[purCalibrationNLeftRight%];            'etc., for Y
+var purDoXMeanThisTrial%;                                   'If 1, do xMean on this trial, if 0, do yMean
+var nValsDataReturned%;                                     'Need to know how many values we actually got, in case there's like a minor blip or something
+var purCalNStDev% := 1;                                     'Where (in standard deviations) do we set the upper cutoff for accepted data?
+var purMean;                                                'Temporary mean calculation
+var purStDev;                                               'Temporary standard deviation calculation
+var purNVal%;                                               'Temporary N Values kept
+var VperDX;                                                 'Temporary value because our regression returns the reciprocal of what we want
+var VperDY;                                                 'etc.
+var Xr2;                                                    'R-squared value for the linear regression in X
+var Yr2;                                                    'etc.
 
 
 GetPursuitScriptParameters();  'We will just get these right off the bat
@@ -207,6 +238,19 @@ ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this
 ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
 
 
+'If doing calibration...
+if purDoCalibrationRun% = 1 then
+
+    'Calculate number of sampled eye position points for L-R and U-D pursuits, as well as grace period
+    purLRPoints% := eyeTrackerSampleRate*2*purScreenXDeg*purPctScreenUsed/(100*purPursuitSpeed);  'in seconds
+    purUDPoints% := eyeTrackerSampleRate*2*purScreenYDeg*purPctScreenUsed/(100*purPursuitSpeed);
+    purGracePeriodPoints% := eyeTrackerSampleRate*purGracePeriod/purPursuitSpeed;
+
+    'Initialize variables to hold L-R and U-D eye position data
+    var YData[purLRPoints%];
+    var XData[purUDPoints%];
+
+endif;
 
 'If we are not linking the two 1401s together, just use the standard order of operations:
 '1) create sampling configuration, 2) Initialize windows, 3) Initialize/run toolbar.
@@ -271,30 +315,31 @@ func PursuitScriptDialog%()
     
         
     DlgCreate("Pursuit Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
-    DlgGroup("Stimulus", 1, 1, 50, 7);
+    DlgGroup("Stimulus", 1, 1, 50, 8);
     DlgInteger(1, "Number of L/R pursuits", 1, purMaxXYLocs%, 0, 2);
     DlgInteger(2, "Number of U/D pursuits", 1, purMaxXYLocs%, 0, 3);
     DlgInteger(3, "Number of repeats", 1, 100, 0, 4);
     DlgReal(4, "Speed, deg/s", 0.05, 100, 0, 5);
     DlgReal(5, "Intertrial Interval, s", 0.05, 100, 0, 6);
     DlgCheck(6, "Random Progression?", 0, 7);
+    DlgCheck(7, "Do Calibration Run?", 0, 8);
     
-    DlgGroup("Fixation", 1, 8, 50, 6);
-    DlgReal(7, "Fixation Acquisition Time, s", 0.1, 100, 0, 9);
-    DlgReal(8, "Acquisition Time Out, s", 0, 100, 0, 10);
-    DlgReal(9, "Pursuit Window, deg", 0.1, 100, 0, 11);
-    DlgReal(10, "Pursuit Start Grace Period, s", 0, 100, 0, 12);
-    DlgList(11, "Fixation Enforcement: ", fixtype$, 3, 32, 13);
+    DlgGroup("Fixation", 1, 9, 50, 6);
+    DlgReal(8, "Fixation Acquisition Time, s", 0.1, 100, 0, 10);
+    DlgReal(9, "Acquisition Time Out, s", 0, 100, 0, 11);
+    DlgReal(10, "Pursuit Window, deg", 0.1, 100, 0, 12);
+    DlgReal(11, "Pursuit Start Grace Period, s", 0, 100, 0, 13);
+    DlgList(12, "Fixation Enforcement: ", fixtype$, 3, 32, 14);
     
-    DlgGroup("Screen", 1, 14, 50, 4);
-    DlgReal(12, "Screen Width, mm", 10, 3000, 0, 15);
-    DlgReal(13, "Screen Height, mm", 10, 3000, 0, 16);
-    DlgReal(14, "Percent Screen Used, 0-100", 0.1, 100, 0, 17);
+    DlgGroup("Screen", 1, 15, 50, 4);
+    DlgReal(13, "Screen Width, mm", 10, 3000, 0, 16);
+    DlgReal(14, "Screen Height, mm", 10, 3000, 0, 17);
+    DlgReal(15, "Percent Screen Used, 0-100", 0.1, 100, 0, 18);
     
-    DlgGroup("Intervening Rewards", 1, 18, 50, 4);
-    DlgInteger(15, "Minimum Int Rewards", 0, 5, 0, 19);
-    DlgInteger(16, "Maximum Int Rewards (0 for none)", 0, purMaxIntRews%, 0, 20);
-    DlgReal(17, "Int Reward Interval, s", 0.1, 10, 0, 21);
+    DlgGroup("Intervening Rewards", 1, 19, 50, 4);
+    DlgInteger(16, "Minimum Int Rewards", 0, 5, 0, 20);
+    DlgInteger(17, "Maximum Int Rewards (0 for none)", 0, purMaxIntRews%, 0, 21);
+    DlgReal(18, "Int Reward Interval, s", 0.1, 10, 0, 22);
 
     'This can be done from Config, looks like it was carried over from FreeViewer, which has different, within-stimulus requirements, not necessary here.
     'DlgGroup("Reward", 1, 18, 50, 2);
@@ -302,7 +347,7 @@ func PursuitScriptDialog%()
      
     DlgAllow(0xffff, 0, PursuitScriptDialogChanged%);
 
-    i%:=DlgShow(purNLeftRight%,purNUpDown%,purNRepeats%,purPursuitSpeed,purITI,purRandomProgression%,
+    i%:=DlgShow(purNLeftRight%,purNUpDown%,purNRepeats%,purPursuitSpeed,purITI,purRandomProgression%,purDoCalibrationRun%,
     purAcquisitionTime,purAcquisitionTO,purPursuitWindowRadius,purGracePeriod,purAlwaysLookingInd%,
     purScreenMMX,purScreenMMY,purPctScreenUsed,purMinInterveningRewards%,purMaxInterveningRewards%,purMeanInterveningRewardInterval);
     
@@ -342,22 +387,41 @@ func PursuitScriptDialogChanged%(item%)
     
     'If always looking, turn off all fixation variables - this misses some values set later, don't want to mess with it for now, not important
     docase
-    case DlgValue(11) = 0 then
-        DlgEnable(0,7);
+    case DlgValue(12) = 0 then
         DlgEnable(0,8);
         DlgEnable(0,9);
         DlgEnable(0,10);
-    case DlgValue(11) = 1 then
-        DlgEnable(1,7);
-        DlgEnable(1,8);
-        DlgEnable(1,9);
-        DlgEnable(0,10);
-    case DlgValue(11) = 2 then
-        DlgEnable(1,7);
+        DlgEnable(0,11);
+    case DlgValue(12) = 1 then
         DlgEnable(1,8);
         DlgEnable(1,9);
         DlgEnable(1,10);
+        DlgEnable(0,11);
+    case DlgValue(12) = 2 then
+        DlgEnable(1,8);
+        DlgEnable(1,9);
+        DlgEnable(1,10);
+        DlgEnable(1,11);
     endcase;
+    
+    'If doing calibration, set values for nX, nY, nRepeats
+    if item% = 0 or item% = 7 then  'only check on first open, or if checkbox changes
+        if DlgValue(7) = 1 then
+            DlgEnable(0,1);  'Disable number of L/R
+            DlgEnable(0,2);  'Disable number of U/D
+            DlgEnable(0,3);  'Disable number of repeats
+            DlgValue(1,purCalibrationNLeftRight%);   'Set number of L/R to default value for calibration
+            DlgValue(2,purCalibrationNUpDown%);      'Set number of U/D to default value for calibration
+            DlgValue(3,purCalibrationNRepeats%);     'Set number of repeats to default value for calibration
+        else
+            DlgEnable(1,1);  'Enable number of L/R
+            DlgEnable(1,2);  'Enable number of U/D
+            DlgEnable(1,3);  'Enable number of repeats
+            DlgValue(1,purNLeftRight%);   'Reset number of L/R to most recent registry value
+            DlgValue(2,purNUpDown%);      'Reset number of U/D to most recent registry value
+            DlgValue(3,purNRepeats%);     'Reset number of repeats to most recent registry value
+        endif
+    endif
     
     return 1;
 end
@@ -384,6 +448,8 @@ proc GetPursuitScriptParameters()
     purMinInterveningRewards% := GetIntRegistryValue%(key$, "MinInterveningRewards", purMinInterveningRewards%);
     purMaxInterveningRewards% := GetIntRegistryValue%(key$, "MaxInterveningRewards", purMaxInterveningRewards%);
     purMeanInterveningRewardInterval := GetFloatRegistryValue(key$, "MeanInterveningRewardInterval", purMeanInterveningRewardInterval);
+    purDoCalibrationRun% := GetIntRegistryValue%(key$, "DoCalibrationRun", purDoCalibrationRun%);
+    
     
     
 end;
@@ -392,9 +458,13 @@ proc SavePursuitScriptParameters()
 	var key$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Pursuit";   
     
-    SetIntRegistryValue(key$, "NLeftRight", purNLeftRight%);
-    SetIntRegistryValue(key$, "NUpDown", purNUpDown%);
-    SetIntRegistryValue(key$, "NRepeats", purNRepeats%);
+    'If we are doing a calibration run, do not save "hardcoded" calibration-run values to registry,
+    'we can get these saved values back for non-calibration runs
+    if purDoCalibrationRun% = 0 then
+        SetIntRegistryValue(key$, "NLeftRight", purNLeftRight%);
+        SetIntRegistryValue(key$, "NUpDown", purNUpDown%);
+        SetIntRegistryValue(key$, "NRepeats", purNRepeats%);
+    endif;
     SetFloatRegistryValue(key$, "PursuitSpeed", purPursuitSpeed);
     SetFloatRegistryValue(key$, "ITI", purITI);
     SetIntRegistryValue(key$, "RandomProgression", purRandomProgression%);
@@ -409,6 +479,7 @@ proc SavePursuitScriptParameters()
     SetIntRegistryValue(key$, "MinInterveningRewards", purMinInterveningRewards%);
     SetIntRegistryValue(key$, "MaxInterveningRewards", purMaxInterveningRewards%);
     SetFloatRegistryValue(key$, "MeanInterveningRewardInterval", purMeanInterveningRewardInterval);
+    SetIntRegistryValue(key$, "DoCalibrationRun", purDoCalibrationRun%);
   
 end;
 
@@ -482,9 +553,9 @@ proc CreateSampleConfiguration()
         
     endif
     
-    SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+    SampleWaveform(XChannel%, GetEyeXPort%(), eyeTrackerSampleRate);
 	SampleTitle$(XChannel%,EyeXPortLabel$);
-	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+	SampleWaveform(YChannel%, GetEyeYPort%(), eyeTrackerSampleRate);
 	SampleTitle$(YChannel%,EyeYPortLabel$);
     
     if UtilityPort% > -1 then
@@ -675,8 +746,14 @@ func Start%()
     
     xmax := purScreenXDeg*purPctScreenUsed/100;  'Get x/y screen extent (from center) in degrees
     ymax := purScreenYDeg*purPctScreenUsed/100;
-    GetRepeatedParameterProgression%(purNUpDown%, 1, xlocs[], trash%[], xmax, -xmax, 0, 0);  'Get locations of x/y starting points, spread across usable screen
-    GetRepeatedParameterProgression%(purNLeftRight%, 1, ylocs[], trash%[], ymax, -ymax, 0, 0);
+    GetRepeatedParameterProgression%(purNUpDown%, 1, xlocs[], trash%[], -xmax, xmax, 0, 0);  'Get locations of x/y starting points, spread across usable screen
+    GetRepeatedParameterProgression%(purNLeftRight%, 1, ylocs[], trash%[], -ymax, ymax, 0, 0);
+    
+    'Repeat grab of X/Y positions if we are doing a calibration run, these (precisely-sized) variables will persist outside the Start%() function
+    if purDoCalibrationRun% = 1 then
+        GetRepeatedParameterProgression%(purNUpDown%, 1,purFixptXPositionStatic[], trash%[], -xmax, xmax, 0, 0);  'Get locations of x/y starting points, spread across usable screen
+        GetRepeatedParameterProgression%(purNLeftRight%, 1, purFixptYPositionStatic[], trash%[], -ymax, ymax, 0, 0);
+    endif
     
     count% := 0;
     for j% := 1 to purNRepeats% do
@@ -700,6 +777,7 @@ func Start%()
             purPursuitDur[count%] := 2*ymax/purPursuitSpeed;  'in seconds
             count% += 1;
         next
+        
         'do right-to-left
         for i% := 0 to purNLeftRight%-1 do
             purStartX[count%] := xmax;
@@ -923,11 +1001,12 @@ end;
 
 func IdleProcessing%()
 	var iStatus% := 1;	
+    var i%, j%, tempCount%;
     
 	tNow := View(DataWindow%).MaxTime();
 
-	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
-	yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+	xEye := (View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)-XVoltOffset)*DegreesPerVoltX;  'First subtract offset, then multiply by degPerVolt
+	yEye := (View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)-YVoltOffset)*DegreesPerVoltY;
 
 	' Don't update display every time....
 	if tNow-tLastFixPtDisplayUpdate > .005 then
@@ -973,6 +1052,16 @@ func IdleProcessing%()
             purThisStartY := purStartY[purTrialOrder%[trialInd%]];
             purThisSpeed := purPursuitSpeed;  'always the same right now, but will need to be updated here if speed changes by trial
             purThisDir := purDirection[purTrialOrder%[trialInd%]];
+            
+            if purDoCalibrationRun% = 1 then
+                if purThisDir = 0 or purThisDir = 180 then  'this is L-R
+                    purDoXMeanThisTrial% := 0;  'if pursuit is L-R, we want to grab Y position
+                    purXorYIndex% := FindFirstFloat%(purFixptYPositionStatic[],purThisStartY);
+                else
+                    purDoXMeanThisTrial% := 1;  'if pursuit is U-D, we want to grab X position
+                    purXorYIndex% := FindFirstFloat%(purFixptXPositionStatic[],purThisStartX);
+                endif
+            endif
             
             LogStatus("RequestFixpt", "Request fixpt");
             SafeSampleKey("F");
@@ -1156,6 +1245,33 @@ func IdleProcessing%()
             TotalRewards% += 1;
             purRewardDurSec += 0.020;  'add 20 ms for "safety", only do this if reward given
         endif
+        
+        'DURING trial's final reward do calculations for calibration (since stateWaitReward repeats until the reward is over, do not do it there)
+        if purDoCalibrationRun% = 1 then
+            if purDoXMeanThisTrial% = 1 then  'do X
+                nValsDataReturned% := ChanData(XChannel%,XData[],tPursuitStart,tPursuitStart+purPursuitDur[purTrialOrder%[trialInd%]]);  'grab eye X position values
+                GetStationaryAxisMean%(XData[],purGracePeriodPoints%,purCalNStDev%,purMean,purStDev,purNVal%);  'Calculate no-outlier mean, stdev, NValsKept
+                'Decide if data should be kept - not sure what to do here (if anything??)
+                
+                
+                'If keeping data, enter mean and NVals into correct variables, increment index
+                purXMean[purXorYIndex%][purXMeanIndices%[purXorYIndex%]] := purMean;  'put in mean
+                purXMeanNPoints%[purXorYIndex%][purXMeanIndices%[purXorYIndex%]] := purNVal%;  'put in NVal%
+                purXMeanIndices%[purXorYIndex%] += 1;  'increment index, as we've filled this one
+                purCalibrationAdvance% := 1;
+            else 'do Y
+                nValsDataReturned% := ChanData(YChannel%,YData[],tPursuitStart,tPursuitStart+purPursuitDur[purTrialOrder%[trialInd%]]);  'grab eye Y position values
+                GetStationaryAxisMean%(YData[],purGracePeriodPoints%,purCalNStDev%,purMean,purStDev,purNVal%);  'Calculate no-outlier mean, stdev, NValsKept
+                'Decide if data should be kept - not sure what to do here (if anything??)
+                
+                
+                'If keeping data, enter mean and NVals into correct variables, increment index
+                purYMean[purXorYIndex%][purYMeanIndices%[purXorYIndex%]] := purMean;  'put in mean
+                purYMeanNPoints%[purXorYIndex%][purYMeanIndices%[purXorYIndex%]] := purNVal%;  'put in NVal%
+                purYMeanIndices%[purXorYIndex%] += 1;  'increment index, as we've filled this one
+                purCalibrationAdvance% := 1;
+            endif
+        endif
         ChangeStateTo(stateWaitReward%,tNow);       
         
         
@@ -1170,7 +1286,52 @@ func IdleProcessing%()
         nTrialsCompleted% += 1; 
         printlog("Number of stimuli completed is %d\n",nTrialsCompleted%);
         ToolbarText(str$(nTrialsCompleted%) + "/" + str$(purNValues%) + " stimuli completed.");
-        if nTrialsCompleted% = purNValues% then
+        docase
+        case purDoCalibrationRun% = 1 and purCalibrationAdvance% = 0 then  'if we are doing calibration, and we reject this pursuit, repeat it
+            LogStatus("TrialCompleted", "Poor calibration pursuit, NOT advancing stimulus, repeating");
+            ChangeStateTo(stateInterTrialInterval%, tStateStart); 
+        case nTrialsCompleted% = purNValues% then
+            'If it's a calibration run, make final calculations and put values into the registry
+            if purDoCalibrationRun% = 1 then
+                'Calculate weighted mean of eye position
+                for i% := 0 to purCalibrationNUpDown%-1 do 'We get X position from up/down pursuits
+                    tempCount% := 0;
+                    for j% := 0 to (purCalibrationNRepeats%*2)-1 do
+                        purEyeXPositionStatic[i%] += purXMean[i%][j%]*purXMeanNPoints%[i%][j%];  'Add in mean*count
+                        tempCount% += purXMeanNPoints%[i%][j%];  'Keep track of count
+                    next
+                    purEyeXPositionStatic[i%] := purEyeXPositionStatic[i%]/tempCount%;  'Divide total by count to get weighted mean
+                next
+                for i% := 0 to purCalibrationNLeftRight%-1 do 'We get Y position from left/right pursuits
+                    tempCount% := 0;
+                    for j% := 0 to (purCalibrationNRepeats%*2)-1 do
+                        purEyeYPositionStatic[i%] += purYMean[i%][j%]*purYMeanNPoints%[i%][j%];  'Add in mean*count
+                        tempCount% += purYMeanNPoints%[i%][j%];  'Keep track of count
+                    next
+                    purEyeYPositionStatic[i%] := purEyeYPositionStatic[i%]/tempCount%;  'Divide total by count to get weighted mean
+                next
+                
+                'Do linear regression, get offset and gain
+                linearRegression%(purFixptXPositionStatic[],purEyeXPositionStatic[],VperDX,XVoltOffset,Xr2);  'Regressing eye position (in Volts) against actual fixpt position (in Degrees)
+                linearRegression%(purFixptYPositionStatic[],purEyeYPositionStatic[],VperDY,YVoltOffset,Yr2);  'Return values are in Volts Per Degree (reciprocal of what we want) and Volts offset (what we want)
+                DegreesPerVoltX := 1/VperDX;
+                DegreesPerVoltY := 1/VperDY;
+                
+                'Check offset/gain for sanity
+                'Do what here?  Dunno.  It would be nice to have an r^2 value, though I don't really know what a bad one is.
+                'With the "good" data from Henry, the worst I've seen is 0.996!
+                
+                'Put values into registry
+                SaveEyetrackerCalibrationValues();
+                printlog("Eyetracker calibration values:\n");
+                printlog("DegreesPerVoltX: %f\n",DegreesPerVoltX);
+                printlog("DegreesPerVoltY: %f\n",DegreesPerVoltY);
+                printlog("XVoltOffset: %f\n",XVoltOffset);
+                printlog("YVoltOffset: %f\n",YVoltOffset);
+                printlog("R-squared is %f in X and %f in Y\n",Xr2,Yr2);
+                message("Eyetracker values saved to registry!");
+            endif
+       
             ' We're all done
             LogStatus("TrialCompleted", "All stimuli complete!");
             Stop%();
@@ -1181,7 +1342,7 @@ func IdleProcessing%()
             trialInd% += 1;
             LogStatus("TrialCompleted", "Advancing stimulus");
             ChangeStateTo(stateInterTrialInterval%, tStateStart); 
-        endif   
+        endcase
              
        
     case iState% = stateInterTrialInterval% then 
@@ -1530,4 +1691,159 @@ func CalcIntermediateRewardTimes%(&times[],mymin%,mymax%,mymean,mystart,myend)
     endif
     
     return nRew%;
+end
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Calculation to get mean value while hopefully ignoring outliers
+func GetStationaryAxisMean%(v1[],nSkip%,nStdev,&m,&stdev,&nVal%)
+    
+    'This function is designed to mimic one step in the Pursuit testing in Matlab.  The idea here is to get
+    'a mean value for the stationary axis of the eye while ignoring outliers (typically small saccades) that
+    'can drag the mean in one direction.  Since the eye position in the stationary axis is relatively stable
+    'we can use a relatively low number of more reliable measurements to get an accurate reading.  At least,
+    'in principle.  The whole array of stationary-axis voltage values should be in V1[].  NSKIP% is the
+    'number of points to skip at the beginning of the pursuit, should be based on the catch-up saccade grace
+    'period.  NSTDEV adjusts the positioning of the included-data cutoff.  NSTDEV = 1 has been a good value 
+    'in the Matlab testing, lower values will be more restrictive, higher values more permissive.  Updates 
+    'arguments for the mean (M) and standard deviation (STDEV) of the restricted data, as well as the number
+    'of values retained inside the included-data cutoff (NVAL%).
+    
+    var v1Len%;
+    v1Len% := Len(v1[]);
+    
+    var keep[v1Len%-nSkip%];  'Spike2 now allows variables to be used in array size declarations, thankfully
+    var i%;
+    'var s1;  'Timing variables, commented out but we may test on real data
+    'var s2;  
+    
+    nVal% := 0;
+    
+    ArrSum(v1[nSkip%:(v1Len%-nSkip%)],m,stdev);  'Get mean, stdev of V1[], skipping requested values
+    
+    'Print logging commented out, may use for test on real data
+    'printlog("V1 mean: %f, V1 std: %f\n",m,stdev);
+    
+    'Loop through each non-skipped value in V1[], retain value if it lies between mean +/- stdev*factor
+    's1 := Seconds();
+    for i% := nSkip% to v1Len%-1 do
+        if v1[i%] > m-(stdev*nStdev) and v1[i%] < m+(stdev*nStdev) then
+            keep[nVal%] := v1[i%];
+            nVal% += 1;
+        endif;
+    next
+    's2 := Seconds();
+    
+    ArrSum(keep[0:nVal%],m,stdev);  'Get mean, stdev of retained values
+    
+    'Print logging commented out, may use for test on real data
+    'printlog("New mean: %f, std: %f, time required is %f\n",m,stdev,s2-s1);
+    'printlog("Max value in KEEP is %f, min value is %f\n",keep[max(keep)],keep[min(keep)]);
+    
+    return 1;    
+    
+end
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Calculate linear regression coefficients!
+func linearRegression%(x[],y[],&slope,&intercept,&r2)
+    'A function to calculate a simple linear regression
+    'Enter a vector of X values and a vector of Y values,
+    'Returns SLOPE and INTERCEPT and R2
+    
+    'Much shorter version does not calculate r-squared
+'    var xM;
+'    var yM;
+'    var xSS;
+'    var xySS;
+'    
+'    ArrSum(x[],xM);                'Get x mean in xM
+'    ArrSum(y[],yM);                'Get y mean in yM
+'    ArrSub(x[],xM);                'Subtract mean from x[]
+'    ArrSub(y[],yM);                'Subtract mean from y[]
+'    ArrMul(y[],x[]);               'Get product of x difference and y difference, place in y[]
+'    ArrMul(x[],x[]);               'Get square of x difference, place in x[]
+'    xSS := ArrSum(x[]);            'Get variance * N-1
+'    xySS := ArrSum(y[]);           'Get covariance * N-1
+'    slope := xySS/xSS;             'Regression slope is covariance/variance
+'    intercept := yM - (slope*xM);  'Intercept is offset required to make y equal to x*slope
+'    
+'    
+'    return 1;
+    
+    
+    'Much longer version calculates r-squared
+    var xM;
+    var yM;
+    var xSS;
+    var xySS;
+    var xyS;
+    var n;
+    var n%;
+    n := Len(x[]);                 'Get number of elements
+    n% := n;
+    var xsq[n%];
+    var ysq[n%];
+    var xy[n%];
+    var xs;
+    var ys;
+    var a;
+    var b, br;
+    var c, cr;
+    
+    xs := ArrSum(x[],xM);          'Get x mean in xM, return x sum
+    ys := ArrSum(y[],yM);          'Get y mean in yM, return y sum
+    ArrConst(xsq[],x[]);           'Get copy of x
+    ArrConst(ysq[],y[]);           'Get copy of y
+    ArrMul(xsq[],xsq[]);           'Get point-wise square of x
+    ArrMul(ysq[],ysq[]);           'Get point-wise square of y
+    ArrConst(xy[],x[]);            'Get another copy of x
+    ArrMul(xy[],y[]);              'Get point-wise x[]*y[];
+    xyS := ArrSum(xy[]);           'Get sum of xy
+    ArrSub(x[],xM);                'Subtract mean from X
+    ArrSub(y[],yM);                'Subtract mean from Y
+    ArrMul(y[],x[]);               'Get product of x difference and y difference, place in y[]
+    ArrMul(x[],x[]);               'Get square of x difference, place in x[]
+    xSS := ArrSum(x[]);            'Get variance * N-1
+    xySS := ArrSum(y[]);           'Get covariance * N-1
+    
+    a := (n*xyS)-(xs*ys);          'Get a (whatever it is...)
+    b := (n*ArrSum(xsq[]))-(xs*xs);'Get b (whatever it is...)
+    br := SqRt(b);                 'Get square root of b
+    c := (n*ArrSum(ysq[]))-(ys*ys);'Get c (whatever it is...)
+    cr := SqRt(c);                 'Get square root of c
+    
+    slope := xySS/xSS;             'Regression slope is covariance/variance
+    intercept := yM - (slope*xM);  'Intercept is offset required to make y equal to x*slope
+    r2 := a/(br*cr);               'Get r
+    r2 := r2*r2;                   'Get r-squared
+    
+    return 1;
+    
+end
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Because there's no FIND function in Spike2 - this does appear to work with floats (I do worry about float-float equality)
+func FindFirstFloat%(arr[],value);
+    'The simple idea here is to return the index of the first value in ARR[] that is equal to VALUE.
+    'Because sometimes you need to do this.
+    'Jeez.
+    
+    var i%;
+    var ret% := -1;
+    for i% := 0 to Len(arr[])-1 do
+        if arr[i%] = value then
+            ret% := i%;
+            break
+        endif
+    next
+    
+    if ret% = -1 then
+        message("Warning, value not found in FindFirstFloat, expect imminent indexing crash!");
+    endif
+    
+    return ret%;
 end

@@ -12,6 +12,8 @@
 var DistanceToScreenMM$;		' Distance to screen in MM 
 var DegreesPerVoltX;			' Conversion factor from ADC to visual degrees
 var DegreesPerVoltY;			' Conversion factor from ADC to visual degrees
+var XVoltOffset;                ' With the advent of "pursuit" calibration, we will calculate an offset as well as a gain, this should be quite small
+var YVoltOffset;                ' etc.
 var CalibrationOffsetDegrees;   ' Calibration dots are this many degrees offset in x,y from (0,0)
 var CalibrationComPort%;        ' COM port to use for calibration (connection to ASL 'Serial Out')
 var CalibrationConfigFile$;     ' path to xml file for calibration config. Can be same as regular config file for eye tracker.
@@ -186,6 +188,15 @@ func GetDegreesPerVoltY()
     return DegreesPerVoltY;
 end
 
+func GetXVoltOffset()
+    return XVoltOffset;
+end
+
+func GetYVoltOffset()
+    return YVoltOffset;
+end
+
+
 func GetCalibrationOffsetDegrees()
     return CalibrationOffsetDegrees;
 end
@@ -359,6 +370,7 @@ func DAQParametersDialog%()
     var JuicerIndexDecremented%;
     var fiveInts%[5];  'There can be a maximum of 20 arguments fed to DlgShow, we need to make some space
     var nineInts%[9];  'MOAR SPACE!!!
+    var fourReals[4];  'EVAN MOAR SPACE!!!
     
     'This little bit allows us to disallow any values other than legal juicer values
     'without changing the rest of the code
@@ -392,37 +404,11 @@ func DAQParametersDialog%()
     nineInts%[7] := TemperaturePort%;
     nineInts%[8] := UtilityPort%;
     
-    
-'	DlgCreate("DAQ parameters");
-'	DlgInteger(1, "Number of Electrodes:", 1, 32, 0, 0, 1);
-'	DlgReal(2, "Degrees/Volt (X):", 0, 100);
-'	DlgReal(3, "Degrees/Volt (Y):", 0, 100);
-'    DlgReal(4, "Calibration offset(deg)", 0.1, 100);
-'    DlgInteger(5, "Calibration COM port", 1, 16);
-'	DlgInteger(6, "Eye Coil Sampling Freq (Hz):", 1, 20000);
-'    DlgReal(7, "Reward Prob (0-1):", 0, 1);
-'	DlgInteger(8, "Juice per reward:", 0, 10, 0, 0, 1);
-'    DlgInteger(9, "Juice Reward (default) ms:", 0, 1000);
-'    DlgInteger(10, "Juice Reward (min) ms:", 0, 1000);
-'    DlgInteger(11, "Juice Reward (max) ms:", 0, 1000);
-'    DlgList(12, "Juicer Open State:",juicerList2$,2);
-'    DlgInteger(13, "Eye X Port", -1, 31);
-'    DlgInteger(14, "Eye Y Port", -1, 31);
-'    DlgInteger(15, "Joystick Port", -1, 31);
-'    DlgCheck(16, "Use Remote Stimulus");
-'    DlgString(17, "Remote ip", 21);
-'    DlgString(18, "Remote port", 5);
-'    DlgString(19, "Slave ip", 21);
-'    DlgString(20, "Slave port", 5);
-'    DlgList(21, "Display Hardware:",displayHardwareList$,2);
-'    DlgCheck(22, "Create Eyetracker Output File");
-'    DlgAllow(0xffff, 0, DAQParametersDialogChanged%);
-'	iReturn% := DlgShow(NumberOfElectrodes%, DegreesPerVoltX, DegreesPerVoltY, 
-'                        CalibrationOffsetDegrees, CalibrationComPort%,
-'                        EyeCoilSamplingFrequency%, pReward, fiveInts%[],
-'                        EyeXPort%, EyeYPort%, JoystickPort%, 
-'                        UseRemoteStimulus%, RemoteStimulusIP$, RemoteStimulusPort$, SlaveStimulusIP$, 
-'                        SlaveStimulusPort$,DisplayHardwareIndex%,RecordEyeTrackerOutputFile%);
+    'Fill fourReals
+    fourReals[0] := DegreesPerVoltX;
+    fourReals[1] := DegreesPerVoltY;
+    fourReals[2] := XVoltOffset;
+    fourReals[3] := YVoltOffset;
     
     DlgCreate("DAQ parameters");
     DlgList(1, "Display Hardware:",displayHardwareList$,2,22,1);
@@ -431,42 +417,47 @@ func DAQParametersDialog%()
 	DlgInteger(2, "Number of Electrodes:",1,32,28,3,1);
     
     DlgGroup("Eyetracker",1,4,40,7);
-    DlgReal(3, "Degrees/Volt (X):",0,100,27,5);
-	DlgReal(4, "Degrees/Volt (Y):",0,100,27,6);
-    DlgReal(5, "Calibration offset(deg)",0.1,100,27,7);
-    DlgInteger(6, "Calibration COM port",1,16,28,8);
-    DlgInteger(7, "Eye Coil Sampling Freq (Hz):",1,20000,28,9);
-    DlgCheck(8, "Create Eyetracker Output File",2,10);
+    DlgReal(3,7,0,10,19,5);  DlgText("Degrees/Volt (X):",2,5);  
+    DlgReal(4,7,0,10,33,5);  DlgText("(Y):",28,5); 
+    DlgReal(5,7,-5,5,19,6);  DlgText("Offset (Volts) (X):",2,6);  
+    DlgReal(6,7,-5,5,33,6);  DlgText("(Y):",28,6); 
+	'DlgReal(3, "Degrees/Volt (X):",0,100,27,5);
+    'DlgReal(4, "Degrees/Volt (Y):",0,100,27,6);
+    
+    DlgReal(7, "Calibration offset(deg)",0.1,100,27,7);
+    DlgInteger(8, "Calibration COM port",1,16,28,8);
+    DlgInteger(9, "Eye Coil Sampling Freq (Hz):",1,20000,28,9);
+    DlgCheck(10, "Create Eyetracker Output File",2,10);
     
     DlgGroup("Reward",1,11,40,7);
-    DlgReal(9, "Reward Prob (0-1):",0,1,27,12);
-	DlgInteger(10, "Juice per reward:",0,10,28,13,1);
-    DlgInteger(11, "Juice Reward (default) ms:",0,1000,28,14);
-    DlgInteger(12, "Juice Reward (min) ms:",0,1000,28,15);
-    DlgInteger(13, "Juice Reward (max) ms:",0,1000,28,16);
-    DlgList(14, "Juicer Open State:",juicerList2$,2,22,17);
+    DlgReal(11, "Reward Prob (0-1):",0,1,27,12);
+	DlgInteger(12, "Juice per reward:",0,10,28,13,1);
+    DlgInteger(13, "Juice Reward (default) ms:",0,1000,28,14);
+    DlgInteger(14, "Juice Reward (min) ms:",0,1000,28,15);
+    DlgInteger(15, "Juice Reward (max) ms:",0,1000,28,16);
+    DlgList(16, "Juicer Open State:",juicerList2$,2,22,17);
     
     DlgGroup("Analog Inputs, will not use if value is -1",42,1,38,11);
-    DlgInteger(15,8,-1,31,71,2);  DlgText("EEG Port",43,2);
-    DlgInteger(16,8,-1,31,71,3);  DlgText("Eye X Port",43,3);
-    DlgInteger(17,8,-1,31,71,4);  DlgText("Eye Y Port",43,4);
-    DlgInteger(18,8,-1,31,71,5);  DlgText("Joystick Port",43,5);
-    DlgInteger(19,8,-1,31,71,6);  DlgText("Opto Eff Copy Port",43,6);
-    DlgInteger(20,8,-1,31,71,7);  DlgText("Stim Eff Copy Port",43,7);
-    DlgInteger(21,8,-1,31,71,8);  DlgText("Photodiode Port",43,8);
-    DlgInteger(22,8,-1,31,71,9);  DlgText("Temperature Port",43,9);
-    DlgInteger(23,8,-1,31,71,10); DlgText("Utility Port",43,10);
-    DlgString(24,10,6,"",69,11);   DlgText("Utility Port Label",43,11);
+    DlgInteger(17,8,-1,31,71,2);  DlgText("EEG Port",43,2);
+    DlgInteger(18,8,-1,31,71,3);  DlgText("Eye X Port",43,3);
+    DlgInteger(19,8,-1,31,71,4);  DlgText("Eye Y Port",43,4);
+    DlgInteger(20,8,-1,31,71,5);  DlgText("Joystick Port",43,5);
+    DlgInteger(21,8,-1,31,71,6);  DlgText("Opto Eff Copy Port",43,6);
+    DlgInteger(22,8,-1,31,71,7);  DlgText("Stim Eff Copy Port",43,7);
+    DlgInteger(23,8,-1,31,71,8);  DlgText("Photodiode Port",43,8);
+    DlgInteger(24,8,-1,31,71,9);  DlgText("Temperature Port",43,9);
+    DlgInteger(25,8,-1,31,71,10); DlgText("Utility Port",43,10);
+    DlgString(26,10,6,"",69,11);   DlgText("Utility Port Label",43,11);
     
     DlgGroup("Remote Stimulus",42,12,38,6);
-    DlgCheck(25, "Use Remote Stimulus",43,13);
-    DlgString(26,21,15,"",58,14);   DlgText("Remote IP",43,14);
-    DlgString(27,6,5,"",73,15);   DlgText("Remote Port",43,15);
-    DlgString(28,21,15,"",58,16);   DlgText("Secondary IP",43,16);
-    DlgString(29,6,5,"",73,17);   DlgText("Secondary Port",43,17);
+    DlgCheck(27, "Use Remote Stimulus",43,13);
+    DlgString(28,21,15,"",58,14);   DlgText("Remote IP",43,14);
+    DlgString(29,6,5,"",73,15);   DlgText("Remote Port",43,15);
+    DlgString(30,21,15,"",58,16);   DlgText("Secondary IP",43,16);
+    DlgString(31,6,5,"",73,17);   DlgText("Secondary Port",43,17);
     
     DlgAllow(0xffff, 0, DAQParametersDialogChanged%);
-    iReturn% := DlgShow(DisplayHardwareIndex%,NumberOfElectrodes%,DegreesPerVoltX,DegreesPerVoltY,CalibrationOffsetDegrees,
+    iReturn% := DlgShow(DisplayHardwareIndex%,NumberOfElectrodes%,fourReals[],CalibrationOffsetDegrees,
         CalibrationComPort%,EyeCoilSamplingFrequency%,RecordEyeTrackerOutputFile%,pReward,fiveInts%[],nineInts%[],
         UtilityPortLabel$,UseRemoteStimulus%,RemoteStimulusIP$,RemoteStimulusPort$,SlaveStimulusIP$,SlaveStimulusPort$);
     
@@ -498,6 +489,12 @@ func DAQParametersDialog%()
         PhotodiodePort% := nineInts%[6];
         TemperaturePort% := nineInts%[7];
         UtilityPort% := nineInts%[8];
+        
+        'Unpack fourReals
+        DegreesPerVoltX := fourReals[0];
+        DegreesPerVoltY := fourReals[1];
+        XVoltOffset := fourReals[2];
+        YVoltOffset := fourReals[3];
         
 		SaveDAQParameters();
 	endif
@@ -535,8 +532,11 @@ proc GetDAQParameters()
     var globalKey$;
 	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
     globalKey$ := GetRigName$() +  "\\GlobalDAQ";  'Do not use "DAQ" as "global" key, because there is old registry info in this location, will interfere with "seeding" new globals with config-specific values
-    DegreesPerVoltX := GetFloatRegistryValue(key$, "DegreesPerVoltX", 0.0);
-    DegreesPerVoltY := GetFloatRegistryValue(key$, "DegreesPerVoltY", 0.0);
+    DegreesPerVoltX := GetFloatRegistryValue(key$, "DegreesPerVoltX", DegreesPerVoltX);
+    DegreesPerVoltY := GetFloatRegistryValue(key$, "DegreesPerVoltY", DegreesPerVoltY);
+    XVoltOffset := GetFloatRegistryValue(key$, "XVoltOffset", XVoltOffset);
+    YVoltOffset := GetFloatRegistryValue(key$, "YVoltOffset", YVoltOffset);
+    
     CalibrationOffsetDegrees := GetFloatRegistryValue(key$, "CalibrationOffsetDegrees", 8);
     CalibrationComPort% := GetIntRegistryValue%(globalKey$, "CalibrationComPort", GetIntRegistryValue%(key$, "CalibrationComPort", 2));    'We get the value from the global key, if it does not exist, the default is the value from the 
                                                                                                                                            'config-specific key, if THAT does not exist, default as default
@@ -580,6 +580,8 @@ proc SaveDAQParameters()
     globalKey$ := GetRigName$() +  "\\GlobalDAQ";
     SetFloatRegistryValue(key$, "DegreesPerVoltX", DegreesPerVoltX);
 	SetFloatRegistryValue(key$, "DegreesPerVoltY", DegreesPerVoltY);
+    SetFloatRegistryValue(key$, "XVoltOffset", XVoltOffset);
+    SetFloatRegistryValue(key$, "YVoltOffset", YVoltOffset);
     SetFloatRegistryValue(key$, "CalibrationOffsetDegrees", CalibrationOffsetDegrees);
     SetIntRegistryValue(globalKey$, "CalibrationComPort", CalibrationComPort%);
     SetStringRegistryValue(key$, "CalibrationConfigFile", CalibrationConfigFile$);
@@ -611,6 +613,30 @@ proc SaveDAQParameters()
     
     SaveElectrodeParameters();
 end;
+
+
+proc GetEyetrackerCalibrationValues()
+    'There is probably no reason to do this separate from DAQ parameters (could just get ALL values - none should be changing) but maybe it's smarter?
+	var key$;
+	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
+    DegreesPerVoltX := GetFloatRegistryValue(key$, "DegreesPerVoltX", DegreesPerVoltX);
+    DegreesPerVoltY := GetFloatRegistryValue(key$, "DegreesPerVoltY", DegreesPerVoltY);
+    XVoltOffset := GetFloatRegistryValue(key$, "XVoltOffset", XVoltOffset);
+    YVoltOffset := GetFloatRegistryValue(key$, "YVoltOffset", YVoltOffset);
+end;
+
+
+proc SaveEyetrackerCalibrationValues()
+    'There is probably no reason to do this separate from DAQ parameters (could just save ALL values - none should be changing) but maybe it's smarter?
+    var key$;
+	key$ := GetRigName$() + "\\" + GetCurrentConfiguration$() + "\\DAQ";
+    SetFloatRegistryValue(key$, "DegreesPerVoltX", DegreesPerVoltX);
+	SetFloatRegistryValue(key$, "DegreesPerVoltY", DegreesPerVoltY);
+    SetFloatRegistryValue(key$, "XVoltOffset", XVoltOffset);
+    SetFloatRegistryValue(key$, "YVoltOffset", YVoltOffset);
+end;
+
+
 
 func GetUseRemoteStimulus%()
     return UseRemoteStimulus%;
