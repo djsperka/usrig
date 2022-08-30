@@ -5,7 +5,8 @@
 
 func IntanX%(window%, args$)
     var tlast := -1;
-    var t0, t1;     ' frame times
+    var t0, t1;     ' start/end time of trial
+    var t1Previous; ' end time of previous trial
     var txt$, txt2$;
     var unused%[3];
     var markers%[4];
@@ -15,6 +16,7 @@ func IntanX%(window%, args$)
     var iScore%[MAX_IMAGES%];
     var sImages$[MAX_IMAGES%];
     var iImages%[MAX_IMAGES%];
+    var isNewFix% := 0;
     var typeFileMarker% := 0;   ' file type sync marker
     var tFileMarker := -1;      ' timestamp on sync marker
     var istate%;            ' 0 = W3, 1 = W6
@@ -66,6 +68,7 @@ func IntanX%(window%, args$)
     istate% := 0;
     t0 := -1;
     t1 := -1;
+    t1Previous := -1;
     tlast := NextTime(32, tlast, markers%);
     while (tlast >= 0) do
     
@@ -80,6 +83,7 @@ func IntanX%(window%, args$)
                 t1 := tlast;
                 nNames% := extractImageFiles%(t0, t1, iNum%, iScore%, iReward%);
                 nShown% := extractImageTrials%(t0, t1, tOnOff);
+                isNewFix% := extractNewFix%(t0, t1Previous);
                 if nNames% <> nShown% then
                     LogWarn("st=1", "names=" + str$(nNames%) + ", shown=" + str$(nShown%));
                 endif
@@ -112,6 +116,11 @@ func IntanX%(window%, args$)
     View(outhndl).FileClose();
     return 0;
 end
+
+func extractNewFix%(tTrialStart, tPreviousTrialEnd)
+    var ifix% := 0;
+    if (tPreviousTrialEnd > tTrialStart) then
+        ZZZZZZZZZZZZZ
 
 func extractRewardTime(&t1)
     ' look for R in sample key, within 2 second of the time given
