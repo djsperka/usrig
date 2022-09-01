@@ -3,10 +3,15 @@
 #include "../util/FileUtilities.s2s"
 #include "ExtractionUtilities.s2s"
 
+
+const intanChannel% := 32;
+const frameChannel% := 41;
+const fixptChannel% := 45;
+
 func IntanX%(window%, args$)
     var tlast := -1;
     var t0, t1;     ' start/end time of trial
-    var t1Previous; ' end time of previous trial
+    var t0Previous; ' end time of previous trial
     var txt$, txt2$;
     var unused%[3];
     var markers%[4];
@@ -40,9 +45,9 @@ func IntanX%(window%, args$)
     endif
     
     ' First INTAN marker is the file type marker
-    tFileMarker := NextTime(32, tlast, markers%);
+    tFileMarker := NextTime(intanChannel%, tlast, markers%);
     if (tFileMarker < 0) then
-        LogError("IntanX", "No markers found in channel 32!");
+        LogError("IntanX", "No markers found in INTAN channel!");
         return -1;
     else
         typeFileMarker% := markers%[0];
@@ -68,8 +73,8 @@ func IntanX%(window%, args$)
     istate% := 0;
     t0 := -1;
     t1 := -1;
-    t1Previous := -1;
-    tlast := NextTime(32, tlast, markers%);
+    t0Previous := -1;
+    tlast := NextTime(intanChannel%, tlast, markers%);
     while (tlast >= 0) do
     
         docase
@@ -83,7 +88,7 @@ func IntanX%(window%, args$)
                 t1 := tlast;
                 nNames% := extractImageFiles%(t0, t1, iNum%, iScore%, iReward%);
                 nShown% := extractImageTrials%(t0, t1, tOnOff);
-                isNewFix% := extractNewFix%(t0, t1Previous);
+                isNewFix% := extractNewFix%(t0Previous, t0);
                 if nNames% <> nShown% then
                     LogWarn("st=1", "names=" + str$(nNames%) + ", shown=" + str$(nShown%));
                 endif
@@ -96,10 +101,12 @@ func IntanX%(window%, args$)
                 endif
                 
                 ' hardcoded for 3 images
-                txt$ := Print$("%f,%f,%f,%f,%f,%f,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d", t0, tOnOff[0], tOnOff[1], tOnOff[2], tOnOff[3], tOnOff[4], tOnOff[5], t1, iReward%, tReward, iNum%[0], iNum%[1], iNum%[2], iScore%[0], iScore%[1], iScore%[2]);
+                txt$ := Print$("%f,%f,%f,%f,%f,%f,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d,%d", 
+                                t0, tOnOff[0], tOnOff[1], tOnOff[2], tOnOff[3], tOnOff[4], tOnOff[5], t1, iReward%, tReward, isNewFix%, iNum%[0], iNum%[1], iNum%[2], iScore%[0], iScore%[1], iScore%[2]);
                 View(outhndl).Print("%s\n", txt$);
 
-
+                ' save trial end time to check for fixation between trials
+                t0Previous := t0;
 
                 ' for case where new trial marker comes, previous trial ended prematurely. Update trial start time.
                 ' for end trial case, change state to 0
@@ -111,17 +118,31 @@ func IntanX%(window%, args$)
                 
             endif
         endcase;
-        tlast := NextTime(32, tlast, markers%);
+        tlast := NextTime(intanChannel%, tlast, markers%);
     wend
     View(outhndl).FileClose();
     return 0;
 end
 
-func extractNewFix%(tTrialStart, tPreviousTrialEnd)
-    var ifix% := 0;
-    if (tPreviousTrialEnd > tTrialStart) then
-        ZZZZZZZZZZZZZ
+func extractNewFix%(tPreviousTrialStart, tCurrentTrialStart)
+    var iRise% := 0;
+    var iResult% := 0;
+    var tRise := -1;
+    var tFall := -1;
+    var key$;
+    var tKey;
+    var found% := 0;
+    var tLastKey := tPreviousTrialStart;
+    
+    ' Look for rising edge in fixpt channel, between start of last trial and start of this trial
+    iRise% := FindRisingEdge%(fixptChannel%, tPreviousTrialStart, tRise);
+    if iRise% = 0 and tRise < tCurrentTrialStart then
+        iResult% := 1;
+    endif        
+    return iResult%;
+end
 
+        
 func extractRewardTime(&t1)
     ' look for R in sample key, within 2 second of the time given
     var trwd := -1;
@@ -156,14 +177,14 @@ func extractImageTrials%(t0, t1, times[])
     ArrConst(times[], -1);
     
     'tf := NextTime(41, ta);
-    istatus% := FindPulseUp%(41, tlast, trise, tfall)
+    istatus% := FindPulseUp%(frameChannel%, tlast, trise, tfall)
     while istatus% = 1 and count% < Len(times) and tFall < t1 do
     
         'Save rise time of pulse. 
         tlast := tfall;
         times[count%] := tRise;
         count% += 1;
-        istatus% := FindPulseUp%(41, tlast, trise, tfall);
+        istatus% := FindPulseUp%(frameChannel%, tlast, trise, tfall);
 
     wend
     
