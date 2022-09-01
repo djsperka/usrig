@@ -62,8 +62,9 @@ var PSTHWindow%[16];    ' used for f1 and f2. Will be made invisible when in use
 
 ' XY window stuff
 var XYWindow%;			' 
-var iStimChannel%;	' channel number for stimulus in xy window
-var iStimWindowChannel%;' channel number for stimulus window in xy window
+var iEyePosChannel%;  'channel number for eye position
+var iFixptChannel%;	' channel number for fixation point in xy window
+var iFixptWindowChannel%;' channel number for fixation point window in xy window
 var iMonitorChannel%;	' channel number for monitor position display in xy window
 var XYDotSize%[200];  'holds size of each dot for XY coordinate plot
 var XYDataCount%[200];  'holds number of presentations at each XY coordinate
@@ -100,6 +101,9 @@ var tRise, tFall;
 var tKludge := 0;        'I don't know what this was, and it's making our stimuli 60 ms longer, so...???
 var HBCycle% := 1;
 
+var tbtFix% := 0;    'By default, we will NOT be using trial-by-trial fixation location
+var tbtFixX;         'But if we do...
+var tbtFixY;
 
 'button stuff
 var button1Press;
@@ -164,7 +168,7 @@ var tun1FileLen%;
 var tun2FileLen%;
 var BDFullText$; 
 var BDNumStim%;
-
+var SampleTextStr$;
 
 ' Init logging
 LogInit(1);
@@ -360,6 +364,7 @@ func IdleProcessing%()
     var yval;
     var xind%;
     var yind%;
+    var i%;
     
 	tNow := View(DataWindow%).MaxTime();
     
@@ -376,7 +381,7 @@ func IdleProcessing%()
 
 	' Don't update display every time....
 	if tNow-tLastUpdate > .005 then
-		View(XYWindow%).XYAddData(1,xEye,yEye);
+		View(XYWindow%).XYAddData(iEyePosChannel%,xEye,yEye);
 		tLastUpdate := tNow;
         'if we're collecting a rivalry button, get button status and time here
         'OK, so the amazing thing is that for as complicated as this code is, the outputs ARE COMPLETELY UNUSED.  100%.  So until that changes, let's not go through the CPU time to analyze the button channel every 5 ms. -jj 9/22/16
@@ -478,6 +483,11 @@ func IdleProcessing%()
             yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
         endif;
         
+        if tbtFix% = 1 then
+            tbtFixX := Val(tunBDTuningValues$[nTrialsCompleted%][13]);  'nTrialsCompleted is a zero-based index here
+            tbtFixY := Val(tunBDTuningValues$[nTrialsCompleted%][14]);  'Values 13 and 14 are X and Y, respectively
+        endif
+        
 
         ' Start trial. Put up fixation point.
         LogStatus("StartTrial", "Request fixpt");
@@ -494,7 +504,11 @@ func IdleProcessing%()
             LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
             tLastTrigger := tTrigger;
             ChangeStateTo(stateWaitForAcquisition%, tTrigger);
-            DrawStim(1);	' actually this draws the location of the fixpt.
+            if tbtFix% = 0 then
+                DrawFix(1);	' draws the location of the constant fixpt in the Spike2 fixation display window
+            else
+                DrawFix(2);	' draws the location of the moving fixpt in the Spike2 fixation display window
+            endif;
             
             
 '        else
@@ -660,7 +674,18 @@ func IdleProcessing%()
             GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
             SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
         case TunType$ = tunTypeBakersDozen$ then  'We want to give the stimulus number
-            SampleText("T," + str$((nTrialsCompleted% mod BDNumStim%)+1));  
+            'Creates the sampletext string for all values that are changed
+            SampleTextStr$ := "";
+            for i% := 0 to tunNumBDCurvesAllowed%-1 do
+                if tunBDWhichTunCurve[i%] = 1 then
+                    SampleTextStr$ := SampleTextStr$ + tunBDTunCurveLabel$[i%] + "," + tunBDTuningValues$[nTrialsCompleted%][i%] + ",";
+                    if i% = 7 or i% = 10 or i% = 13 then
+                        SampleTextStr$ := SampleTextStr$ + tunBDTuningValues$[nTrialsCompleted%][i%+1] + ",";
+                    endif
+                endif
+            next
+            SampleTextStr$ := Left$(SampleTextStr$,Len(SampleTextStr$)-1);
+            SampleText("T," + str$((nTrialsCompleted% mod BDNumStim%)+1) + "," + SampleTextStr$);  
         else
             SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
         endcase;
@@ -729,7 +754,7 @@ func IdleProcessing%()
             ' Fixation point is off
             tLastTrigger := tTrigger;
             ChangeStateTo(stateInterTrialInterval%, tTrigger);
-            DrawStim(0);	' actually this draws the location of the fixpt.
+            DrawFix(0);	' this erases the fixpt in the spike2 fixation display
         endif
 
     case iState% = stateInterTrialInterval% then
@@ -817,6 +842,7 @@ func IdleProcessing%()
                     SafeSampleKey("v");  'Toggle donut only, will leave core on danish 
                 else  'tunUseMaintainMode% is 0
                     SafeSampleKey("X");  'Turn off all
+                    DrawFix(0);	' this erases the fixpt in the spike2 fixation display
                 endcase;
                 
                 Yield();
@@ -1142,8 +1168,25 @@ end;
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Looking%(EyePosX,EyePosY)
 	'Determine if the eye position is within the fixation window
-    if tunAlwaysLooking% = 1 then return 1; endif;
-	if (Pow(EyePosX-FixationX,2) + Pow(EyePosY-FixationY,2)) <= Pow(WindowRadius,2) then return 1; else return 0; endif
+    'Updated to include ability to have a fixation point that moves on every trial
+    var localX, localY;
+    if tunAlwaysLooking% = 1 then 
+        return 1; 
+    endif;
+    
+    if tbtFix% = 0 then  'Constant fixation point at the CONFIG defined location
+        localX := FixationX;
+        localY := FixationY;
+    else 'Trial-by-trial changes in fixation point location
+        localX := tbtFixX;
+        localY := tbtFixY;
+    endif
+    
+	if (Pow(EyePosX-localX,2) + Pow(EyePosY-localY,2)) <= Pow(WindowRadius,2) then 
+        return 1; 
+    else 
+        return 0; 
+    endif
 end;
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -1446,6 +1489,7 @@ proc InitializeWindows()
 
 	'Open an XY view to display eye position
 	XYWindow% := FileNew(12);
+    iEyePosChannel% := 1;  'We are defining the first channel (automatically created) as the eye position channel
 	XRange(-30,30);
 	YRange(-2,-30,30);
 	XYDrawMode(0,5,0);
@@ -1466,25 +1510,27 @@ proc InitializeWindows()
 	next;
 
 	'Create a new channel in the XY view to display the fixation window
-	iStimWindowChannel% := XYSetChan(0);
-	XYColour(2,13);
-	XYDrawMode(2,2,1);
-	XYJoin(2,1);
-	'Draw the fixation window
-	XYAddData(2, FixWindowX[], FixWindowY[]);
+	iFixptWindowChannel% := XYSetChan(0);
+	XYColour(iFixptWindowChannel%,13);  'was "2" instead of iFixptWindowChannel%, etc.
+	XYDrawMode(iFixptWindowChannel%,2,1);
+	XYJoin(iFixptWindowChannel%,1);
+	'Draw the fixation window - update, do not draw fixation window except when fixation point is on screen (due to moving fixpt)
+	'XYAddData(iFixptWindowChannel%, FixWindowX[], FixWindowY[]);
 
 	'Create a new channel in the XY view to display the fixation point
-	iStimChannel% := XYSetChan(0);
+	iFixptChannel% := XYSetChan(0);
 
 	'Create a new channel in the XY view to show the monitor's location
 	iMonitorChannel% := XYSetChan(0);
-	XYColour(4,13);
-	XYDrawMode(4,3,1);
-	XYJoin(4,2);
-	XYAddData(4,-9,-7);
-	XYAddData(4,9,-7);
-	XYAddData(4,9,7);
-	XYAddData(4,-9,7);
+	XYColour(iMonitorChannel%,13);  'was "4" instead of iMonitorChannel%, etc.
+	XYDrawMode(iMonitorChannel%,3,1);
+	XYJoin(iMonitorChannel%,2);
+	XYAddData(iMonitorChannel%,-9,-7);
+	XYAddData(iMonitorChannel%,9,-7);
+	XYAddData(iMonitorChannel%,9,7);
+	XYAddData(iMonitorChannel%,-9,7);
+    
+    'Tuning does not currently draw the location of the STIMULUS, but such could be added as above
 
 end;
 
@@ -4456,15 +4502,17 @@ func Start%()
         var tempchar$;
         var numRead%;
         var spaceLoc%;
+        var commaLoc%;
         var valsPerSpec%;
+        var curveIndex%;
         
         ReadSetup(Chr$(7),Chr$(7));  'Setting hard/soft separators to nonsense "bell" character so no sepaarator will be found, empty 3/4 arg defaults to string delimited by double quotes
     
         FileOpen(tunBakersDozenFileLoc$,8,0);  'Open user-generated file, is NOT command-line ready
         
-        'Ensure format of user-generated file seems legit
-        numRead% := Read(BDFullText$);
-        FileClose();  'Close file once it's read
+        'Ensure user-generated file has a single string
+        numRead% := Read(BDFullText$);  'place file contents into BDFullText$
+        FileClose();  'Close file once it's read, we have a copy
         if numRead% <> 1 then
             message("Expected one string in Bakers Dozen file, got " + Str$(numRead%) + "!!  Quitting!!");
             halt
@@ -4480,58 +4528,156 @@ func Start%()
             BakersDozenLoc2$ := tunBakersDozenFileLoc$ + "_bakersdozen_ctrl";
         endif;
         
-        'Open new file for writing, rather than overwrite user-generated file, it can be reused.
+        'Open new file for writing, rather than overwrite user-generated file, user-generated file can be reused.
         FileOpen(BakersDozenLoc2$,8,1);
         
         'Reuse tempstr$ to hold arguments
         tempstr$ := FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$; 'prelim stuff
         tempstr$ := tempstr$ + MGrat$ + MGratParam$;  'Master grating only, tuning curve values are in the file
         
-        'Print to the new file
+        'Print to the new file, this file is passed to FIXSTIM
         print("%s %s",tempstr$,BDFullText$);
         FileClose();
         
         
         
-        'Parse BDFullText$ to figure out how many stimuli there are
+        'Parse BDFullText$, necessary for changing fixation point location, but since we did it, also to SampleText the actual specs of each trial
+        'Place values into tunBDTuningValues$[trial][whichTuningProperty], can remain as string, because in most cases we will be
+        'SampleTexting, so it never has to be numeric; we will have to change the fixation to a numeric.
         tempstr$ := BDFullText$;  'Make copy of the Baker's Dozen string, just reuse tempstr$
-        Trim(tempstr$);  'Trim leading/trailing white space
         
-        'With white space trimmed, first space should delimit leading grating spec, we only NEED to check the first one as the VSG will break if the number of values doesn't match
+        'First space should be in location 1 of the string
         spaceLoc% := InStr(tempstr$," ");
-        if spaceLoc% > 0 then
-            tempchar$ := Left$(tempstr$,spaceLoc%-1);  'Get leading character(s) corresponding to grating type
-            tempstr$ := DelStr$(tempstr$,1,spaceLoc%);  'Decrement string
-            'printlog("Grating spec is %s\n",tempchar$);
+        if spaceLoc% = 1 then
+            tempstr$ := DelStr$(tempstr$,1,spaceLoc%);  'remove leading space
         else
-            printlog("Problem with Baker's Dozen file syntax, did not find expected grating spec!  Quitting!\n");
+            printlog("Problem with Baker's Dozen file syntax, did not find expected leading space!  Quitting!\n");
             halt
         endif
         
-        'Determine the number of values per grating spec
-        docase
-        case tempchar$ = "-O" or tempchar$ = "-T" or tempchar$ = "-S" or tempchar$ = "-C" or tempchar$ = "-U" or tempchar$ = "-A" then
-            valsPerSpec% := 1;  'These grating specs have a single value per spec
-        case tempchar$ = "-P" or tempchar$ = "-X" or tempchar$ = "-M" or tempchar$ = "-E" or tempchar$ = "-t" then
-            valsPerSpec% := 1;  'These grating specs also have a single value per spec
-        case tempchar$ = "-Z" or tempchar$ = "--wh" or tempchar$ = "-y" then
-            valsPerSpec% := 2;  'These grating specs have a pair of values per spec
-        else
-            printlog("Grating spec " + tempchar$ + " unknown!  Quitting!\n");
-            halt
-        endcase
         
-        'Count number of values in first spec list (count commas, start with one as there are N-1 commas)
-        BDNumStim% := 1;
-        while tempchar$ <> " " and len(tempstr$) > 0 do
-            tempchar$ := Left$(tempstr$,1);  'Get leading character
-            tempstr$ := DelStr$(tempstr$,1,1);  'Decrement string
-            if tempchar$ = "," then
-                BDNumStim% += 1;
+        'Now, alternately find grating specs and fill tunBDTuningValues$[][] until we run out of grating specs
+        spaceLoc% := InStr(tempstr$," ");  'Find next space
+        while spaceLoc% < Len(tempstr$) do
+            if spaceLoc% > 0 then
+                tempchar$ := Left$(tempstr$,spaceLoc%-1);  'Get leading character(s) corresponding to tuning type
+                tempstr$ := DelStr$(tempstr$,1,spaceLoc%);  'Decrement string
+                'printlog("Grating spec is %s\n",tempchar$);
+                'printlog("Spec remainder is %s\n",tempstr$);
+            else
+                printlog("Problem with Baker's Dozen file syntax, did not find expected grating spec!  Quitting!\n");
+                halt
             endif
+            
+            'Determine the type of tuning curve and number of values per grating spec
+            docase
+            case tempchar$ = "-O" then
+                curveIndex% := 0;   'Curve index for orientation
+                valsPerSpec% := 1;  'These grating specs have a single value per spec
+            case tempchar$ = "-T" then 
+                curveIndex% := 1;   'Curve index for temporal frequency
+                valsPerSpec% := 1;  'These grating specs have a single value per spec
+            case tempchar$ = "-S" then 
+                curveIndex% := 2;   'Curve index for spatial frequency
+                valsPerSpec% := 1;  'These grating specs have a single value per spec
+            case tempchar$ = "-C" then
+                curveIndex% := 3;   'Curve index for contrast
+                valsPerSpec% := 1;  'These grating specs have a single value per spec
+            case tempchar$ = "-U" then 
+                curveIndex% := 4;   'Curve index for fixpt color
+                valsPerSpec% := 1;  'These grating specs have a single value per spec
+            case tempchar$ = "-A" then
+                curveIndex% := 5;   'Curve index for area
+                valsPerSpec% := 1;  'These grating specs have a single value per spec
+            case tempchar$ = "-P" then
+                curveIndex% := 6;   'Curve index for phase
+                valsPerSpec% := 1;  'These grating specs also have a single value per spec
+            case tempchar$ = "-X" then
+                curveIndex% := 9;   'Curve index for x position
+                valsPerSpec% := 1;  'These grating specs also have a single value per spec
+            case tempchar$ = "-M" then
+                curveIndex% := 12;  'Curve index for donut hole
+                valsPerSpec% := 1;  'These grating specs also have a single value per spec
+            case tempchar$ = "-E" then 
+                curveIndex% := 15;  'Curve index for stimulus delay
+                valsPerSpec% := 1;  'These grating specs also have a single value per spec
+            case tempchar$ = "-t" then
+                curveIndex% := 16;  'Curve index for stimulus duration
+                valsPerSpec% := 1;  'These grating specs also have a single value per spec
+            case tempchar$ = "-Z" then 
+                curveIndex% := 7;   'Curve index for XY Position (7 is X, 8 is Y)
+                valsPerSpec% := 2;  'These grating specs have a pair of values per spec
+            case tempchar$ = "--wh" then
+                curveIndex% := 10;  'Curve index for width/height (10 is width, 11 is height)
+                valsPerSpec% := 2;  'These grating specs have a pair of values per spec
+            case tempchar$ = "-y" then
+                curveIndex% := 13;  'Curve index for Fixpt position (13 is X, 14 is Y)
+                valsPerSpec% := 2;  'These grating specs have a pair of values per spec
+                tbtFix% := 1;       'And set trial-by-trial fixaiton location to ON
+                if tunUseMaintainMode% > 0 then
+                    tunUseMaintainMode% := 0;
+                    message("Maintain Fixation is incompatible with moving fixation points, Maintain Fixation has been turned OFF!");
+                endif
+            else
+                'printlog("Grating spec " + tempchar$ + " unknown!  Quitting!\n");
+                halt
+            endcase
+            tunBDWhichTunCurve[curveIndex%] := 1;
+            
+            'Count number of values in spec list
+            BDNumStim% := 0;  'Is currently a zero-based index, reset every time through, last time through will persist, if lengths are not the same VSG will crash anyway
+            'Find next space, there should always be one
+            spaceLoc% := InStr(tempstr$," ");
+            'Find next comma, there should always be one
+            commaLoc% := InStr(tempstr$,",");
+            while commaLoc% > 0 and commaLoc% < spaceLoc% do
+                tempchar$ := Left$(tempstr$,commaLoc%-1);  'Get leading character(s) corresponding to tuning value
+                tempstr$ := DelStr$(tempstr$,1,commaLoc%);  'Decrement string
+                'printlog("Tuning value is %s\n",tempchar$);
+                'printlog("Spec remainder is %s\n",tempstr$);
+                tunBDTuningValues$[BDNumStim%][curveIndex%] := tempchar$;
+                if valsPerSpec% = 2 then
+                    'Find next comma, if we are at the last one in the entire sequence the value will be 0
+                    commaLoc% := InStr(tempstr$,",");  
+                    'Find next space, there should always be one
+                    spaceLoc% := InStr(tempstr$," ");
+                    if commaLoc% > 0 and commaLoc% < spaceLoc% then
+                        tempchar$ := Left$(tempstr$,commaLoc%-1);  'Get leading character(s) corresponding to tuning value
+                        tempstr$ := DelStr$(tempstr$,1,commaLoc%);  'Decrement string
+                        tunBDTuningValues$[BDNumStim%][curveIndex%+1] := tempchar$;
+                    endif
+                endif
+                'Increment number of stims, increment once for either single-value or dual-value specs, is now actual value
+                BDNumStim% += 1;
+                'Find next comma, if we are at the last one in the entire sequence the value will be 0
+                commaLoc% := InStr(tempstr$,",");
+                'Find next space, there should always be one
+                spaceLoc% := InStr(tempstr$," ");
+            wend
+            'The FINAL value didn't get read, because either commaLoc% > spaceLoc% (more specs coming) or commaLoc% = 0 (final spec)
+            'So read it!  SpaceLoc% finds the end for us
+            tempchar$ := Left$(tempstr$,spaceLoc%-1);  'Get leading character(s) corresponding to tuning value
+            tempstr$ := DelStr$(tempstr$,1,spaceLoc%);  'Decrement string
+            'printlog("Final tuning value is %s\n",tempchar$);
+            'printlog("Final spec remainder is %s\n",tempstr$);
+            
+            BDNumStim% := BDNumStim% + 2 - valsPerSpec%;  'final adjustment of BDNumStim%, will be correct if 2 vals per stim and one short otherwise
+            
+            docase
+            case valsPerSpec% = 1 then
+                tunBDTuningValues$[BDNumStim%-1][curveIndex%] := tempchar$;  'BDNumStim% has been updated to actual value, not an index
+            case valsPerSpec% = 2 then
+                tunBDTuningValues$[BDNumStim%-1][curveIndex%+1] := tempchar$;  'We got CurveIndex% above; BDNumStim% has been updated to actual value, not an index    
+            endcase
+            
+            
+            'printlog("Number of stims is %d\n",BDNumStim%);
+            
+            'Find next space, if there is one
+            spaceLoc% := InStr(tempstr$," ");
         wend
+        'Done parsing BDFullText$
         
-        BDNumStim% := BDNumStim%/valsPerSpec%;
         'printlog("BDNumStim is %d\n",BDNumStim%);
         tunNAdvances% := BDNumStim%;
         
@@ -4709,22 +4855,48 @@ end
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
-' DrawStim
+' DrawFix
 ' 
-' Draws stimulus in xy window (iDraw%==1) or blanks it (0). 
-proc DrawStim(iDraw%)
-
-	if iDraw% > 0 then
-		var xstim, ystim;
-		xstim := FixationX;
-		ystim := FixationY;
-
-		' Draw stimulus in xy window
-		View(XYWindow%).XYAddData(iStimChannel%, xstim, ystim);
+' Draws fixation point/window in xy window (iDraw%==1 or 2) or blanks it (0). 
+proc DrawFix(iDraw%)
+    'Updated to allow trial-by-trial fixation point location, put up and take down fixation window with fixation point
+    var localX, localY;
+    'Calcuate the fixation window
+	var index%;
+	var twopi;
+    var localFixWindowX[36],localFixWindowY[36];
+	twopi := 2.0*4.0*ATan(1.0);
+	
+    docase
+    case iDraw% = 2 then
+        localX := tbtFixX;
+		localY := tbtFixY;
+        'Create fixation window
+        for index% := 0 to 35 do
+            localFixWindowX[index%] := localX + WindowRadius * Cos(index% * twopi/36.0);
+            localFixWindowY[index%] := localY + WindowRadius * Sin(index% * twopi/36.0);
+        next;
+		'Draw stimulus in xy window
+		View(XYWindow%).XYAddData(iFixptChannel%, localX, localY);
+        'Draw the fixation window
+        XYAddData(iFixptWindowChannel%, localFixWindowX[], localFixWindowY[]);
+	case iDraw% = 1 then
+		localX := FixationX;
+		localY := FixationY;
+        'Create fixation window
+        for index% := 0 to 35 do
+            localFixWindowX[index%] := localX + WindowRadius * Cos(index% * twopi/36.0);
+            localFixWindowY[index%] := localY + WindowRadius * Sin(index% * twopi/36.0);
+        next;
+		'Draw stimulus in xy window
+		View(XYWindow%).XYAddData(iFixptChannel%, localX, localY);
+        'Draw the fixation window
+        XYAddData(iFixptWindowChannel%, localFixWindowX[], localFixWindowY[]);
 	else 
-		' erase the stim and the window from xy view
-		View(XYWindow%).XYDelete(iStimChannel%);
-	endif
+		' erase the fixpt and the window from xy view
+		View(XYWindow%).XYDelete(iFixptChannel%);
+        View(XYWindow%).XYDelete(iFixptWindowChannel%);
+	endcase
 
 end;
 
