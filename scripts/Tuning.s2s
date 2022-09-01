@@ -1039,7 +1039,8 @@ func IdleProcessing%()
                 tunOptoState% := 1-tunOptoState%;  'but only toggle if we're actually doing opto, and we haven't been told to not toggle opto
             endif;
             if tunUseMaintainMode% >= 1 then
-                SafeSampleKey("X");  'turn everything off, fixation wasn't turned off previously because of maintain mode
+            SafeSampleKey("X");  'turn everything off, fixation wasn't turned off previously because of maintain mode
+            DrawFix(0);
             endif;
             if tunDoOpto% = 1 then
                 tInterTrialTime := tunStdInterTrialTime + tunInterBlockTime;
@@ -4667,6 +4668,7 @@ func Start%()
             case valsPerSpec% = 1 then
                 tunBDTuningValues$[BDNumStim%-1][curveIndex%] := tempchar$;  'BDNumStim% has been updated to actual value, not an index
             case valsPerSpec% = 2 then
+                printlog("BDNumStim-1 is %d and curveIndex+1 is %d\n",BDNumStim%-1,curveIndex%+1);
                 tunBDTuningValues$[BDNumStim%-1][curveIndex%+1] := tempchar$;  'We got CurveIndex% above; BDNumStim% has been updated to actual value, not an index    
             endcase
             
@@ -4680,7 +4682,7 @@ func Start%()
         
         'printlog("BDNumStim is %d\n",BDNumStim%);
         tunNAdvances% := BDNumStim%;
-        
+        tunNValues% := BDNumStim%;
         
         
         'Create command line, referencing new file
@@ -4879,7 +4881,7 @@ proc DrawFix(iDraw%)
 		'Draw stimulus in xy window
 		View(XYWindow%).XYAddData(iFixptChannel%, localX, localY);
         'Draw the fixation window
-        XYAddData(iFixptWindowChannel%, localFixWindowX[], localFixWindowY[]);
+        View(XYWindow%).XYAddData(iFixptWindowChannel%, localFixWindowX[], localFixWindowY[]);
 	case iDraw% = 1 then
 		localX := FixationX;
 		localY := FixationY;
@@ -4891,7 +4893,7 @@ proc DrawFix(iDraw%)
 		'Draw stimulus in xy window
 		View(XYWindow%).XYAddData(iFixptChannel%, localX, localY);
         'Draw the fixation window
-        XYAddData(iFixptWindowChannel%, localFixWindowX[], localFixWindowY[]);
+        View(XYWindow%).XYAddData(iFixptWindowChannel%, localFixWindowX[], localFixWindowY[]);
 	else 
 		' erase the fixpt and the window from xy view
 		View(XYWindow%).XYDelete(iFixptChannel%);
