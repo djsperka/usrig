@@ -154,6 +154,9 @@ var fvContinuousPorts%[64];
 
 ' Reward variables
 var fvProbRewardEachPeriod;
+var fvProbDoubleRewardEachPeriod;
+var rewardRand;     'we need to roll the dice once and check them twice!
+var fvRewardDelaySec;   
 var fvRewardDurSec;
 fvRewardDurSec := (GetJuiceRewardMS%()+20)/1000;  'Set reward duration up top.  If we have any reason to think this will change through the experiment, then set it say each idle loop
                                                   'I am paranoid and I'm adding another 20 ms following the reward.
@@ -314,6 +317,7 @@ func FreeViewerScriptDialog%()
     exptype$[2] := "No Opto (blocked)";
     exptype$[3] := "Image Series";
     var sixReals[6];
+    var fourReals[4];
     
     
     'Since the opto is incorporated into this dialog (for now) we don't have to do a separate parameter grab for opto
@@ -326,6 +330,12 @@ func FreeViewerScriptDialog%()
     sixReals[3] := fvHoldAcquisitionTime;
     sixReals[4] := fvAcquisitionTO;
     sixReals[5] := fvLookAwayTO;
+    
+    'Fill fourReals[]
+    fourReals[0] := fvXPos;
+    fourReals[1] := fvYPos; 
+    fourReals[2] := fvScreenMMX;
+    fourReals[3] := fvScreenMMY;
     
     
     if fvUseFile% = 0 then
@@ -368,27 +378,29 @@ func FreeViewerScriptDialog%()
     DlgReal(19, "Screen Width, mm", 10, 3000, 0, 21);
     DlgReal(20, "Screen Height, mm", 10, 3000, 0, 22);
     
-    DlgGroup("Reward", 1, 23, 50, 2);
+    DlgGroup("Reward", 1, 23, 50, 4);
     DlgReal(21, "Prob of reward each period", 0, 1, 0, 24);
+    DlgReal(22, "Prob of double reward each period", 0, 1, 0, 25);
+    DlgReal(23, "Reward delay (s)", 0, 3, 0, 26);
     
-    DlgGroup("Optogenetics", 1, 25, 50, 2);
-    DlgReal(22, "Opto Voltage Out (V)", 0.0002, 5, 0, 26); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+    DlgGroup("Optogenetics", 1, 27, 50, 2);
+    DlgReal(24, "Opto Voltage Out (V)", 0.0002, 5, 0, 28); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
     
-    DlgGroup("Images", 1, 27, 50, 4);
-    fvdlgTextItem% := DlgText(fvDialogText$, 3, 28, 40);
-    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 29);
-    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 18, 29);  
-    DlgButton(fvdlgImageSeriesSelectButton% , "Select Image Series", SelectStimFile%, 30, 29);
-    DlgCheck(23,"Disable Gamma",0,30);
+    DlgGroup("Images", 1, 29, 50, 4);
+    fvdlgTextItem% := DlgText(fvDialogText$, 3, 30, 40);
+    DlgButton(fvdlgFolderSelectButton% , "Select Folder", SelectStimFolder%, 3, 31);
+    DlgButton(fvdlgFileSelectButton% , "Select File", SelectStimFile%, 18, 31);  
+    DlgButton(fvdlgImageSeriesSelectButton% , "Select Image Series", SelectStimFile%, 30, 31);
+    DlgCheck(25,"Disable Gamma",0,32);
     
-    DlgCheck(24, "Send digital pulse to INTAN", 0,31);
+    DlgCheck(26, "Send digital pulse to INTAN", 0,33);
     
     'Right now we don't seem to need a callback, it's ready directly below if we do 
     DlgAllow(0xffff, 0, FreeViewerScriptDialogChanged%);
 
     i%:=DlgShow(fvNRepeats%, fvRandomProgression%, fvDoOpto%, fvPeriodDuration, fvNumPeriodsPerBlock%, fvMinViewPeriodsForAdvance%, 
-    sixReals[], fvFixScreen%, fvAlwaysLooking%, fvMaintainFixation%, fvUseStimLocation%, fvXPos, fvYPos, 
-    fvScreenMMX, fvScreenMMY, fvProbRewardEachPeriod, fvOptoVoltageOut, fvDisableGamma%, fvSendINTANPulse%);
+    sixReals[], fvFixScreen%, fvAlwaysLooking%, fvMaintainFixation%, fvUseStimLocation%, fourReals[], 
+    fvProbRewardEachPeriod, fvProbDoubleRewardEachPeriod, fvRewardDelaySec, fvOptoVoltageOut, fvDisableGamma%, fvSendINTANPulse%);
     
     if i% = 1 then
         'Unpack sixReals[]
@@ -398,6 +410,12 @@ func FreeViewerScriptDialog%()
         fvHoldAcquisitionTime := sixReals[3];
         fvAcquisitionTO := sixReals[4];
         fvLookAwayTO := sixReals[5];
+        
+        'Unpack fourReals[]
+        fvXPos := fourReals[0];
+        fvYPos := fourReals[1]; 
+        fvScreenMMX := fourReals[2];
+        fvScreenMMY := fourReals[3];
         
         if fvITI < 0 then
             fvBlitzMode% := 1;
@@ -504,11 +522,18 @@ func FreeViewerScriptDialogChanged%(item%)
         endif
     endif
     
+    'Make sure double reward probability isn't greater than overall reward probability
+    if DlgValue(22) > DlgValue(21) then
+        DlgValue(22,0); 'Set double reward probability to zero
+        message("Double reward probability cannot be greater than single (overall) reward probability");
+    endif
+    
+    
     'Enable/disable opto voltage based on using opto
     if DlgValue(3) = 1 then
-        DlgEnable(1,22);
+        DlgEnable(1,24);
     else
-        DlgEnable(0,22);
+        DlgEnable(0,24);
     endif;
     
     'Change labeling/enable based on using opto-style vs, regular style vs. image series style
@@ -521,6 +546,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgValue$(1006,"New Image On Fix Break? (0/1)");  'label appropriately
         DlgEnable(0,7);  'disable ISI
         DlgEnable(0,21);  'disable reward
+        DlgEnable(0,22);  'disable double reward
         DlgEnable(1,-fvdlgFolderSelectButton%);  'enable folder select
         DlgEnable(1,-fvdlgFileSelectButton%);  'enable standard file select
         DlgEnable(0,-fvdlgImageSeriesSelectButton%);  'disable image series select
@@ -532,6 +558,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgValue$(1006,"New Image Series On Fix Break? (0/1)");  'label appropriately
         DlgEnable(1,7);  'enable ISI
         DlgEnable(1,21);  'enable reward
+        DlgEnable(1,22);  'enable double reward
         DlgEnable(0,-fvdlgFolderSelectButton%);  'disable folder select
         DlgEnable(0,-fvdlgFileSelectButton%);  'disable standard file select
         DlgEnable(1,-fvdlgImageSeriesSelectButton%);  'enable image series select
@@ -543,6 +570,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgValue$(1006,"Minimum Viewed Periods To Advance");  'label appropriately
         DlgEnable(0,7);  'disable ISI
         DlgEnable(1,21);  'enable reward
+        DlgEnable(0,22);  'disable double reward
         DlgEnable(1,-fvdlgFolderSelectButton%);  'enable folder select
         DlgEnable(1,-fvdlgFileSelectButton%);  'enable standard file select
         DlgEnable(0,-fvdlgImageSeriesSelectButton%);  'disable image series select
@@ -579,6 +607,8 @@ proc GetFreeViewerScriptParameters()
     fvMinViewPeriodsForAdvance% := GetIntRegistryValue%(key$, "MinViewPeriodsForAdvance", fvMinViewPeriodsForAdvance%);
     fvPeriodDuration := GetFloatRegistryValue(key$, "PeriodDuration", fvPeriodDuration);
     fvProbRewardEachPeriod := GetFloatRegistryValue(key$, "ProbRewardEachPeriod", fvProbRewardEachPeriod);
+    fvRewardDelaySec := GetFloatRegistryValue(key$, "RewardDelaySec", fvRewardDelaySec);
+    fvProbDoubleRewardEachPeriod := GetFloatRegistryValue(key$, "ProbDoubleRewardEachPeriod", fvProbDoubleRewardEachPeriod);
     fvUseStimLocation% := GetIntRegistryValue%(key$, "UseStimLocation", fvUseStimLocation%);
     fvXPos := GetFloatRegistryValue(key$, "XPos", fvXPos);
     fvYPos := GetFloatRegistryValue(key$, "YPos", fvYPos);
@@ -615,6 +645,8 @@ proc SaveFreeViewerScriptParameters()
     SetIntRegistryValue(key$, "MinViewPeriodsForAdvance", fvMinViewPeriodsForAdvance%);
     SetFloatRegistryValue(key$, "PeriodDuration", fvPeriodDuration);
     SetFloatRegistryValue(key$, "ProbRewardEachPeriod", fvProbRewardEachPeriod);
+    SetFloatRegistryValue(key$, "ProbDoubleRewardEachPeriod", fvProbDoubleRewardEachPeriod);
+    SetFloatRegistryValue(key$, "RewardDelaySec", fvRewardDelaySec);
     SetIntRegistryValue(key$, "UseStimLocation", fvUseStimLocation%);
     SetFloatRegistryValue(key$, "XPos", fvXPos);
     SetFloatRegistryValue(key$, "YPos", fvYPos);
@@ -1348,6 +1380,10 @@ proc WriteParameterFile()
         Print("Period duration (s)                      : %f\n", fvPeriodDuration);
     endif
     Print("Probability of reward each period        : %f\n", fvProbRewardEachPeriod);
+    if fvDoImageSeries% = 1 then
+        Print("Probability of double reward each period        : %f\n", fvProbDoubleRewardEachPeriod);
+    endif
+    Print("Reward Delay (s)        : %f\n", fvRewardDelaySec);
 	Print("Inter-trial interval                     : %f\n", fvITI);
     if fvDoImageSeries% = 1 then
         Print("Inter-stimulus interval                  : %f\n", fvISI);
@@ -2185,41 +2221,49 @@ func IdleProcessing%()
                 remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)  
             endif
             
-            fvPeriodCount% += 1;  'increment number of periods
-            'Determine if reward should be given (random, or if all periods finished)
-            docase
-            case fvSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
-                'set sequencer variable 11 to 6 to indicate 6-ms trial-success pulse
-                SampleSeqVar(11,6);
-                SafeSampleKey("T");  'Send a pulse
-                if (Rand() < fvProbRewardEachPeriod) then  'give reward
-                    JuiceRewardMS% := fvJuiceRewardMSorig%;  'reset reward to original value
-                    DefaultReward();  'give reward, pReward has been set to 1 above, so once we get in here it's not random
+            if tNow > fvRewardDelaySec + tStateStart then
+                fvPeriodCount% += 1;  'increment number of periods
+                'Determine if reward should be given (random, or if all periods finished)
+                docase
+                case fvSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
+                    'set sequencer variable 11 to 6 to indicate 6-ms trial-success pulse
+                    SampleSeqVar(11,6);
+                    SafeSampleKey("T");  'Send a pulse
+                    rewardRand := Rand();  'Calculate a random value
+                    docase
+                    case (rewardRand < fvProbDoubleRewardEachPeriod) then  'if dice roll is less than double probability, give double reward
+                        JuiceRewardMS% := fvJuiceRewardMSorig%*2;  'set reward to double original value
+                        DefaultReward();  'give reward, pReward has been set to 1 above, so once we get in here it's not random
+                        TotalRewards% += 1;
+                        SampleText("Double Reward",tNow);
+                    case (rewardRand < fvProbRewardEachPeriod) then  'if dice roll is more than double probability, but less than overall probability, give regular reward
+                        JuiceRewardMS% := fvJuiceRewardMSorig%;  'reset reward to original value
+                        DefaultReward();  'give reward, pReward has been set to 1 above, so once we get in here it's not random
+                        TotalRewards% += 1;
+                        SampleText("Reward",tNow);
+                    else 'don't give reward, BUT call it - this won't work unless pReward (from DAQ dialog) is recoded to 1
+                        JuiceRewardMS% := 0;  'set reward to zero, this will prevent reward from being given, but the INTAN pulse for trial end will happen
+                        DefaultReward();  'do not give reward (duration is 0) but make sure "R" is sent for marking the file at the time the reward would have happened
+                        SampleText("No Reward",tNow);
+                    endcase
+                    
+                    tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
+                    ChangeStateTo(stateWaitReward%,tNow);  'wait for reward to be done
+                case fvDoOpto% = 0 then  'If just doing an image, take down image and reward
+                    DefaultReward();
+                    tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
                     TotalRewards% += 1;
-                    SampleText("Reward",tNow);
-                else 'don't give reward, BUT call it - this won't work unless pReward (from DAQ dialog) is recoded to 1
-                    JuiceRewardMS% := 0;  'set reward to zero, this will prevent reward from being given, but the INTAN pulse for trial end will happen
-                    DefaultReward();  'do not give reward (duration is 0) but make sure "R" is sent for marking the file at the time the reward would have happened
-                    SampleText("No Reward",tNow);
-                endif
-                
-                tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
-                ChangeStateTo(stateWaitReward%,tNow);  'wait for reward to be done
-            case fvDoOpto% = 0 then  'If just doing an image, take down image and reward
-                DefaultReward();
-                tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
-                TotalRewards% += 1;
-                ChangeStateTo(stateWaitReward%,tNow);  'this seems to work fine
-            case fvPeriodCount% >= fvNumPeriods% or (Rand() < fvProbRewardEachPeriod) then
-                'Give reward if appropriate
-                DefaultReward();
-                tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
-                TotalRewards% += 1;
-                ChangeStateTo(stateWaitReward%,tNow);  'wait for reward to be done
-            else
-                ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
-            endcase;
-            
+                    ChangeStateTo(stateWaitReward%,tNow);  'this seems to work fine
+                case fvPeriodCount% >= fvNumPeriods% or (Rand() < fvProbRewardEachPeriod) then
+                    'Give reward if appropriate
+                    DefaultReward();
+                    tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
+                    TotalRewards% += 1;
+                    ChangeStateTo(stateWaitReward%,tNow);  'wait for reward to be done
+                else
+                    ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
+                endcase;
+            endif;
             
         case iState% = stateWaitReward% then
             
