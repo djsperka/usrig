@@ -247,10 +247,52 @@ func ParseGratingParametersBrief%(gr$, &x, &y, &w, &h)
     var status% := 0;
     var n%;
 	ReadSetup("", "", "", "", ",");
-	n% := ReadStr(gr$, x, y, w, h);
+    n% := ReadStr(gr$, x, y, w, h);
     ReadSetup();
     if n% <> 4 then status% := -1; endif;
-    return n%;
+    return status%;
+end
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' ParseGratingParametersOri%(gr$, &ori);
+' 
+' Given a grating parameter list, get the orientation value. 
+' Simpler version than the full-blown one, as it doesn't return all values. 
+' This version will work for all possible variable list lengths - with/without phase/cv/pattern/aperture/inner/outer
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+func ParseGratingParametersOri%(gr$, &ori)
+    var status% := 0;
+    var n%;
+    var str1$, str2$, str3$, str4$, str5$, str6$, str7$, str8$;
+    var str9$, str10$, str11$, str12$, str13$, str14$, str15$;
+    var x, y, w, h, iw, ih, sf, tf, phase, ctf;  'don't define ori
+    var cv$, pattern$, aperture$;
+    var contrast%;
+	ReadSetup("", "", "", "", ",");
+    'Do initial read to determine how many variables are present
+    n% := ReadStr(gr$, str1$, str2$, str3$, str4$, str5$, str6$, str7$, str8$, str9$, str10$, str11$, str12$, str13$, str14$, str15$);
+    
+    docase
+    case n% = 8 or n% = 9 or n% = 12 then
+        'If the read gets 8 (no phase or strings), 9 (no strings) or 12 (everything) variables this is the correct read
+        n% := ReadStr(gr$, x, y, w, h, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    case n% = 11 then
+        'If there are 11 variables read (strings, no phase) the correct read omits phase
+        n% := ReadStr(gr$, x, y, w, h, contrast%, sf, tf, ori, cv$, pattern$, aperture$); 
+    case n% = 14 then
+        'If 14 parameters are present, inner width and outer width are set
+        n% := ReadStr(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    case n% = 15 then
+        'If 15 parameters are present, counterphase transition freq is set
+        n% := ReadStr(gr$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
+    else
+        
+    endcase; 
+    ReadSetup();
+    return status%;
 end
 
 
