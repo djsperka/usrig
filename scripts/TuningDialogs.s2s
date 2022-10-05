@@ -54,7 +54,7 @@ const tundlgSpatialButton% := 11;
 const tundlgTemporalButton% := 12;
 const tundlgAreaButton% := 13;
 const tundlgDonutANDGonzagoButton% := 14;
-const tundlgBerlinerButton% := 15;
+const tundlgFixptJumpANDBerlinerButton% := 15;
 const tundlgBoxODonutsButton% := 16;
 const tundlgXPosButton% := 17;
 const tundlgDotsButton% := 18;
@@ -435,6 +435,7 @@ var tunUseDonutDialog%;           'will be 1 if we are using the donut dialog, 0
 var tunUseCRGDialog%;             'will be 1 if we are using the CRG dialog, 0 for FixPtColor
 var tunUseConstantLag%;           '0 = no constant lag, 1 = constant lag on master, 2 = constant lag on slave
 var tunUseDisparityDialog%;
+var tunUseBerlinerDialog%;
 var tunConstantLagFrames%;
 var tunConstantLagMS$;
 
@@ -1965,7 +1966,7 @@ func TuningCurveBerlinerDialogChanged%(item%)
     return 1;
 end
 
-func TuningCurveBerlinerDialog%()
+func TuningCurveFixptJumpANDBerlinerDialog%()
 	var iReturn% := 0;
 	var i%;
     var sValues$;
@@ -1973,78 +1974,91 @@ func TuningCurveBerlinerDialog%()
     var result[1000];
     var indices%[1000];
     var mylist$[2];
-    mylist$[0] := "Master";
-    mylist$[1] := "Slave";
-
     
-	GetTuningCurveAreaParameters();
-    
-    ' Before we proceed, we must generate a list of choices for the optimal diameter. These are based on the most recent run of Area tuning
-    ' Note that there are nsteps+1 values. 
-
-    GetRepeatedParameterProgression%(tunAreaNSteps%+1, 1, result[], indices%[], tunAreaMinDiam, tunAreaMaxDiam, 1, 0);
-    sValues$ := GetRealArrayAsStringSep$(result[0:tunAreaNSteps%+1], indices%[0:tunAreaNSteps%+1], "|");
-    
-    'We want the default maximal value to be the largest value available when we open the dialog
-    'so set tunBerlinerMaximalIndex% appropriately
-    tunBerlinerMaximalIndex% := tunAreaNSteps%;
-    
-    'Define tunBerlinerNSteps%, because we are no longer doing a tuning curve.
-    tunBerlinerNSteps% := 6;
-    
-	DlgCreate("Berliner Tuning Curve Parameters");
-	'DlgInteger(1, "Number of Steps", 2, 100);
-    DlgInteger(1, "Number of Stimuli", 1, 100);
-	DlgInteger(2, "Number of Repeats", 1, 3000);
-	DlgReal(3, "Min Diameter", 0.1, 100);
-	DlgReal(4, "Max Diameter", 0.1, 100);
-	DlgCheck(5, "Random Progression");
-    DlgList(6, "Optimal diameter", sValues$);
-    DlgList(7, "Maximal diameter", sValues$);
-    DlgList(8, "Core is on:", mylist$[]);
-    DlgButton(151, "Master Grating", TunDlgGratingMaster%);
-    DlgButton(152, "Slave Grating", TunDlgGratingSlave%);
-    DlgButton(153, "Master Vals -> Slave", TunMasterValsToSlave%);
-    DlgButton(154, "Slave Vals -> Master", TunSlaveValsToMaster%);
-    DlgAllow(0xffff, 0, TuningCurveBerlinerDialogChanged%);
-	'i% := DlgShow(tunAreaNSteps%, tunAreaNRepeats%, tunAreaMinDiam, tunAreaMaxDiam, tunAreaProgression%, tunDonutOptimalIndex%, tunBerlinerMaximalIndex%);
-    i% := DlgShow(tunBerlinerNSteps%, tunBerlinerNRepeats%, tunAreaMinDiam, tunAreaMaxDiam, tunBerlinerProgression%, tunDonutOptimalIndex%, tunBerlinerMaximalIndex%, tunBerlinerCoreOnSlave%);
-    
-    tunMaximalDiam := tunAreaMaxDiam;
-    tunSlaveMaximalDiam := result[tunBerlinerMaximalIndex%];
-    ' Don't let the user screw this up by selecting incompatible values
-    if tunBerlinerMaximalIndex% > tunDonutOptimalIndex%+1 then
-        tunDonutOptimalDiam := result[tunDonutOptimalIndex%];
-        tunDonutOptimalDiamPlusOne := result[tunDonutOptimalIndex%+1];
-        tunBerlinerMaximalDiam := result[tunBerlinerMaximalIndex%];
-    else
-        i% := 0;  'Treat this as a "cancel"
-        if tunBerlinerMaximalIndex% > tunDonutOptimalIndex% then
-            message("Oops!|The maximal index was only one value greater than the optimal index!\nThis would result in 'near facilitation' and 'far suppression'\nstimuli being identical!\n\nI know you didn't want that, so try again!");
-        else
-            message("Oops!|The maximal index was not greater than the optimal index!\n\nI know you didn't want that, so try again!");
-        endif;
-    endif;
-    
-	' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
-	' When user hits OK we always save the parameters, and when user hits Cancel we don't.
-	if i% = 1 then
-		SaveTuningCurveAreaParameters();
-		tunType$ := tunTypeBerliner$;
-
-        iReturn% := 1;
+    if tunUseBerlinerDialog% = 0 then
         
-	endif;
-	if i% = 0 then
-		tunType$ := tunTypeNone$;
-		if tunContext$ = tunContextDAQ$ then
-			iReturn% := 1;
-		else
-			iReturn% := 2;
-		endif;
-	endif;
-    
-	return iReturn%;
+        'GetFixptJumpParameters();  'TODO - write this
+        
+        'DlgCreate("Fixation Point Jump Parameters");
+        
+        
+    else
+        
+        mylist$[0] := "Master";
+        mylist$[1] := "Slave";
+        
+        
+        GetTuningCurveAreaParameters();
+        
+        ' Before we proceed, we must generate a list of choices for the optimal diameter. These are based on the most recent run of Area tuning
+        ' Note that there are nsteps+1 values. 
+        
+        GetRepeatedParameterProgression%(tunAreaNSteps%+1, 1, result[], indices%[], tunAreaMinDiam, tunAreaMaxDiam, 1, 0);
+        sValues$ := GetRealArrayAsStringSep$(result[0:tunAreaNSteps%+1], indices%[0:tunAreaNSteps%+1], "|");
+        
+        'We want the default maximal value to be the largest value available when we open the dialog
+        'so set tunBerlinerMaximalIndex% appropriately
+        tunBerlinerMaximalIndex% := tunAreaNSteps%;
+        
+        'Define tunBerlinerNSteps%, because we are no longer doing a tuning curve.
+        tunBerlinerNSteps% := 6;
+        
+        DlgCreate("Berliner Tuning Curve Parameters");
+        'DlgInteger(1, "Number of Steps", 2, 100);
+        DlgInteger(1, "Number of Stimuli", 1, 100);
+        DlgInteger(2, "Number of Repeats", 1, 3000);
+        DlgReal(3, "Min Diameter", 0.1, 100);
+        DlgReal(4, "Max Diameter", 0.1, 100);
+        DlgCheck(5, "Random Progression");
+        DlgList(6, "Optimal diameter", sValues$);
+        DlgList(7, "Maximal diameter", sValues$);
+        DlgList(8, "Core is on:", mylist$[]);
+        DlgButton(151, "Master Grating", TunDlgGratingMaster%);
+        DlgButton(152, "Slave Grating", TunDlgGratingSlave%);
+        DlgButton(153, "Master Vals -> Slave", TunMasterValsToSlave%);
+        DlgButton(154, "Slave Vals -> Master", TunSlaveValsToMaster%);
+        DlgAllow(0xffff, 0, TuningCurveBerlinerDialogChanged%);
+        'i% := DlgShow(tunAreaNSteps%, tunAreaNRepeats%, tunAreaMinDiam, tunAreaMaxDiam, tunAreaProgression%, tunDonutOptimalIndex%, tunBerlinerMaximalIndex%);
+        i% := DlgShow(tunBerlinerNSteps%, tunBerlinerNRepeats%, tunAreaMinDiam, tunAreaMaxDiam, tunBerlinerProgression%, tunDonutOptimalIndex%, tunBerlinerMaximalIndex%, tunBerlinerCoreOnSlave%);
+        
+        tunMaximalDiam := tunAreaMaxDiam;
+        tunSlaveMaximalDiam := result[tunBerlinerMaximalIndex%];
+        ' Don't let the user screw this up by selecting incompatible values
+        if tunBerlinerMaximalIndex% > tunDonutOptimalIndex%+1 then
+            tunDonutOptimalDiam := result[tunDonutOptimalIndex%];
+            tunDonutOptimalDiamPlusOne := result[tunDonutOptimalIndex%+1];
+            tunBerlinerMaximalDiam := result[tunBerlinerMaximalIndex%];
+        else
+            i% := 0;  'Treat this as a "cancel"
+            if tunBerlinerMaximalIndex% > tunDonutOptimalIndex% then
+                message("Oops!|The maximal index was only one value greater than the optimal index!\nThis would result in 'near facilitation' and 'far suppression'\nstimuli being identical!\n\nI know you didn't want that, so try again!");
+            else
+                message("Oops!|The maximal index was not greater than the optimal index!\n\nI know you didn't want that, so try again!");
+            endif;
+        endif;
+        
+        ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+        ' When user hits OK we always save the parameters, and when user hits Cancel we don't.
+        if i% = 1 then
+            SaveTuningCurveAreaParameters();
+            tunType$ := tunTypeBerliner$;
+            
+            iReturn% := 1;
+            
+        endif;
+        if i% = 0 then
+            tunType$ := tunTypeNone$;
+            if tunContext$ = tunContextDAQ$ then
+                iReturn% := 1;
+            else
+                iReturn% := 2;
+            endif;
+        endif;
+        
+        return iReturn%;
+        
+    endif; 
+	
 end;
 
 
@@ -3950,7 +3964,7 @@ func TuningCurveScriptDialog%()
 	DlgButton(tundlgAreaButton%, "         Area         ", TuningCurveAreaDialog%, 36, 21);
     DlgButton(tundlgXPosButton%, "     X Position     ", TuningCurveXPosDialog%, 36, 22);
 	DlgButton(tundlgDonutANDGonzagoButton%, "   Donuts!   ", TuningCurveDonutANDGonzagoDialog%, 2, 23);
-    DlgButton(tundlgBerlinerButton%, "    Berliners!    ", TuningCurveBerlinerDialog%, 18, 23);
+    DlgButton(tundlgFixptJumpANDBerlinerButton%, "    Berliners!    ", TuningCurveFixptJumpANDBerlinerDialog%, 18, 23);
     DlgButton(tundlgBoxODonutsButton%, " Box O' Donuts ", TuningCurveBoxODonutsDialog%, 36, 23);
     DlgButton(tundlgDotsButton%, "     Dots!     ", TuningCurveDotsDialog%, 2, 24);
     'DlgButton(tundlgCRGButton%,"      CRaGs      ",TuningCurveFixptColorANDCRGDialog%, 18, 24);
@@ -4110,8 +4124,8 @@ func TuningCurveScriptDialogChanged%(item%)
     DlgValue$(19,Str$(DlgValue(18)*1000/dataScreenHz));  'just set the text values of the frame to millisecond conversion every time
     DlgEnable(0,19);  'Always disable millisecond conversion, we can't type here to get frame values
     if DlgValue(11) = 0 then  'If single VSG, do not allow Donuts or Berliners or disparity or CRG
-        'DlgEnable(0,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%,-tundlgBoxODonutsButton%,-tundlgCRGButton%,-tundlgDisparityAndBakersDozenButton%); 'old version
-        DlgEnable(0,-tundlgBerlinerButton%);  'allow boxOdonuts for single screen now, CRG now turns to FixptColor
+        'DlgEnable(0,-tundlgDonutANDGonzagoButton%,-tundlgFixptJumpANDBerlinerButton%,-tundlgBoxODonutsButton%,-tundlgCRGButton%,-tundlgDisparityAndBakersDozenButton%); 'old version
+        'DlgEnable(0,-tundlgFixptJumpANDBerlinerButton%);  'allow boxOdonuts for single screen now, CRG now turns to FixptColor
         'Also disable card synch functions, dual tuning listbox
         DlgEnable(0,12); 'dual tuning listbox
         DlgEnable(0,17); 'constant lag listbox
@@ -4131,15 +4145,17 @@ func TuningCurveScriptDialogChanged%(item%)
         DlgValue$(-tundlgNullTestANDLagButton%, "      Null Test     ");
         DlgValue$(-tundlgDonutANDGonzagoButton%, "      Gonzagos!     ");
         DlgValue$(-tundlgDisparityAndBakersDozenButton%, "   Baker's Dozen   ");
+        DlgValue$(-tundlgFixptJumpANDBerlinerButton%, "   Fixpt Jump   ");
         DlgValue$(-tundlgCRGButton%, "Polka Dots");
         tunUseLagDialog% := 0;
         tunUseDonutDialog% := 0;
         tunUseDisparityDialog% := 0;
         tunUseCRGDialog% := 0;
+        tunUseBerlinerDialog% := 0;
     endif;
     if DlgValue(11) = 1 then  'If dual VSG, allow donuts and Berliners and disparity and CRG
-        'DlgEnable(1,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%,-tundlgBoxODonutsButton%,-tundlgCRGButton%,-tundlgDisparityAndBakersDozenButton%);  'old version
-        DlgEnable(1,-tundlgDonutANDGonzagoButton%,-tundlgBerlinerButton%);  'allow boxOdonuts for single screen now
+        'DlgEnable(1,-tundlgDonutANDGonzagoButton%,-tundlgFixptJumpANDBerlinerButton%,-tundlgBoxODonutsButton%,-tundlgCRGButton%,-tundlgDisparityAndBakersDozenButton%);  'old version
+        DlgEnable(1,-tundlgDonutANDGonzagoButton%,-tundlgFixptJumpANDBerlinerButton%);  'allow boxOdonuts for single screen now
         'Also allow turning off card synch, dual tuning listbox
         DlgEnable(1,12);  'dual tuning listbox
         DlgEnable(1,17); 'constant lag listbox
@@ -4162,6 +4178,7 @@ func TuningCurveScriptDialogChanged%(item%)
             DlgValue$(-tundlgNullTestANDLagButton%, "        Lag        ");
             DlgValue$(-tundlgDonutANDGonzagoButton%, "       Donuts!      ");
             DlgValue$(-tundlgCRGButton%, "      CRGs      ");
+            DlgValue$(-tundlgFixptJumpANDBerlinerButton%, "    Berliners!    ");
         case DlgValue(12) = 1 then
             DlgValue$(-tundlgOrientationButton%, " M Orientation ");
             DlgValue$(-tundlgContrastButton%, "    M Contrast    ");
@@ -4172,6 +4189,7 @@ func TuningCurveScriptDialogChanged%(item%)
             DlgValue$(-tundlgNullTestANDLagButton%, "        Lag        ");
             DlgValue$(-tundlgDonutANDGonzagoButton%, "       Donuts!      ");
             DlgValue$(-tundlgCRGButton%, "      CRGs      ");
+            DlgValue$(-tundlgFixptJumpANDBerlinerButton%, "    Berliners!    ");
         case DlgValue(12) = 2 then
             DlgValue$(-tundlgOrientationButton%, " S Orientation ");
             DlgValue$(-tundlgContrastButton%, "    S Contrast    ");
@@ -4182,11 +4200,13 @@ func TuningCurveScriptDialogChanged%(item%)
             DlgValue$(-tundlgNullTestANDLagButton%, "        Lag        ");
             DlgValue$(-tundlgDonutANDGonzagoButton%, "       Donuts!      ");
             DlgValue$(-tundlgCRGButton%, "      CRGs      ");
+            DlgValue$(-tundlgFixptJumpANDBerlinerButton%, "    Berliners!    ");
         endcase;
         tunUseLagDialog% := 1;
         tunUseDonutDialog% := 1;
         tunUseDisparityDialog% := 1;
         tunUseCRGDialog% := 1;
+        tunUseBerlinerDialog% := 1;
     endif;
     if DlgValue(13) = 0 then 'disable maintain mode timing if not using maintain mode
         DlgEnable(0,7);
