@@ -2292,11 +2292,6 @@ func IdleProcessing%()
                     'have to update tNow if we are checking time in the Blitz
                     tNow := View(DataWindow%).MaxTime();
                     docase
-                    case fvMaintainFixation% = 1 and LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
-                        fvFixWaitState% := 0;  'From RewardWait, do not go to LookAwayTO, because it will shuffle trials, just go to acquisitionTO
-                        fvFixationWasBroken% := 1;
-                        fvBlankTime := tNow;
-                        SafeSampleKey("X");  'Request all down (care about fixpt, nothing else should be up)
                     case tNow > tStateStart + (JuiceRewardMS%/1000) then  'for blitz mode, don't wait for reward if not given
                         blitzNow% := 0;  'end blitz
                         docase
@@ -2309,16 +2304,16 @@ func IdleProcessing%()
                         else
                             ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
                         endcase;
+                    case fvMaintainFixation% = 1 and LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                        fvFixWaitState% := 0;  'From RewardWait, do not go to LookAwayTO, because it will shuffle trials, just go to acquisitionTO
+                        fvFixationWasBroken% := 1;
+                        fvBlankTime := tNow;
+                        SafeSampleKey("X");  'Request all down (care about fixpt, nothing else should be up)    
                     endcase;
                 wend
                 remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)
             else
                 docase
-                case fvMaintainFixation% = 1 and LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
-                    fvFixWaitState% := 0;  'From RewardWait, do not go to LookAwayTO, because it will shuffle trials, just go to acquisitionTO
-                    fvFixationWasBroken% := 1;
-                    fvBlankTime := tNow;
-                    SafeSampleKey("X");  'Request all down (care about fixpt, nothing else should be up)    
                 case tNow > tStateStart + fvRewardDurSec then
                     docase
                     case fvMaintainFixation% = 1 and fvFixationWasBroken% = 1 then
@@ -2329,6 +2324,11 @@ func IdleProcessing%()
                     else
                         ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
                     endcase;
+                case fvMaintainFixation% = 1 and LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                    fvFixWaitState% := 0;  'From RewardWait, do not go to LookAwayTO, because it will shuffle trials, just go to acquisitionTO
+                    fvFixationWasBroken% := 1;
+                    fvBlankTime := tNow;
+                    SafeSampleKey("X");  'Request all down (care about fixpt, nothing else should be up)     
                 endcase;
             endif
             
@@ -2507,7 +2507,7 @@ func IdleProcessing%()
                 JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
                 
                 docase
-                case fvGiveAcqTO% = 0 then 'give acquisition TO (does not shuffle last trial back in)
+                case fvGiveAcqTO% = 1 then 'give acquisition TO (does not shuffle last trial back in)
                     ChangeStateTo(stateAcquisitionTO%, tStateStart);
                 case fvGiveLookingTO% = 1 then  'give Looking TO penalty (shuffles last trial back in)
                     ChangeStateTo(stateLookAwayTO%, tStateStart);
