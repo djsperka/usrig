@@ -73,6 +73,7 @@ var tRise, tFall;
 var tKludge := 0.06;    ' Add to Fixation time to account for stim sequence. Ugly hack, admittedly, but one does what one must. 
 var fvFixationWasBroken% := 0;  'this allows us to monitor fixation through the individual image "periods"
 var fvFixWaitState%;
+var fvBlankTime;        'Useful for delayed waitForBlank
 var HBCycle% := 1;
 
 ' Constants for states
@@ -192,6 +193,7 @@ var fvScreenMMY;
 var fvScreenXDeg;  'Defined as the distance from the center of the screen to the edge, for ease with creating the LookingAtScreenOrFixpt%() function
 var fvScreenYDeg;
 var fvGiveLookingTO%;
+var fvGiveAcqTO%;
 var fvAdvance%;
 var fvNValues%;
 var fvNAdvances%;
@@ -1795,6 +1797,8 @@ func IdleProcessing%()
                 tLastTrigger := tTrigger;
                 DrawFix(0);	' actually this draws the location of the fixpt.
                 docase
+                case fvGiveAcqTO% = 1 then
+                    ChangeStateTo(stateTrialCompleted%, tTrigger);  'this will go to stateAcquisitionTO%, but will advance stimulus first, given during fix break in maintain fixation during reward delivery.
                 case fvFixWaitState% = 0 then
                     ChangeStateTo(stateAcquisitionTO%, tTrigger);
                 case fvFixWaitState% = 1 then
@@ -1815,6 +1819,8 @@ func IdleProcessing%()
             if fvBlitzMode% = 1 then
                 remainInIdleLoop% := 0;  'do not use blitz mode  
             endif
+            
+            fvGiveAcqTO% := 0;  'reset
             
             if stateBegin% = 1 then
                 LogStatus("AcquisitionTO", "Begin acquisition timeout at " + str$(tNow));
@@ -1964,25 +1970,8 @@ func IdleProcessing%()
             endif
             
             docase
-            case fvPeriodCount% >= fvNumPeriods% then 'if fixation is held through all periods
-                ' turn off stimulus, get ready to advance
-                if fvMaintainFixation% = 1 then
-                    SafeSampleKey("s");  'Take stim down, leave fixpt up
-                else
-                    SafeSampleKey("X");  'Turn off all
-                endif;
-                SampleText("++");  'indicates fully successful trial
-                LogStatus("HoldImage", "Image time complete. Turn off and advance stimulus at " + str$(tNow));
-                
-                fvAdvance% := 1;  'Advance, but not until stimulus is off
-                fvFixationWasBroken% := 0;  'We didn't check to see if there was a fixation break in the last period, but reset just in case there was
-                
-                'And wait for stim to turn off
-                fvGiveLookingTO% := 0;  'no timeout on successful fixation
-                ChangeStateTo(stateWaitForStimOff%, tNow);
-                
-                
-                'Only for opto
+ 
+            'Only for opto - if fixation was broken, but was held long enough to advance, don't penalize
             case fvPeriodCount% >= fvMinViewPeriodsForAdvance% and (LookingAtScreenOrFixpt%(xEye,yEye) = 0 or fvFixationWasBroken% = 1) and fvDoOpto% > 0 then 'if fixation is held through enough periods to advance, then broken
                 ' turn off stimulus, get ready to advance
                 if fvMaintainFixation% = 1 then
@@ -2000,22 +1989,7 @@ func IdleProcessing%()
                 fvGiveLookingTO% := 0; 'TODO - Not sure about setting this to 0, animal might try to look for minimum no-TO time
                 ChangeStateTo(stateWaitForStimOff%, tNow);
                 
-            case Pause% = 1 then  'putting PAUSE here.  Image done will supercede PAUSE, but magnanimously, PAUSE will supercede fixation break
-                'If pause is pressed, turn off image, do not penalize, do not advance
-                if fvMaintainFixation% = 1 then
-                    SafeSampleKey("s");  'Take stim down, leave fixpt up
-                else
-                    SafeSampleKey("X");  'Turn off all
-                endif;
-                LogStatus("HoldImage", "Experiment paused, removing image at " + str$(tNow));
-                'SampleText("-");  'indicates failed trial, TODO I don't think we want to call this a failure
-                
-                ' Now wait until stim is off
-                fvGiveLookingTO% := 0;
-                fvAdvance% := 0;
-                fvFixationWasBroken% := 0;  'Reset, in case there was a break.  Benevolence!
-                ChangeStateTo(stateWaitForStimOff%, tNow); 
-                
+            'If fixation was broken otherwise, penalize
             case LookingAtScreenOrFixpt%(xEye,yEye) = 0 or fvFixationWasBroken% = 1 then
                 'If animal breaks fixation, turn off image and penalize, do not advance
                 SafeSampleKey("X");  'Turn off all, do not advance
@@ -2033,6 +2007,43 @@ func IdleProcessing%()
                     fvFixWaitState% := 1;
                     ChangeStateTo(stateWaitForBlank%, tNow);  'This is both stim and fixpt
                 endif;
+                
+            'if fixation is held fully through all periods    
+            case fvPeriodCount% >= fvNumPeriods% then 
+                ' turn off stimulus, get ready to advance
+                if fvMaintainFixation% = 1 then
+                    SafeSampleKey("s");  'Take stim down, leave fixpt up
+                else
+                    SafeSampleKey("X");  'Turn off all
+                endif;
+                SampleText("++");  'indicates fully successful trial
+                LogStatus("HoldImage", "Image time complete. Turn off and advance stimulus at " + str$(tNow));
+                
+                fvAdvance% := 1;  'Advance, but not until stimulus is off
+                fvFixationWasBroken% := 0;  'We didn't check to see if there was a fixation break in the last period, but reset just in case there was
+                
+                'And wait for stim to turn off
+                fvGiveLookingTO% := 0;  'no timeout on successful fixation
+                ChangeStateTo(stateWaitForStimOff%, tNow);
+                
+            'if pausing    
+            case Pause% = 1 then  'putting PAUSE here.  IMAGE DONE will supercede PAUSE
+                'If pause is pressed, turn off image, do not penalize, do not advance
+                if fvMaintainFixation% = 1 then
+                    SafeSampleKey("s");  'Take stim down, leave fixpt up
+                else
+                    SafeSampleKey("X");  'Turn off all
+                endif;
+                LogStatus("HoldImage", "Experiment paused, removing image at " + str$(tNow));
+                'SampleText("-");  'indicates failed trial, TODO I don't think we want to call this a failure
+                
+                ' Now wait until stim is off
+                fvGiveLookingTO% := 0;
+                fvAdvance% := 0;
+                fvFixationWasBroken% := 0;  'Reset, in case there was a break.  Benevolence!
+                ChangeStateTo(stateWaitForStimOff%, tNow); 
+                
+            
                 
             case fvDoImageSeries% = 1 then 
                 'If no other cases are met, and this is an image series, go straight to wait for image off
@@ -2222,7 +2233,14 @@ func IdleProcessing%()
                 remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)  
             endif
             
-            if tNow > fvRewardDelaySec + tStateStart then
+            docase
+            'if in maintain fixation mode, force fixation through reward delay to receive reward    
+            case fvMaintainFixation% = 1 and LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                fvFixWaitState% := 0;  'From reward, do not go to LookAwayTO, because it will shuffle trials, just go to acquisitionTO, and don't give reward!
+                fvGiveAcqTO% := 1;
+                SafeSampleKey("X");  'Request all down (care about fixpt, nothing else should be up)
+                ChangeStateTo(stateWaitForBlank%,tNow);    
+            case tNow > fvRewardDelaySec + tStateStart then
                 fvPeriodCount% += 1;  'increment number of periods
                 'Determine if reward should be given (random, or if all periods finished)
                 docase
@@ -2264,7 +2282,7 @@ func IdleProcessing%()
                 else
                     ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
                 endcase;
-            endif;
+            endcase;
             
         case iState% = stateWaitReward% then
             
@@ -2273,24 +2291,45 @@ func IdleProcessing%()
                 while blitzNow% = 1 do  'don't need a timeout, this is based on a wait time already
                     'have to update tNow if we are checking time in the Blitz
                     tNow := View(DataWindow%).MaxTime();
-                    if tNow > tStateStart + (JuiceRewardMS%/1000) then  'for blitz mode, don't wait for reward if not given
-                         blitzNow% := 0;  'end blitz
-                        if fvDoOpto% = 0 then
+                    docase
+                    case fvMaintainFixation% = 1 and LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                        fvFixWaitState% := 0;  'From RewardWait, do not go to LookAwayTO, because it will shuffle trials, just go to acquisitionTO
+                        fvFixationWasBroken% := 1;
+                        fvBlankTime := tNow;
+                        SafeSampleKey("X");  'Request all down (care about fixpt, nothing else should be up)
+                    case tNow > tStateStart + (JuiceRewardMS%/1000) then  'for blitz mode, don't wait for reward if not given
+                        blitzNow% := 0;  'end blitz
+                        docase
+                        case fvMaintainFixation% = 1 and fvFixationWasBroken% = 1 then
+                            fvFixationWasBroken% := 0;  'reset
+                            fvGiveAcqTO% := 1;
+                            ChangeStateTo(stateWaitForBlank%,fvBlankTime);  'we have waited through the reward delivery rather than interrupt it, but look for blank trigger at right time
+                        case fvDoOpto% = 0 then
                             ChangeStateTo(stateTrialCompleted%,tNow);
                         else
                             ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
-                        endif;
-                    endif;
+                        endcase;
+                    endcase;
                 wend
                 remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)
-            else 
-                if tNow > tStateStart + fvRewardDurSec then
-                    if fvDoOpto% = 0 then
+            else
+                docase
+                case fvMaintainFixation% = 1 and LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                    fvFixWaitState% := 0;  'From RewardWait, do not go to LookAwayTO, because it will shuffle trials, just go to acquisitionTO
+                    fvFixationWasBroken% := 1;
+                    fvBlankTime := tNow;
+                    SafeSampleKey("X");  'Request all down (care about fixpt, nothing else should be up)    
+                case tNow > tStateStart + fvRewardDurSec then
+                    docase
+                    case fvMaintainFixation% = 1 and fvFixationWasBroken% = 1 then
+                        fvFixationWasBroken% := 0;  'reset
+                        ChangeStateTo(stateWaitForBlank%,fvBlankTime);  'we have waited through the reward delivery rather than interrupt it, but look for blank trigger at right time    
+                    case fvDoOpto% = 0 then
                         ChangeStateTo(stateTrialCompleted%,tNow);
                     else
                         ChangeStateTo(stateHoldImage%,tNow); 'HoldImage will now move forward to next period
-                    endif;
-                endif;
+                    endcase;
+                endcase;
             endif
             
             
@@ -2373,7 +2412,12 @@ func IdleProcessing%()
                 while blitzNow% = 1 do
                     'have to update tNow if we are checking time in the Blitz
                     tNow := View(DataWindow%).MaxTime();
-                    if tNow > tStateStart + fvITI then
+                    docase
+                    case fvMaintainFixation% = 1 and LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                        fvFixWaitState% := 0;  'From ITI, do not go to LookAwayTO, because it will shuffle trials, just go to acquisitionTO
+                        SafeSampleKey("X");  'Request all down (care about fixpt, nothing else should be up)
+                        ChangeStateTo(stateWaitForBlank%,tNow);
+                    case tNow > tStateStart + fvITI then
                         LogStatus("InterTrialInterval", "InterTrialInterval ended at " + str$(tNow));
                         docase
                         case fvFixScreen% = 1 then
@@ -2384,11 +2428,16 @@ func IdleProcessing%()
                             ChangeStateTo(stateFixptUp%,tNow);
                         endcase;
                         blitzNow% := 0;  'end blitz
-                    endif;
+                    endcase;
                 wend
                 remainInIdleLoop% := 1;  'go straight to next state in blitz mode (redundant, is already 1)
-            else 
-                if tNow > tStateStart + fvITI then
+            else
+                docase
+                case fvMaintainFixation% = 1 and LookingAtScreenOrFixpt%(xEye,yEye) = 0 then
+                    fvFixWaitState% := 0;  'From ITI, do not go to LookAwayTO, because it will shuffle trials, just go to acquisitionTO
+                    SafeSampleKey("X");  'Request all down (care about fixpt, nothing else should be up)
+                    ChangeStateTo(stateWaitForBlank%,tNow);
+                case tNow > tStateStart + fvITI then
                     LogStatus("InterTrialInterval", "InterTrialInterval ended at " + str$(tNow));
                     docase
                     case fvFixScreen% = 1 then
@@ -2398,7 +2447,7 @@ func IdleProcessing%()
                     else
                         ChangeStateTo(stateFixptUp%,tNow);
                     endcase;
-                endif
+                endcase
             endif
             
             
@@ -2457,11 +2506,14 @@ func IdleProcessing%()
                 'Advance/Jump Stimulus
                 JumpOrAdvance%(fvImageOrder%[nTrialsCompleted%]);
                 
-                if fvGiveLookingTO% = 0 then  'go to ITI
-                    ChangeStateTo(stateInterTrialInterval%, tStateStart); 
-                else 'otherwise give TO penalty
-                    ChangeStateTo(stateLookAwayTO%, tStateStart); 
-                endif
+                docase
+                case fvGiveAcqTO% = 0 then 'give acquisition TO (does not shuffle last trial back in)
+                    ChangeStateTo(stateAcquisitionTO%, tStateStart);
+                case fvGiveLookingTO% = 1 then  'give Looking TO penalty (shuffles last trial back in)
+                    ChangeStateTo(stateLookAwayTO%, tStateStart);
+                else 'otherwise go to ITI
+                    ChangeStateTo(stateInterTrialInterval%, tStateStart);                    
+                endcase
             endif
             
             '    case iState% = stateIntanPostRecPause% then
