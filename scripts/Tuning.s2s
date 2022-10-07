@@ -91,11 +91,11 @@ var tLastUpdate:=-1;	' last time view was updated
 var vTrigger;		' set by NextTime to indicate trigger transition
 var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
 var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
+var tStimulusDown;      ' hold time the previous stimulus was taken down, useful for the fixpt jump experiment, could find another use?
 var tTrigger:=-1;	' temp var for newly discovered trigger times
 var tStimOn:=-1;	' time that stim was turned on. Used to measure spike rates 
 var tStimSequence := -1;    ' time that stim sequence started; followed by pulses on frame channels
 var tInterTrialTime := 0;	' Time spent waiting between trials (i.e. after screen is blank, but before fix point is presented)
-'var iHoldCount% := 0;	' Counter of how many times we progress through the hold fixation state in the maintainence loop. Used to decide if "time out" is required. 
 var tRise, tFall;
 'var tKludge := 0.06;    ' Add to Fixation time to account for stim sequence. Ugly hack, admittedly, but one does what one must. 
 var tKludge := 0;        'I don't know what this was, and it's making our stimuli 60 ms longer, so...???
@@ -149,6 +149,8 @@ const stateWaitOptoPoststim%:=23;
 const statePulsedOpto%:=24;
 const stateWaitPulsedOpto%:=25;
 const stateRequestStimulus%:=26;
+const stateJumpFixpt%:=27;
+const stateWaitForJumpAcquisition%:=28;
 var iState% := stateVSGWait%;	' present state
 
 var nTrialsStarted%:=0;
@@ -483,10 +485,14 @@ func IdleProcessing%()
             yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
         endif;
         
-        if tbtFix% = 1 then
+        docase
+        case tbtFix% = 1 then  'there is fixpt tuning in Baker's Dozen
             tbtFixX := Val(tunBDTuningValues$[nTrialsCompleted%][13]);  'nTrialsCompleted is a zero-based index here
             tbtFixY := Val(tunBDTuningValues$[nTrialsCompleted%][14]);  'Values 13 and 14 are X and Y, respectively
-        endif
+        case tbtFix% = 2 then  'this is the Fixpt Jump experiment
+            tbtFixX := tunFPJFixptX[nTrialsCompleted%];
+            tbtFixY := tunFPJFixptY[nTrialsCompleted%];
+        endcase
         
 
         ' Start trial. Put up fixation point.
@@ -538,7 +544,6 @@ func IdleProcessing%()
                 'if tunType$ = tunTypeDSS$ and tunDSSCurrPeriod% = 0 then  'initialize DSS stimulus if necessary
                 '    InitializeDSSTrial(tNow);
                 'endif;
-                ''iHoldCount% := 0;  'disimplemented
                 'ChangeStateTo(stateWaitForStimTrigger%, tNow);
                 LogStatus("WaitForAcquisition", "Eye in fixation window; checking opto status");
                 ChangeStateTo(stateCheckTurnOnOpto%, tNow);
@@ -562,21 +567,6 @@ func IdleProcessing%()
         if Looking%(xEye, yEye) = 1 then
             'if it's time to start the stimulus
             if tNow - tStateStart > tunStimulusOnsetDelay then
-                'LogStatus("WaitStimulusOnsetDelay", "Eye in fixation window, onset delay complete; request stim");
-                'docase
-                'case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ then
-                '    GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
-                '    SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
-                'else
-                '    SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
-                'endcase;
-                ' 
-                'SafeSampleKey("S");  'request stimulus
-                'if tunType$ = tunTypeDSS$ and tunDSSCurrPeriod% = 0 then  'initialize DSS stimulus if necessary
-                '    InitializeDSSTrial(tNow);
-                'endif;
-                ''iHoldCount% := 0;  'disimplemented
-                'ChangeStateTo(stateWaitForStimTrigger%, tNow);
                 LogStatus("WaitForAcquisition", "Eye in fixation window; checking opto status");
                 ChangeStateTo(stateCheckTurnOnOpto%, tNow);
             endif;
@@ -659,6 +649,9 @@ func IdleProcessing%()
         docase
         case TunType$ = tunTypeFixptColor$ then
             SampleText("T," + GetFixptColorThisTrial$(nTrialsCompleted%,tunValues[],tunValuesIndices%[]));
+        case TunType$ = tunTypeFixptJump$ then
+            SampleText("FP," + str$(tunFPJFixptX[nTrialsCompleted%]) + "," + str$(tunFPJFixptY[nTrialsCompleted%]) + ",Gr," + str$(tunFPJGratingX[nTrialsCompleted%]) + "," + str$(tunFPJGratingY[nTrialsCompleted%]) + "Jump=" + Str$(tunFPJIsJump%));
+            tunFPJIsJump% := 0;  'reset the is-jump variable, if there is a fixation break from here on out and we get back here, the "jump" is lost
         case TunType$ = tunTypePolkaDot$ then
             SampleText("T," + tunPDDotSpecsPerTrial$[nTrialsCompleted%]);
         case TunType$ = tunTypeBoxODonuts$ and TunType1$ = tunTypeFixptColor$ then
@@ -693,16 +686,15 @@ func IdleProcessing%()
         SafeSampleKey("S");  'request stimulus
         if tunType$ = tunTypeDSS$ and tunDSSCurrPeriod% = 0 then  'initialize DSS stimulus if necessary
             InitializeDSSTrial(tNow);
-        endif;
-        'iHoldCount% := 0;  'disimplemented   
+        endif; 
         ChangeStateTo(stateWaitForStimTrigger%, tNow);        
         
     case iState% = stateWaitForStimTrigger% then
 
         ' DJS 2015-02-16 Change from tLast to tStateStart.
-        ' Attempting to fix bug where the on trigger for fixpt is not found.
+        ' Attempting to fix bug where the on trigger is not found.
         if View(DataWindow%).FindRisingEdge%(StimChannel%, tStateStart, tTrigger) = 0 then
-            ' Fixation point is up
+            ' Stim is up
             LogStatus("WaitForStimTrigger", "Stim sequence started at " + str$(tTrigger));
             tStimOn := tTrigger;
             tStimSequence := tTrigger;      ' TODO remove tStimOn ref above - see stateWaitForStimOn
@@ -814,20 +806,13 @@ func IdleProcessing%()
         if Looking%(xEye, yEye) = 0 then
             
             LogStatus("WaitForFixation", "Fixation broken, aborting trial.");
-            'if iHoldCount% = 0 then     'disimplemented
-            '    tInterTrialTime := tunTimeOutTime;
-            'else
-            '    tInterTrialTime := tunHoldFailTime;
-            'endif
-            tInterTrialTime := tunHoldFailTime; 'replaces disimplemented code directly above
+            tInterTrialTime := tunHoldFailTime;
             SampleText("-");
             ChangeStateTo(stateAbort%, tNow);
 
         else 
             'tunCRGSecsPerSeq will be 0 unless there is a CRG; tunFixationDuration will be 0 if both screens are CRG
             if tNow - tStateStart > tunFixationDuration + tKludge and tNow - tStateStart > tunCRGSecsPerSeq + tKludge then  
-
-                'iHoldCount% += 1;  'disimplemented
 
                 ' turn off stimulus and advance it
                 SampleText("+");
@@ -939,6 +924,7 @@ func IdleProcessing%()
                 SafeSampleKey("a");
                 
                 tLastTrigger := tTrigger;
+                tStimulusDown := tTrigger;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
             else
                 if tunType$ = tunTypeDanish$ and tunUseMaintainMode% >= 3 and View(DataWindow%).FindRisingEdge%(FrameChannel%, tLast, tTrigger) then
@@ -951,11 +937,26 @@ func IdleProcessing%()
             endif
         else
             if View(DataWindow%).FindFallingEdge%(StimChannel%, tLast, tTrigger) = 1 then
-                ' Advance
-                SafeSampleKey("a");
-                
                 tLastTrigger := tTrigger;
-                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+                tStimulusDown := tTrigger;
+                
+                if tunType$ = tunTypeFixptJump$ then
+                    'For a Fixpt Jump experiment, we need to determine if we will do a jump or not
+                    if tunFPJProbSaccade > rand() then 'do jump, increment nTrialsCompleted%
+                        nTrialsCompleted% += 1;
+                        tunFPJIsJump% := 1;
+                        'but do not advance yet, because that will move the fixpt
+                    else 'don't jump
+                        'Do nothing
+                    endif
+                    ChangeStateTo(stateTrialCompleted%, tNow);  'There is no opto and nTrialsCompleted% is right, can skip to stateTrialCompleted%
+                else  'for a "standard" experiment, advance and go to stateCheckTurnOffOpto, which will increment nTrialsCompleted%
+                    ' Advance
+                    SafeSampleKey("a");
+                    ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+                endif
+                
+                
             else
                 if tunType$ = tunTypeDanish$ and tunUseMaintainMode% >= 3 and View(DataWindow%).FindRisingEdge%(FrameChannel%, tLast, tTrigger) then
                     ' Advance, in specific case that we are doing danishes and maintaining the core - there will not be a falling edge on the stim channel in this case
@@ -1029,7 +1030,7 @@ func IdleProcessing%()
         printlog("number of trials completed is %d\n",nTrialsCompleted%);
 		ToolbarText(str$(nTrialsCompleted%) + "/" + str$(tunNValues%) + " trials completed."); 
         docase
-		case nTrialsCompleted% = tunNValues% then
+		case nTrialsCompleted% >= tunNValues% then
             ' We're all done - appears to not reward on final trial.  How chintzy!
             ChangeStateTo(stateDone%, tNow);
             Stop%();
@@ -1049,19 +1050,55 @@ func IdleProcessing%()
             endif;
             ChangeStateTo(stateInterTrialInterval%, tNow);  'at end of block, we do not maintain fixation, it will start again for next time
         else
-            if tunUseMaintainMode% >= 1 then
+            docase
+            case tunFPJIsJump% = 1 then  'can only get here in fixpt jump experiment
+                ChangeStateTo(stateJumpFixpt%, tStimulusDown);  'start "counting" at the time the stimulus went down
+            case tunType$ = tunTypeFixptJump$ then
+                ChangeStateTo(stateMaintainFixation%, tStimulusDown);  'maintain fixation, but start "counting" at the time the stimulus went down
+            case tunUseMaintainMode% >= 1 then
                 ChangeStateTo(stateMaintainFixation%, tNow);
             else
-                'tInterTrialTime := tunMaintainFailTime;
                 tInterTrialTime := tunStdInterTrialTime;
                 ChangeStateTo(stateInterTrialInterval%, tNow);
-            endif
+            endcase
         endcase
-            
+        
+        
+    case iState% = stateJumpFixpt% then
+        docase
+        case tNow > tStateStart + tunFPJtFixptMove then  'wait until time fixpt is supposed to move
+            SafeSampleKey("a");  'Advance the stimulus/fixation point, will move fixpt immediately - not gonna check a trigger line on this one
+            tbtFixX := tunFPJFixptX[nTrialsCompleted%];
+            tbtFixY := tunFPJFixptY[nTrialsCompleted%];
+            ChangeStateTo(stateWaitForJumpAcquisition%, tStimulusDown);  'should we use tNow (and then a standard acquisition window) or tStimulusDown (and give until next grating woudl appear)?
+        case Looking%(xEye, yEye) = 0 then  'fixation was not maintained prior to the jump
+            nTrialsCompleted% -= 1;  'Decrement, was incremented in wait for stim off but jump was not completed, keep fixpt where it was
+            tunFPJIsJump% := 0;  'Reset jump variable, this is no longer a legit jump because the fixpt will come down
+            tInterTrialTime := tunMaintainFailTime;
+    
+            LogStatus("JumpFixpt", "Fixation broken before fixpt jump; aborting trial");
+            ChangeStateTo(stateAbort%, tNow);
+        endcase;
+        
+        
+    case iState% = stateWaitForJumpAcquisition% then    
+        docase
+        case Looking%(xEye, yEye) = 1 then  'acquired new fixation point
+            LogStatus("WaitForJumpAcquisition", "Acquired fixation point in new position, trial continues");
+            ChangeStateTo(stateMaintainFixation%, tStimulusDown);
+        case tNow > tStateStart + tunMaintainFixation then  'failure to acquire fixation point, abort!
+            tunFPJIsJump% := 0;  'Reset jump variable, this is no longer a legit jump because the fixpt will come down
+            tInterTrialTime := tunMaintainFailTime;
+    
+            LogStatus("WaitForJumpAcquisition", "Failure to acquire new fixation after fixpt jump; aborting trial");
+            ChangeStateTo(stateAbort%, tNow);
+        endcase
+        
+        
     case iState% = stateMaintainFixation% then
 
         if Looking%(xEye, yEye) = 0 then
-
+            tunFPJIsJump% := 0;  'Reset jump variable, this is no longer a legit jump because the fixpt will come down (only relevant in fixpt jump experiment)
             tInterTrialTime := tunMaintainFailTime;
     
             LogStatus("MaintainFixation", "Broken; aborting trial");
@@ -1071,8 +1108,6 @@ func IdleProcessing%()
             if tNow - tStateStart > tunMaintainFixation then
 
                 LogStatus("MaintainFixation", "success");
-                
-                
                 
                 if tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4 then  'Only give juice if requested in original dialog
                     if tunSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
@@ -1087,27 +1122,16 @@ func IdleProcessing%()
                             DeliverRewardNumber();
                         endif;
                     endif;
-                endif;
-            
-                'this is redundant with code that happens at the time of stimulus request, removing, will ask Henry
-'                docase
-'                case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ then
-'                    GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
-'                    SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
-'                else
-'                    SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
-'                endcase;
+                endif;    
                 
-                
-                if tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4 then  'this will allow a "break" after giving a reward, uses intertrial interval
+                docase
+                case tunType$ = tunTypeFixptJump$ then
+                    ChangeStateTo(stateRequestStimulus%,tNow);  'in Fixpt Jump expt, on successful Jump Acquisition OR successful Maintain Fixation go straight to stim request, there's no need to acquire and no opto anyway.
+                case tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4 then  'this will allow a "break" after giving a reward, uses intertrial interval
                     ChangeStateTo(stateInterTrialIntervalFixAlreadyUp%, tNow);                
-                else  'if no reward, goes straight to next stimulus
-'                    SafeSampleKey("S");                
-'                    ChangeStateTo(stateWaitForStimTrigger%, tNow);
-                    
-                    'try going to acquisition step first, this allows opto to happen, also penalizes for fixation break after second reward
+                else  'if no reward, try going to acquisition step first, this allows opto to happen, also penalizes for fixation break after second reward
                     ChangeStateTo(stateWaitForAcquisition%, tNow-tunAcquisitionTime);  'do not allow acquisition window, if animal is not fixating during maintain, this is an abort
-                endif;
+                endcase;
                 
 
             endif 
@@ -1773,6 +1797,10 @@ proc TuningCurveLabels(iport%)
         ChanTitle$(1, "Chan 1");
         XRange(tunFPCMinValue, tunFPCMaxValue);    
         
+    case tunType$ = tunTypeFixptJump$ then
+        'TODO - decide whether to do anything here or skip like polka dots
+        tunDoTuningHist% := 0;  'For now assume NO tuning histogram
+        
     case tunType$ = tunTypePolkaDot$ then
         
         'This is going to be too tricky, going to skip it, Henry seems OK with this decision, for now
@@ -1984,6 +2012,17 @@ proc CreateSampleConfiguration()
         tunNValues% := (tunNAdvances%+1)*tunNRepeats%;  
         tunValuesStringified$ := StringifyColorProgression$(tunNValues%, tunValues, tunValuesIndices%); 
         'printlog("TunValuesStringified is %s\n",tunValuesStringified$);
+        
+    case tunType$ = tunTypeFixptJump$ then
+        DoSampleAutoName(key$,"fpj","fpj",primaryTxt$,secondaryTxt$);
+        tunNRepeats% := 1;
+        tunNAdvances% := tunFPJNAdvances%;
+        tunNValues% := tunFPJNAdvances%+1;  'There's a first value and then N jumps
+        if tunDoOpto% > 0 then
+            tunDoOpto% := 0;
+            message("Opto was set on, but Fixpt Jump is not designed for opto! Opto has been turned off!");
+        endif
+        'do we stringify anything here?  Stringify can be done in dialog, easier to test.  Where do we write the file?  Written below in the Start%() function
         
     case tunType$ = tunTypePolkaDot$ then
         DoSampleAutoName(key$,"pd","pd",primaryTxt$,secondaryTxt$);
@@ -3139,6 +3178,18 @@ proc WriteParameterFile()
         Print("Values: " + tunValuesStringified$ + "\n");
         Print("\n");
         
+    case tunType$ = tunTypeFixptJump$ then
+        Print("Type:                  : Fixpt Jump\n");
+        Print("#Jumps: %d\n", tunFPJNAdvances%);
+        Print("Fixpt X offset from center: %f\n",tunFPJXOffset);
+        Print("Fixpt Y offset from center: %f\n", tunFPJYOffset);
+        Print("Probability of jump: %f\n", tunFPJProbSaccade);
+        Print("Time of fixpt jump: %f\n", tunFPJtFixptMove);
+        Print("Fixpt X/Y Values: " + tunFPJFixptStr$ + "\n");
+        Print("Grating X/Y Values: " + tunFPJGratingStr$ + "\n");
+        Print("\n");
+
+        
     case tunType$ = tunTypePolkaDot$ then
         
         Print("Type:                  : Polka Dot\n");
@@ -4074,7 +4125,6 @@ func Start%()
     case tunType$ = tunTypeArea$ then
         TunCurveMArg$ := " -A ";
         
-        
         if tunAreaDualScreenCombo% = 0 then
             if tunDoRivalry% = 1 then
                 TunCurveSArg$ := " -A ";  'Set slave to run same tuning curve...
@@ -4474,6 +4524,36 @@ func Start%()
 
     'Build command line, any values that are unnecessary will be empty, so the build should work no matter what type of command line is required
     docase
+    case tunType$ = tunTypeFixptJump$ then
+        'This is a specialized Baker's Dozen
+        
+        'We will create a file for this locally - different than usual BD which assumes a file has been created
+        'This means we DO need to create stimulus lists, but we DON'T need to parse the file
+        'The syntax for the file will be " -y arg1,arg2,...,argN -Z arg1,arg2,...,argN " <-- Note that the closing space following the final argument is OBLIGATORY and will result in a syntax error if omitted
+        'Be sure that the text is printed on one line (no new lines/carriage returns) and to enclose the entire text with a single pair of double quotes as shown
+        'Type           Flag    [min max] of argument, units
+        'XYPosition     -Z      [-14 14], degrees from center. For XYPos args are paired and comma separated: x1,y1,x2,y2,...xN,yN
+        'FixPtPosition  -y      [-14 14], degrees from center. For FixPtPos args are paired and comma separated: x1,y1,x2,y2,...xN,yN
+        
+        var tempstrFPJ$;
+
+        FileOpen(tunFPJFileLoc$,8,1);  'Open file for writing loc, file loc is defined in TuningDialogs at declaration
+        
+        'Use tempstrFPJ$ to hold arguments
+        tempstrFPJ$ := FixationArg$ + XHairArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$; 'prelim stuff
+        tempstrFPJ$ := tempstrFPJ$ + MGrat$ + MGratParam$;  'Master grating only
+        
+        'Print tempstrFPJ$ and FPJ argument lists to the new file, this file is passed to FIXSTIM
+        print("%s %s %s ",tempstrFPJ$,tunFPJFixptStr$,tunFPJGratingStr$);  'TODO, argument list not created, needs different variable name
+
+        FileClose();
+        
+        tbtFix% := 2;  'Set trial-by-trial fixation location to ON, 2
+        
+        'Create command line, referencing new file
+        cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + " -F " + tunFPJFileLoc$;
+        
+ 
     case tunType$ = tunTypeBakersDozen$ then
         'We will simply assume we need a file for this
         'The syntax for the file will be " -Flag1 arg1,arg2,...,argN -Flag2 arg1,arg2,...,argN ... -FlagN arg1,arg2,...,argN " <-- Note that the closing space following the final argument is OBLIGATORY and will result in a syntax error if omitted
@@ -4614,7 +4694,7 @@ func Start%()
             case tempchar$ = "-y" then
                 curveIndex% := 13;  'Curve index for Fixpt position (13 is X, 14 is Y)
                 valsPerSpec% := 2;  'These grating specs have a pair of values per spec
-                tbtFix% := 1;       'And set trial-by-trial fixaiton location to ON
+                tbtFix% := 1;       'And set trial-by-trial fixation location to ON
                 if tunUseMaintainMode% > 0 then
                     tunUseMaintainMode% := 0;
                     message("Maintain Fixation is incompatible with moving fixation points, Maintain Fixation has been turned OFF!");

@@ -31,6 +31,7 @@ const tunTypeNullTest$ := "NULL";
 const tunTypeLag$ := "LAG";
 const tunTypeBakersDozen$ := "BAKER";
 const tunTypeFixptColor$ := "U";
+const tunTypeFixptJump$ := "J";
 const tunTypePolkaDot$ := "PD";
 var tunType$:=tunTypeNone$;
 var tunType1$:=tunTypeNone$;  'for first of two tuning curves, if Box O' Donuts, or for non-CRG curve in CRG scenarios
@@ -332,6 +333,21 @@ var tunFPCProgression%;
 var tunFPCUseFile%;
 var tunFPCTuningFile$;
 
+
+'Fixpt Jump
+var tunFPJNAdvances%;           'How many trials (advances), number of actual "trials" will vary based on probability of saccade
+var tunFPJXOffset;              'X offset of fixation point, degrees
+var tunFPJYOffset;              'Y offset of fixation point, degrees
+var tunFPJProbSaccade;          'Probability of a saccade each trial (evidently no minimum number of presentations between saccades)
+var tunFPJtFixptMove;           'Time of fixation point jump, if any
+var tunFPJFileLoc$ := GetWorkPath$() + "\\FixptJumpFile.txt";             'Location of FPJ file
+var tunFPJFixptStr$;
+var tunFPJGratingStr$;
+var tunFPJFixptX[10000];        'Would use tunMaxTrial but that's defined below, this is fine
+var tunFPJFixptY[10000];
+var tunFPJGratingX[10000];
+var tunFPJGratingY[10000];
+var tunFPJIsJump%;
 
 
 'Polka Dots
@@ -1037,6 +1053,28 @@ proc SaveTuningCurveFixptColorParameters()
     SetIntRegistryValue(key$, "Progression", tunFPCProgression%);
     SetIntRegistryValue(key$, "UseFile", tunFPCUseFile%);
     SetStringRegistryValue(key$, "TuningFile", tunFPCTuningFile$);
+end;
+
+
+proc GetTuningCurveFixptJumpParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\FixptJump";
+    tunFPJNAdvances% := GetIntRegistryValue%(key$, "FPJNAdvances", tunFPJNAdvances%);
+    tunFPJXOffset := GetFloatRegistryValue(key$, "FPJXOffset", tunFPJXOffset);
+    tunFPJYOffset := GetFloatRegistryValue(key$, "FPJYOffset", tunFPJYOffset);
+    tunFPJProbSaccade := GetFloatRegistryValue(key$, "FPJProbSaccade", tunFPJProbSaccade);
+    tunFPJtFixptMove := GetFloatRegistryValue(key$, "FPJtFixptMove", tunFPJtFixptMove);
+end;
+
+
+proc SaveTuningCurveFixptJumpParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\FixptJump";
+    SetIntRegistryValue(key$, "FPJNAdvances", tunFPJNAdvances%);
+    SetFloatRegistryValue(key$, "FPJXOffset", tunFPJXOffset);
+    SetFloatRegistryValue(key$, "FPJYOffset", tunFPJYOffset);
+    SetFloatRegistryValue(key$, "FPJProbSaccade", tunFPJProbSaccade);
+    SetFloatRegistryValue(key$, "FPJtFixptMove", tunFPJtFixptMove);
 end;
 
 
@@ -1974,13 +2012,110 @@ func TuningCurveFixptJumpANDBerlinerDialog%()
     var result[1000];
     var indices%[1000];
     var mylist$[2];
+    var x,y,w,h;
+    var count%;
+    var r1%, r2%;
+    var r1, r2;  'for float math
+    var safety%;
     
     if tunUseBerlinerDialog% = 0 then
         
-        'GetFixptJumpParameters();  'TODO - write this
+        GetTuningCurveFixptJumpParameters(); 
         
-        'DlgCreate("Fixation Point Jump Parameters");
         
+        
+        DlgCreate("Fixation Point Jump Parameters");
+        DlgInteger(1, "Number of Total Jumps", 1, 1000);
+        DlgReal(2, "Fixation Point X Offset (deg)", 0, 30);  'Will be used for both +/- location of fixpt
+        DlgReal(3, "Fixation Point Y Offset (deg)", 0, 30);
+        DlgReal(4, "Probability of Fixpt Jump (0-1)", 0.01, 1);  'don't allow 0 or the program will never end; could in principle do no jumps by setting offsets to 0
+        DlgReal(5, "Time of Fixpt Jump (s)", 0.1, 10);  'needs to be short enough that the acquisition time will fit within standard maintain fixation period
+        
+        i% := DlgShow(tunFPJNAdvances%, tunFPJXOffset, tunFPJYOffset, tunFPJProbSaccade, tunFPJtFixptMove);
+        
+        ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+        ' When user hits OK we always save the parameters, and when user hits Cancel we don't.
+        if i% = 1 then
+            SaveTuningCurveFixptJumpParameters(); 
+            
+            tunType$ := tunTypeFixptJump$;
+            
+            'Force tunUseMaintainMode to be 1 if an inappropriate value is chosen for this experiment
+            'if tunUseMaintainMode% = 0 or tunUseMaintainMode% > 2 then
+            if tunUseMaintainMode% <> 1 then 'let's not get too clever, force this to 1, the "late" reward will mess things up 
+                tunUseMaintainMode% := 1;
+                message("Maintain Mode was changed to '1' (maintain fixation, no maintain reward) for Fixpt Jump experiment!  Carry on.");
+            endif
+            
+            'Make sure that tunMaintainFixation, tunAcquisitionTime and tunFPJtFixptMove all work out
+            'We are including 100 ms "slop" for possible OS time slice delay in moving the fixpt
+            if tunMaintainFixation-tunFPJtFixptMove < tunAcquisitionTime+0.1 then
+                message("Acquisition time must be at least 100 ms less than the time from fixpt move to time of next stim!  Quitting!");
+                halt;
+            endif
+            
+            'Generate Fixation Point/Grating locations
+            'Get x/y of grating
+            ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"), x, y, w, h);
+            'Loop through X/Y variables until full, do not allow two in a row to be the same
+            while count% < tunFPJNAdvances% and safety% < 10000 do
+                'Calculate two values that are either 1 or -1
+                r1% := rand(2,0);  'This doesn't seem like a two-liner, but I can't seem to pull it off.  Offsetting Rand() by -1 does not work right, and doing the math directly doesn't work!
+                r1% := (r1%*2)-1; 
+                r2% := rand(2,0);  
+                r2% := (r2%*2)-1;
+                r1 := r1%;
+                r2 := r2%;
+                tunFPJFixptX[count%] := tunFPJXOffset*r1;  'Use +/- fixpt offset
+                tunFPJFixptY[count%] := tunFPJYOffset*r2;
+                tunFPJGratingX[count%] := x + (tunFPJXOffset*r1);  'adjust position of grating accordingly
+                tunFPJGratingY[count%] := y + (tunFPJYOffset*r2);
+                if count% > 0 then
+                    if (tunFPJFixptX[count%] <> tunFPJFixptX[count%-1]) or (tunFPJFixptY[count%] <> tunFPJFixptY[count%-1]) then
+                        count% += 1;  'Only increment count% if the new position is different than the old position, otherwise try again
+                    endif
+                else
+                    count% += 1; 'DO increment count% if it is 0
+                endif
+                safety% += 1;
+            wend
+            'Just keeping the safety around, it saved my butt during testing at least
+            if safety% >= 10000 then
+                printlog("Safety is %d\n",safety%);
+                message("While loop in Fixpt Jump dialog has failed!  Quitting!");
+                halt;
+            endif;
+            'Stringify the values
+            tunFPJFixptStr$ := " -y ";
+            tunFPJGratingStr$ := " -Z ";
+            count% := 0;
+            for count% := 0 to tunFPJNAdvances%-1 do
+                tunFPJFixptStr$ := tunFPJFixptStr$ + str$(tunFPJFixptX[count%]) + "," + str$(tunFPJFixptY[count%]);
+                tunFPJGratingStr$ := tunFPJGratingStr$ + str$(tunFPJGratingX[count%]) + "," + str$(tunFPJGratingY[count%]);
+                'Add closing comma before next line for all lines but the final one
+                if count% < tunFPJNAdvances%-1 then
+                    tunFPJFixptStr$ := tunFPJFixptStr$ + ",";
+                    tunFPJGratingStr$ := tunFPJGratingStr$ + ",";
+                endif;
+            next
+            printlog("Fixpt string is %s\n",tunFPJFixptStr$);
+            printlog("Grating string is %s\n",tunFPJGratingStr$);
+            
+            
+            
+            iReturn% := 1;
+            
+        endif;
+        if i% = 0 then
+            tunType$ := tunTypeNone$;
+            if tunContext$ = tunContextDAQ$ then
+                iReturn% := 1;
+            else
+                iReturn% := 2;
+            endif;
+        endif;
+        
+        return iReturn%;
         
     else
         
