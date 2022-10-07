@@ -2040,25 +2040,19 @@ func TuningCurveFixptJumpANDBerlinerDialog%()
             
             tunType$ := tunTypeFixptJump$;
             
-            'Force tunUseMaintainMode to be 1 if an inappropriate value is chosen for this experiment
-            'if tunUseMaintainMode% = 0 or tunUseMaintainMode% > 2 then
-            if tunUseMaintainMode% <> 1 then 'let's not get too clever, force this to 1, the "late" reward will mess things up 
-                tunUseMaintainMode% := 1;
-                message("Maintain Mode was changed to '1' (maintain fixation, no maintain reward) for Fixpt Jump experiment!  Carry on.");
-            endif
-            
             'Make sure that tunMaintainFixation, tunAcquisitionTime and tunFPJtFixptMove all work out
             'We are including 100 ms "slop" for possible OS time slice delay in moving the fixpt
-            if tunMaintainFixation-tunFPJtFixptMove < tunAcquisitionTime+0.1 then
-                message("Acquisition time must be at least 100 ms less than the time from fixpt move to time of next stim!  Quitting!");
-                halt;
-            endif
+            'OK, currently using tunMaintainFixation as during-maintain acquisition time, so this isn't necessary, also it can't be done here (easily)
+            'if tunMaintainFixation-tunFPJtFixptMove < tunAcquisitionTime+0.1 then
+            '    message("Acquisition time must be at least 100 ms less than the time from fixpt move to time of next stim!  Quitting!");
+            '    halt;
+            'endif
             
             'Generate Fixation Point/Grating locations
             'Get x/y of grating
             ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"), x, y, w, h);
             'Loop through X/Y variables until full, do not allow two in a row to be the same
-            while count% < tunFPJNAdvances% and safety% < 10000 do
+            while count% < tunFPJNAdvances%+1 and safety% < 10000 do
                 'Calculate two values that are either 1 or -1
                 r1% := rand(2,0);  'This doesn't seem like a two-liner, but I can't seem to pull it off.  Offsetting Rand() by -1 does not work right, and doing the math directly doesn't work!
                 r1% := (r1%*2)-1; 
@@ -2089,11 +2083,11 @@ func TuningCurveFixptJumpANDBerlinerDialog%()
             tunFPJFixptStr$ := " -y ";
             tunFPJGratingStr$ := " -Z ";
             count% := 0;
-            for count% := 0 to tunFPJNAdvances%-1 do
+            for count% := 0 to tunFPJNAdvances% do
                 tunFPJFixptStr$ := tunFPJFixptStr$ + str$(tunFPJFixptX[count%]) + "," + str$(tunFPJFixptY[count%]);
                 tunFPJGratingStr$ := tunFPJGratingStr$ + str$(tunFPJGratingX[count%]) + "," + str$(tunFPJGratingY[count%]);
                 'Add closing comma before next line for all lines but the final one
-                if count% < tunFPJNAdvances%-1 then
+                if count% < tunFPJNAdvances% then
                     tunFPJFixptStr$ := tunFPJFixptStr$ + ",";
                     tunFPJGratingStr$ := tunFPJGratingStr$ + ",";
                 endif;
@@ -4235,6 +4229,13 @@ func TuningCurveScriptDialog%()
         if tunDoRivalry% = 0 then
             tunUseConstantLag% := 0;
         endif;
+        
+        
+        'Force tunUseMaintainMode to be 1 if any other value is chosen for tunTypeFixptJump$
+        if tunUseMaintainMode% <> 1 and tunType$ = tunTypeFixptJump$ then 'let's not get too clever, force this to 1, the "late" reward will mess things up 
+            tunUseMaintainMode% := 1;
+            message("Maintain Mode was changed to '1' (maintain fixation, no maintain reward) for Fixpt Jump experiment!  Carry on.");
+        endif
         
         
 	endif;

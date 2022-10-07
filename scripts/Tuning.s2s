@@ -650,7 +650,7 @@ func IdleProcessing%()
         case TunType$ = tunTypeFixptColor$ then
             SampleText("T," + GetFixptColorThisTrial$(nTrialsCompleted%,tunValues[],tunValuesIndices%[]));
         case TunType$ = tunTypeFixptJump$ then
-            SampleText("FP," + str$(tunFPJFixptX[nTrialsCompleted%]) + "," + str$(tunFPJFixptY[nTrialsCompleted%]) + ",Gr," + str$(tunFPJGratingX[nTrialsCompleted%]) + "," + str$(tunFPJGratingY[nTrialsCompleted%]) + "Jump=" + Str$(tunFPJIsJump%));
+            SampleText("FP," + str$(tunFPJFixptX[nTrialsCompleted%]) + "," + str$(tunFPJFixptY[nTrialsCompleted%]) + ",Gr," + str$(tunFPJGratingX[nTrialsCompleted%]) + "," + str$(tunFPJGratingY[nTrialsCompleted%]) + ",Jump=" + Str$(tunFPJIsJump%));
             tunFPJIsJump% := 0;  'reset the is-jump variable, if there is a fixation break from here on out and we get back here, the "jump" is lost
         case TunType$ = tunTypePolkaDot$ then
             SampleText("T," + tunPDDotSpecsPerTrial$[nTrialsCompleted%]);
@@ -1035,7 +1035,7 @@ func IdleProcessing%()
             ChangeStateTo(stateDone%, tNow);
             Stop%();
             iStatus% := 0;
-        case (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 then 'toggle tunOptoState at the end of a block, use interblock time
+        case nTrialsCompleted% > 0 and (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 then 'toggle tunOptoState at the end of a block, use interblock time
             if tunDoOpto% = 1 and dontToggleOpto% = 0 then
                 tunOptoState% := 1-tunOptoState%;  'but only toggle if we're actually doing opto, and we haven't been told to not toggle opto
             endif;
@@ -1070,6 +1070,7 @@ func IdleProcessing%()
             SafeSampleKey("a");  'Advance the stimulus/fixation point, will move fixpt immediately - not gonna check a trigger line on this one
             tbtFixX := tunFPJFixptX[nTrialsCompleted%];
             tbtFixY := tunFPJFixptY[nTrialsCompleted%];
+            DrawFix(2);  'update fixation point location on CED screen
             ChangeStateTo(stateWaitForJumpAcquisition%, tStimulusDown);  'should we use tNow (and then a standard acquisition window) or tStimulusDown (and give until next grating woudl appear)?
         case Looking%(xEye, yEye) = 0 then  'fixation was not maintained prior to the jump
             nTrialsCompleted% -= 1;  'Decrement, was incremented in wait for stim off but jump was not completed, keep fixpt where it was
@@ -4121,7 +4122,10 @@ func Start%()
             'based on tunDualTuningType%, allows dual to produce tuning curve on both, only master, or only slave
             ClearMasterOrSlaveIfNecessary(SGrat$,SGratParam$,SlaveIndicator$,TunCurveSArg$,SValues$,MGrat$,MGratParam$,MasterIndicator$,TunCurveMArg$,MValues$);  
         endif;
-
+        
+    case tunType$ = tunTypeFixptJump$ then
+        'do nothing, but we have to avoid the ELSE breaking
+        
     case tunType$ = tunTypeArea$ then
         TunCurveMArg$ := " -A ";
         
@@ -4951,6 +4955,10 @@ proc DrawFix(iDraw%)
 	
     docase
     case iDraw% = 2 then
+        ' erase the central dot and window from xy view
+        View(XYWindow%).XYDelete(iFixptChannel%);
+        View(XYWindow%).XYDelete(iFixptWindowChannel%);
+        
         localX := tbtFixX;
 		localY := tbtFixY;
         'Create fixation window
