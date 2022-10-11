@@ -173,7 +173,7 @@ var screenXDeg := 12.5;  'Manually setting screen degrees - we might want to cal
 var screenYDeg := 9.5;
 var ggWindowRadius;
 var force9%;       'if there is not enough room for 25, make sure to force there to be 9 stimuli with DialogChanged function
-
+var doChange%;
 
 GetGreggsGridScriptParameters();  'We will just get these right off the bat, this supports the pre-dialog box
 'that warns about AlwaysLooking - though this pre-dialog is currently disabled
@@ -281,9 +281,12 @@ func GreggsGridScriptDialog%()
 	var i%;
 	var iReturn%;
     var rfX,rfY,rfW,rfH;
-    var numStim$[2];
-    numStim$[0] := "9";
-    numStim$[1] := "25";
+    var numStim$[5];
+    numStim$[0] := "1";
+    numStim$[1] := "2";
+    numStim$[2] := "4";
+    numStim$[3] := "9";
+    numStim$[4] := "25";
 
     GetGreggsGridScriptParameters();
     
@@ -323,9 +326,9 @@ func GreggsGridScriptDialog%()
         
     DlgCreate("GreggsGrid Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
     DlgGroup("Stimuli", 1, 1, 50, 5);
-    DlgList(1, "Number of Stimuli: ", numStim$, 2, 32, 2);
+    DlgList(1, "Number of Stimuli: ", numStim$, 5, 32, 2);
     DlgInteger(2, "Number of orientations (0-180 deg)", 1, 1000, 0, 3);
-    DlgReal(3, "Minimum dOri for change, deg", 0, 180, 0, 4);
+    DlgReal(3, "Minimum dOri for change, deg", 0, 90, 0, 4);
     DlgInteger(4, "Number of trials", 1, nMaxTrials%, 0, 5);
     
     DlgGroup("Fixations", 1, 6, 50, 4);
@@ -355,19 +358,43 @@ func GreggsGridScriptDialog%()
 
 		SaveGreggsGridScriptParameters();
         
-        'Fill nStim%
-        if nStimIndex% = 0 then
+        'Fill nStim%, doChange% (currently doChange% is tethered to nStim%, but it could be untethered if appropriate)
+        docase
+        case nStimIndex% = 0 then
+            nStim% := 1;  'Training, no grating change
+            doChange% := 0;
+        case nStimIndex% = 1 then
+            nStim% := 2;  'Training, no grating change
+            doChange% := 0;
+        case nStimIndex% = 2 then
+            nStim% := 4;  'Training, introduce grating change
+            doChange% := 1;
+        case nStimIndex% = 3 then
             nStim% := 9;
-        else
+            doChange% := 1;
+        else  'nStimIndex% = 4
             nStim% := 25;
-        endif
+            doChange% := 1;
+        endcase
+        
+        'Build locations of stimuli and trials
+        if nStim% > 4 then 'Use full version for 9/25 stimuli, this is "the real deal"
+            'Build locations of stimuli
+            BuildStimLocations%(rfX,rfY,rfW,rfH);
+        
+            'Build list of trials (stimOrientation[][], changeLoc%[], changeFromOrientation[])
+            BuildOrientations();
+        else  'Use lite version for 1/2/4 stimuli, this is training
+            'Build locations of stimuli
+            BuildStimLocationsLite%(rfW,rfH);  'We will ignore the position of the RF, but use the width/height of the RF
+        
+            'Build list of trials (stimOrientation[][], changeLoc%[], changeFromOrientation[])
+            BuildOrientationsLite();
+
+        endif;
         
         
-        'Build locations of stimuli
-        BuildStimLocations%(rfX,rfY,rfW,rfH);
         
-        'Build list of trials (stimOrientation[][], changeLoc%[], changeFromOrientation[])
-        BuildOrientations();
 '        stimOrientation[25][nMaxTrials%];  
 '        changeFromOrientation[nMaxTrials%];
 '        changeLoc%[nMaxTrials%];
@@ -504,14 +531,17 @@ func IdleProcessing%()
         endif
         
         'Calculate number of fixations remaining
-        if reduceFixations% = 0 then
+        docase
+        case nStim% = 1 then
+            numFixationsRemaining% := 1;  'Can't change fixation location if nStim% is 1
+        case reduceFixations% = 0 then
             numFixationsRemaining% := rand(varFixations%+1,minFixations%);  'the math requires var+1
         else
             numFixationsRemaining% := rand(varFixations%+1,1);  'make minumum fixations 1 (for now keep same var?  this is quite off the cuff)
             reduceFixations% := 0;  'reset variable
-        endif
+        endcase
         
-        'Note all grating are legal before any acquisition
+        'Note all gratings are legal before any acquisition
         illegalGrating% := -1;
         
         'Request stimulus up
@@ -574,8 +604,7 @@ func IdleProcessing%()
             LogStatus("WaitAcqAnyGrating", "Begin waiting for animal to acquire any grating at " + str$(tNow));
             stateBegin% := 0;
         endif
-        
-        
+
         docase   
         case LookingGrid%(xEye,yEye,currentGrating%) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
             LogStatus("WaitAcqAnyGrating", "Grating " + str$(currentGrating%) + " acquired at " + str$(tNow));
@@ -584,11 +613,14 @@ func IdleProcessing%()
             else
                 SampleText("Acquired Grating (Voluntary), grating="+str$(currentGrating%)+", gazeOri="+str$(stimOrientation[currentGrating%][currTrial%-1])+", RFOri="+str$(stimOrientation[stimInRF%[currentGrating%]][currTrial%-1]),tNow);
             endif
-            if numFixationsRemaining% > 1 or currentGrating% = changeLoc%[currTrial%-1] then
+            docase
+            case numFixationsRemaining% > 1 or currentGrating% = changeLoc%[currTrial%-1] then
                 changeStateTo(stateHoldIntermediateGrating%,tNow);
+            case doChange% = 0 then  'if this is the last fixation and we aren't changing a grating, skip to final hold
+                changeStateTo(stateHoldChangedGrating%,tNow);  'kind of a kludge as nothing has changed
             else
                 changeStateTo(stateHoldPreChangeGrating%,tNow);
-            endif            
+            endcase            
         case tNow - tStartFindAnyGrating > fixAcqTime then
             LogStatus("WaitAcqAnyGrating", "Acquisition window timed out at " + str$(tNow));
             'request grid down
@@ -596,6 +628,8 @@ func IdleProcessing%()
             trialSuccess% := 0;  'indicate to go to acquisition TO
             ChangeStateTo(stateWaitForBlank%,tNow);
         endcase
+        
+        
         
         
     case iState% = stateHoldIntermediateGrating% then
@@ -735,7 +769,7 @@ func IdleProcessing%()
             SafeSampleKey("X");
             trialSuccess% := 0;  'indicate to go to acquisition TO
             SampleText("Fixation Broken",tNow);
-            reduceFixations% := 1;  'indicate to use reduced fixations next time
+            reduceFixations% := 1;  'indicate to use reduced fixations next time (won't reduce fixations if there is no changed grating)
             ChangeStateTo(stateWaitForBlank%,tNow);
         case tNow - tStateStart > fixHoldTime then
             'request grid down
@@ -1225,8 +1259,10 @@ func Start%()
     specHandle% := FileOpen(specFileName$, 8, 1);  'open spec file
     'print more standard arguments to spec file
     Print("%s",FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$ + SerialArg$ + GammaArg$);  
-    'print number of stim pages argument
-    Print("%s"," --num-stim-pages=2 ");
+    'print number of stim pages argument, but don't put this in if we are not changing a grating
+    if doChange% = 1 then
+        Print("%s"," --num-stim-pages=2 ");
+    endif
     'print "stimulus" parameters
     Print("%s"," -s " + GetGratingParameters$("Stimulus")); 
     'print multiple orientation indicator
@@ -1237,23 +1273,29 @@ func Start%()
         Grid2$ := "";
         for j% := 0 to nStim%-1 do
             'Build Grid1$ and Grid2$ for this trial
-            'Grid1$ is easy, same every time
-            Grid1$ := Grid1$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(stimOrientation[j%][i%]);
-            'Grid2$ varies depending on whether this grid changes orientation
-            if j% = changeLoc%[i%] then
-                Grid2$ := Grid2$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(preferredOri);  'change orientation is preferred orientation
-            else
-                Grid2$ := Grid2$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(stimOrientation[j%][i%]);  'no-change orientation is same orientation as above
-            endif
-            'Put a closing comma after every stimulus but the final one
-            if j% < nStim%-1 then
-                Grid1$ := Grid1$+",";
-                Grid2$ := Grid2$+",";
+            if stimOrientation[j%][i%] <> -1000 then  'do not build if "no stim" indicator (-1000) is present
+                'Grid1$ is easy, same every time
+                Grid1$ := Grid1$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(stimOrientation[j%][i%]);
+                'Grid2$ varies depending on whether this grid changes orientation
+                if j% = changeLoc%[i%] then
+                    Grid2$ := Grid2$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(preferredOri);  'change orientation is preferred orientation
+                else
+                    Grid2$ := Grid2$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(stimOrientation[j%][i%]);  'no-change orientation is same orientation as above
+                endif
+                'Put a closing comma after every stimulus but the final one
+                if j% < nStim%-1 then
+                    Grid1$ := Grid1$+",";
+                    Grid2$ := Grid2$+",";
+                endif
             endif
         next
-        'Put Grid1$ and Grid2$ for this trial into file, use trial separator
-        Print("%s", Grid1$ + "/" + Grid2$);
-        'Put in trial separator between grid 2 on this trial and grid 1 on the next trial, but not on final trial
+        'Put Grid1$ (and Grid2$) for this trial into file, use trial separator if Grid2$ present
+        if doChange% = 1 then
+            Print("%s", Grid1$ + "/" + Grid2$);
+        else
+            Print("%s", Grid1$);
+        endif
+        'Put in trial separator between trials, but not on final trial
         if i% < nTrials%-1 then
             Print("%s","/"); 
         endif
@@ -1579,8 +1621,8 @@ end
 proc BuildOrientations()
     'This function will fill stimOrientation[25][nMaxTrials%],changeFromOrientation[nMaxTrials%],changeLoc%[nMaxTrials%]
     'using the values of nStim%, nOrientations%, minDeltaOri, nTrials%, preferred ori
-    var i%;
-    var j%;
+    var i%;  'loop for stimulus position
+    var j%;  'loop for trials
     var rndInt%[nStim%][nTrials%];  'set up a variable to hold a random integer
     var oriInc;  'The orientation increment
     var nOri;  'float for math
@@ -1614,19 +1656,19 @@ proc BuildOrientations()
     ''Fill changeLoc%[] and changeFromOrientation[]
     
     'This is probably best done in a loop given the tools present in Spike2
-    for i% := 0 to nTrials%-1 do
-        changeLoc%[i%] := -1;  'indicates we have not found a legal location to change yet
+    for j% := 0 to nTrials%-1 do
+        changeLoc%[j%] := -1;  'indicates we have not found a legal location to change yet
         bailOut% := 0;  'don't get stuck in the loop - 10000 is plenty safe, there are 9 possible change locations, if NONE work we'll know by 10000     
-        while changeLoc%[i%] = -1 and bailOut% < 10000 do
+        while changeLoc%[j%] = -1 and bailOut% < 10000 do
             tempLoc% := rand(9,0);  'Use the first 9 locations for possible changes
-            'printlog("temploc is %d and value is %f and mindelta is %f\n",tempLoc%,abs(preferredOri-stimOrientation[tempLoc%][i%]),minDeltaOri);
-            if abs(preferredOri-stimOrientation[tempLoc%][i%]) > minDeltaOri and abs(180+preferredOri-stimOrientation[tempLoc%][i%]) > minDeltaOri then
-                changeLoc%[i%] := tempLoc%;
-                changeFromOrientation[i%] := stimOrientation[tempLoc%][i%];
+            'printlog("temploc is %d and value is %f and mindelta is %f\n",tempLoc%,abs(preferredOri-stimOrientation[tempLoc%][j%]),minDeltaOri);
+            if abs(preferredOri-stimOrientation[tempLoc%][j%]) > minDeltaOri and abs(180+preferredOri-stimOrientation[tempLoc%][j%]) > minDeltaOri then
+                changeLoc%[j%] := tempLoc%;
+                changeFromOrientation[j%] := stimOrientation[tempLoc%][j%];
             endif
             bailOut% += 1;  'increment bailOut%
         wend
-        if bailOut% >= 10000 then
+        if bailOut% >= 10000 then  'there is an argument here for changing the original grating to fit, as below in the LITE version, but for now sticking with this
             message("Unable to find changeable grating at least " + str$(minDeltaOri) + " degrees of the preferred orientation.  Quitting!");
             halt;
         endif
@@ -1640,6 +1682,152 @@ proc BuildOrientations()
     
     
 end
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func BuildStimLocationsLite%(rfW,rfH)
+    'This function will fill stimXPos[],stimYPos[],stimWindowX[][],stimWindowY[][],stimInRF%[]
+    'with values based on an arbitrary square grid of four, this is for training.  Note that
+    'there will not necessarily be a stimulus in the RF - but since we are training we don't
+    'expect to be recording anyway.  We will set stimInRF% to nStim%, which indicates no stimulus
+    'in the RF and forget it
+    
+    'Position of center-of-stimulus: 0-4 are the 9 central stimuli, 9-24 are the peripheral stimuli.
+    'This order may seem weird but it has two benefits.  1) It allows us to easily use 9 or 25 stimuli
+    'without the location of stimulus "x" being adjusted.  2) Since only central stimuli will be changed
+    'in orientation, these will be 0-8 for either case.
+    'Stimulus position grid:
+    '  0   1
+    '  2   3
+    
+    'This function assumes the existence of various variables as global:
+    'nStim%,stimXPos[],stimYPos[],stimWindowX[][],stimWindowY[][],stimInRF%[]
+    'Obviously could pass in and out, but I just don't see this ever being used in another
+    'script, so I've just made sure all these variables exist as globals and we're good to go.
+    
+    var success% := 1;  'not sure how this can fail...it's just math
+    var i%;
+
+    
+    'Building X and Y stimulus positions is easy!
+    stimXPos[0] := -4;
+    stimYPos[0] := 4;
+    stimXPos[1] := 4;
+    stimYPos[1] := 4;
+    stimXPos[2] := -4;
+    stimYPos[2] := -4;
+    stimXPos[3] := 4;
+    stimYPos[3] := -4;
+    
+    'Calcuating the fixation window mirrors the process done for a single fixation window in the
+    'standard InitializeWindows() function
+	var j%;
+	var twopi;
+	twopi := 2.0*4.0*ATan(1.0);
+    
+    ggWindowRadius := max(rfW,rfH)/2;  'rfW, rfH are diameters, get max radius, make it a circle
+    
+	for i% := 0 to 3 do
+        for j% := 0 to 35 do
+            stimWindowX[i%][j%] := stimXPos[i%] + ggWindowRadius * Cos(j% * twopi/36.0);
+            stimWindowY[i%][j%] := stimYPos[i%] + ggWindowRadius * Sin(j% * twopi/36.0);
+        next;
+	next;
+
+    'Build stimInRF%, use nStim% to set any stimulus that does not exist to nStim% --- and (technically) no stimuli exist in the RF for the training version
+    for i% := 0 to 3 do
+        stimInRF%[i%] := nStim%;  'when these non-existent stims are in the RF, then set it to nStim%      
+    next;
+    
+    
+    return success%;
+end
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc BuildOrientationsLite()
+    'This function will fill stimOrientation[25][nMaxTrials%],changeFromOrientation[nMaxTrials%],changeLoc%[nMaxTrials%]
+    'using the values of nStim%, nOrientations%, minDeltaOri, nTrials%, preferred ori
+    var i%;  'loop for stimulus position
+    var j%;  'loop for trials
+    var rndInt%[4][nTrials%];  'set up a variable to hold a random integer, we need 4 because there are 4 positions (even if there are <4 stimuli)
+    var oriInc;  'The orientation increment
+    var nOri;  'float for math
+    var bailOut%;
+    var tempLoc%;
+    var randlist%[4];
+    
+    ''Fill stimOrientation[][]
+    
+    rand(rndInt%[][],nOrientations%);  'Get integer to multiply by orientation increment
+    
+    nOri := nOrientations%;  'float for math
+    oriInc := 180/nOri;  'get orientation increment in degrees
+    
+    arrconst(stimOrientation[0:4][0:nTrials%],rndInt%[][]);  'put in multiplier (i.e. number of ori increments)
+    arrmul(stimOrientation[][],oriInc);  'multiply by ori increment to get actual orientation
+    arradd(stimOrientation[][],preferredOri);  'add preferred orientation
+    'Aaaaaaand set to be between 0-180, I don't think this can be done without looping
+    for i% := 0 to 3 do
+        for j% := 0 to nTrials%-1 do
+            if stimOrientation[i%][j%] >= 180 then
+                stimOrientation[i%][j%] := stimOrientation[i%][j%]-180;
+            endif;
+        next
+    next
+    
+    'And fill the value for nStim% (one past last actual stim) with a value that represents no stimulus in the RF, this isn't really necessary
+    for j% := 0 to nTrials%-1 do
+        stimOrientation[4][j%] := -1000;
+    next
+    
+    docase
+    ''Fill changeLoc%[] and changeFromOrientation[], but only bother if we are changing a location (i.e. there are 4 stimuli)
+    case nStim% = 4 then
+        'This is probably best done in a loop given the tools present in Spike2
+        for j% := 0 to nTrials%-1 do
+            changeLoc%[j%] := -1;  'indicates we have not found a legal location to change yet
+            bailOut% := 0;  'don't get stuck in the loop - 100 is plenty safe, there are 4 possible change locations     
+            while changeLoc%[j%] = -1 and bailOut% < 100 do
+                tempLoc% := rand(4,0);  'Use all 4 locations for possible changes
+                'printlog("temploc is %d and value is %f and mindelta is %f\n",tempLoc%,abs(preferredOri-stimOrientation[tempLoc%][j%]),minDeltaOri);
+                if abs(preferredOri-stimOrientation[tempLoc%][j%]) > minDeltaOri and abs(180+preferredOri-stimOrientation[tempLoc%][j%]) > minDeltaOri then
+                    changeLoc%[j%] := tempLoc%;
+                    changeFromOrientation[j%] := stimOrientation[tempLoc%][j%];
+                endif
+                bailOut% += 1;  'increment bailOut%
+            wend
+            if bailOut% >= 100 then
+                'just use tempLoc%, and change the orientation of the pre-change grating
+                stimOrientation[tempLoc%][j%] := preferredOri + 90;
+                'make sure value is between 0-180
+                if stimOrientation[tempLoc%][j%] >= 180 then
+                    stimOrientation[tempLoc%][j%] := stimOrientation[tempLoc%][j%]-180;
+                endif;
+                changeLoc%[j%] := tempLoc%;
+                changeFromOrientation[j%] := stimOrientation[tempLoc%][j%];
+            endif
+        next
+    ''If we have 1 or 2 stimuli, "blank out" 2 or 3 random stimuli    
+    else
+        for j% := 0 to nTrials%-1 do
+            Shuffle%(4, randlist%[]);  'shuffle index values
+            for i% := 0 to 3-nStim% do  'will do 3 if nStim% is 1, and 2 if nStim% is 2
+                stimOrientation[randlist%[i%]][j%] := -1000;
+            next
+        next
+    endcase 
+    'sanity check passed
+    'printlog("preferred orientation is %f\n",preferredOri);
+    'printlog("Values are\n%d\n",rndInt%[][]);
+    'printlog("Orientations are\n%f\n",stimOrientation[0:4][0:nTrials%]);
+    'printlog("Change loc and change ori are\n%d\n%f\n",changeLoc%[],changeFromOrientation[]);
+    
+    
+end
+
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -1664,10 +1852,12 @@ func LookingGrid%(EyePosX,EyePosY,&whichGrating%)
     
     'determine which grating, if any, is being looked at
     for i% := 0 to nStim%-1 do
-        if (Pow(EyePosX-stimXPos[i%],2) + Pow(EyePosY-stimYPos[i%],2)) <= Pow(ggWindowRadius,2) then 
-            whichGrating% := i%;  'indicate the grating number being viewed
-            retValue% := 1;  'update looking!
-            break  'and quit checking
+        if stimOrientation[i%][currTrial%-1] <> -1000 then  'don't check gratings that don't exist
+            if (Pow(EyePosX-stimXPos[i%],2) + Pow(EyePosY-stimYPos[i%],2)) <= Pow(ggWindowRadius,2) then 
+                whichGrating% := i%;  'indicate the grating number being viewed
+                retValue% := 1;  'update looking!
+                break  'and quit checking
+            endif
         endif
     next
     
