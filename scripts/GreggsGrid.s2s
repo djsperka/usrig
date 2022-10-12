@@ -165,6 +165,7 @@ var ITI := 1.5;
 var rewardDelay := 0.5; 
 var intRewardMS% := 70;
 var intRewardProb := 0.5;
+var addFixRad;
 
 
 
@@ -172,7 +173,7 @@ var preferredOri;  'what is preferred orientation?
 var screenXDeg := 12.5;  'Manually setting screen degrees - we might want to calculate this based on manual screen cm or have degrees/cm in main dialog, but for now...
 var screenYDeg := 9.5;
 var ggWindowRadius;
-var force9%;       'if there is not enough room for 25, make sure to force there to be 9 stimuli with DialogChanged function
+'var force9%;       'if there is not enough room for 25, make sure to force there to be 9 stimuli with DialogChanged function
 var doChange%;
 
 GetGreggsGridScriptParameters();  'We will just get these right off the bat, this supports the pre-dialog box
@@ -290,33 +291,7 @@ func GreggsGridScriptDialog%()
 
     GetGreggsGridScriptParameters();
     
-    'Check to ensure there will not be overlapping stimuli, and that the stimuli will not go off screen
-    ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"),rfX,rfY,rfW,rfH);
-    docase
-    'Make sure the outer edge of "9" stimuli will not be off screen, if so, quit
-    case (abs(rfX) + (rfW/2)) > screenXDeg then
-        message("X requires " + str$(abs(rfX) + (rfW/2)) +  " degrees for 9 stimuli, screen is " + str$(screenXDeg) + " degrees, quitting!"); 
-        halt;
-    case (abs(rfY) + (rfH/2)) > screenYDeg then
-        message("Y requires " + str$(abs(rfY) + (rfH/2)) +  " degrees for 9 stimuli, screen is " + str$(screenYDeg) + " degrees, quitting!"); 
-        halt; 
-    'Make sure the outer edge of "25" stimuli will not be off screen, if so, restrict to 9 stimuli??
-    case ((2*abs(rfX)) + (rfW/2)) > screenXDeg then
-        message("X requires " + str$((2*abs(rfX)) + (rfW/2)) +  " degrees for 25 stimuli, screen is " + str$(screenXDeg) + " degrees"); 
-        force9% := 1;
-    case ((2*abs(rfY)) + (rfH/2)) > screenYDeg then
-        message("Y requires " + str$((2*abs(rfY)) + (rfH/2)) +  " degrees for 25 stimuli, screen is " + str$(screenYDeg) + " degrees"); 
-        force9% := 1;
-    'Make sure stimuli will not overlap in X, Y   
-    case rfW >= abs(rfX) then
-        message("X position is " + str$(rfX) + ", X width is " + str$(rfw) + ", stimuli will overlap, quitting!");
-        halt;
-    case rfH >= abs(rfY) then
-        message("Y position is " + str$(rfY) + ", Y width is " + str$(rfh) + ", stimuli will overlap, quitting!");
-        halt;
-    endcase
 
-    
     'Get preferred orientation
     ParseGratingParametersOri%(GetGratingParameters$("Stimulus"), preferredOri);
     if preferredOri >= 180 then
@@ -331,27 +306,28 @@ func GreggsGridScriptDialog%()
     DlgReal(3, "Minimum dOri for change, deg", 0, 90, 0, 4);
     DlgInteger(4, "Number of trials", 1, nMaxTrials%, 0, 5);
     
-    DlgGroup("Fixations", 1, 6, 50, 4);
+    DlgGroup("Fixation", 1, 6, 50, 4);
     DlgInteger(5, "Minimum fixations", 0, 100, 0, 7);
     DlgInteger(6, "Variable fixations", 0, 100, 0, 8);
-    DlgCheck(7,"Always Looking",0,9);
+    DlgReal(7, "Additional fix radius (deg)", 0, 10, 0, 9);
+    DlgCheck(8,"Always Looking",0,10);
     
-    DlgGroup("Timing", 1, 10, 50, 6);
-    DlgReal(8, "Fixation Acquisition Time (s)", 0, 1000, 0, 11);
-    DlgReal(9, "Fixation Hold Time (s)", 0, 10, 0, 12);
-    DlgReal(10, "Grating Change Time (s)", 0, 10, 0, 13);
-    DlgReal(11, "Fixation/Acq Timeout (s)", 0, 100, 0, 14);
-    DlgReal(12, "Intertrial Interval (s)", 0, 10, 0, 15);
+    DlgGroup("Timing", 1, 11, 50, 6);
+    DlgReal(9, "Fixation Acquisition Time (s)", 0, 1000, 0, 12);
+    DlgReal(10, "Fixation Hold Time (s)", 0, 10, 0, 13);
+    DlgReal(11, "Grating Change Time (s)", 0, 10, 0, 14);
+    DlgReal(12, "Fixation/Acq Timeout (s)", 0, 100, 0, 15);
+    DlgReal(13, "Intertrial Interval (s)", 0, 10, 0, 16);
     
-    DlgGroup("Reward", 1, 16, 50, 4);
-    DlgReal(13, "Main Reward delay (s)", 0, 3, 0, 17);
-    DlgInteger(14, "Intermediate Reward dur (ms)", 0, 1000, 0, 18);
-    DlgReal(15, "Intermediate Reward prob (0-1)", 0, 1, 0, 19);
+    DlgGroup("Reward", 1, 17, 50, 4);
+    DlgReal(14, "Main Reward delay (s)", 0, 3, 0, 18);
+    DlgInteger(15, "Intermediate Reward dur (ms)", 0, 1000, 0, 19);
+    DlgReal(16, "Intermediate Reward prob (0-1)", 0, 1, 0, 20);
     
     'Right now we don't seem to need a callback, it's ready directly below if we do 
     DlgAllow(0xffff, 0, GreggsGridScriptDialogChanged%);
 
-    i%:=DlgShow(nStimIndex%, nOrientations%, minDeltaOri, nTrials%, minFixations%, varFixations%, AlwaysLooking%,
+    i%:=DlgShow(nStimIndex%, nOrientations%, minDeltaOri, nTrials%, minFixations%, varFixations%, addFixRad, AlwaysLooking%,
                 fixAcqTime, fixHoldTime, gratingChangeTime, fixAcqTimeout, ITI, rewardDelay, intRewardMS%, intRewardProb);
     
     if i% = 1 then
@@ -376,6 +352,39 @@ func GreggsGridScriptDialog%()
             nStim% := 25;
             doChange% := 1;
         endcase
+        
+        
+        'Check to ensure there will not be overlapping stimuli, and that the stimuli will not go off screen
+        'Do this after the dialog because we need to know which nStim% was selected, this is totally inappropriate for < 9 stims
+        ParseGratingParametersBrief%(GetGratingParameters$("Stimulus"),rfX,rfY,rfW,rfH);
+        docase
+        'Make sure the outer edge of "9" stimuli will not be off screen, if so, quit
+        case (abs(rfX) + (rfW/2)) > screenXDeg and nStim% = 9 then
+            message("X requires " + str$(abs(rfX) + (rfW/2)) +  " degrees for 9 stimuli, screen is " + str$(screenXDeg) + " degrees, quitting!"); 
+            halt;
+        case (abs(rfY) + (rfH/2)) > screenYDeg and nStim% = 9 then
+            message("Y requires " + str$(abs(rfY) + (rfH/2)) +  " degrees for 9 stimuli, screen is " + str$(screenYDeg) + " degrees, quitting!"); 
+            halt; 
+        'Make sure the outer edge of "25" stimuli will not be off screen, if so, restrict to 9 stimuli??
+        case ((2*abs(rfX)) + (rfW/2)) > screenXDeg and nStim% = 25 then
+            message("X requires " + str$((2*abs(rfX)) + (rfW/2)) +  " degrees for 25 stimuli, screen is " + str$(screenXDeg) + " degrees"); 
+            'force9% := 1;  'this concept doesn't work anymore
+            nStim% := 9;
+        case ((2*abs(rfY)) + (rfH/2)) > screenYDeg and nStim% = 25 then
+            message("Y requires " + str$((2*abs(rfY)) + (rfH/2)) +  " degrees for 25 stimuli, screen is " + str$(screenYDeg) + " degrees"); 
+            'force9% := 1;  'this concept doesn't work anymore
+            nStim% := 9;
+        'Make sure stimuli will not overlap in X, Y   
+        case rfW >= abs(rfX) and nStim% > 4 then
+            message("X position is " + str$(rfX) + ", X width is " + str$(rfw) + ", stimuli will overlap, quitting!");
+            halt;
+        case rfH >= abs(rfY) and nStim% > 4  then
+            message("Y position is " + str$(rfY) + ", Y width is " + str$(rfh) + ", stimuli will overlap, quitting!");
+            halt;
+        endcase
+        
+        
+        
         
         'Build locations of stimuli and trials
         if nStim% > 4 then 'Use full version for 9/25 stimuli, this is "the real deal"
@@ -411,12 +420,13 @@ end;
 
 func GreggsGridScriptDialogChanged%(item%) 
     
-    if force9% = 1 then
-        DlgValue(1,0);  'set the N stims dialog to "9"
-        DlgEnable(0,1);  'and disable the N stims dialog
-    endif
+    'This doesn't work nicely with 4/2/1 stimuli so I guess it's just out.
+    'if force9% = 1 then
+    '    DlgValue(1,0);  'set the N stims dialog to "9"
+    '    DlgEnable(0,1);  'and disable the N stims dialog
+    'endif
     
-    DlgEnable(0,13);  'Disable reward delay
+    DlgEnable(0,14);  'Disable reward delay
     
     return 1;
 end
@@ -442,6 +452,7 @@ proc GetGreggsGridScriptParameters()
     rewardDelay := GetFloatRegistryValue(key$, "rewardDelay", rewardDelay);
     intRewardMS% := GetIntRegistryValue%(key$, "intRewardMS", intRewardMS%);
     intRewardProb := GetFloatRegistryValue(key$, "intRewardProb", intRewardProb);
+    addFixRad := GetFloatRegistryValue(key$, "addFixRad", addFixRad);
 
 end;
 
@@ -464,6 +475,7 @@ proc SaveGreggsGridScriptParameters()
     SetFloatRegistryValue(key$, "rewardDelay", rewardDelay);
     SetIntRegistryValue(key$, "intRewardMS", intRewardMS%);
     SetFloatRegistryValue(key$, "intRewardProb", intRewardProb);
+    SetFloatRegistryValue(key$, "addFixRad", addFixRad);
     
 end;
 
@@ -1571,6 +1583,7 @@ func BuildStimLocations%(rfX,rfY,rfW,rfH)
 	twopi := 2.0*4.0*ATan(1.0);
     
     ggWindowRadius := max(rfW,rfH)/2;  'rfW, rfH are diameters, get max radius, make it a circle
+    ggWindowRadius := ggWindowRadius + addFixRad;
     
 	for i% := 0 to 24 do
         for j% := 0 to 35 do
