@@ -614,7 +614,7 @@ func IdleProcessing%()
                 SampleText("Acquired Grating (Voluntary), grating="+str$(currentGrating%)+", gazeOri="+str$(stimOrientation[currentGrating%][currTrial%-1])+", RFOri="+str$(stimOrientation[stimInRF%[currentGrating%]][currTrial%-1]),tNow);
             endif
             docase
-            case numFixationsRemaining% > 1 or currentGrating% = changeLoc%[currTrial%-1] then
+            case numFixationsRemaining% > 1 or (currentGrating% = changeLoc%[currTrial%-1] and AlwaysLooking% = 0 and doChange% = 1) then  'AlwaysLooking will loop forever if the change grating is 7 (AlwaysLooking aribtrary grating #)
                 changeStateTo(stateHoldIntermediateGrating%,tNow);
             case doChange% = 0 then  'if this is the last fixation and we aren't changing a grating, skip to final hold
                 changeStateTo(stateHoldChangedGrating%,tNow);  'kind of a kludge as nothing has changed
@@ -731,8 +731,8 @@ func IdleProcessing%()
         
     case iState% = stateWaitAcqChangedGrating% then
         ' Wait for animal to acquire changed grating
-        if stateBegin% = 1 then
             LogStatus("WaitAcqChangedGrating", "Begin waiting for animal to acquire changed grating at " + str$(tNow));
+        if stateBegin% = 1 then
             stateBegin% := 0;
         endif
         
@@ -1040,6 +1040,7 @@ end;
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 proc InitializeWindows()
     var i%;
+    var tempNStim%;
     
     ' Make spike2 use all of monitor 1 - I hate this...but...
     View(App()).Window(0, 0, 100, 100, 1);
@@ -1069,7 +1070,12 @@ proc InitializeWindows()
 	'Stimulus windows are calculated in the dialog box
 	'Create a new channel in the XY view to display the stimulus windows
     'So if I understand channels on XY views correctly, we actually have to create a NEW channel for each stimulus
-    for i% := 0 to nStim%-1 do
+    if nStim% > 2 then
+        tempNStim% := nStim%;
+    else
+        tempNStim% := 4;  'make sure we draw boxes for even invisible gratings in the training mode
+    endif;
+    for i% := 0 to tempNStim%-1 do
         iStimChannel%[i%] := XYSetChan(0);
         XYColour(iStimChannel%[i%],13);  'Blue for stimuli
         XYDrawMode(iStimChannel%[i%],2,1);  'Set line size to 1 point
@@ -1174,6 +1180,8 @@ func Start%()
     var cmdLine$;
     var specFileName$;
     var specHandle%;
+    var tempNStim%;
+    var count%;
     
     specFileName$ := GetScriptDir$(0)+"..\\..\\GGSpecFile.txt";
     
@@ -1267,11 +1275,18 @@ func Start%()
     Print("%s"," -s " + GetGratingParameters$("Stimulus")); 
     'print multiple orientation indicator
     Print("%s"," --multi-ori ");
+    'Fill tempNStim% variable with greater of 4 and number of stims
+    if nStim% > 2 then
+        tempNStim% := nStim%;
+    else
+        tempNStim% := 4;
+    endif
     'Loop through trials, then stimuli
     for i% := 0 to nTrials%-1 do
         Grid1$ := "";  'reset Grid$ variables
         Grid2$ := "";
-        for j% := 0 to nStim%-1 do
+        count% := 0;
+        for j% := 0 to tempNStim%-1 do
             'Build Grid1$ and Grid2$ for this trial
             if stimOrientation[j%][i%] <> -1000 then  'do not build if "no stim" indicator (-1000) is present
                 'Grid1$ is easy, same every time
@@ -1283,10 +1298,11 @@ func Start%()
                     Grid2$ := Grid2$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(stimOrientation[j%][i%]);  'no-change orientation is same orientation as above
                 endif
                 'Put a closing comma after every stimulus but the final one
-                if j% < nStim%-1 then
+                if count% < nStim%-1 then
                     Grid1$ := Grid1$+",";
                     Grid2$ := Grid2$+",";
                 endif
+                count% += 1;
             endif
         next
         'Put Grid1$ (and Grid2$) for this trial into file, use trial separator if Grid2$ present
@@ -1849,9 +1865,15 @@ func LookingGrid%(EyePosX,EyePosY,&whichGrating%)
     var i%;
     var retValue% := 0;  'by default, not looking
     whichGrating% := -1;  'by default, set whichGrating% to -1 to indicate no grating being viewed
+    var tempNStim%;
+    if nStim% > 2 then
+        tempNStim% := nStim%;
+    else
+        tempNStim% := 4;
+    endif
     
     'determine which grating, if any, is being looked at
-    for i% := 0 to nStim%-1 do
+    for i% := 0 to tempNStim%-1 do
         if stimOrientation[i%][currTrial%-1] <> -1000 then  'don't check gratings that don't exist
             if (Pow(EyePosX-stimXPos[i%],2) + Pow(EyePosY-stimYPos[i%],2)) <= Pow(ggWindowRadius,2) then 
                 whichGrating% := i%;  'indicate the grating number being viewed
@@ -1890,9 +1912,15 @@ func LookingGrating%(EyePosX,EyePosY,&whichGrating%,thisGrating%)
     var retValue% := 0;  'by default, not looking
     whichGrating% := -1;  'by default, set whichGrating% to -1 to indicate no grating being viewed
                           'before determining which grating is actually being viewed
+    var tempNStim%;
+    if nStim% > 2 then
+        tempNStim% := nStim%;
+    else
+        tempNStim% := 4;
+    endif
     
     'determine which grating, if any, is being looked at
-    for i% := 0 to nStim%-1 do
+    for i% := 0 to tempNStim%-1 do
         if (Pow(EyePosX-stimXPos[i%],2) + Pow(EyePosY-stimYPos[i%],2)) <= Pow(ggWindowRadius,2) then 
             whichGrating% := i%;  'indicate the grating number being viewed
             retValue% := 1;  'update looking!
