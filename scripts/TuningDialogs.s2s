@@ -458,6 +458,7 @@ var tunConstantLagMS$;
 ' These will be set by the tuning curve choice
 var tunNAdvances%;		' Number of times stim will advance during one repeat
 var tunNRepeats%;		' Number of repeats
+var tunRepeatForever%;  ' Allow looping through the stimuli over and over forever
 
 ' This vector will hold the actual values to step through. Some are log steps, some are not. 
 ' The Indices array is the order to step through the values with: tunValues[tunValuesIndices%[0]], tunValues[tunValuesIndices%[1]], ...
@@ -1013,12 +1014,14 @@ proc GetTuningCurveBakersDozenParameters()
 	var key$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\BakersDozen";
     tunBDTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunBDTuningFile$);
+    tunRepeatForever% := GetIntRegistryValue%(key$, "RepeatForever", tunRepeatForever%);
 end;
 
 proc SaveTuningCurveBakersDozenParameters()
 	var key$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\BakersDozen";
     SetStringRegistryValue(key$, "TuningFile", tunBDTuningFile$);
+    SetIntRegistryValue(key$, "RepeatForever", tunRepeatForever%);
 end;
 
 
@@ -1832,10 +1835,11 @@ func TuningCurveDisparityAndBakersDozenDialog%()
         DlgCreate("Run Baker's Dozen Tuning Curve");
         DlgString(1,40,255,"",3);  'for visual confirmation of selected seq file
         DlgButton(tundlgSelectTuningFileButton%, " Select Baker's Dozen File ", SelectBakersDozenFile%, 2, 2);
+        DlgCheck(2,"Repeat Forever?",28,3);
 
         'DlgAllow(0xffff, 0, TuningCurveGenericDialogChanged%);
         
-        i% := DlgShow(tunBDTuningFile$);
+        i% := DlgShow(tunBDTuningFile$,tunRepeatForever%);
         
         ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
         ' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
