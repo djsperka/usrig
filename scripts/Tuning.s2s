@@ -1030,12 +1030,12 @@ func IdleProcessing%()
         printlog("number of trials completed is %d\n",nTrialsCompleted%);
 		ToolbarText(str$(nTrialsCompleted%) + "/" + str$(tunNValues%) + " trials completed."); 
         docase
-		case nTrialsCompleted% >= tunNValues% and tunRepeatForever% = 0 then  'right now tunRepeatForever is only availale on Baker's Dozen (Henry will ask for more, I know it)
+		case nTrialsCompleted% >= tunNValues% and not(tunRepeatForever% = 1 and tunType$ = tunTypeBakersDozen$) then  'right now tunRepeatForever is only available on Baker's Dozen (Henry will ask for more, I know it)
             ' We're all done - appears to not reward on final trial.  How chintzy!
             ChangeStateTo(stateDone%, tNow);
             Stop%();
             iStatus% := 0;
-        case nTrialsCompleted% > 0 and (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 then 'toggle tunOptoState at the end of a block, use interblock time
+        case nTrialsCompleted% > 0 and (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 and not(tunRepeatForever% = 1 and tunType$ = tunTypeBakersDozen$) then 'toggle tunOptoState at the end of a block, use interblock time
             if tunDoOpto% = 1 and dontToggleOpto% = 0 then
                 tunOptoState% := 1-tunOptoState%;  'but only toggle if we're actually doing opto, and we haven't been told to not toggle opto
             endif;
