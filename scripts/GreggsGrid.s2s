@@ -1303,13 +1303,18 @@ func Start%()
     if putFixptOverGratings% = 1 then
         Grid1$ := "";  '"steal" Grid1$, it's not a grid but why make another variable?
         for i% := 0 to tempNStim%-1 do  'make one -D for each stim
-            Grid1$ := " -D ";
+            Grid1$ := Grid1$ + " -D ";
             for j% := 0 to nTrials% - 1 do  'make one entry for each trial
-                if stimOrientation[i%][j%] <> -1000 then  'do not build if "no stim" indicator (-1000) is present
+                if stimOrientation[i%][j%] <> -1000 then  
                     'For right now we are not doing a change, so we can simply do one entry per trial
                     '(This will have to be updated soon as we will have different requirements)
                     'All "dots" on all trials are actually the same
-                    Grid1$ := Grid1$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(FixationDiameter)+","+FixationColor$;
+                    Grid1$ := Grid1$+str$(stimXPos[i%])+","+str$(stimYPos[i%])+","+str$(FixationDiameter)+","+FixationColor$;
+                    if j% < (nTrials% - 1) then
+                        Grid1$ := Grid1$+";";  'separate trials by semicolon
+                    endif
+                else  'put in 0 diameter if "no stim" indicator (-1000) is present on this trial
+                    Grid1$ := Grid1$+str$(stimXPos[i%])+","+str$(stimYPos[i%])+",0,"+FixationColor$;
                     if j% < (nTrials% - 1) then
                         Grid1$ := Grid1$+";";  'separate trials by semicolon
                     endif
