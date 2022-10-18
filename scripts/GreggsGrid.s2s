@@ -283,12 +283,15 @@ func GreggsGridScriptDialog%()
 	var i%;
 	var iReturn%;
     var rfX,rfY,rfW,rfH;
-    var numStim$[5];
-    numStim$[0] := "1";
-    numStim$[1] := "2";
-    numStim$[2] := "4";
-    numStim$[3] := "9";
-    numStim$[4] := "25";
+    var numStim$[8];
+    numStim$[0] := "1 (no grating change)";
+    numStim$[1] := "2 (no grating change)";
+    numStim$[2] := "4 (no grating change)";
+    numStim$[3] := "4";
+    numStim$[4] := "9 (no grating change)";
+    numStim$[5] := "9";
+    numStim$[6] := "25 (no grating change)";
+    numStim$[7] := "25";
 
     GetGreggsGridScriptParameters();
     
@@ -304,7 +307,7 @@ func GreggsGridScriptDialog%()
         
     DlgCreate("GreggsGrid Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
     DlgGroup("Stimuli", 1, 1, 50, 6);
-    DlgList(1, "Number of Stimuli: ", numStim$, 5, 32, 2);
+    DlgList(1, "Number of Stimuli: ", numStim$, 8, 32, 2);
     DlgInteger(2, "Number of orientations (0-180 deg)", 1, 1000, 0, 3);
     DlgReal(3, "Minimum dOri for change, deg", 0, 90, 0, 4);
     DlgInteger(4, "Number of trials", 1, nMaxTrials%, 0, 5);
@@ -347,16 +350,25 @@ func GreggsGridScriptDialog%()
             nStim% := 2;  'Training, no grating change
             doChange% := 0;
         case nStimIndex% = 2 then
+            nStim% := 4;  'Training, no grating change
+            doChange% := 0;
+        case nStimIndex% = 3 then
             nStim% := 4;  'Training, introduce grating change
             doChange% := 1;
-        case nStimIndex% = 3 then
-            nStim% := 9;
+        case nStimIndex% = 4 then
+            nStim% := 9;  'Training, no grating change
+            doChange% := 0;
+        case nStimIndex% = 5 then
+            nStim% := 9;  'Introduce grating change
             doChange% := 1;
-        else  'nStimIndex% = 4
-            nStim% := 25;
+        case nStimIndex% = 6 then
+            nStim% := 25;  'Training, no grating change
+            doChange% := 0;
+        else  'nStimIndex% = 7
+            nStim% := 25;  'Introduce grating change
             doChange% := 1;
         endcase
-        
+    
         
         'Check to ensure there will not be overlapping stimuli, and that the stimuli will not go off screen
         'Do this after the dialog because we need to know which nStim% was selected, this is totally inappropriate for < 9 stims
