@@ -166,6 +166,7 @@ var rewardDelay := 0.5;
 var intRewardMS% := 70;
 var intRewardProb := 0.5;
 var addFixRad;
+var putFixptOverGratings%;
 
 
 
@@ -291,7 +292,9 @@ func GreggsGridScriptDialog%()
 
     GetGreggsGridScriptParameters();
     
-
+    'These variables are available
+    'printlog("fix diam is %f and fixation color is %s\n",FixationDiameter,FixationColor$);
+    
     'Get preferred orientation
     ParseGratingParametersOri%(GetGratingParameters$("Stimulus"), preferredOri);
     if preferredOri >= 180 then
@@ -300,34 +303,35 @@ func GreggsGridScriptDialog%()
     
         
     DlgCreate("GreggsGrid Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
-    DlgGroup("Stimuli", 1, 1, 50, 5);
+    DlgGroup("Stimuli", 1, 1, 50, 6);
     DlgList(1, "Number of Stimuli: ", numStim$, 5, 32, 2);
     DlgInteger(2, "Number of orientations (0-180 deg)", 1, 1000, 0, 3);
     DlgReal(3, "Minimum dOri for change, deg", 0, 90, 0, 4);
     DlgInteger(4, "Number of trials", 1, nMaxTrials%, 0, 5);
+    DlgCheck(5,"Put Fixpt over gratings",0,6);
     
-    DlgGroup("Fixation", 1, 6, 50, 4);
-    DlgInteger(5, "Minimum fixations", 0, 100, 0, 7);
-    DlgInteger(6, "Variable fixations", 0, 100, 0, 8);
-    DlgReal(7, "Additional fix radius (deg)", 0, 10, 0, 9);
-    DlgCheck(8,"Always Looking",0,10);
+    DlgGroup("Fixation", 1, 7, 50, 4);
+    DlgInteger(6, "Minimum fixations", 0, 100, 0, 8);
+    DlgInteger(7, "Variable fixations", 0, 100, 0, 9);
+    DlgReal(8, "Additional fix radius (deg)", 0, 10, 0, 10);
+    DlgCheck(9,"Always Looking",0,11);
     
-    DlgGroup("Timing", 1, 11, 50, 6);
-    DlgReal(9, "Fixation Acquisition Time (s)", 0, 1000, 0, 12);
-    DlgReal(10, "Fixation Hold Time (s)", 0, 10, 0, 13);
-    DlgReal(11, "Grating Change Time (s)", 0, 10, 0, 14);
-    DlgReal(12, "Fixation/Acq Timeout (s)", 0, 100, 0, 15);
-    DlgReal(13, "Intertrial Interval (s)", 0, 10, 0, 16);
+    DlgGroup("Timing", 1, 12, 50, 6);
+    DlgReal(10, "Fixation Acquisition Time (s)", 0, 1000, 0, 13);
+    DlgReal(11, "Fixation Hold Time (s)", 0, 10, 0, 14);
+    DlgReal(12, "Grating Change Time (s)", 0, 10, 0, 15);
+    DlgReal(13, "Fixation/Acq Timeout (s)", 0, 100, 0, 16);
+    DlgReal(14, "Intertrial Interval (s)", 0, 10, 0, 17);
     
-    DlgGroup("Reward", 1, 17, 50, 4);
-    DlgReal(14, "Main Reward delay (s)", 0, 3, 0, 18);
-    DlgInteger(15, "Intermediate Reward dur (ms)", 0, 1000, 0, 19);
-    DlgReal(16, "Intermediate Reward prob (0-1)", 0, 1, 0, 20);
+    DlgGroup("Reward", 1, 18, 50, 4);
+    DlgReal(15, "Main Reward delay (s)", 0, 3, 0, 19);
+    DlgInteger(16, "Intermediate Reward dur (ms)", 0, 1000, 0, 20);
+    DlgReal(17, "Intermediate Reward prob (0-1)", 0, 1, 0, 21);
     
     'Right now we don't seem to need a callback, it's ready directly below if we do 
     DlgAllow(0xffff, 0, GreggsGridScriptDialogChanged%);
 
-    i%:=DlgShow(nStimIndex%, nOrientations%, minDeltaOri, nTrials%, minFixations%, varFixations%, addFixRad, AlwaysLooking%,
+    i%:=DlgShow(nStimIndex%, nOrientations%, minDeltaOri, nTrials%, putFixptOverGratings%, minFixations%, varFixations%, addFixRad, AlwaysLooking%,
                 fixAcqTime, fixHoldTime, gratingChangeTime, fixAcqTimeout, ITI, rewardDelay, intRewardMS%, intRewardProb);
     
     if i% = 1 then
@@ -426,7 +430,7 @@ func GreggsGridScriptDialogChanged%(item%)
     '    DlgEnable(0,1);  'and disable the N stims dialog
     'endif
     
-    DlgEnable(0,14);  'Disable reward delay
+    DlgEnable(0,15);  'Disable reward delay
     
     return 1;
 end
@@ -453,6 +457,7 @@ proc GetGreggsGridScriptParameters()
     intRewardMS% := GetIntRegistryValue%(key$, "intRewardMS", intRewardMS%);
     intRewardProb := GetFloatRegistryValue(key$, "intRewardProb", intRewardProb);
     addFixRad := GetFloatRegistryValue(key$, "addFixRad", addFixRad);
+    putFixptOverGratings% := GetIntRegistryValue%(key$, "putFixptOverGratings", putFixptOverGratings%);
 
 end;
 
@@ -476,6 +481,7 @@ proc SaveGreggsGridScriptParameters()
     SetIntRegistryValue(key$, "intRewardMS", intRewardMS%);
     SetFloatRegistryValue(key$, "intRewardProb", intRewardProb);
     SetFloatRegistryValue(key$, "addFixRad", addFixRad);
+    SetIntRegistryValue(key$, "putFixptOverGratings", putFixptOverGratings%);
     
 end;
 
@@ -1275,6 +1281,14 @@ func Start%()
     'Build simple command line, point to spec file
     cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + " -F " + specFileName$;
     
+    
+    'Fill tempNStim% variable with greater of 4 and number of stims
+    if nStim% > 2 then
+        tempNStim% := nStim%;
+    else
+        tempNStim% := 4;
+    endif
+    
     'Build the spec file, and write the trial-by-trial specs for the VSG
     specHandle% := FileOpen(specFileName$, 8, 1);  'open spec file
     'print more standard arguments to spec file
@@ -1285,14 +1299,27 @@ func Start%()
     endif
     'print "stimulus" parameters
     Print("%s"," -s " + GetGratingParameters$("Stimulus")); 
+    'print "fixpt" parameters (as dots) if necessary
+    if putFixptOverGratings% = 1 then
+        Grid1$ := "";  '"steal" Grid1$, it's not a grid but why make another variable?
+        for i% := 0 to tempNStim%-1 do  'make one -D for each stim
+            Grid1$ := " -D ";
+            for j% := 0 to nTrials% - 1 do  'make one entry for each trial
+                if stimOrientation[i%][j%] <> -1000 then  'do not build if "no stim" indicator (-1000) is present
+                    'For right now we are not doing a change, so we can simply do one entry per trial
+                    '(This will have to be updated soon as we will have different requirements)
+                    'All "dots" on all trials are actually the same
+                    Grid1$ := Grid1$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(FixationDiameter)+","+FixationColor$;
+                    if j% < (nTrials% - 1) then
+                        Grid1$ := Grid1$+";";  'separate trials by semicolon
+                    endif
+                endif
+            next
+        next
+    endif
+    Print("%s", Grid1$);
     'print multiple orientation indicator
     Print("%s"," --multi-ori ");
-    'Fill tempNStim% variable with greater of 4 and number of stims
-    if nStim% > 2 then
-        tempNStim% := nStim%;
-    else
-        tempNStim% := 4;
-    endif
     'Loop through trials, then stimuli
     for i% := 0 to nTrials%-1 do
         Grid1$ := "";  'reset Grid$ variables
@@ -1300,7 +1327,7 @@ func Start%()
         count% := 0;
         for j% := 0 to tempNStim%-1 do
             'Build Grid1$ and Grid2$ for this trial
-            if stimOrientation[j%][i%] <> -1000 then  'do not build if "no stim" indicator (-1000) is present
+            if stimOrientation[j%][i%] <> -1000 then  'do not build if "no stim" indicator (-1000) is present (note i%/j% reversed from above)
                 'Grid1$ is easy, same every time
                 Grid1$ := Grid1$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(stimOrientation[j%][i%]);
                 'Grid2$ varies depending on whether this grid changes orientation
