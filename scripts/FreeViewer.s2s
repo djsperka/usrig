@@ -446,6 +446,7 @@ func FreeViewerScriptDialog%()
         if fvDoOpto% = 3 then
             fvDoImageSeries% := 1;
             fvImageDuration := fvPeriodDuration;
+            fvRandomProgression% := 0;  'Explicitly do not allow randomization on image series
             'fvNumPeriodsPerBlock% := 1;  'Unused in image series logic
             'fvNumPeriods is set in the idle loop for image series
             fvDoOpto% := 0;  'hard code opto OFF
@@ -555,7 +556,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgEnable(0,-fvdlgImageSeriesSelectButton%);  'disable image series select
     case DlgValue(3) = 3 then 'image series style
         DlgEnable(0,1);  'disable repeats
-        DlgEnable(1,2);  'enable randomization (changed to enable)
+        DlgEnable(0,2);  'disable randomization (changed from disable to enable back to disable)
         DlgValue$(1004,"Image Duration, s");  'label duration appropriately
         DlgEnable(0,5);  'disable number of periods
         DlgValue$(1006,"New Image Series On Fix Break? (0/1)");  'label appropriately
