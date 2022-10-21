@@ -123,6 +123,8 @@ var numFixationsRemaining%;
 var reduceFixations%;    'On some repeats we will reduce the number of fixations required
 var tStartFindAnyGrating;
 var tGratingChange;
+var tGratingFlicker;
+var flickerLetter$;
 var tBlank;
 var tReward;
 var trialSuccess%;
@@ -167,6 +169,9 @@ var intRewardMS% := 70;
 var intRewardProb := 0.5;
 var addFixRad;
 var putFixptOverGratings%;
+var flickerSec;
+
+
 
 
 
@@ -319,23 +324,24 @@ func GreggsGridScriptDialog%()
     DlgReal(8, "Additional fix radius (deg)", 0, 10, 0, 10);
     DlgCheck(9,"Always Looking",0,11);
     
-    DlgGroup("Timing", 1, 12, 50, 6);
+    DlgGroup("Timing", 1, 12, 50, 7);
     DlgReal(10, "Fixation Acquisition Time (s)", 0, 1000, 0, 13);
     DlgReal(11, "Fixation Hold Time (s)", 0, 10, 0, 14);
     DlgReal(12, "Grating Change Time (s)", 0, 10, 0, 15);
-    DlgReal(13, "Fixation/Acq Timeout (s)", 0, 100, 0, 16);
-    DlgReal(14, "Intertrial Interval (s)", 0, 10, 0, 17);
+    Dlgreal(13, "Grating Flicker Period (0 for off) (s)", 0, 10, 0, 16);
+    DlgReal(14, "Fixation/Acq Timeout (s)", 0, 100, 0, 17);
+    DlgReal(15, "Intertrial Interval (s)", 0, 10, 0, 18);
     
-    DlgGroup("Reward", 1, 18, 50, 4);
-    DlgReal(15, "Main Reward delay (s)", 0, 3, 0, 19);
-    DlgInteger(16, "Intermediate Reward dur (ms)", 0, 1000, 0, 20);
-    DlgReal(17, "Intermediate Reward prob (0-1)", 0, 1, 0, 21);
+    DlgGroup("Reward", 1, 19, 50, 4);
+    DlgReal(16, "Main Reward delay (s)", 0, 3, 0, 20);
+    DlgInteger(17, "Intermediate Reward dur (ms)", 0, 1000, 0, 21);
+    DlgReal(18, "Intermediate Reward prob (0-1)", 0, 1, 0, 22);
     
     'Right now we don't seem to need a callback, it's ready directly below if we do 
     DlgAllow(0xffff, 0, GreggsGridScriptDialogChanged%);
 
     i%:=DlgShow(nStimIndex%, nOrientations%, minDeltaOri, nTrials%, putFixptOverGratings%, minFixations%, varFixations%, addFixRad, AlwaysLooking%,
-                fixAcqTime, fixHoldTime, gratingChangeTime, fixAcqTimeout, ITI, rewardDelay, intRewardMS%, intRewardProb);
+                fixAcqTime, fixHoldTime, gratingChangeTime, flickerSec, fixAcqTimeout, ITI, rewardDelay, intRewardMS%, intRewardProb);
     
     if i% = 1 then
 
@@ -442,7 +448,7 @@ func GreggsGridScriptDialogChanged%(item%)
     '    DlgEnable(0,1);  'and disable the N stims dialog
     'endif
     
-    'DlgEnable(0,15);  'Disable reward delay
+    'DlgEnable(0,16);  'Disable reward delay
     
     return 1;
 end
@@ -470,6 +476,7 @@ proc GetGreggsGridScriptParameters()
     intRewardProb := GetFloatRegistryValue(key$, "intRewardProb", intRewardProb);
     addFixRad := GetFloatRegistryValue(key$, "addFixRad", addFixRad);
     putFixptOverGratings% := GetIntRegistryValue%(key$, "putFixptOverGratings", putFixptOverGratings%);
+    flickerSec := GetFloatRegistryValue(key$, "flickerSec", flickerSec);
 
 end;
 
@@ -494,6 +501,7 @@ proc SaveGreggsGridScriptParameters()
     SetFloatRegistryValue(key$, "intRewardProb", intRewardProb);
     SetFloatRegistryValue(key$, "addFixRad", addFixRad);
     SetIntRegistryValue(key$, "putFixptOverGratings", putFixptOverGratings%);
+    SetFloatRegistryValue(key$, "flickerSec", flickerSec);
     
 end;
 
@@ -745,6 +753,8 @@ func IdleProcessing%()
             LogStatus("WaitGratingChange", "Grating change at " + str$(tTrigger));
             tLastTrigger := tTrigger;
             tGratingChange := tTrigger;
+            tGratingFlicker := tTrigger;  'if we are flickering the grating for salience, when did it happen?
+            flickerLetter$ := "s";  'we just gave a "U", so the next will be an "s"
             'Was the grating that changed the one in the RF?
             if changeLoc%[currTrial%-1] = stimInRF%[currentGrating%] then
                 changeInRF% := 1;
@@ -774,7 +784,7 @@ func IdleProcessing%()
             else
                 SampleText("Acquired Grating (Directed), grating="+str$(currentGrating%)+", gazeOri="+str$(stimOrientation[currentGrating%][currTrial%-1])+", RFOri="+str$(stimOrientation[stimInRF%[currentGrating%]][currTrial%-1]),tNow);
             endif    
-            changeStateTo(stateHoldChangedGrating%,tNow);           
+            changeStateTo(stateHoldChangedGrating%,tNow);  
         case tNow - tGratingChange > fixAcqTime then
             LogStatus("WaitAcqChangedGrating", "Acquisition window timed out at " + str$(tNow));
             'request grid down
@@ -782,6 +792,15 @@ func IdleProcessing%()
             trialSuccess% := 0;  'indicate to go to acquisition TO
             reduceFixations% := 1;  'indicate to use reduced fixations next time
             ChangeStateTo(stateWaitForBlank%,tNow);
+        case flickerSec > 0 and tNow - tGratingFlicker > flickerSec then  'for a start, we're not going to try timing this too precisely
+            SafeSampleKey(flickerLetter$);  'switch to the opposite screen
+            'Man, don't even look for the frame trigger, let's see how it goes
+            tGratingFlicker := tNow;
+            if flickerLetter$ = "U" then  'swap letters back and forth
+                flickerLetter$ := "s";
+            else 
+                flickerLetter$ := "U";
+            endif
         endcase
         
         
