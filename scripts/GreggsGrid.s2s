@@ -74,7 +74,7 @@ var stimOrientation[26][nMaxTrials%];  'This is 26 instead of 25 because we need
 var fixptPresent%[25][nMaxTrials%];   'Parallel to stimOrientation[][], but we can have locations that hold gratings that DO NOT hold fixation points
                                      'Note that fixptPresent%[][] == 0 will match stimOrientation[][] == -1000 if putFixptOverGratings% is 0, so they can be interchangable in that case,
                                      '(but not in the non-existent 26th stimulus slot, which is not needed here)
-var gratingPresent%[25][nMaxTrials%];  'Similar to fixptPresent%[][], used as a replacement for stimOrientation[][] = -1000, allows us to remove a grating without specifying that weird orientation 
+var gratingPresent%[26][nMaxTrials%];  'Similar to fixptPresent%[][], used as a replacement for stimOrientation[][] = -1000, allows us to remove a grating without specifying that weird orientation 
 var changeFromOrientation[nMaxTrials%];   'change-to orientation will always be preferredOri
 var changeLoc%[nMaxTrials%];
 
@@ -1404,7 +1404,7 @@ func Start%()
         for j% := 0 to tempNStim%-1 do
             'Build Grid1$ and Grid2$ for this trial
             'if stimOrientation[j%][i%] <> -1000 then  'do not build if "no stim" indicator (-1000) is present (note i%/j% reversed from above) (old version)
-            if gratingPresent%[j%][i%] = 0 then  'do not build if grating is not present (note i%/j% reversed from above)
+            if gratingPresent%[j%][i%] = 1 then  'do not build if grating is not present (note i%/j% reversed from above)
                 'Grid1$ is easy, same every time
                 Grid1$ := Grid1$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(stimOrientation[j%][i%]);
                 'Grid2$ varies depending on whether this grid changes orientation
@@ -1432,7 +1432,8 @@ func Start%()
             Print("%s","/"); 
         endif
     next
-
+    
+    FileClose(0);  'close spec file
     
     
     ' Initial text marks
@@ -1863,8 +1864,8 @@ func BuildStimLocationsLines%(rfX,rfY,rfW,rfH)
         
         'Now, building X and Y stimulus positions is easy!
         for i% := 0 to 24 do
-            stimXPos[i%] := X*xFac[i%] + L*lFac[i%];
-            stimYPos[i%] := Y*YFac[i%];
+            stimXPos[i%] := (X*xFac[i%]) + (L*lFac[i%]);
+            stimYPos[i%] := Y*yFac[i%];
         next
         
     else
@@ -1889,7 +1890,8 @@ func BuildStimLocationsLines%(rfX,rfY,rfW,rfH)
         'Now, building X and Y stimulus positions is easy!
         for i% := 0 to 24 do
             stimXPos[i%] := X*xFac[i%];
-            stimYPos[i%] := Y*YFac[i%] + L*lFac[i%];
+            stimYPos[i%] := (Y*yFac[i%]) + (L*lFac[i%]);
+            printlog("xpos is %f and ypos is %f\n",stimXPos[i%],stimYPos[i%]);
         next        
         
     endif
@@ -1910,9 +1912,13 @@ func BuildStimLocationsLines%(rfX,rfY,rfW,rfH)
             endif
             for j% := 0 to nTrials%-1 do
                 gratingPresent%[i%][j%] := 0;
-                actualNStim% -= 1;  'Decrement actual number of stims on the screen
             next
+            actualNStim% -= 1;  'Decrement actual number of stims on the screen, if stim is not being presented
         endif
+    next
+    'fill an n+1th row with zeros for code below
+    for j% := 0 to nTrials%-1 do
+        gratingPresent%[nStim%][j%] := 0;
     next
     
     
