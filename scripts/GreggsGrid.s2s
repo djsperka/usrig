@@ -1389,7 +1389,7 @@ func Start%()
             'After all dots on each trial, get rid of final semicolon - not as easy to do above as not all dots show up, and we don't keep track of how many to expect
             Dots$ := Left$(Dots$,Len(Dots$)-1);
             if j% < (nTrials% - 1) then
-                Dots$ := Dots$+"/";  'separate trials by slash, does not need to be escaped
+                Dots$ := Dots$+"!";  'separate trials by exclamation point!
             endif
         next
     endif
@@ -1421,15 +1421,15 @@ func Start%()
                 count% += 1;
             endif
         next
-        'Put Grid1$ (and Grid2$) for this trial into file, use trial separator if Grid2$ present
+        'Put Grid1$ (and Grid2$) for this trial into file, use trial separator (!) if Grid2$ present
         if doChange% = 1 then
-            Print("%s", Grid1$ + "/" + Grid2$);
+            Print("%s", Grid1$ + "!" + Grid2$);
         else
             Print("%s", Grid1$);
         endif
         'Put in trial separator between trials, but not on final trial
         if i% < nTrials%-1 then
-            Print("%s","/"); 
+            Print("%s","!"); 
         endif
     next
     
@@ -1875,10 +1875,10 @@ func BuildStimLocationsLines%(rfX,rfY,rfW,rfH)
         xFac[13]:=2; xFac[14]:=-2; xFac[15]:=2; xFac[16]:=-2; xFac[17]:=2; xFac[18]:=-2;  
         xFac[19]:=2; xFac[20]:=-2; xFac[21]:=-1; xFac[22]:=0; xFac[23]:=1; xFac[24]:=2; 
         
-        yFac[0]:=1; yFac[1]:=1; yFac[2]:=1; yFac[3]:=0; yFac[4]:=0; yFac[5]:=0; yFac[6]:=-1; 
-        yFac[7]:=-1; yFac[8]:=-1; yFac[9]:=2; yFac[10]:=2; yFac[11]:=2; yFac[12]:=2;  
-        yFac[13]:=2; yFac[14]:=1; yFac[15]:=1; yFac[16]:=0; yFac[17]:=0; yFac[18]:=-1;  
-        yFac[19]:=-1; yFac[20]:=-2; yFac[21]:=-2; yFac[22]:=-2; yFac[23]:=-2; yFac[24]:=-2; 
+        yFac[0]:=1; yFac[1]:=0; yFac[2]:=-1; yFac[3]:=1; yFac[4]:=0; yFac[5]:=-1; yFac[6]:=1; 
+        yFac[7]:=0; yFac[8]:=-1; yFac[9]:=2; yFac[10]:=1; yFac[11]:=0; yFac[12]:=-1;  
+        yFac[13]:=-2; yFac[14]:=2; yFac[15]:=-2; yFac[16]:=2; yFac[17]:=-2; yFac[18]:=2;  
+        yFac[19]:=-2; yFac[20]:=2; yFac[21]:=1; yFac[22]:=0; yFac[23]:=-1; yFac[24]:=-2; 
         
         lFac[0]:=2; lFac[1]:=2; lFac[2]:=2; lFac[3]:=0; lFac[4]:=0; lFac[5]:=0; lFac[6]:=-2; 
         lFac[7]:=-2; lFac[8]:=-2; lFac[9]:=4; lFac[10]:=4; lFac[11]:=4; lFac[12]:=4;  
@@ -1891,9 +1891,9 @@ func BuildStimLocationsLines%(rfX,rfY,rfW,rfH)
         for i% := 0 to 24 do
             stimXPos[i%] := X*xFac[i%];
             stimYPos[i%] := (Y*yFac[i%]) + (L*lFac[i%]);
-            printlog("xpos is %f and ypos is %f\n",stimXPos[i%],stimYPos[i%]);
+            'printlog("xpos is %f and ypos is %f\n",stimXPos[i%],stimYPos[i%]);
         next        
-        
+        'halt;
     endif
     
     
