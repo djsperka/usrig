@@ -621,6 +621,9 @@ func IdleProcessing%()
         'Request stimulus up
         SafeSampleKey("S");
         
+        'Sampletext the start of the trial
+        SampleText("Trial " + str$(currTrial%),tNow);
+        
         ChangeStateTo(stateWaitForGrid%, tNow);
         
  
@@ -890,8 +893,12 @@ func IdleProcessing%()
             'TODO: this, erase stimuli?  'DrawFix(0);	' actually this draws the location of the fixpt.
             if trialSuccess% = 0 then
                 ChangeStateTo(stateTO%, tBlank);
+                'Sampletext the end of the trial
+                SampleText("Trial " + str$(currTrial%) + " failure",tNow)
             else
                 ChangeStateTo(stateReward%, tBlank);
+                'Sampletext the end of the trial
+                SampleText("Trial " + str$(currTrial%) + " success",tNow)
             endif
         endif 
         
@@ -1645,17 +1652,17 @@ proc WriteParameterFile()
 	Print("-------------------------\n\n");
     
     for i% := 0 to nTrials%-1 do
-        Print("Trial %d\n",i%);
+        Print("Trial %d\n",i%+1);
         for j% := 0 to tempNStim%-1 do
             if gratingPresent%[j%][i%] = 1 then  'do not build if grating is not present (note i%/j% reversed from above)
-                Print("Grating: %d, Orientation: %f\n",stimOrientation[j%][i%]);
-                if doChange% = 1 then
-                    print("Change Grating: %d, Change-To Orientation: %f\n",changeLoc%[i%],preferredOri);
-                else
-                    print("No Change Grating\n");
-                endif
+                Print("Grating: %d, Orientation: %f\n",j%,stimOrientation[j%][i%]);
             endif
         next
+        if doChange% = 1 then
+            print("Change Grating: %d, Change-To Orientation: %f\n",changeLoc%[i%],preferredOri);
+        else
+            print("No Change Grating\n");
+        endif
         Print("\n\n");  'put in a spacer
     next
     
@@ -2363,7 +2370,7 @@ func LookingGrating%(EyePosX,EyePosY,&whichGrating%,thisGrating%)
     
     'determine which grating, if any, is being looked at
     for i% := 0 to tempNStim%-1 do
-        if fixptPresent%[i%][currTrial%-1] = 1 then  'don't check locations that don't have fixation points - if putFixptOverGratings% = 0 , will be identical to stimOrientation[][] = -1000
+        if fixptPresent%[i%][currTrial%-1] = 1 or i% = changeLoc%[currTrial%-1] then  'don't check locations that don't have fixation points - if putFixptOverGratings% = 0 , will be identical to stimOrientation[][] = -1000
             if (Pow(EyePosX-stimXPos[i%],2) + Pow(EyePosY-stimYPos[i%],2)) <= Pow(ggWindowRadius,2) then 
                 whichGrating% := i%;  'indicate the grating number being viewed
                 retValue% := 1;  'update looking!
