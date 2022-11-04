@@ -1575,7 +1575,8 @@ proc WriteParameterFile()
 	var parFileName$;
 	var parFileBase$;
 	var parHandle%;
-    var ii%;
+    var i%, j%;
+    var tempNStim%;
 
 
 	' get filename for parfile (data file + "par" extension) and open it
@@ -1620,7 +1621,46 @@ proc WriteParameterFile()
     Print("Fixation hold time (s)                   : %f\n", fixHoldTime);
     Print("Grating change time (s)                  : %f\n", gratingChangeTime);
     Print("Acquisition time out (s)                 : %f\n", fixAcqTimeout);
-      
+    
+    
+    
+    Print("\nStimulus Locations\n");
+	Print("-------------------------\n\n");
+    
+    'Fill tempNStim% variable with greater of 4 and number of stims
+    if nStim% > 2 then
+        tempNStim% := nStim%;
+    else
+        tempNStim% := 4;
+    endif
+    
+    for j% := 0 to tempNStim%-1 do
+        if gratingPresent%[j%][0] then
+            Print("Grating %d,  x = %f,  y = %f\n",j%,stimXPos[j%],stimYPos[j%]);
+        endif;
+    next
+    
+    
+    Print("\nTrial-By-Trial Orientations\n");
+	Print("-------------------------\n\n");
+    
+    for i% := 0 to nTrials%-1 do
+        Print("Trial %d\n",i%);
+        for j% := 0 to tempNStim%-1 do
+            if gratingPresent%[j%][i%] = 1 then  'do not build if grating is not present (note i%/j% reversed from above)
+                Print("Grating: %d, Orientation: %f\n",stimOrientation[j%][i%]);
+                if doChange% = 1 then
+                    print("Change Grating: %d, Change-To Orientation: %f\n",changeLoc%[i%],preferredOri);
+                else
+                    print("No Change Grating\n");
+                endif
+            endif
+        next
+        Print("\n\n");  'put in a spacer
+    next
+    
+    
+    
     
 	' close parfile
 	FileClose(0);
