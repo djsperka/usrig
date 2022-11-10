@@ -75,7 +75,8 @@ var fixptPresent%[25][nMaxTrials%];   'Parallel to stimOrientation[][], but we c
                                      'Note that fixptPresent%[][] == 0 will match stimOrientation[][] == -1000 if putFixptOverGratings% is 0, so they can be interchangable in that case,
                                      '(but not in the non-existent 26th stimulus slot, which is not needed here)
 var gratingPresent%[26][nMaxTrials%];  'Similar to fixptPresent%[][], used as a replacement for stimOrientation[][] = -1000, allows us to remove a grating without specifying that weird orientation 
-var changeFromOrientation[nMaxTrials%];   'change-to orientation will always be preferredOri
+var changeFromOrientation[nMaxTrials%];   'change-to orientation will always be preferredOri - NOT ANYMORE!
+var changeToOrientation[nMaxTrials%];   
 var changeLoc%[nMaxTrials%];
 
 
@@ -134,8 +135,8 @@ var tBlank;
 var tReward;
 var trialSuccess%;
 var changeInRF%;
-var JuiceRewardMSorig%;
-var pRewardOrig;
+'var JuiceRewardMSorig%;  'No longer getting reward values from the DAQ dialog
+'var pRewardOrig;
 var nTrialsStarted%:=0;
 var nTrialsCompleted%:=0;
 var nTrialsAborted% :=0;	
@@ -173,10 +174,13 @@ var ITI := 1.5;
 var rewardDelay := 0; 
 var intRewardMS% := 70;
 var intRewardProb := 0.5;
+var fullRewardMS% := 100;  'we are now completely ignoring the reward values from the DAQ dialog
+var fullRewardProb := 1;
 var addFixRad;
 var putFixptOverGratings%;
 var noFixptIfNoGratingInRF%;
 var flickerSec;
+var stationary%;
 
 
 
@@ -293,6 +297,10 @@ endif;
 func GreggsGridScriptDialog%()
 	var i%;
 	var iReturn%;
+    var sixReals[6];
+    var tempParams$, cv$, pattern$, aperture$;
+    var x, y, w, h, iw, ih, sf, tf, ori, phase, ctf;
+    var contrast%;
     var numStim$[10];
     numStim$[0] := "1 (no grating change)";
     numStim$[1] := "2 (no grating change)";
@@ -306,6 +314,13 @@ func GreggsGridScriptDialog%()
     numStim$[9] := "Lines";
 
     GetGreggsGridScriptParameters();
+    'Fill sixReals[]
+    sixReals[0] := fixAcqTime;
+    sixReals[1] := fixHoldTime;
+    sixReals[2] := gratingChangeTime;
+    sixReals[3] := flickerSec;
+    sixReals[4] := fixAcqTimeout;
+    sixReals[5] := ITI;
     
     'These variables are available
     'printlog("fix diam is %f and fixation color is %s\n",FixationDiameter,FixationColor$);
@@ -316,44 +331,64 @@ func GreggsGridScriptDialog%()
         preferredOri -= 180;  'if the value has been entered between 180-360, give it a u-turn (there is no drift, tf=0, so it's the same)
     endif
     
+    
         
     DlgCreate("GreggsGrid Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
-    DlgGroup("Stimuli", 1, 1, 50, 7);
+    DlgGroup("Stimuli", 1, 1, 50, 8);
     DlgList(1, "Number of Stimuli: ", numStim$, 10, 32, 2);
     DlgInteger(2, "Number of orientations (0-180 deg)", 1, 1000, 0, 3);
     DlgReal(3, "Minimum dOri for change, deg", 0, 90, 0, 4);
     DlgInteger(4, "Number of trials", 1, nMaxTrials%, 0, 5);
     DlgCheck(5,"Put Fixpt over gratings",0,6);
     DlgCheck(6,"But no fixpt if no grating in RF",5,7);
+    DlgCheck(7,"Stationary",0,8);
     
-    DlgGroup("Fixation", 1, 8, 50, 4);
-    DlgInteger(7, "Minimum fixations", 0, 100, 0, 9);
-    DlgInteger(8, "Variable fixations", 0, 100, 0, 10);
-    DlgReal(9, "Additional fix radius (deg)", 0, 10, 0, 11);
-    DlgCheck(10,"Always Looking",0,12);
+    DlgGroup("Fixation", 1, 9, 50, 5);
+    DlgInteger(8, "Minimum fixations", 0, 100, 0, 10);
+    DlgInteger(9, "Variable fixations", 0, 100, 0, 11);
+    DlgReal(10, "Additional fix radius (deg)", 0, 10, 0, 12);
+    DlgCheck(11,"Always Looking",0,13);
     
-    DlgGroup("Timing", 1, 13, 50, 7);
-    DlgReal(11, "Fixation Acquisition Time (s)", 0, 1000, 0, 14);
-    DlgReal(12, "Fixation Hold Time (s)", 0, 10, 0, 15);
-    DlgReal(13, "Grating Change Time (s)", 0, 10, 0, 16);
-    Dlgreal(14, "Grating Flicker Period (0 for off) (s)", 0, 10, 0, 17);
-    DlgReal(15, "Fixation/Acq Timeout (s)", 0, 100, 0, 18);
-    DlgReal(16, "Intertrial Interval (s)", 0, 10, 0, 19);
+    DlgGroup("Timing", 1, 14, 50, 7);
+    DlgReal(12, "Fixation Acquisition Time (s)", 0, 1000, 0, 15);
+    DlgReal(13, "Fixation Hold Time (s)", 0, 10, 0, 16);
+    DlgReal(14, "Grating Change Time (s)", 0, 10, 0, 17);
+    Dlgreal(15, "Grating Flicker Period (0 for off) (s)", 0, 10, 0, 18);
+    DlgReal(16, "Fixation/Acq Timeout (s)", 0, 100, 0, 19);
+    DlgReal(17, "Intertrial Interval (s)", 0, 10, 0, 20);
     
-    DlgGroup("Reward", 1, 20, 50, 4);
-    DlgReal(17, "Main Reward delay (s)", 0, 3, 0, 21);
-    DlgInteger(18, "Intermediate Reward dur (ms)", 0, 1000, 0, 22);
-    DlgReal(19, "Intermediate Reward prob (0-1)", 0, 1, 0, 23);
+    DlgGroup("Reward", 1, 21, 50, 6);
+    DlgReal(18, "Main Reward delay (s)", 0, 3, 0, 22);
+    DlgInteger(19, "Main Reward dur (ms)", 0, 1000, 0, 23);
+    DlgReal(20, "Main Reward prob (0-1)", 0, 1, 0, 24);
+    DlgInteger(21, "Intermediate Reward dur (ms)", 0, 1000, 0, 25);
+    DlgReal(22, "Intermediate Reward prob (0-1)", 0, 1, 0, 26);
     
     'Right now we don't seem to need a callback, it's ready directly below if we do 
     DlgAllow(0xffff, 0, GreggsGridScriptDialogChanged%);
 
-    i%:=DlgShow(nStimIndex%, nOrientations%, minDeltaOri, nTrials%, putFixptOverGratings%, noFixptIfNoGratingInRF%, minFixations%, varFixations%, addFixRad, 
-                AlwaysLooking%, fixAcqTime, fixHoldTime, gratingChangeTime, flickerSec, fixAcqTimeout, ITI, rewardDelay, intRewardMS%, intRewardProb);
+    i%:=DlgShow(nStimIndex%, nOrientations%, minDeltaOri, nTrials%, putFixptOverGratings%, noFixptIfNoGratingInRF%, stationary%, minFixations%, 
+                varFixations%, addFixRad, AlwaysLooking%, sixReals[], rewardDelay, fullRewardMS%, fullRewardProb, intRewardMS%, intRewardProb);
     
     if i% = 1 then
-
+        
+        'Unpack sixReals[]
+        fixAcqTime := sixReals[0];
+        fixHoldTime := sixReals[1];
+        gratingChangeTime := sixReals[2];
+        flickerSec := sixReals[3];
+        fixAcqTimeout := sixReals[4];
+        ITI := sixReals[5];
+        
 		SaveGreggsGridScriptParameters();
+        
+        if stationary% = 1 then
+            tempParams$ := GetGratingParameters$("Stimulus");
+            ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
+            tempParams$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$, ctf);  'hardcoded zero TF
+            SaveGratingParameters("StatStimulus", tempParams$);
+        endif;
+        
         
         'Fill nStim%, doChange% (currently doChange% is tethered to nStim%, but it could be untethered if appropriate)
         docase
@@ -508,10 +543,13 @@ proc GetGreggsGridScriptParameters()
     rewardDelay := GetFloatRegistryValue(key$, "rewardDelay", rewardDelay);
     intRewardMS% := GetIntRegistryValue%(key$, "intRewardMS", intRewardMS%);
     intRewardProb := GetFloatRegistryValue(key$, "intRewardProb", intRewardProb);
+    fullRewardMS% := GetIntRegistryValue%(key$, "fullRewardMS", fullRewardMS%);
+    fullRewardProb := GetFloatRegistryValue(key$, "fullRewardProb", fullRewardProb);
     addFixRad := GetFloatRegistryValue(key$, "addFixRad", addFixRad);
     putFixptOverGratings% := GetIntRegistryValue%(key$, "putFixptOverGratings", putFixptOverGratings%);
     noFixptIfNoGratingInRF% := GetIntRegistryValue%(key$, "noFixptIfNoGratingInRF", noFixptIfNoGratingInRF%);
     flickerSec := GetFloatRegistryValue(key$, "flickerSec", flickerSec);
+    stationary% := GetIntRegistryValue%(key$, "stationary", stationary%);
 
 end;
 
@@ -534,10 +572,13 @@ proc SaveGreggsGridScriptParameters()
     SetFloatRegistryValue(key$, "rewardDelay", rewardDelay);
     SetIntRegistryValue(key$, "intRewardMS", intRewardMS%);
     SetFloatRegistryValue(key$, "intRewardProb", intRewardProb);
+    SetIntRegistryValue(key$, "fullRewardMS", fullRewardMS%);
+    SetFloatRegistryValue(key$, "fullRewardProb", fullRewardProb);
     SetFloatRegistryValue(key$, "addFixRad", addFixRad);
     SetIntRegistryValue(key$, "putFixptOverGratings", putFixptOverGratings%);
     SetIntRegistryValue(key$, "noFixptIfNoGratingInRF", noFixptIfNoGratingInRF%);
     SetFloatRegistryValue(key$, "flickerSec", flickerSec);
+    SetIntRegistryValue(key$, "stationary", stationary%);
     
 end;
 
@@ -803,7 +844,7 @@ func IdleProcessing%()
             else
                 changeInRF% := 0;
             endif
-            SampleText("Grating change, changedGrating="+str$(changeLoc%[currTrial%-1])+", oldOri="+str$(changeFromOrientation[currTrial%-1])+", newOri="+str$(preferredOri)+", changeInRF="+str$(changeInRF%),tGratingChange);
+            SampleText("Grating change, changedGrating="+str$(changeLoc%[currTrial%-1])+", oldOri="+str$(changeFromOrientation[currTrial%-1])+", newOri="+str$(changeToOrientation[currTrial%-1])+", changeInRF="+str$(changeInRF%),tGratingChange);
             
             ChangeStateTo(stateWaitAcqChangedGrating%,tGratingChange);
             
@@ -914,8 +955,8 @@ func IdleProcessing%()
         if tNow - tStateStart > rewardDelay then  'reward delay currently disabled and 0, but maybe this is wanted?  Screen will be off, so...I hope not
             
             'give full reward
-            JuiceRewardMS% := JuiceRewardMSorig%;  'set reward to original full value
-            pReward := pRewardOrig;  'also probability of reward
+            JuiceRewardMS% := fullRewardMS%;  'set reward to original full value
+            pReward := fullRewardProb;  'also probability of reward
             tReward := tNow;
             DefaultReward();  'give reward
             TotalRewards% += 1;
@@ -934,7 +975,8 @@ func IdleProcessing%()
         endif
         
         var tempFloat;
-        tempFloat := JuiceRewardMSorig%;
+        'tempFloat := JuiceRewardMSorig%;
+        tempFloat := fullRewardMS%;
         
         'Advance Stimulus
         SafeSampleKey("a");
@@ -1285,8 +1327,9 @@ func Start%()
     
     specFileName$ := GetScriptDir$(0)+"..\\..\\GGSpecFile.txt";
     
-    JuiceRewardMSorig% := JuiceRewardMS%;  'we are going to use smaller intermediate rewards, so hold the original
-    pRewardOrig := pReward;                'Also probability (these values both come from the DAQ dialog)
+    'No longer getting reward valuess from the DAQ dialog
+    'JuiceRewardMSorig% := JuiceRewardMS%;  'we are going to use smaller intermediate rewards, so hold the original
+    'pRewardOrig := pReward;                'Also probability (these values both come from the DAQ dialog)
 
         'GetRepeatedParameterProgression%(fvFileLen%, fvNRepeats%, dummyResult[], fvImageOrder%[], 1, 2, 0, fvRandomProgression%);  'We will ignore dummyResult, which holds values between (1) and (2) that are not logspaced (0)
 
@@ -1380,7 +1423,11 @@ func Start%()
         Print("%s"," --num-stim-pages=2 ");
     endif
     'print "stimulus" parameters
-    Print("%s"," -s " + GetGratingParameters$("Stimulus")); 
+    if stationary% = 0 then
+        Print("%s"," -s " + GetGratingParameters$("Stimulus")); 
+    else
+        Print("%s"," -s " + GetGratingParameters$("StatStimulus")); 
+    endif
     'print "fixpt" parameters (as dots) if necessary
     if putFixptOverGratings% = 1 then
         Dots$ := " -D ";  'make one -D total
@@ -1416,7 +1463,7 @@ func Start%()
                 Grid1$ := Grid1$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(stimOrientation[j%][i%]);
                 'Grid2$ varies depending on whether this grid changes orientation
                 if j% = changeLoc%[i%] then
-                    Grid2$ := Grid2$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(preferredOri);  'change orientation is preferred orientation
+                    Grid2$ := Grid2$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(changeToOrientation[i%]);  'change orientation is preferred orientation (nope)
                 else
                     Grid2$ := Grid2$+str$(stimXPos[j%])+","+str$(stimYPos[j%])+","+str$(stimOrientation[j%][i%]);  'no-change orientation is same orientation as above
                 endif
@@ -1621,6 +1668,8 @@ proc WriteParameterFile()
     Print("Minimum fixations                        : %d\n", minFixations%);
     Print("Variable fixations                       : %d\n", varFixations%);
     Print("Reward Delay (s)                         : %f\n", rewardDelay);
+    Print("Main reward probability                  : %f\n", fullRewardProb);
+    Print("Main reward (ms)                         : %d\n", fullRewardMS%);
     Print("Intermediate reward probability          : %f\n", intRewardProb);
     Print("Intermediate reward (ms)                 : %d\n", intRewardMS%);
 	Print("Inter-trial interval                     : %f\n", ITI);
@@ -1629,7 +1678,7 @@ proc WriteParameterFile()
     Print("Grating change time (s)                  : %f\n", gratingChangeTime);
     Print("Acquisition time out (s)                 : %f\n", fixAcqTimeout);
     Print("Grating Width/Height (deg)               : %f,%f\n",rfW,rfH);  'rfW and rfH correspond to the grating width/height from the config
-    
+    Print("Stationary?                              : %d\n", stationary%);
     
     
     Print("\nStimulus Locations\n");
@@ -1660,7 +1709,7 @@ proc WriteParameterFile()
             endif
         next
         if doChange% = 1 then
-            print("Change Grating: %d, Change-To Orientation: %f\n",changeLoc%[i%],preferredOri);
+            print("Change Grating: %d, Change-To Orientation: %f\n",changeLoc%[i%],changeToOrientation[i%]);
         else
             print("No Change Grating\n");
         endif
@@ -2125,11 +2174,15 @@ proc BuildOrientations()
     'using the values of nStim%, nOrientations%, minDeltaOri, nTrials%, preferred ori
     var i%;  'loop for stimulus position
     var j%;  'loop for trials
+    var i;  'for float math
     var rndInt%[nStim%][nTrials%];  'set up a variable to hold a random integer
     var oriInc;  'The orientation increment
     var nOri;  'float for math
     var bailOut%;
     var tempLoc%;
+    var oriList[nOrientations%];  'we need to hold the values of the orientations used, because our "change" orientation is now not necessarily the preferred orientation
+    var thisOri;  'for random orientation selection
+    var rnd%;  'for a random number
     
     ''Fill stimOrientation[][]
     
@@ -2160,6 +2213,15 @@ proc BuildOrientations()
         'fixptPresent%[nStim%][j%] := 0;  'Not necessary!  Now will cause indexing error!
     next
     
+    'fill oriList[]
+    for i% := 0 to nOrientations%-1 do
+        i := i%;
+        oriList[i%] := preferredOri + (i*oriInc);
+        if oriList[i%] >= 180 then  'Don't allow listed orientations to exceed 180, just like stimOrientation[][]
+            oriList[i%] := oriList[i%]-180; 
+        endif
+    next
+    
     ''If we have 9/25 stimuli, and requested, do not place fixpts on gratings that will never have a grating in their RF
     if putFixptOverGratings% = 1 and noFixptIfNoGratingInRF% = 1 then  'we can't do this if there are no fixpts
         for i% := 0 to nStim%-1 do
@@ -2173,23 +2235,25 @@ proc BuildOrientations()
         next
     endif
     
-    ''Fill changeLoc%[] and changeFromOrientation[]
+    ''Fill changeLoc%[] and changeFromOrientation[] and changeToOrientation[]
     
     'This is probably best done in a loop given the tools present in Spike2
     for j% := 0 to nTrials%-1 do
         changeLoc%[j%] := -1;  'indicates we have not found a legal location to change yet
         bailOut% := 0;  'don't get stuck in the loop - 10000 is plenty safe, there are 9 possible change locations, if NONE work we'll know by 10000     
         while changeLoc%[j%] = -1 and bailOut% < 10000 do
-            tempLoc% := rand(9,0);  'Use the first 9 locations for possible changes
-            'printlog("temploc is %d and value is %f and mindelta is %f\n",tempLoc%,abs(preferredOri-stimOrientation[tempLoc%][j%]),minDeltaOri);
-            if abs(preferredOri-stimOrientation[tempLoc%][j%]) > minDeltaOri and abs(180+preferredOri-stimOrientation[tempLoc%][j%]) > minDeltaOri then
+            tempLoc% := rand(9,0);  'Use the first 9 locations for possible changes, select one randomly
+            rnd% := rand(nOrientations%,0);  'select a random orientation
+            thisOri := oriList[rnd%];
+            if abs(thisOri-stimOrientation[tempLoc%][j%]) > minDeltaOri and abs(180+thisOri-stimOrientation[tempLoc%][j%]) > minDeltaOri then
                 changeLoc%[j%] := tempLoc%;
                 changeFromOrientation[j%] := stimOrientation[tempLoc%][j%];
+                changeToOrientation[j%] := thisOri;
             endif
             bailOut% += 1;  'increment bailOut%
         wend
         if bailOut% >= 10000 then  'there is an argument here for changing the original grating to fit, as below in the LITE version, but for now sticking with this
-            message("Unable to find changeable grating at least " + str$(minDeltaOri) + " degrees of the preferred orientation.  Quitting!");
+            message("Unable to find changeable grating at least " + str$(minDeltaOri) + " degrees from a standard orientation.  Quitting!");
             halt;
         endif
     next
@@ -2212,12 +2276,16 @@ proc BuildOrientationsLite()
     'using the values of nStim%, nOrientations%, minDeltaOri, nTrials%, preferred ori
     var i%;  'loop for stimulus position
     var j%;  'loop for trials
+    var i;  'float math!
     var rndInt%[4][nTrials%];  'set up a variable to hold a random integer, we need 4 because there are 4 positions (even if there are <4 stimuli)
     var oriInc;  'The orientation increment
     var nOri;  'float for math
     var bailOut%;
     var tempLoc%;
     var randlist%[4];
+    var oriList[nOrientations%];  'we need to hold the values of the orientations used, because our "change" orientation is now not necessarily the preferred orientation
+    var thisOri;  'for random orientation selection
+    var rnd%;  'for a random number
     
     ''Fill stimOrientation[][]
     
@@ -2246,6 +2314,17 @@ proc BuildOrientationsLite()
         'fixptPresent%[4][j%] := 0;  'Not necessary!
     next
     
+    
+    'fill oriList[]
+    for i% := 0 to nOrientations%-1 do
+        i := i%;
+        oriList[i%] := preferredOri + (i*oriInc);
+        if oriList[i%] >= 180 then  'Don't allow listed orientations to exceed 180, just like stimOrientation[][]
+            oriList[i%] := oriList[i%]-180; 
+        endif
+    next
+    
+    
     docase
     ''Fill changeLoc%[] and changeFromOrientation[], but only bother if we are changing a location (i.e. there are 4 stimuli)
     case nStim% = 4 then
@@ -2253,25 +2332,33 @@ proc BuildOrientationsLite()
         for j% := 0 to nTrials%-1 do
             changeLoc%[j%] := -1;  'indicates we have not found a legal location to change yet
             bailOut% := 0;  'don't get stuck in the loop - 100 is plenty safe, there are 4 possible change locations     
-            while changeLoc%[j%] = -1 and bailOut% < 100 do
+            while changeLoc%[j%] = -1 and bailOut% < 10000 do
                 tempLoc% := rand(4,0);  'Use all 4 locations for possible changes
+                rnd% := rand(nOrientations%,0);  'select a random orientation
+                thisOri := oriList[rnd%];
                 'printlog("temploc is %d and value is %f and mindelta is %f\n",tempLoc%,abs(preferredOri-stimOrientation[tempLoc%][j%]),minDeltaOri);
-                if abs(preferredOri-stimOrientation[tempLoc%][j%]) > minDeltaOri and abs(180+preferredOri-stimOrientation[tempLoc%][j%]) > minDeltaOri then
+                if abs(thisOri-stimOrientation[tempLoc%][j%]) > minDeltaOri and abs(180+thisOri-stimOrientation[tempLoc%][j%]) > minDeltaOri then
                     changeLoc%[j%] := tempLoc%;
                     changeFromOrientation[j%] := stimOrientation[tempLoc%][j%];
+                    changeToOrientation[j%] := thisOri;
                 endif
                 bailOut% += 1;  'increment bailOut%
             wend
-            if bailOut% >= 100 then
-                'just use tempLoc%, and change the orientation of the pre-change grating
-                stimOrientation[tempLoc%][j%] := preferredOri + 90;  'this is not great as preferredOri+90 because that may not be a "standard" orientation
-                'make sure value is between 0-180
-                if stimOrientation[tempLoc%][j%] >= 180 then
-                    stimOrientation[tempLoc%][j%] := stimOrientation[tempLoc%][j%]-180;
-                endif;
-                changeLoc%[j%] := tempLoc%;
-                changeFromOrientation[j%] := stimOrientation[tempLoc%][j%];
-            endif
+            'after updating to make the change-to orientation *any known orientation*, this logic seems suboptimal, going to mimic the original
+'            if bailOut% >= 100 then
+'                'just use tempLoc%, and change the orientation of the pre-change grating
+'                stimOrientation[tempLoc%][j%] := preferredOri + 90;  'this is not great as preferredOri+90 because that may not be a "standard" orientation
+'                'make sure value is between 0-180
+'                if stimOrientation[tempLoc%][j%] >= 180 then
+'                    stimOrientation[tempLoc%][j%] := stimOrientation[tempLoc%][j%]-180;
+'                endif;
+'                changeLoc%[j%] := tempLoc%;
+'                changeFromOrientation[j%] := stimOrientation[tempLoc%][j%];
+'            endif
+            if bailOut% >= 10000 then  'there is an argument here for changing the original grating to fit, as below in the LITE version, but for now sticking with this
+                message("Unable to find changeable grating at least " + str$(minDeltaOri) + " degrees from a standard orientation.  Quitting!");
+            halt;
+        endif
         next
     ''If we have 1 or 2 stimuli, "blank out" 2 or 3 random stimuli    
     else
