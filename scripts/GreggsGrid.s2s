@@ -1681,6 +1681,37 @@ proc WriteParameterFile()
     Print("Stationary?                              : %d\n", stationary%);
     
     
+    ' write stimulus parameters
+	var stimstr$;
+	var stimx$, stimy$, stimw$, stimh$, stimiw$, stimih$, stimcontrast$, stimsf$, stimtf$, stimorientation$, stimphase$, stimcv$, stimp$, stimap$;
+	var stepsize;
+    var phase;
+    Print("\nStimulus\n");  'Master grating
+	Print("-------------------\n\n");
+	stimstr$ := GetGratingParameters$("Stimulus");
+	ReadSetup(",",",",",",",",",");
+	i% := ReadStr(stimstr$, stimx$, stimy$, stimw$, stimh$, stimiw$, stimih$, stimcontrast$, stimsf$, stimtf$, stimorientation$, stimphase$, stimcv$, stimp$, stimap$);
+	if stationary% = 1 then
+        stimtf$ := "0";
+    endif
+    Print("Position (x, degrees)           : %s\n", stimx$);
+	Print("Position (y, degrees)           : %s\n", stimy$);
+	Print("Width (degrees)                 : %s\n", stimw$);
+	Print("Height (degrees)                : %s\n", stimh$);
+    Print("Inner Width (degrees)           : %s\n", stimiw$);
+	Print("Inner Height (degrees)          : %s\n", stimih$);
+	Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", stimcv$);
+    Print("Temporal frequency              : %s\n", stimtf$);
+	Print("Spatial frequency               : %s\n", stimsf$);
+	Print("Orientation (degrees)           : %s\n", stimorientation$);
+    Print("Initial Phase (degrees)         : %s\n", stimphase$);
+	Print("Contrast (%%)                    : %s\n", stimcontrast$);
+	Print("Aperture: ellipse(e)/square(q)  : %s\n", stimap$);
+	Print("Type: sine (s)/square (q)       : %s\n", stimp$);
+    
+    
+    
+    
     Print("\nStimulus Locations\n");
 	Print("-------------------------\n\n");
     
@@ -1961,8 +1992,8 @@ func BuildStimLocationsLines%(rfX,rfY,rfW,rfH)
         
         'Now, building X and Y stimulus positions is easy!
         for i% := 0 to 24 do
-            stimXPos[i%] := (X*xFac[i%]) + (L*lFac[i%]);
-            stimYPos[i%] := Y*yFac[i%];
+            stimXPos[i%] := (rfX*xFac[i%]) + (L*lFac[i%]);
+            stimYPos[i%] := rfY*yFac[i%];
         next
         
     else
@@ -1986,8 +2017,8 @@ func BuildStimLocationsLines%(rfX,rfY,rfW,rfH)
         
         'Now, building X and Y stimulus positions is easy!
         for i% := 0 to 24 do
-            stimXPos[i%] := X*xFac[i%];
-            stimYPos[i%] := (Y*yFac[i%]) + (L*lFac[i%]);
+            stimXPos[i%] := rfX*xFac[i%];
+            stimYPos[i%] := (rfY*yFac[i%]) + (L*lFac[i%]);
             'printlog("xpos is %f and ypos is %f\n",stimXPos[i%],stimYPos[i%]);
         next        
         'halt;
@@ -2045,7 +2076,7 @@ func BuildStimLocationsLines%(rfX,rfY,rfW,rfH)
     '   18  06  07  08  19
     '    20  21  22  23  24
     docase
-    case rfY > 0 and XVersion% = 1 then  'Quadrant 1 OR Quadrant 2, XVersion
+    case rfY >= 0 and XVersion% = 1 then  'Quadrant 1 OR Quadrant 2, XVersion
         q%[0]:=10; q%[1]:=11; q%[2]:=12; q%[3]:=0; q%[4]:=1; q%[5]:=2; q%[6]:=3; 
         q%[7]:=4; q%[8]:=5; q%[9]:=nStim%; q%[10]:=nStim%; q%[11]:=nStim%; q%[12]:=nStim%;  
         q%[13]:=nStim%; q%[14]:=9; q%[15]:=13; q%[16]:=14; q%[17]:=15; q%[18]:=16;  
@@ -2068,7 +2099,7 @@ func BuildStimLocationsLines%(rfX,rfY,rfW,rfH)
     '           22          19
     '                 23
     '                       24    
-    case rfX > 0 and XVersion% = 0 then  'Quadrant 1 OR Quadrant 4, YVersion
+    case rfX >= 0 and XVersion% = 0 then  'Quadrant 1 OR Quadrant 4, YVersion
         q%[0]:=1; q%[1]:=2; q%[2]:=15; q%[3]:=4; q%[4]:=5; q%[5]:=17; q%[6]:=7; 
         q%[7]:=8; q%[8]:=19; q%[9]:=10; q%[10]:=11; q%[11]:=12; q%[12]:=13;  
         q%[13]:=nStim%; q%[14]:=0; q%[15]:=nStim%; q%[16]:=3; q%[17]:=nStim%; q%[18]:=6;  
@@ -2079,7 +2110,7 @@ func BuildStimLocationsLines%(rfX,rfY,rfW,rfH)
         q%[13]:=12; q%[14]:=nStim%; q%[15]:=2; q%[16]:=nStim%; q%[17]:=5; q%[18]:=nStim%;  
         q%[19]:=8; q%[20]:=nStim%; q%[21]:=20; q%[22]:=21; q%[23]:=22; q%[24]:=23;
     else  'rfX or rfY is 0
-        'Do nothing, as we should already have halted in the dialog box
+        'Do nothing, as we should already have picked one of the line versions
         'OK, fine.
         Message("rfX or rfY is zero!  Should have halted in the dialog box!  This message should never come up!  Quitting!");
         halt;
