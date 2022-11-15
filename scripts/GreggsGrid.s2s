@@ -862,12 +862,18 @@ func IdleProcessing%()
         docase   
         case LookingGrating%(xEye,yEye,currentGrating%,changeLoc%[currTrial%-1]) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
             LogStatus("WaitAcqChangedGrating", "Grating " + str$(currentGrating%) + " acquired at " + str$(tNow));
+'            if stimOrientation[stimInRF%[currentGrating%]][currTrial%-1] = -1000 then
+'                SampleText("Acquired Grating (Directed), grating="+str$(currentGrating%)+", gazeOri="+str$(stimOrientation[currentGrating%][currTrial%-1])+", RFOri=NoStimInRF",tNow);
+'            else
+'                SampleText("Acquired Grating (Directed), grating="+str$(currentGrating%)+", gazeOri="+str$(stimOrientation[currentGrating%][currTrial%-1])+
+'                ", RFOri="+str$(stimOrientation[stimInRF%[currentGrating%]][currTrial%-1])+", RFStimNum="+str$(stimInRF%[currentGrating%]),tNow);
+'            endif  
             if stimOrientation[stimInRF%[currentGrating%]][currTrial%-1] = -1000 then
-                SampleText("Acquired Grating (Directed), grating="+str$(currentGrating%)+", gazeOri="+str$(stimOrientation[currentGrating%][currTrial%-1])+", RFOri=NoStimInRF",tNow);
+                SampleText("Acquired Grating (Directed), grating="+str$(currentGrating%)+", gazeOri="+str$(changeToOrientation[currTrial%-1])+", RFOri=NoStimInRF",tNow);
             else
-                SampleText("Acquired Grating (Directed), grating="+str$(currentGrating%)+", gazeOri="+str$(stimOrientation[currentGrating%][currTrial%-1])+
+                SampleText("Acquired Grating (Directed), grating="+str$(currentGrating%)+", gazeOri="+str$(changeToOrientation[currTrial%-1])+
                 ", RFOri="+str$(stimOrientation[stimInRF%[currentGrating%]][currTrial%-1])+", RFStimNum="+str$(stimInRF%[currentGrating%]),tNow);
-            endif    
+            endif 
             changeStateTo(stateHoldChangedGrating%,tNow);  
         case tNow - tGratingChange > fixAcqTime then
             LogStatus("WaitAcqChangedGrating", "Acquisition window timed out at " + str$(tNow));
@@ -908,12 +914,18 @@ func IdleProcessing%()
             'request grid down
             SafeSampleKey("X");
             LogStatus("HoldChangedGrating", "Changed grating held at " + str$(tNow));
+'            if stimOrientation[stimInRF%[currentGrating%]][currTrial%-1] = -1000 then
+'                SampleText("Held Changed Grating, grating="+str$(currentGrating%)+", gazeOri="+str$(stimOrientation[currentGrating%][currTrial%-1])+", RFOri=NoStimInRF",tNow);
+'            else
+'                SampleText("Held Changed Grating, grating="+str$(currentGrating%)+", gazeOri="+str$(stimOrientation[currentGrating%][currTrial%-1])+
+'                ", RFOri="+str$(stimOrientation[stimInRF%[currentGrating%]][currTrial%-1])+", RFStimNum="+str$(stimInRF%[currentGrating%]),tNow);
+'            endif   
             if stimOrientation[stimInRF%[currentGrating%]][currTrial%-1] = -1000 then
-                SampleText("Held Changed Grating, grating="+str$(currentGrating%)+", gazeOri="+str$(stimOrientation[currentGrating%][currTrial%-1])+", RFOri=NoStimInRF",tNow);
+                SampleText("Held Changed Grating, grating="+str$(currentGrating%)+", gazeOri="+str$(changeToOrientation[currTrial%-1])+", RFOri=NoStimInRF",tNow);
             else
-                SampleText("Held Changed Grating, grating="+str$(currentGrating%)+", gazeOri="+str$(stimOrientation[currentGrating%][currTrial%-1])+
+                SampleText("Held Changed Grating, grating="+str$(currentGrating%)+", gazeOri="+str$(changeToOrientation[currTrial%-1])+
                 ", RFOri="+str$(stimOrientation[stimInRF%[currentGrating%]][currTrial%-1])+", RFStimNum="+str$(stimInRF%[currentGrating%]),tNow);
-            endif    
+            endif            
             trialSuccess% := 1;         
             ChangeStateTo(stateWaitForBlank%, tNow);
         endcase
