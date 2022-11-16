@@ -2127,7 +2127,7 @@ func BuildStimLocationsLines%(rfX,rfY,rfW,rfH)
             'printlog("xpos is %f and ypos is %f\n",stimXPos[i%],stimYPos[i%]);
         next        
         'halt;
-    endif
+    endcase
     
     
     'Here we should remove any stimuli that fall outside of the screen, this is important for building q%[] and stimInRF%[]
@@ -2382,11 +2382,15 @@ proc BuildOrientations()
     ''If we have 9/25 stimuli, and requested, do not place fixpts on gratings that will never have a grating in their RF
     if putFixptOverGratings% = 1 and noFixptIfNoGratingInRF% = 1 then  'we can't do this if there are no fixpts
         for i% := 0 to nStim%-1 do
-            if gratingPresent%[i%][0] = 1 then  'do not overlay a fixation point if there is no grating
+            if gratingPresent%[i%][0] = 1 then  'If there is a grating, check to see if there is a stimulus in the RF
                 for j% := 0 to nTrials%-1 do
                     if stimInRF%[i%] = nStim% then  'stimIfRF%[] = nStim% is an indicator that there is no stim in the RF
                         fixptPresent%[i%][j%] := 0;
                     endif;
+                next
+            else
+                for j% := 0 to nTrials%-1 do  'do not overlay a fixation point if there is no grating
+                    fixptPresent%[i%][j%] := 0;
                 next
             endif;
         next
