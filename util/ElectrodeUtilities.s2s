@@ -849,15 +849,40 @@ end
 
 
 'This function sets up the sampling on a Power1401 for the 24 WaveForm configuration for the TUNING script
-'Eye X/Y ports assumed to be 23/24
-func CreateElectrodeSamplingConfiguration24WF()
+'Eye X/Y ports assumed to be 22/23
+func CreateElectrodeSamplingConfiguration24WF(ExcludedChans%[])
     var iStatus% := -1;
     var i%;
+    var ichan%;
+    var WMIndex%;
+    var WFIndex%;
     
-    SampleChannels(34);  'we need some extra channels    
+    'SampleChannels(34);  'we need some extra channels - we need more than this, but shouldn't need to ask here
     
-    'do not use ports 14/15
-    'do not use channels 23-32
+    
+    '''''This version is a hack to use the expected 24-channel 1401 configuration 
+    'do not use ports 22/23 (expected to be eye tracker channels, there is not expected to be a joystick channel)
+    'do not use channels in ExcludedChans%[]
+    'Note that only 22 channels will be populated! (2 are reserved for the eye tracker)
+    'This version will only work if the above assumptions are not violated
+    
+    ' Starting channel number is 1.
+    ichan% := 1;
+    
+    'for i% := 0 to NumWavemarkPorts%-1 do
+    for i% := 0 to 22 do
+        if ichan% = ExcludedChans%[0] then
+            ichan% := ExcludedChans%[1]+1;
+        endif;
+
+        SampleWaveform(ichan%,i%,30000);  'chan, port, sampling rate
+        SampleTitle$(ichan%, "Raw " + str$(i%+1)); 
+        
+    next
+    
+        
+    
+    
     
 '    EEGPort% := nineInts%[0];
 '        EyeXPort% := nineInts%[1];
@@ -868,25 +893,30 @@ func CreateElectrodeSamplingConfiguration24WF()
 '        PhotodiodePort% := nineInts%[6];
 '        TemperaturePort% := nineInts%[7];
 '        UtilityPort% := nineInts%[8];
-    
+        
+        
+        
+    '''''This version was the original, which assumed the eye tracker channels were on ports 14/15 on a 16+16 channel 1401    
+    'do not use ports 14/15
+    'do not use channels 23-32 (this assumption is basically obsolete)   
     'This does 14 of 24 30kHz waveforms
-    for i% := 0 to 13 do  'these are the pre-eyectracker channels, do not use ports 14/15
-		SampleWaveform(i%+1,i%,30000);  'chan, port, sampling rate
-		SampleTitle$(i%+1, "Raw " + str$(i%+1)); 
-	next
-    
-    
-    'This does 8 of 24 30kHz waveforms
-    for i% := 0 to 7 do
-		SampleWaveform(i%+15,i%+16,30000);  'chan, port, sampling rate
-		SampleTitle$(i%+15, "Raw " + str$(i%+15)); 
-	next
-    
-    'This does final 2 of 15 30kHz waveforms
-    for i% := 0 to 1 do
-		SampleWaveform(i%+33,i%+24,30000);  'chan, port, sampling rate
-		SampleTitle$(i%+33, "Raw " + str$(i%+23)); 
-	next
+'    for i% := 0 to 13 do  'these are the pre-eyectracker channels, do not use ports 14/15
+'		SampleWaveform(i%+1,i%,30000);  'chan, port, sampling rate
+'		SampleTitle$(i%+1, "Raw " + str$(i%+1)); 
+'	next
+'    
+'    
+'    'This does 8 of 24 30kHz waveforms
+'    for i% := 0 to 7 do
+'		SampleWaveform(i%+15,i%+16,30000);  'chan, port, sampling rate
+'		SampleTitle$(i%+15, "Raw " + str$(i%+15)); 
+'	next
+'    
+'    'This does final 2 of 15 30kHz waveforms
+'    for i% := 0 to 1 do
+'		SampleWaveform(i%+33,i%+24,30000);  'chan, port, sampling rate
+'		SampleTitle$(i%+33, "Raw " + str$(i%+23)); 
+'	next
     
     'SampleUsPerTime(2.5);  'set same sample period for both units
     'SampleTimePerADC(1);  'set same ADC rate for both units
