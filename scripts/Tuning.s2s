@@ -155,8 +155,9 @@ var iState% := stateVSGWait%;	' present state
 
 var nTrialsStarted%:=0;
 var nTrialsCompleted%:=0;
-var nTrialsAborted% :=0;		' 
+var nTrialsAborted% :=0;		
 var nTrialsRewarded% :=0;
+var giveReward%;  'we are going to be moving the reward later so that opto is turned off first.
 
 var tic;  'Set a tick value equal to the duration of one clock tick in seconds, used to prevent finding
           'the same "pulse" twice
@@ -567,7 +568,7 @@ func IdleProcessing%()
         if Looking%(xEye, yEye) = 1 then
             'if it's time to start the stimulus
             if tNow - tStateStart > tunStimulusOnsetDelay then
-                LogStatus("WaitForAcquisition", "Eye in fixation window; checking opto status");
+                LogStatus("WaitStimulusOnsetDelay", "Eye in fixation window; checking opto status");
                 ChangeStateTo(stateCheckTurnOnOpto%, tNow);
             endif;
         else 
@@ -592,7 +593,7 @@ func IdleProcessing%()
         case tunOptoStaysOn% = 1 and (nTrialsCompleted% mod (tunNAdvances%+1)) <> 0 then 'this is for when we're keeping the opto on and it's mid block
             ChangeStateTo(stateRequestStimulus%, tNow);
             printlog("Opto is already on, OptoStaysOn = %d, TrialsComplete = %d, time = %f\n",tunOptoStaysOn%,(nTrialsCompleted% mod (tunNAdvances%+1)),tNow);
-        else 'otherwise it is a wraparound opto trial and we need to turn opto on
+        else 'otherwise it is a wraparound opto trial and we will determine whether to turn opto on in the next state (we need to SampleKey regardless of opto state)
             ChangeStateTo(stateStartOpto%, tNow);
             printlog("Turning Opto On at time = %f\n",tNow);
         endcase
@@ -704,10 +705,10 @@ func IdleProcessing%()
         endif
 
         
-    case iState% = stateWaitForStimOn% then
+   ' case iState% = stateWaitForStimOn% then
         
         ' Starting from tStimSequence, look for pulses in FrameChannel% and FrameSlaveChannel%
-        LogStatus("WaitForStimOn", "NOT IMPLEMENTED!");
+   '     LogStatus("WaitForStimOn", "NOT IMPLEMENTED!");
         
     case iState% = stateAbort% then
 
@@ -759,47 +760,55 @@ func IdleProcessing%()
         
         
     case iState% = stateInterTrialIntervalFixAlreadyUp% then
-
-        if tNow - tStateStart > tunStdInterTrialTime then
-'            SafeSampleKey("S");  'request stimulus
-'            ChangeStateTo(stateWaitForStimTrigger%, tNow);
-            
-            'put timing marker in both eyetracker file, smr file
-            'if RecordEyeTrackerOutputFile% = 1 then
-            '    SafeSampleKey("1");
-            '    yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
-            'endif;
-            
-            'put timing marker in both eyetracker file, smr file
-            if RecordEyeTrackerOutputFile% = 1 then
-                'SafeSampleKey("1");
-                docase
-                case HBCycle% = 1 then
-                    SafeSampleKey("1");
-                case HBCycle% = 2 then
-                    SafeSampleKey("2");
-                case HBCycle% = 3 then
-                    SafeSampleKey("3");
-                case HBCycle% = 4 then
-                    SafeSampleKey("4");
-                case HBCycle% = 5 then
-                    SafeSampleKey("5");
-                case HBCycle% = 6 then
-                    SafeSampleKey("6");
-                case HBCycle% = 7 then
-                    SafeSampleKey("7");
-                endcase
-                HBCycle% += 1;  'increment HBCycle%
-                if HBCycle% = 8 then  'and cycle when necessary
-                    HBCycle% := 1;
-                endif
-                yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
-            endif;
-            
-            'going to stateWaitForAcqusition allows opto to happen
-            ChangeStateTo(stateWaitForAcquisition%, tNow-tunAcquisitionTime);  'do not allow acquisition window, if animal is not fixating during maintain, this is an abort
-        endif    
         
+        if Looking%(xEye, yEye) = 0 then
+            
+            LogStatus("InterTrialIntervalFixAlreadyUp", "Fixation broken, aborting trial.");
+            tInterTrialTime := tunHoldFailTime;
+            SampleText("-");
+            ChangeStateTo(stateAbort%, tNow);
+        else
+        
+            if tNow - tStateStart > tunStdInterTrialTime then
+                '            SafeSampleKey("S");  'request stimulus
+                '            ChangeStateTo(stateWaitForStimTrigger%, tNow);
+                
+                'put timing marker in both eyetracker file, smr file
+                'if RecordEyeTrackerOutputFile% = 1 then
+                '    SafeSampleKey("1");
+                '    yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
+                'endif;
+                
+                'put timing marker in both eyetracker file, smr file
+                if RecordEyeTrackerOutputFile% = 1 then
+                    'SafeSampleKey("1");
+                    docase
+                    case HBCycle% = 1 then
+                        SafeSampleKey("1");
+                    case HBCycle% = 2 then
+                        SafeSampleKey("2");
+                    case HBCycle% = 3 then
+                        SafeSampleKey("3");
+                    case HBCycle% = 4 then
+                        SafeSampleKey("4");
+                    case HBCycle% = 5 then
+                        SafeSampleKey("5");
+                    case HBCycle% = 6 then
+                        SafeSampleKey("6");
+                    case HBCycle% = 7 then
+                        SafeSampleKey("7");
+                    endcase
+                    HBCycle% += 1;  'increment HBCycle%
+                    if HBCycle% = 8 then  'and cycle when necessary
+                        HBCycle% := 1;
+                    endif
+                    yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
+                endif;
+                
+                'going to stateWaitForAcqusition allows opto to happen
+                ChangeStateTo(stateWaitForAcquisition%, tNow-tunAcquisitionTime);  'do not allow acquisition window, if animal is not fixating during maintain, this is an abort
+            endif    
+        endif
 
     case iState% = stateHoldFixation% then
 
@@ -838,9 +847,8 @@ func IdleProcessing%()
                     SafeSampleKey("T");  'Send a pulse
                 endif
                 
-                ' Reward
-                DefaultReward();
-                nTrialsRewarded% += 1;
+                ' Note that reward is to be given
+                giveReward% := 1;
                 
                 ' Process Spikes
                 if tunDoTuningHist% = 1 then
@@ -1029,10 +1037,18 @@ func IdleProcessing%()
         'nTrialsCompleted% += 1;  'now done above in stateCheckTurnOffOpto%
         printlog("number of trials completed is %d\n",nTrialsCompleted%);
 		ToolbarText(str$(nTrialsCompleted%) + "/" + str$(tunNValues%) + " trials completed."); 
+        
+        ' Reward
+        if giveReward% = 1 then
+            DefaultReward();
+            nTrialsRewarded% += 1;
+            giveReward := 0;
+        endif
+        
         docase
 		case nTrialsCompleted% >= tunNValues% and not(tunRepeatForever% = 1 and tunType$ = tunTypeBakersDozen$) then  'right now tunRepeatForever is only available on Baker's Dozen (Henry will ask for more, I know it)
             ' We're all done - appears to not reward on final trial.  How chintzy!
-            ChangeStateTo(stateDone%, tNow);
+            ChangeStateTo(stateDone%, tNow);  'stateDone% doesn't really happen because we just go to Stop()%
             Stop%();
             iStatus% := 0;
         case nTrialsCompleted% > 0 and (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 and not(tunRepeatForever% = 1 and tunType$ = tunTypeBakersDozen$) then 'toggle tunOptoState at the end of a block, use interblock time
