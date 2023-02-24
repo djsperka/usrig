@@ -7,6 +7,7 @@
 #include "UsreyGratings.s2s"
 #include "UsreyDAQ.s2s"
 
+const tunMaxTrials% := 10000;
 
 const tunTypeNone$ := "None";
 const tunTypeOrientation$ := "O";
@@ -73,6 +74,7 @@ const tundlgLagButton% := 29;
 const tundlgOptogeneticsButton% := 30;
 const tundlgFixptColorButton% := 31;
 const tundlgPolkaDotButton% := 32;
+const tundlgSelectTuningFileButton2% := 33;  'Needed for bakers dozen opto/condition file
 
 ' A note about "steps". 
 ' The dialogs ask for a number of "steps". A step is a transition from one stimulus
@@ -253,7 +255,7 @@ var tunDSSNBlanks%;             ' # of blank periods, the remainder are flashes
 var tunDSSNFlashesPerReward%;   ' # of flashes per each reward
 var tunDSSCurrPeriod%;          ' counts current period
 var tunDSSFlashesUntilReward%;  ' how many flashes until we get a reward?
-var tunDSSFlashOrBlank%[10000];  'is current "flash" a flash or a blank?
+var tunDSSFlashOrBlank%[tunMaxTrials%];  'is current "flash" a flash or a blank?
 var tunDSSDuration;             'how long is each flash, will take from "fixation duration"
 var tunDSSIsOn%;                'keep track of current state
 var tunNextDSSTime;             'when is the next flip?
@@ -292,6 +294,9 @@ var tunLagMasterIsLagged%;
 'Baker's Dozen variables
 var tunBDTuningFile$;
 var tunBakersDozenFileLoc$;
+var tunBDUseOCFile%;  'Use Opto/condition file?
+var tunBDOCFile$;
+var tunBakersDozenOCFileLoc$;
 'Baker's Dozen tuning file read variables
 var tunNumBDCurvesAllowed% := 17;  'include paired curves as two curves
 'Index order of BD curves:
@@ -307,18 +312,22 @@ tunBDTunCurveLabel$[3]  := "CON";
 tunBDTunCurveLabel$[4]  := "FIXCOL";
 tunBDTunCurveLabel$[5]  := "AREA";
 tunBDTunCurveLabel$[6]  := "PHASE";
-tunBDTunCurveLabel$[7]  := "XYPOS";
-tunBDTunCurveLabel$[8]  := "";  'Not used
+tunBDTunCurveLabel$[7]  := "XYPOS";  'This is X position
+tunBDTunCurveLabel$[8]  := "";  'Reserved for Y position
 tunBDTunCurveLabel$[9]  := "XPOS";
-tunBDTunCurveLabel$[10] := "WH";
-tunBDTunCurveLabel$[11] := "";  'Not used
+tunBDTunCurveLabel$[10] := "WH";  'This is width
+tunBDTunCurveLabel$[11] := "";  'Reserved for height
 tunBDTunCurveLabel$[12] := "DH";
-tunBDTunCurveLabel$[13] := "FIXXY";
-tunBDTunCurveLabel$[14] := "";  'Not used
+tunBDTunCurveLabel$[13] := "FIXXY";  'This is fixation X
+tunBDTunCurveLabel$[14] := "";  'Reserved for fixation Y
 tunBDTunCurveLabel$[15] := "DEL";
 tunBDTunCurveLabel$[16] := "DUR";
 var tunBDWhichTunCurve[tunNumBDCurvesAllowed%];    'Will be 1 for each tuning curve that is specified in the BD file and 0 if not
-var tunBDTuningValues$[5000][tunNumBDCurvesAllowed%];  'Will fill up to 5000 values, as STRINGS, column index is as above
+var tunBDTuningValues$[tunMaxTrials%][tunNumBDCurvesAllowed%];  'Will fill up to 5000 values, as STRINGS, column index is as above
+var tunPauseOnConditionChange% := 0;  'Currently only implemented for Baker's Dozen, will be used openly in idle loop
+var tunBDConditionLabel$[tunMaxTrials%];
+var tunTBTOpto%[tunMaxTrials%];  'this is only available in Baker's Dozen for now
+
 
 'Fixpt Color
 var tunFPCNSteps%;
@@ -343,10 +352,10 @@ var tunFPJtFixptMove;           'Time of fixation point jump, if any
 var tunFPJFileLoc$ := GetWorkPath$() + "\\FixptJumpFile.txt";             'Location of FPJ file
 var tunFPJFixptStr$;
 var tunFPJGratingStr$;
-var tunFPJFixptX[10000];        'Would use tunMaxTrial but that's defined below, this is fine
-var tunFPJFixptY[10000];
-var tunFPJGratingX[10000];
-var tunFPJGratingY[10000];
+var tunFPJFixptX[tunMaxTrials%];
+var tunFPJFixptY[tunMaxTrials%];
+var tunFPJGratingX[tunMaxTrials%];
+var tunFPJGratingY[tunMaxTrials%];
 var tunFPJIsJump%;
 
 
@@ -396,7 +405,8 @@ var tunPulsedOptoOnsetClockSteps%;
 var tunPulsedOptoOffsetClockSteps%;
 var tunPulsedOptoWidthClockSteps%;
 var tunPulsedOptoIPIClockSteps%;
-var tunDoOpto%;                     ' New, 1 if doing optogenetics
+var tunDoOpto%;                     '1 if doing optogenetics
+var doTBTopto%;                     '1 if opto is to be specified trial-by-trial, currently only available via Baker's Dozen and "OC" specfile
 'var tunRecStimulator% := 0;   'record the stimulator?
 var tunOptoUsePulse% := 0;  'Are we using a "pulsing stimulation"?
 var tunLaserDiode% := 0;  'Are we recording the output of the laser using a photodiode?
@@ -464,7 +474,7 @@ var tunRepeatForever%;  ' Allow looping through the stimuli over and over foreve
 ' The Indices array is the order to step through the values with: tunValues[tunValuesIndices%[0]], tunValues[tunValuesIndices%[1]], ...
 ' djs Make a constant tunMaxTrials to set the max number of trials. Arrays etc should be declared with this const. See below and
 ' tunF1Sum, tunF2Sum. 
-const tunMaxTrials% := 10000;
+
 var tunValues[tunMaxTrials%];
 var tunValues$[tunMaxTrials%];  'for reading the combo tuning file, there will be a '-' separator
 var tun1Values[tunMaxTrials%];
@@ -1014,6 +1024,9 @@ proc GetTuningCurveBakersDozenParameters()
 	var key$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\BakersDozen";
     tunBDTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", tunBDTuningFile$);
+    tunBDUseOCFile% := GetIntRegistryValue%(key$, "BDUseOCFile", tunBDUseOCFile%);
+    tunBDOCFile$ := GetStringRegistryValue$(key$, "OCFile", tunBDOCFile$);
+    tunPauseOnConditionChange% := GetIntRegistryValue%(key$, "PauseOnConditionChange", tunPauseOnConditionChange%);
     tunRepeatForever% := GetIntRegistryValue%(key$, "RepeatForever", tunRepeatForever%);
 end;
 
@@ -1021,6 +1034,9 @@ proc SaveTuningCurveBakersDozenParameters()
 	var key$;
 	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\Tuning\\BakersDozen";
     SetStringRegistryValue(key$, "TuningFile", tunBDTuningFile$);
+    SetIntRegistryValue(key$, "BDUseOCFile", tunBDUseOCFile%);
+    SetStringRegistryValue(key$, "OCFile", tunBDOCFile$);
+    SetIntRegistryValue(key$, "PauseOnConditionChange", tunPauseOnConditionChange%);
     SetIntRegistryValue(key$, "RepeatForever", tunRepeatForever%);
 end;
 
@@ -1833,13 +1849,17 @@ func TuningCurveDisparityAndBakersDozenDialog%()
     else  'Run Baker's Dozen dialog
         GetTuningCurveBakersDozenParameters();
         DlgCreate("Run Baker's Dozen Tuning Curve");
-        DlgString(1,40,255,"",3);  'for visual confirmation of selected seq file
+        DlgString(1,40,255,"",3,1);  'for visual confirmation of selected trials file
         DlgButton(tundlgSelectTuningFileButton%, " Select Baker's Dozen File ", SelectBakersDozenFile%, 2, 2);
-        DlgCheck(2,"Repeat Forever?",28,3);
-
-        'DlgAllow(0xffff, 0, TuningCurveGenericDialogChanged%);
+        DlgCheck(2,"Use Opto/Condition File?",2,4);
+        DlgString(3,40,255,"",3,5);  'for visual confirmation of selected opto/condition file
+        DlgButton(tundlgSelectTuningFileButton2%, " Select Opto/Condition File ", SelectBakersDozenOCFile%, 2, 6);
+        DlgCheck(4,"Pause on Condition Change",2,7);
+        DlgCheck(5,"Repeat Forever?",2,9);
         
-        i% := DlgShow(tunBDTuningFile$,tunRepeatForever%);
+        DlgAllow(0xffff, 0, TuningCurveBDDialogChanged%);
+        
+        i% := DlgShow(tunBDTuningFile$,tunBDUseOCFile%,tunBDOCFile$,tunPauseOnConditionChange%,tunRepeatForever%);
         
         ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
         ' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
@@ -1849,6 +1869,14 @@ func TuningCurveDisparityAndBakersDozenDialog%()
             tunType$ := tunTypeBakersDozen$;
             tunUseFile% := 1;
             tunBakersDozenFileLoc$ := tunBDTuningFile$;
+            
+            if tunBDUseOCFile% = 1 then
+                tunBakersDozenOCFileLoc$ := tunBDOCFile$;
+                dontToggleOpto% := 1;  'Do not allow automatic toggling of opto at end-of-block, we will be controlling it on a trial-by-trial basis
+                doTBTopto% := 1;  'Turn on trial-by-trial opto specification
+            else
+                tunPauseOnConditionChange% := 0;  'Force pause on condition change to 0 if no conditions are being read (could be 1 from dialog registry chaced value)
+            endif;
             
             iReturn% := 1;
             
@@ -4596,6 +4624,25 @@ func SelectBakersDozenFile%()
     
 end;
 
+
+func SelectBakersDozenOCFile%()
+    'This generic function ought to work for any of the dialogs where we allow the selection of a tuning file
+
+    var status% := 1;
+    var direc$;
+    var fh0%;
+    
+    direc$ := FilePath$();  'get current directory
+    fh0%:=FileOpen(direc$+"*.txt",1,0,"Please select an opto/condition file");  'Find an opto/condition file
+    direc$ := FileName$(0);  'Get full path of selected file
+    FileClose(fh0%);  'Just close the file, we're not using it
+    DlgValue$(3,direc$);  'Place filename into dialog item 3 of calling dialog
+
+	return status%;  'return 1 so calling dialog doesn't close
+    
+end;
+
+
 func TuningCurveGenericDialogChanged%(item%)
     'This single dialog changed function can be used for ALL the tuning dialogs that allow file-based tuning curves
     '(at least currently) because they all have the same structure and therefore the same dialog positions to allow/disallow
@@ -4613,6 +4660,22 @@ func TuningCurveGenericDialogChanged%(item%)
     endif;
     return 1;
 end
+
+
+func TuningCurveBDDialogChanged%(item%)
+    if DlgValue(2) = 0 then  'If we are not using a tuning file
+        DlgEnable(0,3);  'disable the string box with the text file name
+        DlgEnable(0,-tundlgSelectTuningFileButton2%);  'disable the corresponding button
+        DlgEnable(0,4);  'disable the pause on condition change checkbox
+    endif;
+    if DlgValue(2) = 1 then
+        DlgEnable(1,3);  'enable the string box with the text file name
+        DlgEnable(1,-tundlgSelectTuningFileButton2%);  'enable the corresponding button
+        DlgEnable(1,4);  'enable the pause on condition change checkbox
+    endif;
+    return 1;
+end
+
 
 'Disabled in favor of PolkaDots, which can do this
 'func TuningCurveFixptColorDialogChanged%(item%)

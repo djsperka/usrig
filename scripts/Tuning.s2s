@@ -151,6 +151,7 @@ const stateWaitPulsedOpto%:=25;
 const stateRequestStimulus%:=26;
 const stateJumpFixpt%:=27;
 const stateWaitForJumpAcquisition%:=28;
+const statePause%:=29;
 var iState% := stateVSGWait%;	' present state
 
 var nTrialsStarted%:=0;
@@ -172,6 +173,8 @@ var tun2FileLen%;
 var BDFullText$; 
 var BDNumStim%;
 var SampleTextStr$;
+'var BDOCFullText$;
+
 
 ' Init logging
 LogInit(1);
@@ -425,6 +428,7 @@ func IdleProcessing%()
                     SafeSampleKey("1");
                     yield(0.2);
                 endif;
+                ToolbarEnable(4,1);  'Once the sequence has started, enable pause
             else
                 if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                     LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
@@ -525,7 +529,7 @@ func IdleProcessing%()
     case iState% = stateWaitForAcquisition% then
 
         ' Waiting for eye to fall inside of fixation window
-        if Looking%(xEye, yEye) = 1 then
+        if Looking%(xEye, yEye) = 1 and Pause% = 0 then  'if looking and not paused, move forward
             if tunSendINTANPulse% = 1 then
                 'set sequencer variable 11 to 3 to indicate 3-ms trial-start pulse
                 SampleSeqVar(11,3);
@@ -554,7 +558,7 @@ func IdleProcessing%()
                 ChangeStateTo(stateWaitStimulusOnsetDelay%, tNow);
             endif;
         else 
-            if tNow - tStateStart > tunAcquisitionTime then
+            if tNow - tStateStart > tunAcquisitionTime or Pause% = 1 then  'if time is up, or pause has been called, go to abort
                 ' failed to acquire target. 
                 tInterTrialTime := tunAcqFailTime;
                 LogStatus("WaitForAcquisition", "Failed.");
@@ -565,20 +569,23 @@ func IdleProcessing%()
         
     case iState% = stateWaitStimulusOnsetDelay% then
         'make sure eye stays in fixation window
-        if Looking%(xEye, yEye) = 1 then
+        if Looking%(xEye, yEye) = 1 and Pause% = 0 then
             'if it's time to start the stimulus
             if tNow - tStateStart > tunStimulusOnsetDelay then
                 LogStatus("WaitStimulusOnsetDelay", "Eye in fixation window; checking opto status");
                 ChangeStateTo(stateCheckTurnOnOpto%, tNow);
             endif;
         else 
-            ' failed to hold fixation through onset delay 
+            ' failed to hold fixation through onset delay, or pause is called
             tInterTrialTime := tunAcqFailTime;
             LogStatus("WaitStimulusOnsetDelay", "Failed to maintain fixation through delay.");
             ChangeStateTo(stateAbort%, tNow);
         endif
         
     case iState% = stateCheckTurnOnOpto% then
+        if doTBTopto% = 1 then  'if we're doing trial-byt-trial opto, get this trial's opto state, from here, just proceed as normal
+            tunOptoState% := tunTBTOpto%[nTrialsCompleted%];
+        endif
         docase
         case tunDoOpto% = 0 then 'if this is not an opto trial, just start it
             ChangeStateTo(stateRequestStimulus%, tNow);
@@ -679,7 +686,11 @@ func IdleProcessing%()
                 endif
             next
             SampleTextStr$ := Left$(SampleTextStr$,Len(SampleTextStr$)-1);
-            SampleText("T," + str$((nTrialsCompleted% mod BDNumStim%)+1) + "," + SampleTextStr$);  
+            if tunBDUseOCFile% = 1 then  'add condition label
+                SampleText("T," + str$((nTrialsCompleted% mod BDNumStim%)+1) + "," + SampleTextStr$ + ",Condition: " + tunBDConditionLabel$[nTrialsCompleted%]);
+            else 'no condition label specified
+                SampleText("T," + str$((nTrialsCompleted% mod BDNumStim%)+1) + "," + SampleTextStr$); 
+            endif            
         else
             SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
         endcase;
@@ -761,7 +772,7 @@ func IdleProcessing%()
         
     case iState% = stateInterTrialIntervalFixAlreadyUp% then
         
-        if Looking%(xEye, yEye) = 0 then
+        if Looking%(xEye, yEye) = 0 or Pause% = 1 then  'if not looking or pause is called, go to abort
             
             LogStatus("InterTrialIntervalFixAlreadyUp", "Fixation broken, aborting trial.");
             tInterTrialTime := tunHoldFailTime;
@@ -812,7 +823,7 @@ func IdleProcessing%()
 
     case iState% = stateHoldFixation% then
 
-        if Looking%(xEye, yEye) = 0 then
+        if Looking%(xEye, yEye) = 0 or Pause% = 1 then  'if fixation broken or pause is called, abort
             
             LogStatus("WaitForFixation", "Fixation broken, aborting trial.");
             tInterTrialTime := tunHoldFailTime;
@@ -1034,7 +1045,7 @@ func IdleProcessing%()
 
     case iState% = stateTrialCompleted% then
         
-        'nTrialsCompleted% += 1;  'now done above in stateCheckTurnOffOpto%
+        'nTrialsCompleted% += 1;  'now done above in stateCheckTurnOffOpto% (or in stateWaitForStimOff% if we are doing fixpt jump
         printlog("number of trials completed is %d\n",nTrialsCompleted%);
 		ToolbarText(str$(nTrialsCompleted%) + "/" + str$(tunNValues%) + " trials completed."); 
         
@@ -1045,28 +1056,43 @@ func IdleProcessing%()
             giveReward% := 0;
         endif
         
-        docase
-		case nTrialsCompleted% >= tunNValues% and not(tunRepeatForever% = 1 and tunType$ = tunTypeBakersDozen$) then  'right now tunRepeatForever is only available on Baker's Dozen (Henry will ask for more, I know it)
-            ' We're all done - appears to not reward on final trial.  How chintzy!
+        ' Check for end of stimuli, if we're done just get out
+        if nTrialsCompleted% >= tunNValues% and not(tunRepeatForever% = 1 and tunType$ = tunTypeBakersDozen$) then  'right now tunRepeatForever is only available on Baker's Dozen (Henry will ask for more, I know it)
             ChangeStateTo(stateDone%, tNow);  'stateDone% doesn't really happen because we just go to Stop()%
             Stop%();
             iStatus% := 0;
-        case nTrialsCompleted% > 0 and (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 and not(tunRepeatForever% = 1 and tunType$ = tunTypeBakersDozen$) then 'toggle tunOptoState at the end of a block, use interblock time
-            if tunDoOpto% = 1 and dontToggleOpto% = 0 then
-                tunOptoState% := 1-tunOptoState%;  'but only toggle if we're actually doing opto, and we haven't been told to not toggle opto
+        endif
+    
+        ' Check for change in condition if we are pausing on condition change
+        if tunPauseOnConditionChange% = 1 and tunBDConditionLabel$[nTrialsCompleted%] <> tunBDConditionLabel$[nTrialsCompleted%+1] then
+            Pause% := 1;
+            message("Pause called because condition is changing from " + tunBDConditionLabel$[nTrialsCompleted%] + " to " + tunBDConditionLabel$[nTrialsCompleted%+1]);
+        endif
+        
+        ' Check to see if we need to toggle opto at the end of a block, if not determine where to go next
+        if nTrialsCompleted% > 0 and (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 and not(tunRepeatForever% = 1 and tunType$ = tunTypeBakersDozen$) then 'toggle tunOptoState at the end of a block, use interblock time
+            if tunDoOpto% = 1 and dontToggleOpto% = 0 and doTBTopto% = 0 then
+                tunOptoState% := 1-tunOptoState%;  'but only toggle if we're actually doing opto, and we haven't been told to not toggle opto, and we're not doing trial-by-trial
             endif;
             if tunUseMaintainMode% >= 1 then
             SafeSampleKey("X");  'turn everything off, fixation wasn't turned off previously because of maintain mode
             DrawFix(0);
             endif;
-            if tunDoOpto% = 1 then
+            if tunDoOpto% = 1 and doTBTopto% = 0 then
                 tInterTrialTime := tunStdInterTrialTime + tunInterBlockTime;
             else
                 tInterTrialTime := tunStdInterTrialTime;
             endif;
-            ChangeStateTo(stateInterTrialInterval%, tNow);  'at end of block, we do not maintain fixation, it will start again for next time
+            'Go to intertrial interval - through pause if one has been called
+            if Pause% = 1 then
+                ChangeStateTo(statePause%, tNow);
+            else
+                ChangeStateTo(stateInterTrialInterval%, tNow);  'at end of block, we do not maintain fixation, it will start again for next time
+            endif;
         else
             docase
+            case Pause% = 1 then
+                ChangeStateTo(statePause%, tNow);
             case tunFPJIsJump% = 1 then  'can only get here in fixpt jump experiment
                 ChangeStateTo(stateJumpFixpt%, tStimulusDown);  'start "counting" at the time the stimulus went down
             case tunType$ = tunTypeFixptJump$ then
@@ -1077,18 +1103,18 @@ func IdleProcessing%()
                 tInterTrialTime := tunStdInterTrialTime;
                 ChangeStateTo(stateInterTrialInterval%, tNow);
             endcase
-        endcase
+        endif
         
         
     case iState% = stateJumpFixpt% then
         docase
-        case tNow > tStateStart + tunFPJtFixptMove then  'wait until time fixpt is supposed to move
+        case tNow > tStateStart + tunFPJtFixptMove and Pause% = 0 then  'wait until time fixpt is supposed to move - but don't go forward if pause called
             SafeSampleKey("a");  'Advance the stimulus/fixation point, will move fixpt immediately - not gonna check a trigger line on this one
             tbtFixX := tunFPJFixptX[nTrialsCompleted%];
             tbtFixY := tunFPJFixptY[nTrialsCompleted%];
             DrawFix(2);  'update fixation point location on CED screen
             ChangeStateTo(stateWaitForJumpAcquisition%, tStimulusDown);  'should we use tNow (and then a standard acquisition window) or tStimulusDown (and give until next grating woudl appear)?
-        case Looking%(xEye, yEye) = 0 then  'fixation was not maintained prior to the jump
+        case Looking%(xEye, yEye) = 0 or Pause% = 1 then  'fixation was not maintained prior to the jump, or pause was called
             nTrialsCompleted% -= 1;  'Decrement, was incremented in wait for stim off but jump was not completed, keep fixpt where it was
             tunFPJIsJump% := 0;  'Reset jump variable, this is no longer a legit jump because the fixpt will come down
             tInterTrialTime := tunMaintainFailTime;
@@ -1100,10 +1126,10 @@ func IdleProcessing%()
         
     case iState% = stateWaitForJumpAcquisition% then    
         docase
-        case Looking%(xEye, yEye) = 1 then  'acquired new fixation point
+        case Looking%(xEye, yEye) = 1 and Pause% = 0 then  'acquired new fixation point, don't move forward if pause is called
             LogStatus("WaitForJumpAcquisition", "Acquired fixation point in new position, trial continues");
             ChangeStateTo(stateMaintainFixation%, tStimulusDown);
-        case tNow > tStateStart + tunMaintainFixation then  'failure to acquire fixation point, abort!
+        case tNow > tStateStart + tunMaintainFixation or Pause% = 1 then  'failure to acquire fixation point, abort! will also take this route if pause is called
             tunFPJIsJump% := 0;  'Reset jump variable, this is no longer a legit jump because the fixpt will come down
             tInterTrialTime := tunMaintainFailTime;
     
@@ -1114,7 +1140,7 @@ func IdleProcessing%()
         
     case iState% = stateMaintainFixation% then
 
-        if Looking%(xEye, yEye) = 0 then
+        if Looking%(xEye, yEye) = 0 or Pause% = 1 then  'if not looking or pause is called, go to abort
             tunFPJIsJump% := 0;  'Reset jump variable, this is no longer a legit jump because the fixpt will come down (only relevant in fixpt jump experiment)
             tInterTrialTime := tunMaintainFailTime;
     
@@ -1153,7 +1179,14 @@ func IdleProcessing%()
 
             endif 
         endif
-
+        
+    case iState% = statePause% then
+        'Wait in statePause% until the "resume" button is pressed
+        if Pause% = 0 then
+            ChangeStateTo(stateInterTrialInterval%,tNow);
+            LogStatus("Pause", "Resume Stimuli");
+        endif
+ 
     else
         
         ' Unknown state!
@@ -1198,7 +1231,7 @@ proc InitializeToolbar()
     ToolbarSet(6,"Select Wavemarks",SelectWavemarkDialog%);
 	ToolbarSet(7,"Quit",Quit%);
 	ToolbarEnable(2,0);
-	ToolbarEnable(4,0);
+	ToolbarEnable(4,0);  'Pause was at one point disabled entirely, I am re-enabling it
 	ToolbarEnable(5,0);
 	Toolbar("Go",0x3ff);
 
@@ -1447,17 +1480,19 @@ end;
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func PauseStimuli%();
-Pause% :=1;
-ToolbarEnable(4,0);
-ToolbarEnable(5,1);
-return 1;
+    Pause% :=1;
+    ToolbarEnable(4,0);
+    ToolbarEnable(5,1);
+    printlog("Stimulus pause requested at %f\n",tNow);
+    return 1;
 end
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func ResumeStimuli%();
-Pause% :=0;
-ToolbarEnable(4,1);
-ToolbarEnable(5,0);
-return 1;
+    Pause% :=0;
+    ToolbarEnable(4,1);
+    ToolbarEnable(5,0);
+    printlog("Stimulus resume requested at %f\n",tNow);
+    return 1;
 end
 
 
@@ -4638,9 +4673,7 @@ func Start%()
         
         'Print to the new file, this file is passed to FIXSTIM
         print("%s %s",tempstr$,BDFullText$);
-        FileClose();
-        
-        
+        FileClose();        
         
         'Parse BDFullText$, necessary for changing fixation point location, but since we did it, also to SampleText the actual specs of each trial
         'Place values into tunBDTuningValues$[trial][whichTuningProperty], can remain as string, because in most cases we will be
@@ -4779,6 +4812,55 @@ func Start%()
             spaceLoc% := InStr(tempstr$," ");
         wend
         'Done parsing BDFullText$
+        
+        
+        'Open tunBakersDozenOCFileLoc$ if appropriate        
+        'File format is:
+        '
+        '1 String1
+        '0 String2
+        '...
+        '1 StringN
+        '
+        'Where the first column should be 0/1 only (indicates absence/presence of opto this trial) and the second
+        'column is a string condition label.  Columns are separated by ANY combination of white space (single space
+        'or tab is probably preferred, but Read() will deal with anything.  The ReadSetup() settings used here will
+        'also accept spaces within StringN, but not tabs.  Anything following a tab delimiter in the StringN portion
+        'will be ignored, but is not an error.  There are various ways of making this go wrong, like putting the
+        'StringN portion first or putting something that is not a 0/1 in the first column, etc.  Just...don't?
+        readsetup(""," ","","","	");
+        var bailout%;
+        var readCount%;
+        'numRead% is reused from above, that's OK.
+        if tunBDUseOCFile% = 1 then
+            FileOpen(tunBakersDozenOCFileLoc$,8,0);  'Open user-generated opto/condition file
+            'Loop through file line by line
+            while numRead% >= 0 and bailout% < 10000 do 'numRead% will be a negative error once EOF is reached
+                numRead% := Read(tunTBTOpto%[readCount%],tunBDConditionLabel$[readCount%]);  'place file contents into tunTBTopto%[] and tunBDConditionLabel$[]
+                bailout% += 1;  'don't get stuck in WHILE if something weird happens
+                'Make sure we read the right number of fields.  Note that if there are too many fields, we will ignore.
+                'If there are zero fields (blank line), we will gracefully skip.  So really, make sure that if there are
+                'ANY fields at all on this line, there aren't too few.
+                docase
+                case numRead% = 2 then
+                    readCount% += 1;
+                case numRead% > 0 then
+                    message("Read " + Str$(numRead%) + " fields from Opto/Condition file, this is wrong!  Quitting!");
+                    halt;
+                endcase
+            wend
+            FileClose();  'Close file once it's read, we have a copy
+            if bailout% >= 10000 then
+                message("Bailed out of WHILE loop while reading Opto/Condition file, either something went wrong or there were over 10000 lines!");
+                halt;
+            endif;
+            if readCount% <> BDNumStim% then
+                message("Read " + Str$(readCount%) + " stimuli from Opto/Condition file, expected " +  Str$(BDNumStim%) + ", this is wrong!  Quitting!");
+                halt;
+            endif;
+        endif;
+        
+        
         
         'printlog("BDNumStim is %d\n",BDNumStim%);
         tunNAdvances% := BDNumStim%;
