@@ -1,0 +1,1 @@
+cmd /k e:\work\usrig\scripts\..\bin\remote.exe  127.0.0.1 7000 fixstim  -f 0,0,0.15,red -b gray -a -d 870 -p 2  -v  -s 0,0,5,5,0,0,100,1,5,45,180,L,ss,e,0 -O 0,45,90,135,180
