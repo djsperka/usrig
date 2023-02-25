@@ -156,6 +156,7 @@ var iState% := stateVSGWait%;	' present state
 
 var nTrialsStarted%:=0;
 var nTrialsCompleted%:=0;
+var OCindex%:=0;  'index to trial-by-trial opto and condition labels, need to wrap it if we RepeatForever
 var nTrialsAborted% :=0;		
 var nTrialsRewarded% :=0;
 var giveReward%;  'we are going to be moving the reward later so that opto is turned off first.
@@ -371,6 +372,8 @@ func IdleProcessing%()
     var xind%;
     var yind%;
     var i%;
+    var tempNTC1%;
+    var tempNTC2%;
     
 	tNow := View(DataWindow%).MaxTime();
     
@@ -584,7 +587,7 @@ func IdleProcessing%()
         
     case iState% = stateCheckTurnOnOpto% then
         if doTBTopto% = 1 then  'if we're doing trial-byt-trial opto, get this trial's opto state, from here, just proceed as normal
-            tunOptoState% := tunTBTOpto%[nTrialsCompleted%];
+            tunOptoState% := tunTBTOpto%[OCindex%];
         endif
         docase
         case tunDoOpto% = 0 then 'if this is not an opto trial, just start it
@@ -679,15 +682,15 @@ func IdleProcessing%()
             SampleTextStr$ := "";
             for i% := 0 to tunNumBDCurvesAllowed%-1 do
                 if tunBDWhichTunCurve[i%] = 1 then
-                    SampleTextStr$ := SampleTextStr$ + tunBDTunCurveLabel$[i%] + "," + tunBDTuningValues$[nTrialsCompleted%][i%] + ",";
+                    SampleTextStr$ := SampleTextStr$ + tunBDTunCurveLabel$[i%] + "," + tunBDTuningValues$[OCindex%][i%] + ",";
                     if i% = 7 or i% = 10 or i% = 13 then
-                        SampleTextStr$ := SampleTextStr$ + tunBDTuningValues$[nTrialsCompleted%][i%+1] + ",";
+                        SampleTextStr$ := SampleTextStr$ + tunBDTuningValues$[OCindex%][i%+1] + ",";
                     endif
                 endif
             next
             SampleTextStr$ := Left$(SampleTextStr$,Len(SampleTextStr$)-1);
             if tunBDUseOCFile% = 1 then  'add condition label
-                SampleText("T," + str$((nTrialsCompleted% mod BDNumStim%)+1) + "," + SampleTextStr$ + ",Condition: " + tunBDConditionLabel$[nTrialsCompleted%]);
+                SampleText("T," + str$((nTrialsCompleted% mod BDNumStim%)+1) + "," + SampleTextStr$ + ",Condition: " + tunBDConditionLabel$[OCindex%]);
             else 'no condition label specified
                 SampleText("T," + str$((nTrialsCompleted% mod BDNumStim%)+1) + "," + SampleTextStr$); 
             endif            
@@ -746,7 +749,12 @@ func IdleProcessing%()
         else
             SafeSampleKey("X");  'just turn off stimulus
         endcase;
-        ChangeStateTo(stateWaitForBlank%, tNow);
+        if Pause% = 1 then
+            ChangeStateTo(statePause%, tNow);
+        else            
+            ChangeStateTo(stateWaitForBlank%, tNow);
+        endif;
+        
 
     case iState% = stateWaitForBlank% then
 
@@ -762,12 +770,13 @@ func IdleProcessing%()
         endif
 
     case iState% = stateInterTrialInterval% then
-
-        if tNow - tStateStart > tInterTrialTime then
-
+        
+        docase
+        case tNow - tStateStart > tInterTrialTime and Pause% = 0 then
             ChangeStateTo(stateStartTrial%, tNow);
-            
-        endif
+        case Pause% = 1 then
+            ChangeStateTo(statePause%, tNow);
+        endcase
         
         
     case iState% = stateInterTrialIntervalFixAlreadyUp% then
@@ -1001,7 +1010,8 @@ func IdleProcessing%()
         
         
     case iState% = stateCheckTurnOffOpto% then
-        nTrialsCompleted% += 1;  'trial is complete, change of count here makes logic easier 
+        nTrialsCompleted% += 1;  'trial is complete, change of count here makes logic easier
+        OCindex% := (nTrialsCompleted% mod tunNAdvances%);  'index to trial-by-trial opto and conditions, need to do mod operation for RepeatForever to keep working right past the first pass        
         docase
         case tunDoOpto% = 0 or (tunOptoState% = 0 and tunOptoUsePulse% = 1) then 'if this is not an opto trial, trial is complete
             ChangeStateTo(stateTrialCompleted%, tStateStart);
@@ -1063,14 +1073,21 @@ func IdleProcessing%()
             iStatus% := 0;
         endif
     
-        ' Check for change in condition if we are pausing on condition change
-        if tunPauseOnConditionChange% = 1 and tunBDConditionLabel$[nTrialsCompleted%] <> tunBDConditionLabel$[nTrialsCompleted%+1] then
+        ' Check for change in condition if we are pausing on condition change, note nTrialsCompleted has been incremented
+        if nTrialsCompleted% > 0 and (nTrialsCompleted% mod tunNAdvances%) = 0 then
+            tempNTC1% := tunNAdvances%-1;
+            tempNTC2% := 0;
+        else
+            tempNTC1% := OCindex%-1;
+            tempNTC2% := OCindex%;
+        endif;
+        if tunPauseOnConditionChange% = 1 and tunBDConditionLabel$[tempNTC1%] <> tunBDConditionLabel$[tempNTC2%] then
             Pause% := 1;
-            message("Pause called because condition is changing from " + tunBDConditionLabel$[nTrialsCompleted%] + " to " + tunBDConditionLabel$[nTrialsCompleted%+1]);
+            message("Pause called because condition is changing from " + tunBDConditionLabel$[tempNTC1%] + " to " + tunBDConditionLabel$[tempNTC2%] + ", press 'resume' to continue");
         endif
         
         ' Check to see if we need to toggle opto at the end of a block, if not determine where to go next
-        if nTrialsCompleted% > 0 and (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 and not(tunRepeatForever% = 1 and tunType$ = tunTypeBakersDozen$) then 'toggle tunOptoState at the end of a block, use interblock time
+        if nTrialsCompleted% > 0 and (nTrialsCompleted% mod tunNAdvances%) = 0 and not(tunRepeatForever% = 1 and tunType$ = tunTypeBakersDozen$) then 'toggle tunOptoState at the end of a block, use interblock time
             if tunDoOpto% = 1 and dontToggleOpto% = 0 and doTBTopto% = 0 then
                 tunOptoState% := 1-tunOptoState%;  'but only toggle if we're actually doing opto, and we haven't been told to not toggle opto, and we're not doing trial-by-trial
             endif;
@@ -1182,6 +1199,11 @@ func IdleProcessing%()
         
     case iState% = statePause% then
         'Wait in statePause% until the "resume" button is pressed
+        if Pause% = 1 then
+            ToolbarEnable(4,0);  'Disable pause
+            ToolbarEnable(5,1);  'Enable resume
+            Pause% := -5;  'whatever, we'll stay in here until Resume is pressed
+        endif;
         if Pause% = 0 then
             ChangeStateTo(stateInterTrialInterval%,tNow);
             LogStatus("Pause", "Resume Stimuli");
@@ -3034,7 +3056,8 @@ func Stop%()
             LogStatus("F1 Max", "Channel " + str$(i%+1) + " Port " + str$(tunWavemarkPorts%[i%]) + " max F1 at x=" + str$(tunValues[m%]));
         next
     endif    
-
+    
+    halt;
 end;
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
