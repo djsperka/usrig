@@ -49,3 +49,9 @@
 
         'w  DIGLOW [..000000]   ; stop recording, XDAT bit 7
             HALT
+
+        'S  DIGLOW [...01000]
+            HALT
+
+        'T  DIGLOW [...10000]
+            HALT
