@@ -1,0 +1,1 @@
+%~dp0\..\bin\remote.exe 127.0.0.1 7000 fixstim -a -f 0,0,1.0,red -p 2 -b gray -d 800 -f 8,0,1,red -i %~dp0\csd-images.txt,-6,0,.1,0
