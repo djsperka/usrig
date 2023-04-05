@@ -146,6 +146,10 @@ var fvImageWidthPix%[5000];
 var fvCurrImageIndex%;
 
 
+'Current Source Density
+var fvDoCSD%;
+
+
 ' Wavemarks and continuous ports
 var fvNWavemarks% := 0;
 var fvWavemarkPorts%[64];
@@ -205,6 +209,7 @@ var fvHoldAcquisitionTime;
 var fvSendINTANPulse%;
 var fvDisableGamma%;
 var fvMaintainFixation%;
+var fvExptType%;
 
 var cmdLine$;  'if we want to print this out, has to be global!
 
@@ -314,11 +319,12 @@ func FreeViewerScriptDialog%()
     var fixscreen$[2];
     fixscreen$[0] := "Use Fixation Point";
     fixscreen$[1] := "Use Screen";
-    var exptype$[4];
+    var exptype$[5];
     exptype$[0] := "Standard Image";
     exptype$[1] := "Opto (blocked)";
     exptype$[2] := "No Opto (blocked)";
     exptype$[3] := "Image Series";
+    exptype$[4] := "CSD Flash";
     var sixReals[6];
     var fourReals[4];
     
@@ -360,7 +366,7 @@ func FreeViewerScriptDialog%()
     DlgGroup("Stimulus and Fixation", 1, 1, 50, 19);
     DlgInteger(1, "Number of repeats", 1, 1000, 0, 2);
     DlgCheck(2, "Random Progression?", 0, 3);
-    DlgList(3, "View/Opto Condition: ", exptype$, 4, 32, 4);
+    DlgList(3, "View/Opto Condition: ", exptype$, 5, 32, 4);
     DlgReal(4, "Period Duration, s", 0.05, 100, 0, 5);
     DlgInteger(5, "Number of periods per block", 1, 1000, 0, 6);
     DlgInteger(6, "Minimum Viewed Periods To Advance", 0, 1000, 0, 7);
@@ -401,7 +407,7 @@ func FreeViewerScriptDialog%()
     'Right now we don't seem to need a callback, it's ready directly below if we do 
     DlgAllow(0xffff, 0, FreeViewerScriptDialogChanged%);
 
-    i%:=DlgShow(fvNRepeats%, fvRandomProgression%, fvDoOpto%, fvPeriodDuration, fvNumPeriodsPerBlock%, fvMinViewPeriodsForAdvance%, 
+    i%:=DlgShow(fvNRepeats%, fvRandomProgression%, fvExptType%, fvPeriodDuration, fvNumPeriodsPerBlock%, fvMinViewPeriodsForAdvance%, 
     sixReals[], fvFixScreen%, fvAlwaysLooking%, fvMaintainFixation%, fvUseStimLocation%, fourReals[], 
     fvProbRewardEachPeriod, fvProbDoubleRewardEachPeriod, fvRewardDelaySec, fvOptoVoltageOut, fvDisableGamma%, fvSendINTANPulse%);
     
@@ -432,7 +438,7 @@ func FreeViewerScriptDialog%()
         fvScreenYDeg := (fvScreenMMY/2)/screenMMPerDegree;
         
         'If we are doing the opto blocking (or pseudo-opto blocking) 
-        if fvDoOpto% = 2 or fvDoOpto% = 3 then
+        if fvExptType% = 1 or fvExptType% = 2 then
             fvNumPeriods% := fvNumPeriodsPerBlock%*2;   'two "blocks" per image
         else  'for NOW, we are assuming that the image series must be viewed in full to advance, but that's a question to ask
             fvNumPeriods% := 1;  'only one period
@@ -443,7 +449,8 @@ func FreeViewerScriptDialog%()
         endif;
         
         'Just for code clarity
-        if fvDoOpto% = 3 then
+        docase
+        case fvExptType% = 3 then
             fvDoImageSeries% := 1;
             fvImageDuration := fvPeriodDuration;
             fvRandomProgression% := 0;  'Explicitly do not allow randomization on image series
@@ -451,11 +458,22 @@ func FreeViewerScriptDialog%()
             'fvNumPeriods is set in the idle loop for image series
             fvDoOpto% := 0;  'hard code opto OFF
             fvNRepeats% := 1;  'technically this value is ignored, but good to note we don't allow repeats for Image Series, the file can have repeated trials if you want
+            fvDoCSD% := 0;
+        case fvExptType% = 4 then
+            fvDoImageSeries% := 0;
+            fvDoCSD% := 1;
+            fvImageDuration := fvPeriodDuration;
+            fvRandomProgression% := 0;  'Explicitly do not allow randomization on CSD
+            '??? fvNumPeriodsPerBlock% := 1;  'Unused in image series logic
+            '??? fvNumPeriods is set in the idle loop for image series
+            fvDoOpto% := 0;  'hard code opto OFF   
         else
             fvDoImageSeries% := 0;
             fvImageDuration := 0;  'This is what had been set for the third argument in non-image-series presentations
             fvISI := 0;  'This is what had been set for the fourth argument in non-image-series presentations
-        endif
+            fvDoOpto% := fvExptType%;
+            fvDoCSD% := 0;
+        endcase
         
         'Recode pReward (value from DAQ parameters dialog) because we are setting the per-period value here 
         '(It's weird, but we need to be able to get an "R" without actually giving a reward for the INTAN
@@ -547,6 +565,8 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgEnable(1,2);  'enable randomization
         DlgValue$(1004,"Image Duration, s");  'label duration appropriately
         DlgEnable(0,5);  'disable number of periods
+        DlgValue$(1005,"Number of periods per block");  'label periods appropriately
+        DlgEnable(1,6);  'enable new image series
         DlgValue$(1006,"New Image On Fix Break? (0/1)");  'label appropriately
         DlgEnable(0,7);  'disable ISI
         DlgEnable(0,21);  'disable reward
@@ -559,6 +579,8 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgEnable(0,2);  'disable randomization (changed from disable to enable back to disable)
         DlgValue$(1004,"Image Duration, s");  'label duration appropriately
         DlgEnable(0,5);  'disable number of periods
+        DlgValue$(1005,"Number of periods per block");  'label periods appropriately
+        DlgEnable(1,6);  'enable new image series
         DlgValue$(1006,"New Image Series On Fix Break? (0/1)");  'label appropriately
         DlgEnable(1,7);  'enable ISI
         DlgEnable(1,21);  'enable reward
@@ -566,11 +588,27 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgEnable(0,-fvdlgFolderSelectButton%);  'disable folder select
         DlgEnable(0,-fvdlgFileSelectButton%);  'disable standard file select
         DlgEnable(1,-fvdlgImageSeriesSelectButton%);  'enable image series select
+    case DlgValue(3) = 4 then 'CSD flash style
+        DlgEnable(1,1);  'enable repeats
+        DlgEnable(0,2);  'disable randomization
+        DlgValue$(1004,"Flash Duration, s");  'label duration appropriately
+        DlgEnable(1,5);  'enable number of flashes
+        DlgValue$(1005,"Number of flashes per stim");  'label periods appropriately
+        DlgEnable(0,6);  'disable new image series
+        DlgValue$(1006,"Unused");  'label appropriately
+        DlgEnable(1,7);  'enable ISI
+        DlgEnable(1,21);  'enable reward
+        DlgEnable(0,22);  'disable double reward ???
+        DlgEnable(0,-fvdlgFolderSelectButton%);  'disable folder select
+        DlgEnable(0,-fvdlgFileSelectButton%);  'disable standard file select
+        DlgEnable(0,-fvdlgImageSeriesSelectButton%);  'disable image series select
     else 'opto style
         DlgEnable(1,1);  'enable repeats
         DlgEnable(1,2);  'enable randomization
         DlgValue$(1004,"Period Duration, s");  'label duration appropriately
         DlgEnable(1,5);  'enable number of periods
+        DlgValue$(1005,"Number of periods per block");  'label periods appropriately
+        DlgEnable(1,6);  'enable minimum viewed periods to advance
         DlgValue$(1006,"Minimum Viewed Periods To Advance");  'label appropriately
         DlgEnable(0,7);  'disable ISI
         DlgEnable(1,21);  'enable reward
@@ -606,7 +644,7 @@ proc GetFreeViewerScriptParameters()
     fvStimFolder$ := GetStringRegistryValue$(key$, "StimFolder", fvStimFolder$);
     fvStimFile$ := GetStringRegistryValue$(key$, "StimFile", fvStimFile$);
     fvOptoVoltageOut := GetFloatRegistryValue(key$, "OptoVoltageOut", fvOptoVoltageOut);
-    fvDoOpto% := GetIntRegistryValue%(key$, "DoOpto", fvDoOpto%);
+    fvExptType% := GetIntRegistryValue%(key$, "ExptType", fvExptType%);
     fvNumPeriodsPerBlock% := GetIntRegistryValue%(key$, "NumPeriodsPerBlock", fvNumPeriodsPerBlock%);
     fvMinViewPeriodsForAdvance% := GetIntRegistryValue%(key$, "MinViewPeriodsForAdvance", fvMinViewPeriodsForAdvance%);
     fvPeriodDuration := GetFloatRegistryValue(key$, "PeriodDuration", fvPeriodDuration);
@@ -644,7 +682,7 @@ proc SaveFreeViewerScriptParameters()
     SetStringRegistryValue(key$, "StimFolder", fvStimFolder$);
     SetStringRegistryValue(key$, "StimFile", fvStimFile$);
     SetFloatRegistryValue(key$, "OptoVoltageOut", fvOptoVoltageOut);
-    SetIntRegistryValue(key$, "DoOpto", fvDoOpto%);
+    SetIntRegistryValue(key$, "ExptType", fvExptType%);
     SetIntRegistryValue(key$, "NumPeriodsPerBlock", fvNumPeriodsPerBlock%);
     SetIntRegistryValue(key$, "MinViewPeriodsForAdvance", fvMinViewPeriodsForAdvance%);
     SetFloatRegistryValue(key$, "PeriodDuration", fvPeriodDuration);
