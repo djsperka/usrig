@@ -148,6 +148,9 @@ var fvCurrImageIndex%;
 
 'Current Source Density
 var fvDoCSD%;
+var fvCSDWhiteFirst%;
+var fvNumCSDFlashes%;
+var fvCSDXPos;
 
 
 ' Wavemarks and continuous ports
@@ -368,9 +371,9 @@ func FreeViewerScriptDialog%()
     DlgCheck(2, "Random Progression?", 0, 3);
     DlgList(3, "View/Opto Condition: ", exptype$, 5, 32, 4);
     DlgReal(4, "Period Duration, s", 0.05, 100, 0, 5);
-    DlgInteger(5, "Number of periods per block", 1, 1000, 0, 6);
+    DlgInteger(5, "Number of periods per block", -10, 1000, 0, 6);
     DlgInteger(6, "Minimum Viewed Periods To Advance", 0, 1000, 0, 7);
-    DlgReal(7, "Image Series Interimage Delay, s", 0.05, 100, 0, 8);
+    DlgReal(7, "Image Series Interimage Delay, s", 0, 100, 0, 8);
     DlgReal(8, "Intertrial Interval, s (-1 for Blitz Mode)", -1, 100, 0, 9);
     DlgReal(9, "Fixation Acquisition Time, s", 0.1, 100, 0, 10);
     DlgReal(10, "Fixation Hold Time, s", 0, 100, 0, 11);
@@ -437,16 +440,7 @@ func FreeViewerScriptDialog%()
         fvScreenXDeg := (fvScreenMMX/2)/screenMMPerDegree;  'we are defining fvScreenX(Y)Deg as HALF the screen so it is the distance from fixation to the edge
         fvScreenYDeg := (fvScreenMMY/2)/screenMMPerDegree;
         
-        'If we are doing the opto blocking (or pseudo-opto blocking) 
-        if fvExptType% = 1 or fvExptType% = 2 then
-            fvNumPeriods% := fvNumPeriodsPerBlock%*2;   'two "blocks" per image
-        else  'for NOW, we are assuming that the image series must be viewed in full to advance, but that's a question to ask
-            fvNumPeriods% := 1;  'only one period
-            if fvMinViewPeriodsForAdvance% > 1 then 'don't allow this value to be too large
-                fvMinViewPeriodsForAdvance% := 1;
-            endif;
-            fvMinViewPeriodsForAdvance% := 1-fvMinViewPeriodsForAdvance%;  'Invert this for standard image/image series, as dialog says "new image on fix break", 0 = no new image, means min view periods is 1
-        endif;
+        
         
         'Just for code clarity
         docase
@@ -464,7 +458,22 @@ func FreeViewerScriptDialog%()
             fvDoCSD% := 1;
             fvImageDuration := fvPeriodDuration;
             fvRandomProgression% := 0;  'Explicitly do not allow randomization on CSD
-            '??? fvNumPeriodsPerBlock% := 1;  'Unused in image series logic
+            docase
+            case fvNumPeriodsPerBlock% > 10 then
+                message("Maximum number of CSD images is 10, setting to 10!");
+                fvNumCSDFlashes% := 10;
+                fvCSDWhiteFirst% := 1;  'By default, we will have the white image first
+            case fvNumPeriodsPerBlock% < 0 then
+                fvCSDWhiteFirst% := 0;  'negative value indicates black first
+                fvNumCSDFlashes% := -fvNumPeriodsPerBlock%;  'and make that positive
+            case fvNumPeriodsPerBlock% = 0 then  'can't do this!
+                message("Number of CSD images cannot be 0, quitting!");
+                halt;
+            else
+                fvNumCSDFlashes% := fvNumPeriodsPerBlock%;  'default case
+                fvCSDWhiteFirst% := 1;  'By default, we will have the white image first
+            endcase
+            
             '??? fvNumPeriods is set in the idle loop for image series
             fvDoOpto% := 0;  'hard code opto OFF   
         else
@@ -473,7 +482,28 @@ func FreeViewerScriptDialog%()
             fvISI := 0;  'This is what had been set for the fourth argument in non-image-series presentations
             fvDoOpto% := fvExptType%;
             fvDoCSD% := 0;
+            docase 'This is the consequence of having a "clever" dialog that requires you to "open up" the limits on a dialog entry
+            case fvNumPeriodsPerBlock% < 1 then
+                fvNumPeriodsPerBlock% := -fvNumPeriodsPerBlock%;
+                message("Negative NumPeriodsPerBlock has been changed to positive!");
+            case fvNumPeriodsPerBlock% = 0 then
+                message("NumPeriodsPerBlock cannot be 0!  Quitting!");
+                halt;
+            endcase
         endcase
+        
+        
+        'If we are doing the opto blocking (or pseudo-opto blocking) 
+        if fvExptType% = 1 or fvExptType% = 2 then
+            fvNumPeriods% := fvNumPeriodsPerBlock%*2;   'two "blocks" per image
+        else  'for NOW, we are assuming that the image series must be viewed in full to advance, but that's a question to ask
+            fvNumPeriods% := 1;  'only one period
+            if fvMinViewPeriodsForAdvance% > 1 then 'don't allow this value to be too large
+                fvMinViewPeriodsForAdvance% := 1;
+            endif;
+            fvMinViewPeriodsForAdvance% := 1-fvMinViewPeriodsForAdvance%;  'Invert this for standard image/image series, as dialog says "new image on fix break", 0 = no new image, means min view periods is 1
+        endif;
+        
         
         'Recode pReward (value from DAQ parameters dialog) because we are setting the per-period value here 
         '(It's weird, but we need to be able to get an "R" without actually giving a reward for the INTAN
@@ -593,7 +623,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgEnable(0,2);  'disable randomization
         DlgValue$(1004,"Flash Duration, s");  'label duration appropriately
         DlgEnable(1,5);  'enable number of flashes
-        DlgValue$(1005,"Number of flashes per stim");  'label periods appropriately
+        DlgValue$(1005,"#Flashes, neg = black 1st");  'label periods appropriately
         DlgEnable(0,6);  'disable new image series
         DlgValue$(1006,"Unused");  'label appropriately
         DlgEnable(1,7);  'enable ISI
@@ -1026,11 +1056,14 @@ func Start%()
     var tempSeqVarValue%;
     var i%;
     var j%;
+    var k%;
     var returnToPath$;  'this is where we start, we'll move back here after reading the folder
     var fh%;
     var readInputFile% := 1;
     var readTemp$;
     var startSecs := 5;
+    var bw%[10];
+    var fixX,fixY,fixD,fixWR;
     
     
     'Grab current Juice Reward size if we are using the INTAN system, we will be manipulating the
@@ -1040,9 +1073,10 @@ func Start%()
     endif
     
     
-    'If we are loading an IMAGE SERIES file, the entire spec is in the file, otherwise we take a folder 
-    'or list of file names and re-create the file in a known location
-    if fvDoImageSeries% = 1 then
+    'If we are loading an IMAGE SERIES file, the entire spec is in the file, for CSD we have to MAKE the file,
+    'otherwise we take a folder or list of file names and re-create the file in a known location
+    docase
+    case fvDoImageSeries% = 1 then
         ImageFileLoc$ := fvStimFile$;  'directly assign the selected file
         'Note that this file is NOT randomized, we will be going in the order listed in the file
         'File format has two sections:
@@ -1067,6 +1101,39 @@ func Start%()
         'together) with default values used if not specified.  Note that the same image may be defined more
         'than once with different arguments.
         
+        'Parse image series file, we need to know how many trials, etc.
+        success% := ParseImageSeriesFile%(fvStimFile$,fvNValues%,fvImagesPerTrial%[],fvTrialDurEstimate[],fvImageList$[],fvImageIndices%[][],fvImageDur[],fvImageDelay[],fvImageXPos[],fvImageYPos[]);
+        if success% = 1 then
+            printlog("Success in reading image series file %s, num trials is %d\n",fvStimFile$,fvNValues%);
+        else
+            printlog("Failure in reading image series file %s! \n",fvStimFile$);
+            halt;  'no point in going on if the file is bad!
+        endif;
+        'Potentially randomize, use fvImageOrder%[] to hold randomized indices
+        GetRepeatedParameterProgression%(fvNValues%, fvNRepeats%, dummyResult[], fvImageOrder%[], 1, 2, 0, fvRandomProgression%);  'We will ignore dummyResult, which holds values between (1) and (2) that are not logspaced (0)
+    case fvDoCSD% = 1 then
+        'Create a variable to hold the black/white order, I'm afraid there's no clever way to do this with Spike2 and it's only ten places, so screw it...
+        if fvCSDWhiteFirst% = 1 then
+            bw%[0]:=1; bw%[2]:=1; bw%[4]:=1; bw%[6]:=1; bw%[8]:=1; 'I hate it!
+        else
+            bw%[1]:=1; bw%[3]:=1; bw%[5]:=1; bw%[7]:=1; bw%[9]:=1; 'I hate it!
+        endif    
+        'We need to explicitly write out a file
+        fh% := FileOpen(ImageFileLoc$,8,1);  'Open a new text file for writing, replace current (default) file
+        printlog("result of opening text file is %d\n",fh%);
+        view(fh%).Print("img\white-512x768.bmp\nimg\black-512x768.bmp\n\nGroups");  'this part will be constant, the white image, the black image, the Groups section
+        for j% := 0 to fvNRepeats%-1 do 'for each repeat of the stimulus
+            view(fh%).Print("\n"); 'lead off by putting in a new line, trailing newline omitted from above "constant" view().Print
+            for k% := 0 to fvNumCSDFlashes%-1 do 'for each flash
+                view(fh%).Print("%d",bw%[k%]);
+                if k% < fvNumCSDFlashes%-1 then
+                    view(fh%).Print(",");  'comma after all but last value
+                endif
+            next
+        next
+        FileClose(fh%);  'Close the VSG image list file
+        
+        'Now we parse the file we just made, to fill variables...we know what's in it, just easier to fill variables by copying this code
         'Parse image series file, we need to know how many trials, etc.
         success% := ParseImageSeriesFile%(fvStimFile$,fvNValues%,fvImagesPerTrial%[],fvTrialDurEstimate[],fvImageList$[],fvImageIndices%[][],fvImageDur[],fvImageDelay[],fvImageXPos[],fvImageYPos[]);
         if success% = 1 then
@@ -1127,7 +1194,7 @@ func Start%()
         'next
         
         
-    endif;
+    endcase;
     
     
     ' Open serial port for VSG comms re: stimulus jump-advance
@@ -1219,9 +1286,19 @@ func Start%()
     
     'Set image arg - versions prior to adding Image Series had trailing "0,0" hardcoded, now fvImageDuration and
     'fvISI will be set to zeroes at the dialog unless it is an Image Series scenario
-    ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvXPos) + "," + Str$(fvYPos) + "," + Str$(fvImageDuration) + "," + Str$(fvISI);
-    'ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvXPos) + "," + Str$(fvYPos) + ",0,0";  'old
+    if fvDoCSD% = 0 then
+        ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvXPos) + "," + Str$(fvYPos) + "," + Str$(fvImageDuration) + "," + Str$(fvISI);
+    else 'different build for CSD
+        GetFixationPointParameterValues(fixX, fixY, fixD, fixWR);
+        if fixX >=0 then
+            fvCSDXPos := fixX - 8; 'Half width of flashing box is ~7 degrees, set 1 degree interior from fixpt
+        else
+            fvCSDXPos := fixX + 8; 'Same for other side of screen
+        endif
+        ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvCSDXPos) + ",0," + Str$(fvImageDuration) + ",0"; 'yPos and ISI explicitly 0, xPos has to be calculated from location on screen
+    endif
     
+        
     'Set GammaArg$ - we may turn off the gamma table, particularly for Xiaomo's images
     if fvDisableGamma% = 1 then
         GammaArg$ := " --no-gamma ";  'GammaArg$ is empty otherwise
@@ -1414,13 +1491,18 @@ proc WriteParameterFile()
     Print("Fixation Window Radius                   : %f\n", WindowRadius);
 	Print("Random Progression?                      : %d\n", fvRandomProgression%);
 	Print("Number of repeats                        : %d\n", fvNRepeats%);
-    if fvDoImageSeries% = 1 then
+    docase
+    case fvDoImageSeries% = 1 then
         Print("Image duration                           : %f\n", fvImageDuration);
+    case fvDoCSD% = 1 then
+        Print("Flash duration                           : %f\n", fvImageDuration);
+        Print("Number of flashes per stim               : %d\n", fvNumCSDFlashes%);
+        Print("Is white flash first?                    : %d\n", fvCSDWhiteFirst%);
     else
         Print("Number of periods per block              : %d\n", fvNumPeriodsPerBlock%);
         Print("Min number of periods viewed for advance : %d\n", fvMinViewPeriodsForAdvance%);
         Print("Period duration (s)                      : %f\n", fvPeriodDuration);
-    endif
+    endcase
     Print("Probability of reward each period        : %f\n", fvProbRewardEachPeriod);
     if fvDoImageSeries% = 1 then
         Print("Probability of double reward each period        : %f\n", fvProbDoubleRewardEachPeriod);
@@ -1716,7 +1798,7 @@ func IdleProcessing%()
                                 SafeSampleKey("S");  'request stimulus
                                 'sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tNow);
                                 LogStatus("WaitForAcquisition", "Fixpt Acquired, Request stimulus at " + str$(tNow));
-                                if fvDoImageSeries% = 1 then
+                                if fvDoImageSeries% = 1 or fvDoCSD% = 1 then
                                     ChangeStateTo(stateWaitForImageOn%, tNow);
                                     fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
                                 else
@@ -1749,7 +1831,7 @@ func IdleProcessing%()
                             SafeSampleKey("S");  'request stimulus
                             'sampletext(fvImageList$[fvImageOrder%[nTrialsCompleted%]], tNow);
                             LogStatus("WaitForAcquisition", "Fixpt Acquired, Request stimulus at " + str$(tNow));
-                            if fvDoImageSeries% = 1 then
+                            if fvDoImageSeries% = 1 or fvDoCSD% = 1 then
                                 ChangeStateTo(stateWaitForImageOn%, tNow);
                                 fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
                             else
@@ -1792,7 +1874,7 @@ func IdleProcessing%()
                         if tNow - tStateStart > fvHoldAcquisitionTime then
                             SafeSampleKey("S");  'request stimulus
                             LogStatus("HoldAcquisition", "Fixpt Held, Request stimulus at " + str$(tNow));
-                            if fvDoImageSeries% = 1 then
+                            if fvDoImageSeries% = 1 or fvDoCSD% = 1 then
                                 ChangeStateTo(stateWaitForImageOn%, tNow);
                                 fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
                             else
@@ -1811,7 +1893,7 @@ func IdleProcessing%()
                     if tNow - tStateStart > fvHoldAcquisitionTime then
                         SafeSampleKey("S");  'request stimulus
                         LogStatus("HoldAcquisition", "Fixpt Held, Request stimulus at " + str$(tNow));
-                        if fvDoImageSeries% = 1 then
+                        if fvDoImageSeries% = 1 or fvDoCSD% = 1 then
                             ChangeStateTo(stateWaitForImageOn%, tNow);
                             fvNumPeriods% := fvImagesPerTrial%[fvImageOrder%[nTrialsCompleted%]];
                         else
@@ -1953,9 +2035,17 @@ func IdleProcessing%()
                             'If we want to note the size of the image in the sampletext, uncomment below line(s) - too long for one line
                             'sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]) + "," 
                             '+ Str$(fvImageWidthPix%[fvCurrImageIndex%]) + "," + Str$(fvImageHeightPix%[fvCurrImageIndex%]), tTrigger);
-                            ChangeStateTo(stateHoldImage%, tTrigger);
-                            blitzNow% := 0;  'end blitz
-                            blitzTO% := 0;  'blitz succeeded
+                            if fvDoCSD% = 1 and fvPeriodCount% < fvNumPeriods% then
+                                'For CSD, there is no ISI, so there will not be an image offset trigger.  The next trigger
+                                'will be an "image change" trigger.  So we need to count triggers and stay here until
+                                'we have found enough (when fvPeriodCount% = fvNumPeriods%).
+                                fvPeriodCount% += 1;
+                                ChangeStateTo(stateWaitForImageOn%, tTrigger);  'change to same state to update tStateStart!
+                            else
+                                ChangeStateTo(stateHoldImage%, tTrigger);
+                                blitzNow% := 0;  'end blitz
+                                blitzTO% := 0;  'blitz succeeded
+                            endif
                         endif
                     endif
                 wend
@@ -1981,7 +2071,15 @@ func IdleProcessing%()
                         'If we want to note the size of the image in the sampletext, uncomment below line(s) - too long for one line
                         'sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]) + "," 
                         '+ Str$(fvImageWidthPix%[fvCurrImageIndex%]) + "," + Str$(fvImageHeightPix%[fvCurrImageIndex%]), tTrigger);
-                        ChangeStateTo(stateHoldImage%, tTrigger);
+                        if fvDoCSD% = 1 and fvPeriodCount% < fvNumPeriods% then
+                            'For CSD, there is no ISI, so there will not be an image offset trigger.  The next trigger
+                            'will be an "image change" trigger.  So we need to count triggers and stay here until
+                            'we have found enough (when fvPeriodCount% = fvNumPeriods%).
+                            fvPeriodCount% += 1;
+                            ChangeStateTo(stateWaitForImageOn%, tTrigger);  'change to same state to update tStateStart!
+                        else
+                            ChangeStateTo(stateHoldImage%, tTrigger);
+                        endif
                     endif
                 endif
             endif
@@ -2084,7 +2182,7 @@ func IdleProcessing%()
                 
             
                 
-            case fvDoImageSeries% = 1 then 
+            case fvDoImageSeries% = 1 or fvDoCSD% = 1 then 
                 'If no other cases are met, and this is an image series, go straight to wait for image off
                 'Do not go to intervening stateBeginImagePeriod or if there is a long delay between idle
                 'cycles we can miss the frame pulse.  Use tLastTrigger as state start time for additional security
@@ -2424,7 +2522,7 @@ func IdleProcessing%()
                     docase
                     case fvAdvance% = 1 then 'If we advance the stimulus
                         fvAdvance% := 0;  'reset advance variable
-                        if fvDoImageSeries% = 1 then  'image series sidestep the "(no)opto period" steps, to give reward we ahve to explicitly go there
+                        if fvDoImageSeries% = 1 or fvDoCSD% = 1 then  'image series sidestep the "(no)opto period" steps, to give reward we ahve to explicitly go there
                             ChangeStateTo(stateRewardPeriod%, tLastTrigger);
                         else 'if not image series, reward has already been taken care of through "(no)opto period" steps
                             ChangeStateTo(stateTrialCompleted%, tLastTrigger);
