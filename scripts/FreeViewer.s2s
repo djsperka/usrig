@@ -126,7 +126,10 @@ var fvdlgTextItem%;
 var fvStimFolder$;
 var fvStimFile$;
 var fvUseFile%;  '1 if use file, 0 if use folder
-var fvDefaultStimPath$ := "D:\\Images\\";  'Set this folder for Henry's computer - how about just F:\Images?
+var DPR$;
+DPR$ := GetDataPathRoot$();
+DPR$ := Left$(DPR$,1);  'get drive letter
+var fvDefaultStimPath$ := DPR$ + ":\\Images\\";  'Set this folder for any computer with any main drive path!
 var fvDefaultStimFile$ := "DefaultStimFile.txt";  'this file will be updated 
 var fvDialogText$;
 var fvImageList$[5000];  'allow up to 5000 unique images
@@ -1121,7 +1124,7 @@ func Start%()
         'We need to explicitly write out a file
         fh% := FileOpen(ImageFileLoc$,8,1);  'Open a new text file for writing, replace current (default) file
         printlog("result of opening text file is %d\n",fh%);
-        view(fh%).Print("img\white-512x768.bmp\nimg\black-512x768.bmp\n\nGroups");  'this part will be constant, the white image, the black image, the Groups section
+        view(fh%).Print("%simg\white-512x768.bmp\n%simg\black-512x768.bmp\n\nGroups",fvDefaultStimPath$,fvDefaultStimPath$);  'this part will be constant, the white image, the black image, the Groups section
         for j% := 0 to fvNRepeats%-1 do 'for each repeat of the stimulus
             view(fh%).Print("\n"); 'lead off by putting in a new line, trailing newline omitted from above "constant" view().Print
             for k% := 0 to fvNumCSDFlashes%-1 do 'for each flash
