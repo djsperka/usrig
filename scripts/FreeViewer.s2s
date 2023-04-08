@@ -368,7 +368,7 @@ func FreeViewerScriptDialog%()
     endif
     
         
-    DlgCreate("FreeViewer Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
+    DlgCreate("FreeViewer Parameters", 0, 0, 0, 0, -1, -1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
     DlgGroup("Stimulus and Fixation", 1, 1, 50, 19);
     DlgInteger(1, "Number of repeats", 1, 1000, 0, 2);
     DlgCheck(2, "Random Progression?", 0, 3);
@@ -914,7 +914,7 @@ proc InitializeWindows()
     var WindowStep;
     
     ' Make spike2 use all of monitor 1
-    View(App()).Window(0, 0, 100, 100, 1);
+    'View(App()).Window(0, 0, 100, 100, 1);  'this just seems to fuck shit up
     
 	'Open the data sampling window
     DataWindow% := FileNew(0,4);
@@ -1124,7 +1124,7 @@ func Start%()
         'We need to explicitly write out a file
         fh% := FileOpen(ImageFileLoc$,8,1);  'Open a new text file for writing, replace current (default) file
         printlog("result of opening text file is %d\n",fh%);
-        view(fh%).Print("%simg\white-512x768.bmp\n%simg\black-512x768.bmp\n\nGroups",fvDefaultStimPath$,fvDefaultStimPath$);  'this part will be constant, the white image, the black image, the Groups section
+        view(fh%).Print("%sblack-512x768.bmp\n%swhite-512x768.bmp\n\nGroups",fvDefaultStimPath$,fvDefaultStimPath$);  'this part will be constant, the white image, the black image, the Groups section
         for j% := 0 to fvNRepeats%-1 do 'for each repeat of the stimulus
             view(fh%).Print("\n"); 'lead off by putting in a new line, trailing newline omitted from above "constant" view().Print
             for k% := 0 to fvNumCSDFlashes%-1 do 'for each flash
@@ -1138,7 +1138,8 @@ func Start%()
         
         'Now we parse the file we just made, to fill variables...we know what's in it, just easier to fill variables by copying this code
         'Parse image series file, we need to know how many trials, etc.
-        success% := ParseImageSeriesFile%(fvStimFile$,fvNValues%,fvImagesPerTrial%[],fvTrialDurEstimate[],fvImageList$[],fvImageIndices%[][],fvImageDur[],fvImageDelay[],fvImageXPos[],fvImageYPos[]);
+        ImageFileLoc$ := fvDefaultStimPath$ + fvDefaultStimFile$;
+        success% := ParseImageSeriesFile%(ImageFileLoc$,fvNValues%,fvImagesPerTrial%[],fvTrialDurEstimate[],fvImageList$[],fvImageIndices%[][],fvImageDur[],fvImageDelay[],fvImageXPos[],fvImageYPos[]);
         if success% = 1 then
             printlog("Success in reading image series file %s, num trials is %d\n",fvStimFile$,fvNValues%);
         else
