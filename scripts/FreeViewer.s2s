@@ -604,7 +604,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgValue$(1006,"New Image On Fix Break? (0/1)");  'label appropriately
         DlgEnable(0,7);  'disable ISI
         DlgEnable(1,16);  'enable Use Stim Location
-        DlgEnable(1,17);  'enable X position
+        DlgValue$(1017,"Image X Position (deg)");  'label X position appropriately
         DlgEnable(1,18);  'enable Y position
         DlgEnable(0,21);  'disable reward
         DlgEnable(0,22);  'disable double reward
@@ -621,7 +621,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgValue$(1006,"New Image Series On Fix Break? (0/1)");  'label appropriately
         DlgEnable(1,7);  'enable ISI
         DlgEnable(1,16);  'enable Use Stim Location
-        DlgEnable(1,17);  'enable X position
+        DlgValue$(1017,"Image X Position (deg)");  'label X position appropriately
         DlgEnable(1,18);  'enable Y position
         DlgEnable(1,21);  'enable reward
         DlgEnable(1,22);  'enable double reward
@@ -638,7 +638,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgValue$(1006,"Unused");  'label appropriately
         DlgEnable(0,7);  'disable ISI
         DlgEnable(0,16);  'disable Use Stim Location
-        DlgEnable(0,17);  'disable X position (may re-enable if requested)
+        DlgValue$(1017,"CSD XCtr deg from fix");  'label X position appropriately
         DlgEnable(0,18);  'disable Y position
         DlgEnable(1,21);  'enable reward
         DlgEnable(0,22);  'disable double reward ???
@@ -655,7 +655,7 @@ func FreeViewerScriptDialogChanged%(item%)
         DlgValue$(1006,"Minimum Viewed Periods To Advance");  'label appropriately
         DlgEnable(0,7);  'disable ISI
         DlgEnable(1,16);  'enable Use Stim Location
-        DlgEnable(1,17);  'enable X position
+        DlgValue$(1017,"Image X Position (deg)");  'label X position appropriately
         DlgEnable(1,18);  'enable Y position
         DlgEnable(1,21);  'enable reward
         DlgEnable(0,22);  'disable double reward
@@ -1307,11 +1307,12 @@ func Start%()
         ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvXPos) + "," + Str$(fvYPos) + "," + Str$(fvImageDuration) + "," + Str$(fvISI);
     else 'different build for CSD
         GetFixationPointParameterValues(fixX, fixY, fixD, fixWR);
-        if fixX >=0 then
-            fvCSDXPos := fixX - 8; 'Half width of flashing box is ~7 degrees, set 1 degree interior from fixpt
-        else
-            fvCSDXPos := fixX + 8; 'Same for other side of screen
-        endif
+        fvCSDXPos := fixX + fvXPos;  
+        'if fixX >=0 then
+        '    fvCSDXPos := fixX - 8; 'Half width of flashing box is ~7 degrees, set 1 degree interior from fixpt
+        'else
+        '    fvCSDXPos := fixX + 8; 'Same for other side of screen
+        'endif
         ImageArg$ := " -i " + ImageFileLoc$ + "," + Str$(fvCSDXPos) + ",0," + Str$(fvImageDuration) + ",0"; 'yPos and ISI explicitly 0, xPos has to be calculated from location on screen
     endif
     
