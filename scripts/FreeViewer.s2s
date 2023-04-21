@@ -2049,21 +2049,28 @@ func IdleProcessing%()
                             LogStatus("WaitForImageOn", "Image started at " + str$(tTrigger));
                             tLastTrigger := tTrigger;
                             fvCurrImageIndex% := fvImageIndices%[fvImageOrder%[nTrialsCompleted%]][fvPeriodCount%];
-                            sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]), tTrigger);
-                            'If we want to note the size of the image in the sampletext, uncomment below line(s) - too long for one line
-                            'sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]) + "," 
-                            '+ Str$(fvImageWidthPix%[fvCurrImageIndex%]) + "," + Str$(fvImageHeightPix%[fvCurrImageIndex%]), tTrigger);
-                            if fvDoCSD% = 1 and fvPeriodCount% < fvNumPeriods% then
+                            docase
+                            case fvDoCSD% = 0 then
+                                sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]), tTrigger);
+                                'If we want to note the size of the image in the sampletext, uncomment below line(s) - too long for one line
+                                'sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]) + "," 
+                                '+ Str$(fvImageWidthPix%[fvCurrImageIndex%]) + "," + Str$(fvImageHeightPix%[fvCurrImageIndex%]), tTrigger);
+                                ChangeStateTo(stateHoldImage%, tTrigger);
+                                blitzNow% := 0;  'end blitz
+                                blitzTO% := 0;  'blitz succeeded
+                            case fvDoCSD% = 1 and fvPeriodCount% < fvNumPeriods% then
+                                sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]), tTrigger);
                                 'For CSD, there is no ISI, so there will not be an image offset trigger.  The next trigger
                                 'will be an "image change" trigger.  So we need to count triggers and stay here until
                                 'we have found enough (when fvPeriodCount% = fvNumPeriods%).
                                 fvPeriodCount% += 1;
                                 ChangeStateTo(stateWaitForImageOn%, tTrigger);  'change to same state to update tStateStart!
-                            else
+                            else 'i.e., fvDoCSD% = 1 and fvPeriodCount% = fvNumPeriods% 
+                                sampletext("Stimulus off", tTrigger);
                                 ChangeStateTo(stateHoldImage%, tTrigger);
                                 blitzNow% := 0;  'end blitz
                                 blitzTO% := 0;  'blitz succeeded
-                            endif
+                            endcase
                         endif
                     endif
                 wend
@@ -2085,19 +2092,24 @@ func IdleProcessing%()
                         LogStatus("WaitForImageOn", "Image started at " + str$(tTrigger));
                         tLastTrigger := tTrigger;
                         fvCurrImageIndex% := fvImageIndices%[fvImageOrder%[nTrialsCompleted%]][fvPeriodCount%];
-                        sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]), tTrigger);
-                        'If we want to note the size of the image in the sampletext, uncomment below line(s) - too long for one line
-                        'sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]) + "," 
-                        '+ Str$(fvImageWidthPix%[fvCurrImageIndex%]) + "," + Str$(fvImageHeightPix%[fvCurrImageIndex%]), tTrigger);
-                        if fvDoCSD% = 1 and fvPeriodCount% < fvNumPeriods% then
+                        docase
+                        case fvDoCSD% = 0 then
+                            sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]), tTrigger);
+                            'If we want to note the size of the image in the sampletext, uncomment below line(s) - too long for one line
+                            'sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]) + "," 
+                            '+ Str$(fvImageWidthPix%[fvCurrImageIndex%]) + "," + Str$(fvImageHeightPix%[fvCurrImageIndex%]), tTrigger);
+                            ChangeStateTo(stateHoldImage%, tTrigger);
+                        case fvDoCSD% = 1 and fvPeriodCount% < fvNumPeriods% then
+                            sampletext(fvImageList$[fvCurrImageIndex%] + "," + Str$(fvImageXPos[fvCurrImageIndex%]) + "," + Str$(fvImageYPos[fvCurrImageIndex%]), tTrigger);
                             'For CSD, there is no ISI, so there will not be an image offset trigger.  The next trigger
                             'will be an "image change" trigger.  So we need to count triggers and stay here until
                             'we have found enough (when fvPeriodCount% = fvNumPeriods%).
                             fvPeriodCount% += 1;
                             ChangeStateTo(stateWaitForImageOn%, tTrigger);  'change to same state to update tStateStart!
-                        else
+                        else 'i.e., fvDoCSD% = 1 and fvPeriodCount% = fvNumPeriods% 
+                            sampletext("Stimulus off", tTrigger);
                             ChangeStateTo(stateHoldImage%, tTrigger);
-                        endif
+                        endcase
                     endif
                 endif
             endif
