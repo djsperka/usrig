@@ -290,7 +290,7 @@ func MultiSacScriptDialog%()
     GetMultiSacScriptParameters();
 
         
-    DlgCreate("MultiSac Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
+    DlgCreate("MultiSac Parameters", 0, 0, 0, 0, -1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
     DlgGroup("Stimuli", 1, 1, 50, 7);
     DlgInteger(1, "Number of trials", 1, nMaxTrials%, 0, 2);
     DlgList(2, "Grating 1 tuning:",gratingTunList$[], 1, 0, 3);
@@ -1244,8 +1244,8 @@ func Start%()
     'JuiceRewardMSorig% := JuiceRewardMS%;  'we are going to use smaller intermediate rewards, so hold the original
     'pRewardOrig := pReward;                'Also probability (these values both come from the DAQ dialog)
 
-    ' Open serial port for VSG comms re: stimulus jump-advance
-    OpenSerialPortToVSG();
+    ' Open serial port for VSG comms re: stimulus jump-advance...let's not do this
+    'OpenSerialPortToVSG();
     
 	'start sampling
     if UseTwo1401s% = 1 then
@@ -1312,7 +1312,7 @@ func Start%()
     
     'Determine value of G1Persist$
     if grating1Persist% = 0 then
-        G1Persist$ := "--draw-group 1";  'Make grating 1 a member of drawgroup 1, will not persist
+        G1Persist$ := " --draw-group 1";  'Make grating 1 a member of drawgroup 1, will not persist
     else
         G1Persist$ := "";  'Do not make grating 1 a member of drawgroup 1, but of the persistent draw
     endif
@@ -1326,7 +1326,8 @@ func Start%()
     'Build the spec file, and write the trial-by-trial specs for the VSG
     specHandle% := FileOpen(specFileName$, 8, 1);  'open spec file
     'print more standard arguments to spec file
-    Print("%s",FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$ + SerialArg$);  
+    'Print("%s",FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$ + SerialArg$);  
+    Print("%s",FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$);  'having issues, let's not include serial arg...?
     'print "stimulus" parameters
     if stationary% = 0 then
         Print("%s",G1Persist$ + " -s " + GetGratingParameters$("Stimulus")); 
@@ -1344,9 +1345,9 @@ func Start%()
     'If there is more than one grating, specify the second...and third?  If we go further, draw-group 3 etc. will need to be used
     if nGratings% > 1 then
         if stationary% = 0 then
-            Print("%s", "--draw-group 2 -s " + GetGratingParameters$("Distractor1"));
+            Print("%s", " --draw-group 2 -s " + GetGratingParameters$("Distractor1"));
         else
-            Print("%s", "--draw-group 2 -s " + GetGratingParameters$("StatDistractor1"));
+            Print("%s", " --draw-group 2 -s " + GetGratingParameters$("StatDistractor1"));
         endif
         'Print grating 1 tuning parameters, if present
         if g2tunInd% > 0 then  'if tunG2Ind% == 0 then do nothing, no tuning on this grating
