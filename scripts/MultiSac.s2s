@@ -1,0 +1,1833 @@
+' $Id$
+
+const msCVSID$ := "$Id$";
+
+
+'Include Files
+
+#include "../util/ChannelUtilities.s2s"
+#include "../util/UsreyUtil.s2s"
+#include "../util/LogUtilities.s2s"
+#include "../util/MiscUtilities.s2s"
+#include "UsreyDAQ.s2s"
+#include "UsreyFixationPoint.s2s"
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' MultiSac script START
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+' Overall script control vars
+var Pause% := 0;
+const nMaxTrials% := 2000;
+const maxGratings% := 5;
+
+' Channel numbers and handles
+var StimHandle%;			' handle for stimulus application
+var DataWindow%;		
+var XChannel%;
+var YChannel%;
+var iStimChannel%[maxGratings%];
+
+var FrameChannel%;
+var Frame2Channel%;  'This is the channel that will receive the trigger for the second page
+var FrameSlaveChannel%;
+var StimChannel%;
+var ChangeChannel%;
+var ReadyChannel%;
+var ReadySlaveChannel%;
+var StimSlaveChannel%;
+var DigitalLaserChannel%;
+var SequencerPeriodMS;
+var StimulatorChannel%;
+var UtilityChannel%;
+var TimingChannel%;
+var FixationPointChannel%;
+
+
+' XY window stuff
+var XYWindow%;			' 
+var iMonitorChannel%;	' channel number for monitor position display in xy window
+var iStimWindowChannel%;
+
+' Display stuff
+var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
+var stimXLoc[maxGratings%];
+var stimYLoc[maxGratings%];
+var msWindowRadius[maxGratings%];
+var BackgroundColor$ := "gray";  'for right now, let's not even allow changing this...
+var tbtFixX;  'currently we are not setting these on a trial-by-trial basis, but if we do...
+var tbtFixY;
+var iFixptChannel%;
+var iFixptWindowChannel%;
+
+' dummy vars
+var iScript%;
+
+
+var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
+var tLast:=-1;		' last time we checked for a trigger. 
+var xEye, yEye;		' eye positions
+var tLastFixPtDisplayUpdate:=-1;	' last time view was updated
+var vTrigger;		' set by NextTime to indicate trigger transition
+var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
+var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
+var tTrigger:=-1;	' temp var for newly discovered trigger times
+var tInterTrialTime := 0;	' Time spent waiting between trials (i.e. after screen is blank, but before image is presented)
+var tRise, tFall;
+var tKludge := 0.06;    ' Add to Fixation time to account for stim sequence. Ugly hack, admittedly, but one does what one must. 
+var FixationWasBroken% := 0;  'this allows us to monitor fixation through the individual image "periods"
+var FixWaitState%;
+var HBCycle% := 1;
+var rfX,rfY,rfW,rfH;
+
+
+' Constants for states
+
+const stateVSGWait%:=0;		               ' Wait for VSG to send ready signal, only used at beginning of experiment
+const stateStartTrial%:=1;                 ' Start trial, request grid
+const stateWaitForFixptOn%:=2;             ' Wait for VSG signal that fixation point is up
+const stateWaitAcquireFixation%:=3;        ' Wait for animal to acquire fixation
+const stateHoldFixation%:=4;               ' Require animal to hold fixation
+const stateRequestGrating%:=5;             ' Request grating - for context where animal is currently fixating
+const stateWaitForStimTrigger%:=6;         ' Wait for VSG signal that grating is up - for context where animal currently fixating
+const stateWaitForSaccade%:=7;             ' Aggressively wait for saccade to leave current fixation, request next stimulus during saccade
+const stateWaitSaccadeStimTrigger%:=8;     ' Wait for VSG signal that grating is up - for context where animal currently saccading
+const stateWaitAcquireGrating%:=9;         ' Wait for animal to acquire grating, all contexts
+const stateHoldGrating%:=10;               ' Require animal to hold grating AND DELIVER REWARD if applicable, all contexts
+const stateTrialSuccess%:=11;              ' Remove stimulus, advance
+const stateInterTrialInterval%:=12;        ' Wait through ITI
+const stateWaitForBlank%:=13;              ' Wait for stimulus down after any abort
+const stateAcquisitionTO%:=14;             ' Wait through timeout
+
+var iState% := stateVSGWait%;	' present state
+var stateBegin% := 1;  'For fun, in this script let's keep track of whether it is the first time through a state, for logging purposes
+
+var currTrial%:=1;  'Not an index
+var tBlank;
+var tReward;
+var trialSuccess%;
+var nTrialsStarted%:=0;
+var nTrialsCompleted%:=0;
+var nTrialsAborted% :=0;	
+var currentGrating%;   'This is the grating that is currently active
+var viewedGrating%;  'This is the grating (or fixpt) that is currently being viewed
+var currentLooking%;  'This is the current value that should be passed to LookingMultiSac%()
+var isLooking%;  'Used for the return from LookingMultiSac%(), will be 1 if looking at the currently intended location, 0 if looking anywhere else
+
+var tic;  'Set a tick value equal to the duration of one clock tick in seconds, used to prevent finding
+          'the same "pulse" twice
+var pulseFound%;
+var tOpt;
+
+
+' Wavemarks and continuous ports
+var msNWavemarks% := 0;
+var msWavemarkPorts%[64];
+var msNContinuous% := 0;
+var msContinuousPorts%[64];
+
+
+' Dialog box variables
+var AlwaysLooking% := 1; ' If set eye signals ignored - subject presumed to be looking always. TESTING ONLY.
+var g1tunInd% := 1;
+var g2tunInd% := 1;
+var nTrials% := 100;
+var minSaccades% := 2;
+var varSaccades% := 0;
+var fixAcqTime := 2;
+var fixHoldTime := 0.5;
+var intGratingHoldTime := 0.5;
+var finalGratingHoldTime := 0.5;
+var fixAcqTimeout := 0;
+var ITI := 1.5; 
+var mainRewardDelay := 0; 
+var intRewardMS% := 70;
+var intRewardProb := 0.5;
+var mainRewardMS% := 100;  'we are now completely ignoring the reward values from the DAQ dialog
+var mainRewardProb := 1;
+var stationary%;
+var grating1Persist%;  'this is for training purposes
+var grating2Wait%;  'this is for training purposes
+
+var nGratings%;
+var nGratingsThisTrial%;
+var currentGratingLetter$[2];  'We have to explicitly list the letters which will result in the correct grating
+currentGratingLetter$[0] := "S";
+currentGratingLetter$[1] := "U";  'There may be more later, but currently only two are possible; new letters will be necessary
+var currentFrameChannel%[2];  'We will also have different frame channels based on current grating; these have to be assigned below
+var saccadeBegun%;    'Have we detedted the beginning of a saccade?
+var currGratingHoldTime;
+var rewardGiven;
+
+var screenXDeg := 12.5;  'Manually setting screen degrees - we might want to calculate this based on manual screen cm or have degrees/cm in main dialog, but for now...
+var screenYDeg := 9.5;
+
+
+
+GetMultiSacScriptParameters();  'We will just get these right off the bat, this supports the pre-dialog box
+'that warns about AlwaysLooking - though this pre-dialog is currently disabled
+
+
+
+' Init logging
+LogInit(1);
+
+UseTwo1401s% := DoWeUseTwo1401s%();
+
+if UseTwo1401s% = 1 then
+    'Two 1401s disabled because the port carrying the "change" trigger from the VSG has been stolen from one
+    'of the slave ports, we need to fix that (physically and code-wise) to allow Two 1401s to work.
+    message("Using two 1401s has been disabled for the MultiSac script!  Talk to Dan/Jeff!  Quitting!");
+    halt;
+endif
+
+GetPortsAndNumWMsWFs%(msNWavemarks%,msNContinuous%,msWavemarkPorts%[],msContinuousPorts%[]);
+
+
+
+' Check if always looking flag is set. If so, issue a warning.
+' I'm thinking that this is kind of a pain in the butt, we can possibly just put it in the dialog box
+' and forget it.  If Henry wants it back as a warning up front, it's an easy uncomment.
+'if AlwaysLooking% = 1 then
+'    if Query("Always looking is SET. Unset?") = 1 then
+'        AlwaysLooking% := 0;
+'    endif
+'endif
+
+
+'Run the main dialog
+iScript% := MultiSacScriptDialog%();
+
+
+if iScript% = 1 then
+    LogInfo("Proceed with DAQ.");
+else
+	LogInfo("User cancel - exit gracefully\n");
+	Halt;
+endif;
+
+
+' Assign channel numbers for eye X,Y and trigger. 
+XChannel% := 25;
+YChannel% := 26;
+ReadyChannel% := 40;
+FrameChannel% := 41;
+Frame2Channel% := 42;
+StimChannel% := 43;
+ReadySlaveChannel% := 44;
+StimulatorChannel% := 46;
+ChangeChannel% := 47;
+DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
+UtilityChannel% := 39;
+TimingChannel% := 38;
+FixationPointChannel% := 45;
+
+ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
+
+
+'Set current frame channel based on current grating, if there are more we will need to have additional channels 
+currentFrameChannel%[0] := FrameChannel%;
+currentFrameChannel%[1] := Frame2Channel%;
+
+'If we are not linking the two 1401s together, just use the standard order of operations:
+'1) create sampling configuration, 2) Initialize windows, 3) Initialize/run toolbar.
+'However, if we are linking the 1401s we have to do this in a different order, because we have to open up the second
+'instance of Spike 2 BEFORE setting up the sampling configuration/windows on the first instance.  Doing this in the
+'wrong order results in a non-fatal error in the second Spike2 instance indicating that the file which is preparing
+'to be recorded in the first instance cannot be accessed, despite no explicit attempt to access any such thing.
+'Hence, for the dual-1401 setups, we first initialize the toolbar, which has a specialty button "Start Plexon".  StartPlexon%()
+'launches the second instance and the associated script, and both scripts move forward independently to create their own
+'sampling configuration, initialize their own windows and are ready to have sampling started.  Note well that sampling
+'must be started on the POWER 1401/SLAVE 1401 (the second, non-dominant instance of Spike2) FIRST and on the 
+'MICRO 1401/MASTER 1401 (the first,  dominant instance of Spike 2) SECOND.  Starting sampling on the Micro will run 
+'the VSG program (Fixstim) which gives the sampling trigger and sets the experiment in motion.
+if UseTwo1401s% = 0 then
+    CreateSampleConfiguration();
+
+    ' Get display windows ready
+    InitializeWindows();
+    
+    tic := View(DataWindow%).BinSize(ReadyChannel%);
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+else
+    InitializeToolbar();
+endif;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' MultiSac script END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+
+
+'From here on out, it's just various necessary functions
+
+
+'MultiSacScriptDialog
+
+func MultiSacScriptDialog%()
+	var i%;
+	var iReturn%;
+    var gratingTunList$[2];
+    var j%;
+    var tempParams$, cv$, pattern$, aperture$;
+    var x, y, w, h, iw, ih, sf, tf, ori, phase, ctf;
+    var contrast%;
+    
+    'Can use same list for all
+    gratingTunList$[0] := "None";
+    gratingTunList$[1] := "Not implemented...but y'know, Orientation";
+      
+
+    GetMultiSacScriptParameters();
+
+        
+    DlgCreate("MultiSac Parameters", 0, 0, 0, 0, -1, 1, 1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
+    DlgGroup("Stimuli", 1, 1, 50, 7);
+    DlgInteger(1, "Number of trials", 1, nMaxTrials%, 0, 2);
+    DlgList(2, "Grating 1 tuning:",gratingTunList$[], 1, 0, 3);
+    DlgList(3, "Grating 2 tuning:",gratingTunList$[], 1, 0, 4);
+    DlgCheck(4, "Grating 1 stays on?", 0, 5);
+    DlgCheck(5, "Grating 2 waits for grating 1 acq?", 0, 6);
+    DlgCheck(6, "Stationary", 0, 7);
+    'The idea is (hopefully...haven't checked) that we will be able to run a dialog based on the selected tuning curve?
+    'Here we can enter additional gratings, up to a limit that may be imposed by Dan, but not yet needed
+
+    
+    DlgGroup("Fixation", 1, 9, 50, 4);
+    DlgInteger(7, "Minimum saccades", 2, 2, 0, 10);  'force to 2 for now
+    DlgInteger(8, "Variable saccades", 0, 0, 0, 11);  'force to 0 for now
+    DlgCheck(9, "Always Looking", 0, 12);
+    
+    DlgGroup("Timing", 1, 14, 50, 7);
+    DlgReal(10, "Fixation Acquisition Time (s)", 0, 1000, 0, 15);
+    DlgReal(11, "Fixation Hold Time (s)", 0, 10, 0, 16);
+    DlgReal(12, "Intermediate Grating Hold Time (s)", 0, 10, 0, 17);
+    DlgReal(13, "Final Grating Hold Time (s)", 0, 10, 0, 18);
+    DlgReal(14, "Fixation/Acq Timeout (s)", 0, 100, 0, 19);
+    DlgReal(15, "Intertrial Interval (s)", 0, 10, 0, 20);
+    
+    DlgGroup("Reward", 1, 22, 50, 6);
+    DlgReal(16, "Main Reward delay (s)", 0, 3, 0, 23);
+    DlgInteger(17, "Main Reward dur (ms)", 0, 1000, 0, 24);
+    DlgReal(18, "Main Reward prob (0-1)", 0, 1, 0, 25);
+    DlgInteger(19, "Intermediate Reward dur (ms)", 0, 1000, 0, 26);
+    DlgReal(20, "Intermediate Reward prob (0-1)", 0, 1, 0, 27);
+    
+    'Right now we don't seem to need a callback, it's ready directly below if we do 
+    DlgAllow(0xffff, 0, MultiSacScriptDialogChanged%);
+
+    i%:=DlgShow(nTrials%, g1tunInd%, g2tunInd%, grating1Persist%, grating2Wait%, stationary%, minSaccades%,   
+                varSaccades%, AlwaysLooking%, fixAcqTime, fixHoldTime, intGratingHoldTime, finalGratingHoldTime, 
+                fixAcqTimeout, ITI, mainRewardDelay, mainRewardMS%, mainRewardProb, intRewardMS%, intRewardProb);
+    
+    if i% = 1 then
+        
+		SaveMultiSacScriptParameters();
+        
+        nGratings% := minSaccades% + varSaccades%;  'This is an overall number, not a per-trial number (for initial development will always be 2)
+        
+        'Get grating location for first stimulus, keep it (we are assuming no XY tuning, which would require an assignment step in the idle loop)
+        tempParams$ := GetGratingParameters$("Stimulus");
+        ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
+        stimXLoc[0] := x;
+        stimYLoc[0] := y;
+        msWindowRadius[0] := max(w,h);  'If not circular (like that'll happen), use larger axis, we're not making an elliptical response window
+        'Set stationary stimulus if necessary
+        if stationary% = 1 then
+            'create/save StatStimulus grating parameters
+            tempParams$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$, ctf);  'hardcoded zero TF
+            SaveGratingParameters("StatStimulus", tempParams$);
+        endif
+        'Get grating location for subsequent stimuli, keep it (we are assuming no XY tuning, which would require an assignment step in the idle loop)
+        for j% := 2 to nGratings% do  'Will not execute if nGratings% is 1
+            tempParams$ := GetGratingParameters$("Distractor"+Str$(j%-1));
+            ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
+            stimXLoc[j%-1] := x;
+            stimYLoc[j%-1] := y;
+            msWindowRadius[j%-1] := max(w,h);  'If not circular (like that'll happen), use larger axis, we're not making an elliptical response window
+            'Set stationary stimulus if necessary
+            if stationary% = 1 then
+                'create/save StatStimulus grating parameters
+                tempParams$ := EncodeGratingParameters$(x, y, w, h, iw, ih, contrast%, sf, 0, ori, phase, cv$, pattern$, aperture$, ctf);  'hardcoded zero TF
+                SaveGratingParameters("StatDistractor"+Str$(j%-1), tempParams$);
+            endif;
+        next        
+        
+        iReturn% := 1;  'set return value to success, otherwise we'll just quit.
+        
+	endif;
+
+	return iReturn%;
+    
+    
+end;
+
+func MultiSacScriptDialogChanged%(item%) 
+    
+    DlgEnable(0,2);  'Disable grating 1 tuning
+    DlgEnable(0,3);  'Disable grating 3 tuning
+                     'If we ever enable these, we will need to base the enable/disable on the number of saccades
+                     'It would be really cool if we could run a subdialog e.g. "orientation" based on the selection
+    
+    DlgEnable(0,7);  'Disable minimum saccades, for now this is 2
+    DlgEnable(0,8);  'Disable variable saccades
+    
+    DlgEnable(0,16);  'Disable reward delay (??)
+    
+    'If there are no fixpts, do not allow reduced fixpts
+'    if DlgValue(5) = 0 then
+'        DlgValue(6,0);
+'    endif;
+'    DlgEnable(DlgValue(5),6);  'Only enable reduced number of fixpts if fixpts are present
+    
+    return 1;
+end
+
+
+
+proc GetMultiSacScriptParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\MultiSac";
+    
+    nTrials% := GetIntRegistryValue%(key$, "nTrials", nTrials%);
+    g1tunInd% := GetIntRegistryValue%(key$, "g1tunInd", g1tunInd%);
+    g2tunInd% := GetIntRegistryValue%(key$, "g2tunInd", g2tunInd%);
+    grating1Persist% := GetIntRegistryValue%(key$, "grating1Persist", grating1Persist%);
+    grating2Wait% := GetIntRegistryValue%(key$, "grating2Wait", grating2Wait%);
+    minSaccades% := GetIntRegistryValue%(key$, "minSaccades", minSaccades%);
+    varSaccades% := GetIntRegistryValue%(key$, "varSaccades", varSaccades%);
+    AlwaysLooking% := GetIntRegistryValue%(key$, "AlwaysLooking", AlwaysLooking%);
+    fixAcqTime := GetFloatRegistryValue(key$, "fixAcqTime", fixAcqTime);
+    fixHoldTime := GetFloatRegistryValue(key$, "fixHoldTime", fixHoldTime);
+    intGratingHoldTime := GetFloatRegistryValue(key$, "intGratingHoldTime", intGratingHoldTime);
+    finalGratingHoldTime := GetFloatRegistryValue(key$, "finalGratingHoldTime", finalGratingHoldTime);
+    fixAcqTimeout := GetFloatRegistryValue(key$, "fixAcqTimeout", fixAcqTimeout);
+    ITI := GetFloatRegistryValue(key$, "ITI", ITI);
+    mainRewardDelay := GetFloatRegistryValue(key$, "mainRewardDelay", mainRewardDelay);
+    intRewardMS% := GetIntRegistryValue%(key$, "intRewardMS", intRewardMS%);
+    intRewardProb := GetFloatRegistryValue(key$, "intRewardProb", intRewardProb);
+    mainRewardMS% := GetIntRegistryValue%(key$, "mainRewardMS", mainRewardMS%);
+    mainRewardProb := GetFloatRegistryValue(key$, "mainRewardProb", mainRewardProb);
+    stationary% := GetIntRegistryValue%(key$, "stationary", stationary%);  
+    
+end;
+
+proc SaveMultiSacScriptParameters()
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\MultiSac";
+    
+    SetIntRegistryValue(key$, "nTrials", nTrials%);
+    SetIntRegistryValue(key$, "g1tunInd", g1tunInd%);
+    SetIntRegistryValue(key$, "g2tunInd", g2tunInd%);
+    SetIntRegistryValue(key$, "grating1Persist", grating1Persist%);
+    SetIntRegistryValue(key$, "grating2Wait", grating2Wait%);
+    SetIntRegistryValue(key$, "minSaccades", minSaccades%);
+    SetIntRegistryValue(key$, "varSaccades", varSaccades%);
+    SetIntRegistryValue(key$, "AlwaysLooking", AlwaysLooking%);
+    SetFloatRegistryValue(key$, "fixAcqTime", fixAcqTime);
+    SetFloatRegistryValue(key$, "fixHoldTime", fixHoldTime);
+    SetFloatRegistryValue(key$, "intGratingHoldTime", intGratingHoldTime);
+    SetFloatRegistryValue(key$, "finalGratingHoldTime", finalGratingHoldTime);
+    SetFloatRegistryValue(key$, "fixAcqTimeout", fixAcqTimeout);
+    SetFloatRegistryValue(key$, "ITI", ITI);
+    SetFloatRegistryValue(key$, "mainRewardDelay", mainRewardDelay);
+    SetIntRegistryValue(key$, "intRewardMS", intRewardMS%);
+    SetFloatRegistryValue(key$, "intRewardProb", intRewardProb);
+    SetIntRegistryValue(key$, "mainRewardMS", mainRewardMS%);
+    SetFloatRegistryValue(key$, "mainRewardProb", mainRewardProb);
+    SetIntRegistryValue(key$, "stationary", stationary%); 
+    
+end;
+
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func IdleProcessing%()
+	var iStatus% := 1;	
+    var r%;
+    var j%;
+    
+    'Get current time
+    tNow := View(DataWindow%).MaxTime();
+    
+    xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+    yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+    
+    'Don't update display every time....
+    if tNow-tLastFixPtDisplayUpdate > .005 then
+        View(XYWindow%).XYAddData(1,xEye,yEye);
+        tLastFixPtDisplayUpdate := tNow;
+    endif
+    
+    
+    docase 
+    case iState% = stateVSGWait% then 
+        'Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
+        'Once VSG is ready, we start
+        if stateBegin% = 1 then
+            LogStatus("VSGWait", "Begin waiting for Ready Pulse from VSG at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
+        
+        if pulseFound% = 1 then
+            LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
+            Yield(1.0);
+            tLastTrigger := tFall;
+            ChangeStateTo(stateStartTrial%, tFall);
+            
+            if RecordEyeTrackerOutputFile% = 1 then
+                'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+            endif;
+            
+        else
+            if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
+                LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
+                tLastTrigger := tFall;
+            endif;
+        endif;
+        
+        
+    case iState% = stateStartTrial% then
+        'Request fixation
+        if stateBegin% = 1 then
+            LogStatus("StartTrial", "Requested fixation from VSG at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        'Calculate number of total gratings to be presented on this trial
+        r% := rand(varSaccades%+1,0);  'get random integer between 0-varSaccades%
+        nGratingsThisTrial% := minSaccades% + r%;  'minimum saccades plus random number of variable saccades
+        
+        'Draw the fixation window (even though it's not technically up yet)
+        DrawFix(1);
+        
+        'Request fixation
+        SafeSampleKey("F");
+        
+        'Set current grating to 0 for fixation point - note that "0" is not great here because LookingMultiSac expects -1, so we have to fix that
+        currentGrating% := 0;
+        
+        'Sampletext the start of the trial
+        SampleText("Trial " + str$(currTrial%),tNow);
+        
+        ChangeStateTo(stateWaitForFixptOn%, tNow);
+        
+        
+    case iState% = stateWaitForFixptOn% then
+        'Wait for VSG to indicate fixpt up
+        if stateBegin% = 1 then
+            LogStatus("WaitForFixptOn", "Begin waiting for Fixpt Pulse from VSG at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        if View(DataWindow%).FindRisingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 0 then
+            'Stimulus is up
+            LogStatus("WaitForFixptOn", "Fixpt up at " + str$(tTrigger));
+            tLastTrigger := tTrigger;         
+            
+            'Put timing marker in both eyetracker file, smr file
+            if RecordEyeTrackerOutputFile% = 1 then
+                docase
+                case HBCycle% = 1 then
+                    SafeSampleKey("1");
+                case HBCycle% = 2 then
+                    SafeSampleKey("2");
+                case HBCycle% = 3 then
+                    SafeSampleKey("3");
+                case HBCycle% = 4 then
+                    SafeSampleKey("4");
+                case HBCycle% = 5 then
+                    SafeSampleKey("5");
+                case HBCycle% = 6 then
+                    SafeSampleKey("6");
+                case HBCycle% = 7 then
+                    SafeSampleKey("7");
+                endcase
+                HBCycle% += 1;  'increment HBCycle%
+                if HBCycle% = 8 then  'and cycle when necessary
+                    HBCycle% := 1;
+                endif
+                'yield(0.01);   'May not be necessary in this code
+            endif;
+            
+            ChangeStateTo(stateWaitAcquireFixation%, tTrigger);
+            
+        endif
+        
+   
+        
+    case iState% = stateWaitAcquireFixation% then
+        'Wait for animal to acquire fixation
+        if stateBegin% = 1 then
+            LogStatus("WaitAcquireFixation", "Begin waiting for animal to acquire fixation at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        isLooking% := LookingMultiSac%(xEye,yEye,-1,viewedGrating%);  'Check looking - here could technically be done in CASE statement but should try to be consistent with design
+        docase   
+        case isLooking% = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously; filling viewedGrating% but we don't care
+            LogStatus("WaitAcquireFixation", "Fixation point acquired at " + str$(tNow));
+            changeStateTo(stateHoldFixation%,tNow);
+            SampleText("Acquired Fixation",tNow);  'Don't know if we want this, but just in case          
+        case tNow - tStateStart > fixAcqTime then
+            LogStatus("WaitAcquireFixation", "Acquisition window timed out at " + str$(tNow));
+            'request fixation down
+            SafeSampleKey("X");
+            DrawFix(0);	  'Remove fixation from spike2 monitor
+            trialSuccess% := 0;  'indicate to go to acquisition TO
+            ChangeStateTo(stateWaitForBlank%,tNow);
+        endcase
+        
+        
+    case iState% = stateHoldFixation% then
+        'Require animal to hold fixation through hold time
+        if stateBegin% = 1 then
+            LogStatus("HoldFixation", "Begin requiring animal to hold fixation at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        isLooking% := LookingMultiSac%(xEye,yEye,-1,viewedGrating%);  'Check looking, again viewedGrating% doen't matter here
+        docase
+        case isLooking% = 0 then  'if fixation is broken
+            SampleText("Fixation Broken During Hold",tNow);
+            SafeSampleKey("X");
+            DrawFix(0);	  'Remove fixation from spike2 monitor
+            trialSuccess% := 0;  'indicate to go to acquisition TO
+            ChangeStateTo(stateWaitForBlank%, tNow);
+        case tNow - tStateStart > fixHoldTime then
+            LogStatus("HoldFixation", "Fixation held at " + str$(tNow));
+            SampleText("Fixation Held",tNow);  'Don't know if we want this, but just in case             
+            ChangeStateTo(stateRequestGrating%, tNow);
+        endcase        
+        
+        
+    case iState% = stateRequestGrating% then
+        'Request (next) grating up - only for gratings NOT requested in the middle of a saccade
+        if stateBegin% = 1 then
+            LogStatus("RequestGrating", "Requesting grating (not during saccade) at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        if currentGrating% = 0 then
+            currentLooking% := -1;  'currently we should be looking at the fixation point
+        else
+            currentLooking% := currentGrating%;  'otherwise we should be looking at the current grating
+        endif;
+        
+        'Enforce fixation once before requesting grating
+        isLooking% := LookingMultiSac%(xEye,yEye,currentLooking%,viewedGrating%);
+        if isLooking% = 0 then  'if fixation is broken
+            SampleText("Fixation Broken Before Grating Request",tNow);
+            SafeSampleKey("X");
+            DrawFix(0);	  'Remove fixation location from spike2 monitor
+            for j% := 1 to currentGrating% do
+                DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor
+            next;
+            trialSuccess% := 0;  'indicate to go to acquisition TO
+            ChangeStateTo(stateWaitForBlank%, tNow);
+        else 'Request grating
+            'We have to know which grating it is going to be!
+            SafeSampleKey(currentGratingLetter$[currentGrating%]);  'Current grating is not yet incremented so we can use it as an index
+            ChangeStateTo(stateWaitForStimTrigger%, tNow);
+        endif
+        
+        
+    case iState% = stateWaitForStimTrigger% then
+        ' Wait for VSG to confirm grating up, animal is fixating either fixpt or grating 
+        if stateBegin% = 1 then
+            LogStatus("WaitForStimTrigger", "Begin waiting for grating " + str$(currentGrating%+1) + " pulse from VSG at " + str$(tNow));  'Current grating is not yet incremented so we have to add 1
+            stateBegin% := 0;
+        endif
+        
+        isLooking% := LookingMultiSac%(xEye,yEye,currentLooking%,viewedGrating%);
+        docase
+        case isLooking% = 0 then  'if fixation is broken
+            SampleText("Fixation Broken Waiting For Grating Up",tNow);
+            SafeSampleKey("X");
+            DrawFix(0);	  'Remove fixation from spike2 monitor
+            for j% := 1 to currentGrating% do
+                DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor
+            next;
+            trialSuccess% := 0;  'indicate to go to acquisition TO
+            ChangeStateTo(stateWaitForBlank%, tNow);
+        case View(DataWindow%).FindRisingEdge%(currentFrameChannel%[currentGrating%], tStateStart, tTrigger) = 1 then  'Current grating is not yet incremented so we can use it as an index
+            ' Grating is up
+            LogStatus("WaitForStimTrigger", "Grating " + str$(currentGrating%+1) + " up at " + str$(tTrigger));  'Current grating is not yet incremented so we have to add 1
+            tLastTrigger := tTrigger;
+            SampleText("Grating " + str$(currentGrating%+1) + " up during fixation, X=" + str$(stimXLoc[currentGrating%]) + "Y=" + str$(stimYLoc[currentGrating%]),tTrigger);  'Current grating not yet incremented
+            DrawGrating(1,currentGrating%+1);  'Current grating not yet incremented
+            
+            currentGrating% += 1;  'Increment current grating, it is now time to acquire a new location
+            
+            'Is a subsequent grating supposed to be coming up during the saccade to the current grating?
+            if currentGrating% < nGratingsThisTrial% and grating2Wait% = 0 then
+                'A subsequent grating should be put up during the saccade
+                ChangeStateTo(stateWaitForSaccade%,tTrigger);
+            else
+                'We should wait for acquisition of the current grating before putting up the subsequent grating, or we are saccading to the final grating
+                ChangeStateTo(stateWaitAcquireGrating%,tTrigger);
+            endif;    
+        endcase;
+        
+        
+        
+    case iState% = stateWaitForSaccade% then
+        ' Wait for animal's eye position to exit the current window, assume this is a saccade
+        if stateBegin% = 1 then
+            LogStatus("WaitForSaccade", "Begin waiting for saccade at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        'Wait aggressively in local WHILE for the saccade to happen
+        saccadeBegun% := 0;
+        while tNow <= (tStateStart + fixAcqTime) and saccadeBegun% = 0 do  'note that we are using only one fixAcqTime for any type of acquisition, change if we need different times for fixpt/grating acquisition
+            'Check for saccade
+            isLooking% := LookingMultiSac%(xEye,yEye,currentLooking%,viewedGrating%);
+            if isLooking% = 0 then  'if we are no longer looking at the most recent grating/fixpt
+                SafeSampleKey(currentGratingLetter$[currentGrating%]);  'Request the NEXT grating during the saccade, currentGrating% has been incremented
+                    'Note that we do not have to take down the grating being saccaded to (if requested) because we are swapping the entire PAGE, and the page was defined during Start%() with/without as appropriate
+                saccadeBegun% := 1;
+                currentLooking% := currentGrating%;  'update currentLooking%
+                ChangeStateTo(stateWaitSaccadeStimTrigger%,tLastTrigger);
+            endif;
+            'Update tNow
+            tNow := View(DataWindow%).MaxTime();
+        wend
+        'If we timed out before saccading, abort
+        if saccadeBegun% = 0 then
+            SampleText("No saccade begun before acquisition TO",tNow);
+            SafeSampleKey("X");
+            if currentGrating% = 1 then
+                DrawFix(0);	  'Remove fixation from spike2 monitor, if fixation is currently up
+            endif;
+            for j% := 1 to currentGrating% do
+                DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor
+            next;
+            trialSuccess% := 0;  'indicate to go to acquisition TO
+            ChangeStateTo(stateWaitForBlank%, tNow);
+        endif;
+        
+        
+        
+    case iState% = stateWaitSaccadeStimTrigger% then
+        ' Wait for VSG to confirm grating (technically next page) up, animal is saccading 
+        if stateBegin% = 1 then
+            LogStatus("WaitSaccadeStimTrigger", "Begin waiting for during-saccade grating " + str$(currentGrating%+1) + " pulse from VSG at " + str$(tNow));  'Current grating is the grating being saccaded to so we have to add 1 for the next grating
+            stateBegin% := 0;  
+        endif;
+        
+        'We will confirm the presence of the subsequent grating before concerning ourselves with the result of the saccade
+        if View(DataWindow%).FindRisingEdge%(currentFrameChannel%[currentGrating%], tStateStart, tTrigger) = 1 then  'Current grating is the grating being saccaded to so we can use it as an index
+            'Grating (technically next page) is up
+            LogStatus("WaitSaccadeStimTrigger", "Grating " + str$(currentGrating%+1) + " up at " + str$(tTrigger));  'Current grating is the grating being saccaded to so we have to add 1
+            tLastTrigger := tTrigger;
+            SampleText("Grating " + str$(currentGrating%+1) + " up during saccade, X=" + str$(stimXLoc[currentGrating%]) + "Y=" + str$(stimYLoc[currentGrating%]),tTrigger);  'Current grating is the grating being saccaded to
+            ChangeStateTo(stateWaitAcquireGrating%,tTrigger);
+        endif;
+        
+        
+        
+    case iState% = stateWaitAcquireGrating% then
+        'Wait for animal to acquire grating, any grating
+        if stateBegin% = 1 then
+            LogStatus("WaitAcquireGrating", "Begin waiting for animal to acquire grating " + str$(currentGrating%) + " at " + str$(tNow));  'Current grating is correct
+            stateBegin% := 0;
+        endif
+        
+        isLooking% := LookingMultiSac%(xEye,yEye,currentGrating%,viewedGrating%);
+        docase   
+        case isLooking% = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
+            LogStatus("WaitAcquireGrating", "Grating " + str$(currentGrating%) + " acquired at " + str$(tNow));
+            'If fixation is up, request fixation down
+            if currentGrating% = 1 then
+                safeSampleKey("f");
+                DrawFix(0);	'Remove fixation from spike2 monitor
+            endif;
+            changeStateTo(stateHoldGrating%,tNow);
+            SampleText("Acquired Grating " + str$(currentGrating%),tNow);  'Don't know if we want this, but just in case         
+        case isLooking% = 0 and viewedGrating% = currentGrating%+1 then  'if the animal has skipped acquiring the current grating and went to the next one, immediate penalty
+            LogStatus("WaitAcquireGrating", "Animal skipped to grating " + str$(currentGrating%+1) + " at " + str$(tNow));
+            'request all down
+            SafeSampleKey("X");
+            for j% := 1 to currentGrating% do
+                DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor, fixation has already been undrawn
+            next;
+            trialSuccess% := 0;  'indicate to go to acquisition TO
+            ChangeStateTo(stateWaitForBlank%,tNow);
+            SampleText("Skipped to Grating " + str$(currentGrating%+1),tNow);
+        case tNow - tStateStart > fixAcqTime then
+            LogStatus("WaitAcquireGrating", "Acquisition window timed out at " + str$(tNow));
+            'request all down
+            SafeSampleKey("X");
+            for j% := 1 to currentGrating% do
+                DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor, fixation has already been undrawn
+            next;
+            trialSuccess% := 0;  'indicate to go to acquisition TO
+            ChangeStateTo(stateWaitForBlank%,tNow);
+            SampleText("Acquisition Window Timed Out",tNow);
+        endcase
+        'Please note that it is theoretically possible to institute a penalty for the animal acquiring the "wrong" grating at this point, but may be unnecessary
+        
+        
+    case iState% = stateHoldGrating% then
+        ' Require animal to hold grating through hold time
+        if stateBegin% = 1 then
+            LogStatus("HoldGrating", "Begin requiring animal to hold grating " + str$(currentGrating%) + " at " + str$(tNow));
+            stateBegin% := 0;
+            'Set the hold time for the current grating, only do this once
+            if currentGrating% < nGratingsThisTrial% then
+                currGratingHoldTime := intGratingHoldTime;
+            else
+                currGratingHoldTime := finalGratingHoldTime;
+            endif;
+        endif
+        
+        isLooking% := LookingMultiSac%(xEye,yEye,currentGrating%,viewedGrating%);
+        docase 
+        case tNow >= tStateStart + currGratingHoldTime then  'if success in holding grating, give reward immediately and don't wait for it to be delivered
+            'Set the reward time and reward probability for the current grating
+            if currentGrating% < nGratingsThisTrial% then
+                JuiceRewardMS% := intRewardMS%;
+                pReward := intRewardProb;
+            else
+                JuiceRewardMS% := mainRewardMS%;
+                pReward := mainRewardProb;
+            endif;
+            'Give reward, if applicable, take note of whether it was actually delivered, Sampletext the result
+            rewardGiven := DefaultReward(); 
+            if rewardGiven = 0 then
+                SampleText("Hold successful, no reward given");  'don't use tNow, so it is at "time of request" as near as possible
+            else
+                SampleText("Hold successful, reward given, " + str$(rewardGiven) + " seconds");  'don't use tNow, so it is at "time of request" as near as possible
+            endif;
+            'Determine what to do next
+            docase
+            case currentGrating% >= nGratingsThisTrial% then  'Final grating; currentGrating% should never be > nGratings... if I don't screw things up, but just in case...
+                ChangeStateTo(stateTrialSuccess%,tNow);
+            case grating2Wait% = 0 then 'Next grating is already up, grating at current location is already down if it's supposed to be, wait for next acquisition
+                currentGrating% += 1;  'need to increment here
+                ChangeStateTo(stateWaitAcquireGrating%,tNow);
+            else  'Next grating is not already up, need to request it
+                changeStateTo(stateRequestGrating%,tNow);
+            endcase 
+        case isLooking% = 0 then
+            SampleText("Failure to hold grating " + str$(currentGrating%),tNow);
+            SafeSampleKey("X");
+            for j% := 1 to currentGrating% do
+                DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor
+            next;
+            trialSuccess% := 0;  'indicate to go to acquisition TO
+            ChangeStateTo(stateWaitForBlank%, tNow);
+        endcase
+        
+        
+    case iState% = stateTrialSuccess% then
+        ' Do trial success bookkeeping and advance
+        if stateBegin% = 1 then
+            LogStatus("TrialSuccess", "Doing trial success bookkeeping and advancing at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        'Remove all stimuli
+        SafeSampleKey("X");
+        for j% := 1 to nGratingsThisTrial% do
+            DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor
+        next;
+        
+        'Advance Stimulus
+        SafeSampleKey("a");
+        
+        'Increment trial counter
+        currTrial% += 1;
+        
+        if currTrial% > nTrials% then
+            SampleText("All Trials Complete!");
+            Stop%();
+            iStatus% := 0;
+        else
+            ChangeStateTo(stateInterTrialInterval%,tStateStart);  
+        endif
+
+        
+    case iState% = stateWaitForBlank% then
+        ' Wait for VSG to indicate blank screen
+        if stateBegin% = 1 then
+            LogStatus("WaitForBlank", "Begin waiting for VSG to send blank screen pulse at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        if View(DataWindow%).FindFallingEdge%(StimChannel%, tStateStart, tTrigger) = 1 or View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 1 then
+            'Possibly FRAME or FRAME2 channel??
+            'Stimulus is off
+            tLastTrigger := tTrigger;
+            tBlank := tTrigger;
+            if trialSuccess% = 0 then
+                ChangeStateTo(stateAcquisitionTO%, tBlank);
+                'Sampletext the end of the trial
+                SampleText("Trial " + str$(currTrial%) + " failure",tNow)
+            else
+                ChangeStateTo(stateInterTrialInterval%, tBlank);
+                'Sampletext the end of the trial
+                SampleText("Trial " + str$(currTrial%) + " success",tNow)
+            endif
+        endif 
+        
+        
+        
+    case iState% = stateAcquisitionTO% then
+        ' Wait through time out period
+        if stateBegin% = 1 then
+            LogStatus("AcquisitionTO", "Begin waiting through timeout period at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        if tNow - tStateStart > fixAcqTimeout then
+            ChangeStateTo(stateInterTrialInterval%,tNow);
+        endif;
+             
+        
+    case iState% = stateInterTrialInterval% then
+        ' Wait through intertrial interval
+        if stateBegin% = 1 then
+            LogStatus("InterTrialInterval", "Begin waiting through intertrial interval at " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
+        if tNow - tStateStart > ITI then
+            ChangeStateTo(stateStartTrial%,tNow);
+        endif;
+       
+    else
+        
+        ' Unknown state!
+        Message("Unknown state=" + str$(iState%));
+        
+        'If the eyetracker is recording an output file, stop recording and close the file
+        if RecordEyeTrackerOutputFile% = 1 then
+            SafeSampleKey("w");  'Stop recording
+            yield(0.1);
+            SafeSampleKey("i");  'Close the file
+            SafeSampleKey("Z");  'zero the DIGLOWs
+        endif
+        
+        halt;
+        
+    endcase
+    
+    
+    
+    
+    return iStatus%;
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+    stateBegin% := 1;  'Reset for next state - this line is unique (so far) to FreeViewer.s2s and is intended to allow us to do a bit more specific logging
+	if tStart > 0 then 
+        tStateStart := tStart; 
+    endif;
+end;
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc CreateSampleConfiguration()
+    var key$;
+    var primaryTxt$;
+    var secondaryTxt$;
+    
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
+    
+	SampleClear(); 'Set standard sampling state
+    SampleChannels(64);  '32 does not work, we need more!
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    
+    ' Set path for new data files, and for those saved automatically
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    
+    
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    
+    DoSampleAutoName(key$,"ms","ms",primaryTxt$,secondaryTxt$);
+       
+    SampleAutoFile(1);  'Enable automatic file naming
+    
+    ' Text marks make extraction easier
+    SampleTextMark(200);  'Channel 30 is textmark channel
+    
+
+	'----Event Channel recording definitions----
+    
+   	SampleEvent(FrameChannel%, 0, 2, 3600);
+	SampleComment$(FrameChannel%,"Frame");
+	SampleTitle$(FrameChannel%,"Frame");
+    
+    'Channel for frame2 is using port 7 for now, this will compromise UseTwo1401s...
+    'In the future we may fix this in one way or another, for now we will disable
+    'UseTwo1401s for MultiSac.
+    SampleEvent(Frame2Channel%, 7, 2, 3600);
+	SampleComment$(Frame2Channel%,"Frame2");
+	SampleTitle$(Frame2Channel%,"Frame2");
+    
+	SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+	SampleComment$(ReadyChannel%,"Ready");
+	SampleTitle$(ReadyChannel%,"Ready");
+    
+    SampleEvent(FixationPointChannel%, 2, 2, 3600); 'Trigger channel, level
+	SampleComment$(FixationPointChannel%,"Fixpt");
+	SampleTitle$(FixationPointChannel%,"Fixpt");
+	
+	SampleEvent(StimChannel%, 3, 2, 3600); 'Trigger channel, level
+	SampleComment$(StimChannel%,"Stim");
+	SampleTitle$(StimChannel%,"Stim");
+    
+    if UseTwo1401s% = 1 then  'currently disabled above, can't get there so just leaving the code intact
+    
+        SampleEvent(FrameSlaveChannel%, 4, 2, 3600);
+        SampleComment$(FrameSlaveChannel%,"Frame-Slave");
+        SampleTitle$(FrameSlaveChannel%,"Frame-Slave");
+    
+        SampleEvent(ReadySlaveChannel%, 5, 2, 3600); 'Trigger channel, level
+        SampleComment$(ReadySlaveChannel%,"Ready-Slave");
+        SampleTitle$(ReadySlaveChannel%,"Ready-Slave");
+	
+        SampleEvent(StimSlaveChannel%, 7, 2,3600); 'Trigger channel, level
+        SampleComment$(StimSlaveChannel%,"Stim-Slave");
+        SampleTitle$(StimSlaveChannel%,"Stim-Slave");
+        
+    endif
+    
+
+    
+    'Possible digital marker channels.  Opto/INTAN have been removed as they seem super unlikely here, can be added back in from Freeviewer, etc.
+    docase
+    case UseTwo1401s% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32
+    case RecordEyeTrackerOutputFile% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
+    endcase
+       
+    
+    SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+	SampleTitle$(XChannel%,EyeXPortLabel$);
+	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+	SampleTitle$(YChannel%,EyeYPortLabel$);
+    
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);       
+        SampleTitle$(UtilityChannel%,UtilityPortLabel$);
+    endif;
+
+    
+    if UseTwo1401s% = 1 then
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+    endif;
+
+    
+    '----Set up "spiking" Electrode Channels----
+    SetUpElectrodeConfiguration(msNWavemarks%,ExcludedChans%[]);
+    
+    
+	if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+
+	DoSampleOptimise();
+	SampleMode(1); 'Continuous sampling
+    
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc InitializeWindows()
+    var i%;
+
+    
+    ' Make spike2 use all of monitor 1 - I hate this...but...so can we just not?
+    'View(App()).Window(0, 0, 100, 100, 1);
+    
+	'Open the data sampling window
+    DataWindow% := FileNew(0,4);
+    if DataWindow% < 0 then
+        PrintLog("FileNew Error: %s\n", Error$(DataWindow%));
+    endif
+
+	Window(0,48,50,95);
+    XRange(0, 30);
+	View(DataWindow%).WindowVisible(1);
+            
+
+	'Open an XY view to display eye position
+	XYWindow% := FileNew(12);
+	XRange(-30,30);
+	YRange(-2,-30,30);
+	XYDrawMode(0,5,0);
+	WindowVisible(1);
+	Window(0, 0, 50, 47);
+	XYColour(1,16);  'Red for fixation point - note that XYColour is deprecated, but works fine so we're sticking with it
+	XYSize(1,-1);
+    
+    
+    'Calcuate the fixation window
+	var index%;
+	var twopi;
+	twopi := 2.0*4.0*ATan(1.0);
+	
+	for index% := 0 to 35 do
+		FixWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
+		FixWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
+	next;
+    
+    'Create a new channel in the XY view to display the fixation window
+	iFixptWindowChannel% := XYSetChan(0);
+	XYColour(iFixptWindowChannel%,13);  'was "2" instead of iFixptWindowChannel%, etc.
+	XYDrawMode(iFixptWindowChannel%,2,1);
+	XYJoin(iFixptWindowChannel%,1);
+	'Fixation window will be drawn when fixation point is on screen (due to moving fixpt)
+
+	'Create a new channel in the XY view to display the fixation point
+	iFixptChannel% := XYSetChan(0);
+        
+    
+	'Stimulus windows are calculated in the dialog box
+	'Create a new channel in the XY view to display the stimulus windows
+    'We actually have to create a NEW channel for each stimulus
+    for i% := 0 to nGratings%-1 do
+        iStimChannel%[i%] := XYSetChan(0);
+        XYColour(iStimChannel%[i%],13);  'Blue for stimuli
+        XYDrawMode(iStimChannel%[i%],2,1);  'Set line size to 1 point
+        XYJoin(iStimChannel%[i%],2);  'form closed loop
+        'Stimulus window will be drawn at an appropriate moment
+        'Draw the stimulus window
+        'XYAddData(iStimChannel%[i%], StimWindowX[i%][], StimWindowY[i%][]);  'these stim locations need to be built - on each trial if XY position is moving
+    next
+    
+
+	'Create a new channel in the XY view to show the monitor's location
+	iMonitorChannel% := XYSetChan(0);
+	XYColour(iMonitorChannel%,13);  'Blue for monitor location
+	XYDrawMode(iMonitorChannel%,3,1);  'set line style to dotted (really?  I missed this)
+	XYJoin(iMonitorChannel%,2);  'form closed loop (rectangle here)
+    XYAddData(iMonitorChannel%,-screenXDeg,-screenYDeg);  'for now this is manually set above, could calculate
+	XYAddData(iMonitorChannel%,screenXDeg,-screenYDeg);
+	XYAddData(iMonitorChannel%,screenXDeg,screenYDeg);
+	XYAddData(iMonitorChannel%,-screenXDeg,screenYDeg);
+
+end;
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitializeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+    if UseTwo1401s% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
+        ToolbarSet(1,"Sample start",Start%);
+    endif;
+	ToolbarSet(2,"Sample stop", Stop%);
+	ToolbarSet(3,"Juice", Juice%);
+	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
+	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
+    ToolbarSet(6,"Select Wavemarks",SelectWavemarkDialog%);
+	ToolbarSet(7,"Quit",Quit%);
+	ToolbarEnable(2,0);
+	ToolbarEnable(4,0);
+	ToolbarEnable(5,0);
+	Toolbar("Go",0x3ff);
+
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func StartPlexon%()
+    
+    
+    'Start the Power1401!  This is a bit cumbersome, and I'm not sure it's transferable, but it's a start, perhaps.
+    var fp$;  'to hold current file path
+    fp$ := SetPathToScriptDirectory$();
+    
+    'Must run this BEFORE the PROGRUN command, because both this sequence AND SetPlexon...
+    'access the same directory, and this was causing conflicts because they were running
+    'simultaneously.  Here, CreateSampleConfiguration is done accessing the directory before
+    'SetPlexon... is started, and everything is kosher.
+    CreateSampleConfiguration();    
+    
+    StartSecondInstanceOfSpike2();
+    
+    FilePathSet(fp$);  'change the file path back to what it was
+    fp$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp$); 'and tell the world to verify
+    
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+
+    ' Get display windows ready
+    InitializeWindows();    
+    
+    return 1; 'stay in toolbar
+    
+end
+
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+    var Opener$;
+    var ProgName$;
+    var RemoteArg$ := "";     'Extra arg needed if vsg is not on local machine...
+    var BGColor$;
+    var Dist2Screen$;
+    var TriggerPort$;
+    var ImageArg$;
+    var Verbose$ := " -v ";  'For now, verbose is always on 
+    var i%;
+    var j%;
+    var startSecs := 5;
+    var cmdLine$;
+    var specFileName$;
+    var specHandle%;
+    var count%;
+    var tunG1Arg$ := "";
+    var tunG2Arg$ := "";
+    var tunG1Val$ := "";
+    var tunG2Val$ := "";
+    var G1Persist$;
+    
+    specFileName$ := GetScriptDir$(0)+"..\\..\\MSSpecFile.txt";
+    
+    'No longer getting reward values from the DAQ dialog
+    'JuiceRewardMSorig% := JuiceRewardMS%;  'we are going to use smaller intermediate rewards, so hold the original
+    'pRewardOrig := pReward;                'Also probability (these values both come from the DAQ dialog)
+
+    ' Open serial port for VSG comms re: stimulus jump-advance
+    OpenSerialPortToVSG();
+    
+	'start sampling
+    if UseTwo1401s% = 1 then
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        'Send timing pulse
+        SampleSeqVar(11,20);  'set for 20 ms pulse (Was not specified!  Two 1401s has been inactive for years and "T" may have been accidentally co-opted?)
+        SafeSampleKey("T");
+    else
+    	SampleStart(0); 'Start sampling now
+    endif;
+    
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
+    
+    
+    'Set sequencer variable 5, this value is appropriate for no rivalry
+    SampleSeqVar(5, 0);
+    
+    
+	' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");
+    
+    'Get the clock period of the sequencer, in MS, must do this after starting sampling
+    SequencerPeriodMS := SampleSeqClock(1);  
+    
+    
+    'Begin building the command line argument
+    Opener$ := "cmd /k " + bin$;
+    
+    ' Get remote args if needed
+    if GetUseRemoteStimulus%() = 1 then
+        RemoteArg$  := " " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
+    endif;
+    
+    if GetUseRemoteStimulus%() = 1 then
+        ProgName$ := "\\remote.exe "; 'set program name for one VSG
+    else
+        ProgName$ := "\\fixstim.exe "; 'set program name for one VSG
+    endif;
+    
+    
+    'Set background color
+    BGColor$ := " -b " + BackgroundColor$;
+    
+    'Set distance to screen
+    Dist2Screen$ := " -d " + GetDistanceToScreenMM$();
+    
+    'Set trigger port
+    TriggerPort$ := " -p 2 ";  'This one's hard-coded for now
+    
+    'Turn on verbose
+    Verbose$ := " -v ";
+    
+    'Determine value of G1Persist$
+    if grating1Persist% = 0 then
+        G1Persist$ := "--draw-group 1";  'Make grating 1 a member of drawgroup 1, will not persist
+    else
+        G1Persist$ := "";  'Do not make grating 1 a member of drawgroup 1, but of the persistent draw
+    endif
+    
+    
+    'Build simple command line, point to spec file
+    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + " -F " + specFileName$;
+    
+    
+    
+    'Build the spec file, and write the trial-by-trial specs for the VSG
+    specHandle% := FileOpen(specFileName$, 8, 1);  'open spec file
+    'print more standard arguments to spec file
+    Print("%s",FixationArg$ + BGColor$ + Dist2Screen$ + TriggerPort$ + Verbose$ + SerialArg$);  
+    'print "stimulus" parameters
+    if stationary% = 0 then
+        Print("%s",G1Persist$ + " -s " + GetGratingParameters$("Stimulus")); 
+    else
+        Print("%s",G1Persist$ + " -s " + GetGratingParameters$("StatStimulus")); 
+    endif
+    'Print grating 1 tuning parameters, if present
+    if g1tunInd% > 0 then  'if tunG1Ind% == 0 then do nothing, no tuning on this grating
+        'This will be completed later, when necessary, currently tuning is not requested
+        'tunG1Arg$ := "";  'fill with appropriate stuff
+        'tunG1Val$ := "";  'fill with appropriate stuff
+        'Print("%s",tunG1Arg$ + tunG1Val$);  'not really necessary to do unless there is tuning
+    endif;
+    
+    'If there is more than one grating, specify the second...and third?  If we go further, draw-group 3 etc. will need to be used
+    if nGratings% > 1 then
+        if stationary% = 0 then
+            Print("%s", "--draw-group 2 -s " + GetGratingParameters$("Distractor1"));
+        else
+            Print("%s", "--draw-group 2 -s " + GetGratingParameters$("StatDistractor1"));
+        endif
+        'Print grating 1 tuning parameters, if present
+        if g2tunInd% > 0 then  'if tunG2Ind% == 0 then do nothing, no tuning on this grating
+            'This will be completed later, when necessary, currently tuning is not requested
+            'tunG2Arg$ := "";  'fill with appropriate stuff
+            'tunG2Val$ := "";  'fill with appropriate stuff
+            'Print("%s",tunG2Arg$ + tunG2Val$);  'not really necessary to do unless there is tuning
+        endif;
+        
+        'Currently MORE than two gratings is not allowed, but if we get there, we can keep going...
+    endif
+    
+    FileClose(0);  'close spec file
+    
+    
+    ' Initial text marks
+    ' djs Always version 3. NO difference if maintainmode is used or not. 
+    SampleText("MultiSac,3," + str$(Len(cmdLine$)));
+    SampleText(msCVSID$);
+    for i% := 1 to Len(cmdLine$) step 100 do
+        SampleText(Mid$(cmdLine$, i%, 100));
+    next    
+    
+    
+	'Begin the stimulus program. It will take a few seconds for the VSG to initialize.
+	PrintLog(cmdLine$+"\n"); 
+    
+    StimHandle% := ProgRun(cmdLine$, 1);
+    if StimHandle% <0 then 
+        Message("Could not start stimulus."); 
+        halt; 
+    endif
+    
+    
+    'If we are asking the eyetracker to record an output file, open the file and start recording
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("I");  'Open the file (this is done by setting a DIGLOW bit), file name will be saved in a sampletext
+        yield(0.5);
+        SafeSampleKey("W");  'Begin recording the file
+        yield(0.5);
+    endif
+    
+	
+	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);
+	ToolbarEnable(1,0);
+	ToolbarEnable(6,0);
+	ToolbarEnable(7,0);
+	View(DataWindow%);
+	Yield(5);
+    return 1;
+    
+    
+    
+end
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+    
+	' Disable idle process func
+	ToolbarSet(0,"");
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
+    endif
+
+    
+    ' Tell stim app to shut down.
+	SafeSampleKey("Q");
+	SampleStop();
+    
+    
+    ProgKill(StimHandle%);
+    while ProgStatus(StimHandle%) > 0 do
+        Yield();
+    wend
+
+    
+    
+	' Write parameter file
+	WriteParameterFile();
+
+	' Increment daily totals and save then
+	TotalTrials% += nTrialsStarted%;
+	SaveDailyTotals();
+    
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func PauseStimuli%();
+Pause% :=1;
+ToolbarEnable(4,0);
+ToolbarEnable(5,1);
+return 1;
+end
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func ResumeStimuli%();
+Pause% :=0;
+ToolbarEnable(4,1);
+ToolbarEnable(5,0);
+return 1;
+end
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Juice%()  'note that this function is only used for Toolbar-based juice delivery
+    if JuicerType% = 1 then  'open-high juicer, dispense based on ms
+        DeliverReward();
+    else
+        if JuicerType% = 2 then  'open-low juicer, dispense based on number of hits
+            DeliverRewardNumber();
+        endif;
+    endif;
+    return 1;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func SelectWavemarkDialog%()
+	var iReturn%:=1;
+	var i%;
+    var whichWaveMark% := 1;
+	DlgCreate("Select Wavemark");
+	DlgInteger(1, "Input Wavemark to view, -1 for all", -1, 256);  'max is based on highest possible wavemark value
+    
+	i% := DlgShow(whichWaveMark%);
+
+	if i% = 1 then
+		PrintLog("SelectWavemarkDialog - user hit OK\n");
+        for i% := 0 to msNWavemarks%-1 do  'for each wavemark channel
+            View(DataWindow%).MarkMask(i%+1,0,0,-1);  'exclude all codes on layer 0
+            View(DataWindow%).MarkMask(i%+1,0,1,whichWaveMark%);  'then include requested code (or all, if -1) on layer 0
+        next;       
+	endif;
+	if i% = 0 then
+		PrintLog("SelectWavemarkDialog - user hit Cancel\n");
+	endif;
+    'PrintLog("Return value is %d\n", iReturn%);  'always return 1, so don't bother reporting this
+	return iReturn%;
+end;
+
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc WriteParameterFile()
+	var parFileName$;
+	var parFileBase$;
+	var parHandle%;
+    var i%, j%;
+
+
+	' get filename for parfile (data file + "par" extension) and open it
+	View(DataWindow%);
+	parFileBase$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
+	parFileName$ := parFileBase$ + ".par";
+	PrintLog("par filename is " + parFileName$ + "\n");
+	parHandle% := FileOpen(parFileName$, 8, 1);
+
+	' write general info - eye coil gains, dist to screen
+	Print("Parameters for %s\n\n", parFileBase$);
+
+	Print("General information\n");
+	Print("-------------------\n\n");
+	Print("Distance to screen (MM)    : %s\n", GetDistanceToScreenMM$());
+	Print("Eye coil software gain (X) : %f\n", DegreesPerVoltX);
+	Print("Eye coil software gain (Y) : %f\n", DegreesPerVoltY);
+    Print("Eye coil offset, V (X)     : %f\n", XVoltOffset);
+    Print("Eye coil offset, V (Y)     : %f\n", YVoltOffset);
+	Print("Eye coil sampling freq (Hz): %d\n", EyeCoilSamplingFrequency%);
+    Print("Wavemark ports             : %s\n", GetWavemarkPorts$());
+    Print("Continuous ports           : %s\n", GetContinuousPorts$());
+	Print("Reward size (ms)           : %d\n", GetJuiceRewardMS%());
+	Print("Background color           : %s\n", BackgroundColor$);
+    
+	Print("\nExperimental parameters\n");
+	Print("-------------------------\n\n");
+
+    Print("Always Looking?                          : %d\n", AlwaysLooking%);
+	Print("Number of trials                         : %d\n", nTrials%);
+    Print("Minimum saccades                         : %d\n", minSaccades%);
+    Print("Variable saccades                        : %d\n", varSaccades%);
+    Print("Reward Delay (s)                         : %f\n", mainRewardDelay);
+    Print("Main reward probability                  : %f\n", mainRewardProb);
+    Print("Main reward (ms)                         : %d\n", mainRewardMS%);
+    Print("Intermediate reward probability          : %f\n", intRewardProb);
+    Print("Intermediate reward (ms)                 : %d\n", intRewardMS%);
+	Print("Inter-trial interval                     : %f\n", ITI);
+    Print("Acquisition time (s)                     : %f\n", fixAcqTime);
+    Print("Fixation hold time (s)                   : %f\n", fixHoldTime);
+    Print("Intermediate grating hold time (s)       : %f\n", intGratingHoldTime);
+    Print("Final grating hold time (s)              : %f\n", finalGratingHoldTime);
+    Print("Acquisition time out (s)                 : %f\n", fixAcqTimeout);
+    Print("Grating Width/Height (deg)               : %f,%f\n",rfW,rfH);  'rfW and rfH correspond to the grating width/height from the config
+    Print("Grating 1 stays on?                      : %d\n", grating1Persist%);
+    Print("Grating 2 waits for grating 1 acq?       : %d\n", grating2Wait%);
+    Print("Stationary?                              : %d\n", stationary%);
+    
+  
+    
+    ' write first grating parameters
+	var stimstr$;
+	var stimx$, stimy$, stimw$, stimh$, stimiw$, stimih$, stimcontrast$, stimsf$, stimtf$, stimorientation$, stimphase$, stimcv$, stimp$, stimap$;
+	var stepsize;
+    var phase;
+    Print("\nFirst Grating\n");  'First grating
+	Print("-------------------\n\n");
+    if stationary% = 0 then
+        stimstr$ := GetGratingParameters$("Stimulus");
+    else
+        stimstr$ := GetGratingParameters$("StatStimulus");
+    endif
+	ReadSetup(",",",",",",",",",");
+	i% := ReadStr(stimstr$, stimx$, stimy$, stimw$, stimh$, stimiw$, stimih$, stimcontrast$, stimsf$, stimtf$, stimorientation$, stimphase$, stimcv$, stimp$, stimap$);
+	if stationary% = 1 then
+        stimtf$ := "0";
+    endif
+    Print("Position (x, degrees)           : %s\n", stimx$);
+	Print("Position (y, degrees)           : %s\n", stimy$);
+	Print("Width (degrees)                 : %s\n", stimw$);
+	Print("Height (degrees)                : %s\n", stimh$);
+    Print("Inner Width (degrees)           : %s\n", stimiw$);
+	Print("Inner Height (degrees)          : %s\n", stimih$);
+	Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", stimcv$);
+    Print("Temporal frequency              : %s\n", stimtf$);
+	Print("Spatial frequency               : %s\n", stimsf$);
+	Print("Orientation (degrees)           : %s\n", stimorientation$);
+    Print("Initial Phase (degrees)         : %s\n", stimphase$);
+	Print("Contrast (%%)                    : %s\n", stimcontrast$);
+	Print("Aperture: ellipse(e)/square(q)  : %s\n", stimap$);
+	Print("Type: sine (s)/square (q)       : %s\n", stimp$);
+    
+    
+    ' write subsequent grating parameters
+    if nGratings% > 1 then
+        'For now, just write the first distractor, will have to update if there are more than two saccades
+        Print("\nSecond Grating\n");  'Second grating
+        Print("-------------------\n\n");
+        if stationary% = 0 then
+            stimstr$ := GetGratingParameters$("Distractor1");
+        else
+            stimstr$ := GetGratingParameters$("StatDistractor1");
+        endif
+        ReadSetup(",",",",",",",",",");
+        i% := ReadStr(stimstr$, stimx$, stimy$, stimw$, stimh$, stimiw$, stimih$, stimcontrast$, stimsf$, stimtf$, stimorientation$, stimphase$, stimcv$, stimp$, stimap$);
+        if stationary% = 1 then
+            stimtf$ := "0";
+        endif
+        Print("Position (x, degrees)           : %s\n", stimx$);
+        Print("Position (y, degrees)           : %s\n", stimy$);
+        Print("Width (degrees)                 : %s\n", stimw$);
+        Print("Height (degrees)                : %s\n", stimh$);
+        Print("Inner Width (degrees)           : %s\n", stimiw$);
+        Print("Inner Height (degrees)          : %s\n", stimih$);
+        Print("Color: b/w(b),lms-cone(l,m,s)   : %s\n", stimcv$);
+        Print("Temporal frequency              : %s\n", stimtf$);
+        Print("Spatial frequency               : %s\n", stimsf$);
+        Print("Orientation (degrees)           : %s\n", stimorientation$);
+        Print("Initial Phase (degrees)         : %s\n", stimphase$);
+        Print("Contrast (%%)                    : %s\n", stimcontrast$);
+        Print("Aperture: ellipse(e)/square(q)  : %s\n", stimap$);
+        Print("Type: sine (s)/square (q)       : %s\n", stimp$);
+    endif
+
+    
+    
+	' close parfile
+	FileClose(0);
+
+end;
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func LookingMultiSac%(EyePosX,EyePosY,expectedGrating%,&whichGrating%)
+	'Here we need to know what the animal is looking at. There are several possibilities.
+    '1) Fixation point
+    '2) Grating location N (present)
+    '3) Grating location N (not yet on screen) - this is something to be careful about
+    '4) Grating location N (grating removed) - this may be desired if we remove a grating
+    '   during a saccade just to make sure the animal is not cheating
+    'This means we need to know the location of the fixation point, and of every possible 
+    'grating. I don't think we need to know here whether the grating is on the screen or not,
+    'as from the calling point in the idle function we should know which gratings are up.
+    '
+    'expectedGrating% is either 1-5 for the first-fifth grating, or 0 for the fixation point
+    '
+    'The function will return 1 if the animal is looking at the requested object location, or 0 if not
+    '
+    'whichGrating% will be filled with the number of the grating being looked at, if any,
+    'with the fixation point being -1.  If no grating position is being looked at, this will be 0.
+    'Thus:
+    'Case   Return    whichGrating    Interpretation
+    '  1      0           -1          Looking at fixation point, but is expected to be looking elsewhere
+    '  2      0            0          Not looking at any location
+    '  3      0            N          Looking at (location of) grating N, but is expected to be looking elsewhere
+    '  4      1           -1          Successful acquisition of fixation point
+    '  5      1            0          AlwaysLooking% is set to 1
+    '  6      1            N          Successful acquisition of grating N
+    
+    var i%;
+    var retValue% := 0;  'by default, not looking
+    whichGrating% := 0;  'by default, set whichGrating% to 0 before determining which grating is actually being viewed
+    
+    if expectedGrating% = 0 then  'This is not allowed!  Can't return 0 because we would just get stuck.  Have to quit.
+        printlog("LookingMultiSac was given an expected grating of 0, which is not allowed and would result in getting stuck!  Quitting!  Tell Jeff!\n");
+        Quit%();
+    endif;
+    
+    'Use this structure to deal with trial-by-trial moving fixpt (and grating?) in future implementation
+'    var localX, localY;
+'    if tbtFix% = 0 then  'Constant fixation point at the CONFIG defined location
+'        localX := FixationX;
+'        localY := FixationY;
+'    else 'Trial-by-trial changes in fixation point location
+'        localX := tbtFixX;
+'        localY := tbtFixY;
+'    endif
+    
+    
+    'First, determine which grating, if any, is being looked at
+    docase
+    case (Pow(EyePosX-FixationX,2) + Pow(EyePosY-FixationY,2)) <= Pow(WindowRadius,2) then 
+        'If looking at fixation point
+        whichGrating% := -1;
+    else    
+        for i% := 0 to nGratings%-1 do  
+            if (Pow(EyePosX-stimXLoc[i%],2) + Pow(EyePosY-stimYLoc[i%],2)) <= Pow(msWindowRadius[i%],2) then 
+                'if any present grating location is being looked at
+                whichGrating% := i%+1;  'indicate the grating number being viewed, i% is an index
+                break  'and quit checking
+            endif
+        next
+    endcase
+    
+    'Then, get return values correct and log them
+    docase
+    case AlwaysLooking% = 1 then 'Case 5, if AlwaysLooking% is on, ignore all else
+        retValue% := 1; 
+        whichGrating% := 0;  'We should not really look at this value, but this combo is unique
+        printlog("AlwaysLooking is on\n");
+    case whichGrating% = expectedGrating% then 'Case 4,6, if looking at correct item set returnValue% to 1
+        retValue% := 1;
+        if whichGrating% = -1 then
+            printlog("Looking at fixation point!\n");
+        else
+            printlog("Looking at grating %d!\n",whichGrating%);
+        endif
+    'Cases 1,2,3 are already correct, do not log as it could be very repetitive     
+    endcase;
+    
+    return retValue%;
+    
+end;
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawFix
+' 
+' Draws fixation point/window in xy window (iDraw%==1 or 2) or blanks it (0). 
+proc DrawFix(iDraw%)
+    'Updated to allow trial-by-trial fixation point location, put up and take down fixation window with fixation point
+    var localX, localY;
+    'Calcuate the fixation window
+	var index%;
+	var twopi;
+    var localFixWindowX[36],localFixWindowY[36];
+	twopi := 2.0*4.0*ATan(1.0);
+	
+    docase
+    case iDraw% = 2 then
+        ' erase the central dot and window from xy view
+        View(XYWindow%).XYDelete(iFixptChannel%);
+        View(XYWindow%).XYDelete(iFixptWindowChannel%);
+        
+        localX := tbtFixX;
+		localY := tbtFixY;
+        'Create fixation window
+        for index% := 0 to 35 do
+            localFixWindowX[index%] := localX + WindowRadius * Cos(index% * twopi/36.0);
+            localFixWindowY[index%] := localY + WindowRadius * Sin(index% * twopi/36.0);
+        next;
+		'Draw fixation point in xy window
+		View(XYWindow%).XYAddData(iFixptChannel%, localX, localY);
+        'Draw the fixation window
+        View(XYWindow%).XYAddData(iFixptWindowChannel%, localFixWindowX[], localFixWindowY[]);
+	case iDraw% = 1 then
+		localX := FixationX;
+		localY := FixationY;
+        'Create fixation window
+        for index% := 0 to 35 do
+            localFixWindowX[index%] := localX + WindowRadius * Cos(index% * twopi/36.0);
+            localFixWindowY[index%] := localY + WindowRadius * Sin(index% * twopi/36.0);
+        next;
+		'Draw fixation point in xy window
+		View(XYWindow%).XYAddData(iFixptChannel%, localX, localY);
+        'Draw the fixation window
+        View(XYWindow%).XYAddData(iFixptWindowChannel%, localFixWindowX[], localFixWindowY[]);
+	else 
+		'Erase the fixpt and the window from xy view
+		View(XYWindow%).XYDelete(iFixptChannel%);
+        View(XYWindow%).XYDelete(iFixptWindowChannel%);
+	endcase
+
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawGrating
+' 
+' Draws grating window in xy window (iDraw%==1 or 2) or blanks it (0). 
+' Must indicate which grating to draw (1-5)
+proc DrawGrating(iDraw%,whichGrating%)
+    'Updated to allow trial-by-trial fixation point location, put up and take down fixation window with fixation point
+    var localX, localY, localR;
+	var index%;
+	var twopi;
+    var localFixWindowX[36],localFixWindowY[36];
+	twopi := 2.0*4.0*ATan(1.0);
+	
+    docase
+    case iDraw% = 2 then  'not implemented for now; consider possiblity of drawing in different color to indicate not-yet-on or now-off screen
+'        ' erase the central dot and window from xy view
+'        View(XYWindow%).XYDelete(iStimChannel%[whichGrating%-1]);
+'        
+'        localX := tbtFixX;
+'		localY := tbtFixY;
+'        'Calcuate the grating window
+'        for index% := 0 to 35 do
+'            localFixWindowX[index%] := localX + WindowRadius * Cos(index% * twopi/36.0);
+'            localFixWindowY[index%] := localY + WindowRadius * Sin(index% * twopi/36.0);
+'        next;
+'        'Draw the grating window
+'        View(XYWindow%).XYAddData(iStimChannel%[whichGrating%-1], localFixWindowX[], localFixWindowY[]);
+	case iDraw% = 1 then
+		localX := stimXLoc[whichGrating%-1];
+		localY := stimYLoc[whichGrating%-1];
+        localR := msWindowRadius[whichGrating%-1];
+        'Calcuate the grating window
+        for index% := 0 to 35 do
+            localFixWindowX[index%] := localX + localR * Cos(index% * twopi/36.0);
+            localFixWindowY[index%] := localY + localR * Sin(index% * twopi/36.0);
+        next;
+        'Draw the grating window
+        View(XYWindow%).XYAddData(iStimChannel%[whichGrating%-1], localFixWindowX[], localFixWindowY[]);
+	else 
+		'Erase the grating window from xy view
+        View(XYWindow%).XYDelete(iStimChannel%[whichGrating%-1]);
+	endcase
+
+end;
+
+
+
+' Used to hard-quit from toolbar. This will close data files without saving!!! 
+' It is important that this function be disabled once sampling is started!!!
+
+func Quit%()
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
+    endif
+    
+	FileClose(-1,-1);
+	return 0;
+end;
