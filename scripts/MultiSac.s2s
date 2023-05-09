@@ -1237,8 +1237,25 @@ func Start%()
     var tunG1Val$ := "";
     var tunG2Val$ := "";
     var G1Persist$;
+    var tunCurve1Arg$;
+    var tunCurve2Arg$;
+    var tunCurve1Values$;
+    var tunCurve2Values$;
     
     specFileName$ := GetScriptDir$(0)+"..\\..\\MSSpecFile.txt";
+    
+    
+    'Create tuning values, if necessary
+    'When fully implemented, we will need to check to see if there is a tuning curve requested on either (any) of the
+    'gratings.  For now the current necessity is to make a "fake" tuning curve for the first stimulus.  We will use
+    'phase tuning (-P) for this, because ain't nobody care about the phase of these gratings during training.  (They
+    'MIGHT care about the orientation/contrast, etc.)
+    tunCurve1Arg$ := " -P ";
+    var fakeValues[nMaxTrials%];  'just let this be zeroes, works fine
+    var fakeIndices%[nMaxTrials%];  'just let this be zeroes, works fine
+    tunCurve1Values$ := StringifyProgression$(nMaxTrials%,fakeValues[],fakeIndices%[]);
+    
+    
     
     'No longer getting reward values from the DAQ dialog
     'JuiceRewardMSorig% := JuiceRewardMS%;  'we are going to use smaller intermediate rewards, so hold the original
@@ -1334,12 +1351,12 @@ func Start%()
     else
         Print("%s",G1Persist$ + " -s " + GetGratingParameters$("StatStimulus")); 
     endif
-    'Print grating 1 tuning parameters, if present
-    if g1tunInd% > 0 then  'if tunG1Ind% == 0 then do nothing, no tuning on this grating
+    'Print grating 1 tuning parameters, if present...actually we need to do a fake one for a bit
+    if g1tunInd% > 0 or 1 then  'if tunG1Ind% == 0 then do nothing, no tuning on this grating
         'This will be completed later, when necessary, currently tuning is not requested
-        'tunG1Arg$ := "";  'fill with appropriate stuff
+        'tunCurve1Arg$ := "";  'fill with appropriate stuff
         'tunG1Val$ := "";  'fill with appropriate stuff
-        'Print("%s",tunG1Arg$ + tunG1Val$);  'not really necessary to do unless there is tuning
+        Print("%s",tunCurve1Arg$ + " " + tunCurve1Values$);  'not really necessary to do unless there is tuning...actually we need a fake one!
     endif;
     
     'If there is more than one grating, specify the second...and third?  If we go further, draw-group 3 etc. will need to be used
@@ -1813,6 +1830,31 @@ proc DrawGrating(iDraw%,whichGrating%)
 	endcase
 
 end;
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Put a vector of numbers into a comma separated string
+Func StringifyProgression$(n%, vec[], ind%[])
+	var s$;
+	var i%;
+    
+    if n% > nMaxTrials% then
+        message("You have requested " + Str$(n%) + " trials, max is " + Str$(nMaxTrials%) + "!  Quitting!");
+        halt
+    endif;
+    
+    
+	for i% := 0 to n%-1 do
+		if i% > 0 then 
+			s$ += ",";
+		endif
+		s$ += str$(vec[ind%[i%]]);
+	next
+	return s$;
+end;
+
 
 
 
