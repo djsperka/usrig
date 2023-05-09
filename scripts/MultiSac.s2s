@@ -91,9 +91,9 @@ const stateWaitForFixptOn%:=2;             ' Wait for VSG signal that fixation p
 const stateWaitAcquireFixation%:=3;        ' Wait for animal to acquire fixation
 const stateHoldFixation%:=4;               ' Require animal to hold fixation
 const stateRequestGrating%:=5;             ' Request grating - for context where animal is currently fixating
-const stateWaitForStimTrigger%:=6;         ' Wait for VSG signal that grating is up - for context where animal currently fixating
+const stateWaitForGratingUp%:=6;           ' Wait for VSG signal that grating is up - for context where animal currently fixating
 const stateWaitForSaccade%:=7;             ' Aggressively wait for saccade to leave current fixation, request next stimulus during saccade
-const stateWaitSaccadeStimTrigger%:=8;     ' Wait for VSG signal that grating is up - for context where animal currently saccading
+const stateWaitGratingUpSaccade%:=8;       ' Wait for VSG signal that grating is up - for context where animal currently saccading
 const stateWaitAcquireGrating%:=9;         ' Wait for animal to acquire grating, all contexts
 const stateHoldGrating%:=10;               ' Require animal to hold grating AND DELIVER REWARD if applicable, all contexts
 const stateTrialSuccess%:=11;              ' Remove stimulus, advance
@@ -651,14 +651,14 @@ func IdleProcessing%()
         else 'Request grating
             'We have to know which grating it is going to be!
             SafeSampleKey(currentGratingLetter$[currentGrating%]);  'Current grating is not yet incremented so we can use it as an index
-            ChangeStateTo(stateWaitForStimTrigger%, tNow);
+            ChangeStateTo(stateWaitForGratingUp%, tNow);
         endif
         
         
-    case iState% = stateWaitForStimTrigger% then
+    case iState% = stateWaitForGratingUp% then
         ' Wait for VSG to confirm grating up, animal is fixating either fixpt or grating 
         if stateBegin% = 1 then
-            LogStatus("WaitForStimTrigger", "Begin waiting for grating " + str$(currentGrating%+1) + " pulse from VSG at about " + str$(tNow) + ", started looking from exactly " + str$(tLastTrigger+tic)); 
+            LogStatus("WaitForGratingUp", "Begin waiting for grating " + str$(currentGrating%+1) + " pulse from VSG at about " + str$(tNow) + ", started looking from exactly " + str$(tLastTrigger+tic)); 
             stateBegin% := 0;
         endif
         
@@ -673,13 +673,16 @@ func IdleProcessing%()
             next;
             trialSuccess% := 0;  'indicate to go to acquisition TO
             ChangeStateTo(stateWaitForBlank%, tNow);
-    'case View(DataWindow%).FindRisingEdge%(currentFrameChannel%[currentGrating%], tLastTrigger, tTrigger) = 1 then  'Current grating is not yet incremented so we can use it as an index
-    case View(DataWindow%).FindRisingEdge%(StimChannel%, tLastTrigger+tic, tTrigger) = 0 then  'Actually, this comes on the stim channel
+        case View(DataWindow%).FindRisingEdge%(StimChannel%, tLastTrigger+tic, tTrigger) = 0 then  'First stim comes on the stim channel
             ' Grating is up
-            LogStatus("WaitForStimTrigger", "Grating " + str$(currentGrating%+1) + " up at exactly " + str$(tTrigger));  'Current grating is not yet incremented so we have to add 1
+            LogStatus("WaitForGratingUp", "Grating " + str$(currentGrating%+1) + " up at exactly " + str$(tTrigger));  'Current grating is not yet incremented so we have to add 1
             tLastTrigger := tTrigger;
             SampleText("Grating " + str$(currentGrating%+1) + " up during fixation, X=" + str$(stimXLoc[currentGrating%]) + ", Y=" + str$(stimYLoc[currentGrating%]),tTrigger);  'Current grating not yet incremented
             DrawGrating(1,currentGrating%+1);  'Current grating not yet incremented
+            if grating1Persist% = 0 then
+                DrawGrating(0,currentGrating%);  'Current grating not yet incremented, take down Spike2 monitor indicator
+            endif
+            'DrawFix(0);  '??Don't know if we want to do this as soon as the grating is up, may improve behavior
             
             currentGrating% += 1;  'Increment current grating, it is now time to acquire a new location
             
@@ -690,7 +693,27 @@ func IdleProcessing%()
             else
                 'We should wait for acquisition of the current grating before putting up the subsequent grating, or we are saccading to the final grating
                 ChangeStateTo(stateWaitAcquireGrating%,tTrigger);
-            endif;    
+            endif; 
+        case View(DataWindow%).FindRisingEdge%(Frame2Channel%, tLastTrigger+tic, tTrigger) = 0 then  'Second stim comes on the frame2 channel
+            ' Grating is up
+            LogStatus("WaitForGratingUp", "Grating " + str$(currentGrating%+1) + " up at exactly " + str$(tTrigger));  'Current grating is not yet incremented so we have to add 1
+            tLastTrigger := tTrigger;
+            SampleText("Grating " + str$(currentGrating%+1) + " up during fixation, X=" + str$(stimXLoc[currentGrating%]) + ", Y=" + str$(stimYLoc[currentGrating%]),tTrigger);  'Current grating not yet incremented
+            DrawGrating(1,currentGrating%+1);  'Current grating not yet incremented
+            if grating1Persist% = 0 then
+                DrawGrating(0,currentGrating%);  'Current grating not yet incremented, take down Spike2 monitor indicator
+            endif
+            
+            currentGrating% += 1;  'Increment current grating, it is now time to acquire a new location
+            
+            'Is a subsequent grating supposed to be coming up during the saccade to the current grating?
+            if currentGrating% < nGratingsThisTrial% and grating2Wait% = 0 then
+                'A subsequent grating should be put up during the saccade
+                ChangeStateTo(stateWaitForSaccade%,tTrigger);
+            else
+                'We should wait for acquisition of the current grating before putting up the subsequent grating, or we are saccading to the final grating
+                ChangeStateTo(stateWaitAcquireGrating%,tTrigger);
+            endif; 
         endcase;
         
         
@@ -712,7 +735,7 @@ func IdleProcessing%()
                     'Note that we do not have to take down the grating being saccaded to (if requested) because we are swapping the entire PAGE, and the page was defined during Start%() with/without as appropriate
                 saccadeBegun% := 1;
                 currentLooking% := currentGrating%;  'update currentLooking%
-                ChangeStateTo(stateWaitSaccadeStimTrigger%,tLastTrigger);
+                ChangeStateTo(stateWaitGratingUpSaccade%,tLastTrigger);
             endif;
             'Update tNow
             tNow := View(DataWindow%).MaxTime();
@@ -733,17 +756,17 @@ func IdleProcessing%()
         
         
         
-    case iState% = stateWaitSaccadeStimTrigger% then
+    case iState% = stateWaitGratingUpSaccade% then
         ' Wait for VSG to confirm grating (technically next page) up, animal is saccading 
         if stateBegin% = 1 then
-            LogStatus("WaitSaccadeStimTrigger", "Begin waiting for during-saccade grating " + str$(currentGrating%+1) + " pulse from VSG at about " + str$(tNow) + ", started looking from exactly " + str$(tLastTrigger+tic));  
+            LogStatus("WaitGratingUpSaccade", "Begin waiting for during-saccade grating " + str$(currentGrating%+1) + " pulse from VSG at about " + str$(tNow) + ", started looking from exactly " + str$(tLastTrigger+tic));  
             stateBegin% := 0;  
         endif;
         
         'We will confirm the presence of the subsequent grating before concerning ourselves with the result of the saccade
         if View(DataWindow%).FindRisingEdge%(currentFrameChannel%[currentGrating%], tLastTrigger+tic, tTrigger) = 0 then  'Current grating is the grating being saccaded to so we can use it as an index
             'Grating (technically next page) is up
-            LogStatus("WaitSaccadeStimTrigger", "Grating " + str$(currentGrating%+1) + " up at exactly " + str$(tTrigger));  'Current grating is the grating being saccaded to so we have to add 1
+            LogStatus("WaitGratingUpSaccade", "Grating " + str$(currentGrating%+1) + " up at exactly " + str$(tTrigger));  'Current grating is the grating being saccaded to so we have to add 1
             tLastTrigger := tTrigger;
             SampleText("Grating " + str$(currentGrating%+1) + " up during saccade, X=" + str$(stimXLoc[currentGrating%]) + ", Y=" + str$(stimYLoc[currentGrating%]),tTrigger);  'Current grating is the grating being saccaded to
             ChangeStateTo(stateWaitAcquireGrating%,tTrigger);
@@ -774,6 +797,7 @@ func IdleProcessing%()
             LogStatus("WaitAcquireGrating", "Animal skipped to grating " + str$(currentGrating%+1) + " at about " + str$(tNow));
             'request all down
             SafeSampleKey("X");
+            DrawFix(0);
             for j% := 1 to currentGrating% do
                 DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor, fixation has already been undrawn
             next;
@@ -784,6 +808,7 @@ func IdleProcessing%()
             LogStatus("WaitAcquireGrating", "Acquisition window timed out at about " + str$(tNow));
             'request all down
             SafeSampleKey("X");
+            DrawFix(0);
             for j% := 1 to currentGrating% do
                 DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor, fixation has already been undrawn
             next;
@@ -870,7 +895,7 @@ func IdleProcessing%()
             Stop%();
             iStatus% := 0;
         else
-            ChangeStateTo(stateInterTrialInterval%,tStateStart);  
+            ChangeStateTo(stateWaitForBlank%,tStateStart);  
         endif
 
         
