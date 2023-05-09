@@ -115,6 +115,7 @@ var currentGrating%;   'This is the grating that is currently active
 var viewedGrating%;  'This is the grating (or fixpt) that is currently being viewed
 var currentLooking%;  'This is the current value that should be passed to LookingMultiSac%()
 var isLooking%;  'Used for the return from LookingMultiSac%(), will be 1 if looking at the currently intended location, 0 if looking anywhere else
+var fixptIsDown% := 1;
 
 var tic;  'Set a tick value equal to the duration of one clock tick in seconds, used to prevent finding
           'the same "pulse" twice
@@ -476,14 +477,14 @@ func IdleProcessing%()
         'Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
         'Once VSG is ready, we start
         if stateBegin% = 1 then
-            LogStatus("VSGWait", "Begin waiting for Ready Pulse from VSG at " + str$(tNow));
+            LogStatus("VSGWait", "Begin waiting for Ready Pulse from VSG at about " + str$(tNow));
             stateBegin% := 0;
         endif
         
         pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
         
         if pulseFound% = 1 then
-            LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
+            LogStatus("VSGWait", "Got Ready Pulse from VSG at exactly " + str$(tRise));
             Yield(1.0);
             tLastTrigger := tFall;
             ChangeStateTo(stateStartTrial%, tFall);
@@ -502,7 +503,7 @@ func IdleProcessing%()
             
         else
             if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
-                LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
+                LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at exactly " + str$(tRise));
                 tLastTrigger := tFall;
             endif;
         endif;
@@ -511,7 +512,7 @@ func IdleProcessing%()
     case iState% = stateStartTrial% then
         'Request fixation
         if stateBegin% = 1 then
-            LogStatus("StartTrial", "Requested fixation from VSG at " + str$(tNow));
+            LogStatus("StartTrial", "Requested fixation from VSG at about " + str$(tNow));
             stateBegin% := 0;
         endif
         
@@ -537,15 +538,16 @@ func IdleProcessing%()
     case iState% = stateWaitForFixptOn% then
         'Wait for VSG to indicate fixpt up
         if stateBegin% = 1 then
-            LogStatus("WaitForFixptOn", "Begin waiting for Fixpt Pulse from VSG at " + str$(tNow));
+            LogStatus("WaitForFixptOn", "Begin waiting for Fixpt Pulse from VSG at about " + str$(tNow));
             stateBegin% := 0;
         endif
         
-        if View(DataWindow%).FindRisingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 0 then
+        if View(DataWindow%).FindRisingEdge%(FixationPointChannel%, tLastTrigger+tic, tTrigger) = 0 then
             'Stimulus is up
-            LogStatus("WaitForFixptOn", "Fixpt up at " + str$(tTrigger));
+            LogStatus("WaitForFixptOn", "Fixpt up at exactly " + str$(tTrigger));
             tLastTrigger := tTrigger;         
-            
+            fixPtIsDown% := 0;  'fixpt is not down
+        
             'Put timing marker in both eyetracker file, smr file
             if RecordEyeTrackerOutputFile% = 1 then
                 docase
@@ -580,18 +582,18 @@ func IdleProcessing%()
     case iState% = stateWaitAcquireFixation% then
         'Wait for animal to acquire fixation
         if stateBegin% = 1 then
-            LogStatus("WaitAcquireFixation", "Begin waiting for animal to acquire fixation at " + str$(tNow));
+            LogStatus("WaitAcquireFixation", "Begin waiting for animal to acquire fixation at about " + str$(tNow));
             stateBegin% := 0;
         endif
         
         isLooking% := LookingMultiSac%(xEye,yEye,-1,viewedGrating%);  'Check looking - here could technically be done in CASE statement but should try to be consistent with design
         docase   
         case isLooking% = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously; filling viewedGrating% but we don't care
-            LogStatus("WaitAcquireFixation", "Fixation point acquired at " + str$(tNow));
+            LogStatus("WaitAcquireFixation", "Fixation point acquired at about " + str$(tNow));
             changeStateTo(stateHoldFixation%,tNow);
             SampleText("Acquired Fixation",tNow);  'Don't know if we want this, but just in case          
         case tNow - tStateStart > fixAcqTime then
-            LogStatus("WaitAcquireFixation", "Acquisition window timed out at " + str$(tNow));
+            LogStatus("WaitAcquireFixation", "Acquisition window timed out at about " + str$(tNow));
             'request fixation down
             SafeSampleKey("X");
             DrawFix(0);	  'Remove fixation from spike2 monitor
@@ -603,7 +605,7 @@ func IdleProcessing%()
     case iState% = stateHoldFixation% then
         'Require animal to hold fixation through hold time
         if stateBegin% = 1 then
-            LogStatus("HoldFixation", "Begin requiring animal to hold fixation at " + str$(tNow));
+            LogStatus("HoldFixation", "Begin requiring animal to hold fixation at about " + str$(tNow));
             stateBegin% := 0;
         endif
         
@@ -616,7 +618,7 @@ func IdleProcessing%()
             trialSuccess% := 0;  'indicate to go to acquisition TO
             ChangeStateTo(stateWaitForBlank%, tNow);
         case tNow - tStateStart > fixHoldTime then
-            LogStatus("HoldFixation", "Fixation held at " + str$(tNow));
+            LogStatus("HoldFixation", "Fixation held at about " + str$(tNow));
             SampleText("Fixation Held",tNow);  'Don't know if we want this, but just in case             
             ChangeStateTo(stateRequestGrating%, tNow);
         endcase        
@@ -625,7 +627,7 @@ func IdleProcessing%()
     case iState% = stateRequestGrating% then
         'Request (next) grating up - only for gratings NOT requested in the middle of a saccade
         if stateBegin% = 1 then
-            LogStatus("RequestGrating", "Requesting grating (not during saccade) at " + str$(tNow));
+            LogStatus("RequestGrating", "Requesting grating (not during saccade) at about " + str$(tNow));
             stateBegin% := 0;
         endif
         
@@ -656,7 +658,7 @@ func IdleProcessing%()
     case iState% = stateWaitForStimTrigger% then
         ' Wait for VSG to confirm grating up, animal is fixating either fixpt or grating 
         if stateBegin% = 1 then
-            LogStatus("WaitForStimTrigger", "Begin waiting for grating " + str$(currentGrating%+1) + " pulse from VSG at " + str$(tNow));  'Current grating is not yet incremented so we have to add 1
+            LogStatus("WaitForStimTrigger", "Begin waiting for grating " + str$(currentGrating%+1) + " pulse from VSG at about " + str$(tNow) + ", started looking from exactly " + str$(tLastTrigger+tic)); 
             stateBegin% := 0;
         endif
         
@@ -671,11 +673,12 @@ func IdleProcessing%()
             next;
             trialSuccess% := 0;  'indicate to go to acquisition TO
             ChangeStateTo(stateWaitForBlank%, tNow);
-        case View(DataWindow%).FindRisingEdge%(currentFrameChannel%[currentGrating%], tStateStart, tTrigger) = 1 then  'Current grating is not yet incremented so we can use it as an index
+    'case View(DataWindow%).FindRisingEdge%(currentFrameChannel%[currentGrating%], tLastTrigger, tTrigger) = 1 then  'Current grating is not yet incremented so we can use it as an index
+    case View(DataWindow%).FindRisingEdge%(StimChannel%, tLastTrigger+tic, tTrigger) = 0 then  'Actually, this comes on the stim channel
             ' Grating is up
-            LogStatus("WaitForStimTrigger", "Grating " + str$(currentGrating%+1) + " up at " + str$(tTrigger));  'Current grating is not yet incremented so we have to add 1
+            LogStatus("WaitForStimTrigger", "Grating " + str$(currentGrating%+1) + " up at exactly " + str$(tTrigger));  'Current grating is not yet incremented so we have to add 1
             tLastTrigger := tTrigger;
-            SampleText("Grating " + str$(currentGrating%+1) + " up during fixation, X=" + str$(stimXLoc[currentGrating%]) + "Y=" + str$(stimYLoc[currentGrating%]),tTrigger);  'Current grating not yet incremented
+            SampleText("Grating " + str$(currentGrating%+1) + " up during fixation, X=" + str$(stimXLoc[currentGrating%]) + ", Y=" + str$(stimYLoc[currentGrating%]),tTrigger);  'Current grating not yet incremented
             DrawGrating(1,currentGrating%+1);  'Current grating not yet incremented
             
             currentGrating% += 1;  'Increment current grating, it is now time to acquire a new location
@@ -695,7 +698,7 @@ func IdleProcessing%()
     case iState% = stateWaitForSaccade% then
         ' Wait for animal's eye position to exit the current window, assume this is a saccade
         if stateBegin% = 1 then
-            LogStatus("WaitForSaccade", "Begin waiting for saccade at " + str$(tNow));
+            LogStatus("WaitForSaccade", "Begin waiting for saccade at about " + str$(tNow));
             stateBegin% := 0;
         endif
         
@@ -733,16 +736,16 @@ func IdleProcessing%()
     case iState% = stateWaitSaccadeStimTrigger% then
         ' Wait for VSG to confirm grating (technically next page) up, animal is saccading 
         if stateBegin% = 1 then
-            LogStatus("WaitSaccadeStimTrigger", "Begin waiting for during-saccade grating " + str$(currentGrating%+1) + " pulse from VSG at " + str$(tNow));  'Current grating is the grating being saccaded to so we have to add 1 for the next grating
+            LogStatus("WaitSaccadeStimTrigger", "Begin waiting for during-saccade grating " + str$(currentGrating%+1) + " pulse from VSG at about " + str$(tNow) + ", started looking from exactly " + str$(tLastTrigger+tic));  
             stateBegin% := 0;  
         endif;
         
         'We will confirm the presence of the subsequent grating before concerning ourselves with the result of the saccade
-        if View(DataWindow%).FindRisingEdge%(currentFrameChannel%[currentGrating%], tStateStart, tTrigger) = 1 then  'Current grating is the grating being saccaded to so we can use it as an index
+        if View(DataWindow%).FindRisingEdge%(currentFrameChannel%[currentGrating%], tLastTrigger+tic, tTrigger) = 0 then  'Current grating is the grating being saccaded to so we can use it as an index
             'Grating (technically next page) is up
-            LogStatus("WaitSaccadeStimTrigger", "Grating " + str$(currentGrating%+1) + " up at " + str$(tTrigger));  'Current grating is the grating being saccaded to so we have to add 1
+            LogStatus("WaitSaccadeStimTrigger", "Grating " + str$(currentGrating%+1) + " up at exactly " + str$(tTrigger));  'Current grating is the grating being saccaded to so we have to add 1
             tLastTrigger := tTrigger;
-            SampleText("Grating " + str$(currentGrating%+1) + " up during saccade, X=" + str$(stimXLoc[currentGrating%]) + "Y=" + str$(stimYLoc[currentGrating%]),tTrigger);  'Current grating is the grating being saccaded to
+            SampleText("Grating " + str$(currentGrating%+1) + " up during saccade, X=" + str$(stimXLoc[currentGrating%]) + ", Y=" + str$(stimYLoc[currentGrating%]),tTrigger);  'Current grating is the grating being saccaded to
             ChangeStateTo(stateWaitAcquireGrating%,tTrigger);
         endif;
         
@@ -751,23 +754,24 @@ func IdleProcessing%()
     case iState% = stateWaitAcquireGrating% then
         'Wait for animal to acquire grating, any grating
         if stateBegin% = 1 then
-            LogStatus("WaitAcquireGrating", "Begin waiting for animal to acquire grating " + str$(currentGrating%) + " at " + str$(tNow));  'Current grating is correct
+            LogStatus("WaitAcquireGrating", "Begin waiting for animal to acquire grating " + str$(currentGrating%) + " at about " + str$(tNow));  'Current grating is correct
             stateBegin% := 0;
         endif
         
         isLooking% := LookingMultiSac%(xEye,yEye,currentGrating%,viewedGrating%);
         docase   
         case isLooking% = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
-            LogStatus("WaitAcquireGrating", "Grating " + str$(currentGrating%) + " acquired at " + str$(tNow));
+            LogStatus("WaitAcquireGrating", "Grating " + str$(currentGrating%) + " acquired at about " + str$(tNow));
             'If fixation is up, request fixation down
             if currentGrating% = 1 then
                 safeSampleKey("f");
+                fixPtIsDown% := 1;  'we won't check this
                 DrawFix(0);	'Remove fixation from spike2 monitor
             endif;
             changeStateTo(stateHoldGrating%,tNow);
             SampleText("Acquired Grating " + str$(currentGrating%),tNow);  'Don't know if we want this, but just in case         
         case isLooking% = 0 and viewedGrating% = currentGrating%+1 then  'if the animal has skipped acquiring the current grating and went to the next one, immediate penalty
-            LogStatus("WaitAcquireGrating", "Animal skipped to grating " + str$(currentGrating%+1) + " at " + str$(tNow));
+            LogStatus("WaitAcquireGrating", "Animal skipped to grating " + str$(currentGrating%+1) + " at about " + str$(tNow));
             'request all down
             SafeSampleKey("X");
             for j% := 1 to currentGrating% do
@@ -777,7 +781,7 @@ func IdleProcessing%()
             ChangeStateTo(stateWaitForBlank%,tNow);
             SampleText("Skipped to Grating " + str$(currentGrating%+1),tNow);
         case tNow - tStateStart > fixAcqTime then
-            LogStatus("WaitAcquireGrating", "Acquisition window timed out at " + str$(tNow));
+            LogStatus("WaitAcquireGrating", "Acquisition window timed out at about " + str$(tNow));
             'request all down
             SafeSampleKey("X");
             for j% := 1 to currentGrating% do
@@ -793,7 +797,7 @@ func IdleProcessing%()
     case iState% = stateHoldGrating% then
         ' Require animal to hold grating through hold time
         if stateBegin% = 1 then
-            LogStatus("HoldGrating", "Begin requiring animal to hold grating " + str$(currentGrating%) + " at " + str$(tNow));
+            LogStatus("HoldGrating", "Begin requiring animal to hold grating " + str$(currentGrating%) + " at about " + str$(tNow));
             stateBegin% := 0;
             'Set the hold time for the current grating, only do this once
             if currentGrating% < nGratingsThisTrial% then
@@ -845,7 +849,7 @@ func IdleProcessing%()
     case iState% = stateTrialSuccess% then
         ' Do trial success bookkeeping and advance
         if stateBegin% = 1 then
-            LogStatus("TrialSuccess", "Doing trial success bookkeeping and advancing at " + str$(tNow));
+            LogStatus("TrialSuccess", "Doing trial success bookkeeping and advancing at about " + str$(tNow));
             stateBegin% := 0;
         endif
         
@@ -873,11 +877,13 @@ func IdleProcessing%()
     case iState% = stateWaitForBlank% then
         ' Wait for VSG to indicate blank screen
         if stateBegin% = 1 then
-            LogStatus("WaitForBlank", "Begin waiting for VSG to send blank screen pulse at " + str$(tNow));
+            LogStatus("WaitForBlank", "Begin waiting for VSG to send blank screen pulse at about " + str$(tNow) + ", starting from exactly " + str$(tLastTrigger+tic));
             stateBegin% := 0;
         endif
-        
-        if View(DataWindow%).FindFallingEdge%(StimChannel%, tStateStart, tTrigger) = 1 or View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 1 then
+    
+        'We have to check for fixpt/stim down separately because stim might not be up yet, and fixpt might be down on purpose
+        docase
+        case fixptIsDown% = 1 and View(DataWindow%).FindFallingEdge%(StimChannel%, tLastTrigger+tic, tTrigger) = 1 then
             'Possibly FRAME or FRAME2 channel??
             'Stimulus is off
             tLastTrigger := tTrigger;
@@ -891,14 +897,28 @@ func IdleProcessing%()
                 'Sampletext the end of the trial
                 SampleText("Trial " + str$(currTrial%) + " success",tNow)
             endif
-        endif 
+        case fixptIsDown% = 0 and View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tLastTrigger+tic, tTrigger) = 1 then
+            'Fixpt is off
+            tLastTrigger := tTrigger;
+            tBlank := tTrigger;
+            if trialSuccess% = 0 then
+                ChangeStateTo(stateAcquisitionTO%, tBlank);
+                'Sampletext the end of the trial
+                SampleText("Trial " + str$(currTrial%) + " failure",tNow)
+            else
+                ChangeStateTo(stateInterTrialInterval%, tBlank);
+                'Sampletext the end of the trial
+                SampleText("Trial " + str$(currTrial%) + " success",tNow)
+            endif
+            fixptIsDown% := 1;
+        endcase 
         
         
         
     case iState% = stateAcquisitionTO% then
         ' Wait through time out period
         if stateBegin% = 1 then
-            LogStatus("AcquisitionTO", "Begin waiting through timeout period at " + str$(tNow));
+            LogStatus("AcquisitionTO", "Begin waiting through timeout period at about " + str$(tNow));
             stateBegin% := 0;
         endif
         
@@ -910,7 +930,7 @@ func IdleProcessing%()
     case iState% = stateInterTrialInterval% then
         ' Wait through intertrial interval
         if stateBegin% = 1 then
-            LogStatus("InterTrialInterval", "Begin waiting through intertrial interval at " + str$(tNow));
+            LogStatus("InterTrialInterval", "Begin waiting through intertrial interval at about " + str$(tNow));
             stateBegin% := 0;
         endif
         
@@ -1717,11 +1737,12 @@ func LookingMultiSac%(EyePosX,EyePosY,expectedGrating%,&whichGrating%)
         printlog("AlwaysLooking is on\n");
     case whichGrating% = expectedGrating% then 'Case 4,6, if looking at correct item set returnValue% to 1
         retValue% := 1;
-        if whichGrating% = -1 then
-            printlog("Looking at fixation point!\n");
-        else
-            printlog("Looking at grating %d!\n",whichGrating%);
-        endif
+        'Actually, don't do this!  It spams the log file!
+        'if whichGrating% = -1 then
+        '    printlog("Looking at fixation point!\n");
+        'else
+        '    printlog("Looking at grating %d!\n",whichGrating%);
+        'endif
     'Cases 1,2,3 are already correct, do not log as it could be very repetitive     
     endcase;
     
