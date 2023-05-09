@@ -341,7 +341,7 @@ func MultiSacScriptDialog%()
         ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
         stimXLoc[0] := x;
         stimYLoc[0] := y;
-        msWindowRadius[0] := max(w,h);  'If not circular (like that'll happen), use larger axis, we're not making an elliptical response window
+        msWindowRadius[0] := max(w,h)/2;  'If not circular (like that'll happen), use larger axis, we're not making an elliptical response window
         'Set stationary stimulus if necessary
         if stationary% = 1 then
             'create/save StatStimulus grating parameters
@@ -354,7 +354,7 @@ func MultiSacScriptDialog%()
             ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
             stimXLoc[j%-1] := x;
             stimYLoc[j%-1] := y;
-            msWindowRadius[j%-1] := max(w,h);  'If not circular (like that'll happen), use larger axis, we're not making an elliptical response window
+            msWindowRadius[j%-1] := max(w,h)/2;  'If not circular (like that'll happen), use larger axis, we're not making an elliptical response window
             'Set stationary stimulus if necessary
             if stationary% = 1 then
                 'create/save StatStimulus grating parameters
@@ -643,7 +643,7 @@ func IdleProcessing%()
             SampleText("Fixation Broken Before Grating Request",tNow);
             SafeSampleKey("X");
             DrawFix(0);	  'Remove fixation location from spike2 monitor
-            for j% := 1 to currentGrating% do
+            for j% := 1 to nGratingsThisTrial% do
                 DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor
             next;
             trialSuccess% := 0;  'indicate to go to acquisition TO
@@ -668,7 +668,7 @@ func IdleProcessing%()
             SampleText("Fixation Broken Waiting For Grating Up",tNow);
             SafeSampleKey("X");
             DrawFix(0);	  'Remove fixation from spike2 monitor
-            for j% := 1 to currentGrating% do
+            for j% := 1 to nGratingsThisTrial% do
                 DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor
             next;
             trialSuccess% := 0;  'indicate to go to acquisition TO
@@ -679,10 +679,10 @@ func IdleProcessing%()
             tLastTrigger := tTrigger;
             SampleText("Grating " + str$(currentGrating%+1) + " up during fixation, X=" + str$(stimXLoc[currentGrating%]) + ", Y=" + str$(stimYLoc[currentGrating%]),tTrigger);  'Current grating not yet incremented
             DrawGrating(1,currentGrating%+1);  'Current grating not yet incremented
-            if grating1Persist% = 0 then
+            if grating1Persist% = 0 and currentGrating% > 0 then
                 DrawGrating(0,currentGrating%);  'Current grating not yet incremented, take down Spike2 monitor indicator
             endif
-            'DrawFix(0);  '??Don't know if we want to do this as soon as the grating is up, may improve behavior
+            'DrawFix(0);  '??Don't know if we want to do an "f" as soon as the grating is up, may improve behavior
             
             currentGrating% += 1;  'Increment current grating, it is now time to acquire a new location
             
@@ -739,6 +739,15 @@ func IdleProcessing%()
             endif;
             'Update tNow
             tNow := View(DataWindow%).MaxTime();
+            'Update Eye Position!  LOL
+            xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+            yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+    
+            'Update display but not every time....
+            if tNow-tLastFixPtDisplayUpdate > .005 then
+                View(XYWindow%).XYAddData(1,xEye,yEye);
+                tLastFixPtDisplayUpdate := tNow;
+            endif
         wend
         'If we timed out before saccading, abort
         if saccadeBegun% = 0 then
@@ -747,7 +756,7 @@ func IdleProcessing%()
             if currentGrating% = 1 then
                 DrawFix(0);	  'Remove fixation from spike2 monitor, if fixation is currently up
             endif;
-            for j% := 1 to currentGrating% do
+            for j% := 1 to nGratingsThisTrial% do
                 DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor
             next;
             trialSuccess% := 0;  'indicate to go to acquisition TO
@@ -769,6 +778,8 @@ func IdleProcessing%()
             LogStatus("WaitGratingUpSaccade", "Grating " + str$(currentGrating%+1) + " up at exactly " + str$(tTrigger));  'Current grating is the grating being saccaded to so we have to add 1
             tLastTrigger := tTrigger;
             SampleText("Grating " + str$(currentGrating%+1) + " up during saccade, X=" + str$(stimXLoc[currentGrating%]) + ", Y=" + str$(stimYLoc[currentGrating%]),tTrigger);  'Current grating is the grating being saccaded to
+            'Draw the next grating on spike2 monitor
+            DrawGrating(1,currentGrating%+1);
             ChangeStateTo(stateWaitAcquireGrating%,tTrigger);
         endif;
         
@@ -788,7 +799,7 @@ func IdleProcessing%()
             'If fixation is up, request fixation down
             if currentGrating% = 1 then
                 safeSampleKey("f");
-                fixPtIsDown% := 1;  'we won't check this
+                fixPtIsDown% := 1;  'we won't check this...which is funny, because it didn't work
                 DrawFix(0);	'Remove fixation from spike2 monitor
             endif;
             changeStateTo(stateHoldGrating%,tNow);
@@ -798,7 +809,7 @@ func IdleProcessing%()
             'request all down
             SafeSampleKey("X");
             DrawFix(0);
-            for j% := 1 to currentGrating% do
+            for j% := 1 to nGratingsThisTrial% do
                 DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor, fixation has already been undrawn
             next;
             trialSuccess% := 0;  'indicate to go to acquisition TO
@@ -809,7 +820,7 @@ func IdleProcessing%()
             'request all down
             SafeSampleKey("X");
             DrawFix(0);
-            for j% := 1 to currentGrating% do
+            for j% := 1 to nGratingsThisTrial% do
                 DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor, fixation has already been undrawn
             next;
             trialSuccess% := 0;  'indicate to go to acquisition TO
@@ -863,7 +874,7 @@ func IdleProcessing%()
         case isLooking% = 0 then
             SampleText("Failure to hold grating " + str$(currentGrating%),tNow);
             SafeSampleKey("X");
-            for j% := 1 to currentGrating% do
+            for j% := 1 to nGratingsThisTrial% do
                 DrawGrating(0,j%);  'Remove any grating locations from spike2 monitor
             next;
             trialSuccess% := 0;  'indicate to go to acquisition TO
@@ -889,6 +900,8 @@ func IdleProcessing%()
         
         'Increment trial counter
         currTrial% += 1;
+    
+        trialSuccess% := 1;
         
         if currTrial% > nTrials% then
             SampleText("All Trials Complete!");
@@ -908,8 +921,8 @@ func IdleProcessing%()
     
         'We have to check for fixpt/stim down separately because stim might not be up yet, and fixpt might be down on purpose
         docase
-        case fixptIsDown% = 1 and View(DataWindow%).FindFallingEdge%(StimChannel%, tLastTrigger+tic, tTrigger) = 1 then
-            'Possibly FRAME or FRAME2 channel??
+        case fixptIsDown% = 1 and ((View(DataWindow%).FindFallingEdge%(StimChannel%, tLastTrigger+tic, tTrigger) = 1) or (View(DataWindow%).FindFallingEdge%(Frame2Channel%, tLastTrigger+tic, tTrigger) = 1)) then
+            'This can be STIM or FRAME2 channel depending on where in the progression things are
             'Stimulus is off
             tLastTrigger := tTrigger;
             tBlank := tTrigger;
@@ -920,7 +933,7 @@ func IdleProcessing%()
             else
                 ChangeStateTo(stateInterTrialInterval%, tBlank);
                 'Sampletext the end of the trial
-                SampleText("Trial " + str$(currTrial%) + " success",tNow)
+                SampleText("Trial " + str$(currTrial%-1) + " success",tNow)
             endif
         case fixptIsDown% = 0 and View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tLastTrigger+tic, tTrigger) = 1 then
             'Fixpt is off
@@ -933,7 +946,7 @@ func IdleProcessing%()
             else
                 ChangeStateTo(stateInterTrialInterval%, tBlank);
                 'Sampletext the end of the trial
-                SampleText("Trial " + str$(currTrial%) + " success",tNow)
+                SampleText("Trial " + str$(currTrial%-1) + " success",tNow)
             endif
             fixptIsDown% := 1;
         endcase 
@@ -1295,11 +1308,11 @@ func Start%()
     'gratings.  For now the current necessity is to make a "fake" tuning curve for the first stimulus.  We will use
     'phase tuning (-P) for this, because ain't nobody care about the phase of these gratings during training.  (They
     'MIGHT care about the orientation/contrast, etc.)
-    tunCurve1Arg$ := " -P ";
-    var fakeValues[nMaxTrials%];  'just let this be zeroes, works fine
-    var fakeIndices%[nMaxTrials%];  'just let this be zeroes, works fine
-    tunCurve1Values$ := StringifyProgression$(nMaxTrials%,fakeValues[],fakeIndices%[]);
-    
+    'tunCurve1Arg$ := " -P ";
+    'var fakeValues[nMaxTrials%];  'just let this be zeroes, works fine
+    'var fakeIndices%[nMaxTrials%];  'just let this be zeroes, works fine
+    'tunCurve1Values$ := StringifyProgression$(nMaxTrials%,fakeValues[],fakeIndices%[]);
+    tunCurve1Arg$ := " -K ";  'this will allow the program to push through without a tuning curve
     
     
     'No longer getting reward values from the DAQ dialog
