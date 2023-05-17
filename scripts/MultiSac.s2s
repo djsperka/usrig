@@ -143,7 +143,7 @@ var intGratingHoldTime := 0.5;
 var finalGratingHoldTime := 0.5;
 var fixAcqTimeout := 0;
 var ITI := 1.5; 
-var mainRewardDelay := 0; 
+'var mainRewardDelay := 0;   'never enabled
 var intRewardMS% := 70;
 var intRewardProb := 0.5;
 var mainRewardMS% := 100;  'we are now completely ignoring the reward values from the DAQ dialog
@@ -151,6 +151,7 @@ var mainRewardProb := 1;
 var stationary%;
 var grating1Persist%;  'this is for training purposes
 var grating2Wait%;  'this is for training purposes
+var fixptOffAsCue%;  'this is for training purposes
 
 var nGratings%;
 var nGratingsThisTrial%;
@@ -292,32 +293,34 @@ func MultiSacScriptDialog%()
 
         
     DlgCreate("MultiSac Parameters", 0, 0, 0, 0, -1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
-    DlgGroup("Stimuli", 1, 1, 50, 7);
+    DlgGroup("Stimuli", 1, 1, 50, 8);
     DlgInteger(1, "Number of trials", 1, nMaxTrials%, 0, 2);
     DlgList(2, "Grating 1 tuning:",gratingTunList$[], 1, 0, 3);
     DlgList(3, "Grating 2 tuning:",gratingTunList$[], 1, 0, 4);
     DlgCheck(4, "Grating 1 stays on?", 0, 5);
     DlgCheck(5, "Grating 2 waits for grating 1 acq?", 0, 6);
-    DlgCheck(6, "Stationary", 0, 7);
+    DlgCheck(6, "Fixpt off to signal first saccade?", 0, 7);
+    DlgCheck(7, "Stationary", 0, 8);
+    
     'The idea is (hopefully...haven't checked) that we will be able to run a dialog based on the selected tuning curve?
     'Here we can enter additional gratings, up to a limit that may be imposed by Dan, but not yet needed
 
     
-    DlgGroup("Fixation", 1, 9, 50, 4);
-    DlgInteger(7, "Minimum saccades", 2, 2, 0, 10);  'force to 2 for now
-    DlgInteger(8, "Variable saccades", 0, 0, 0, 11);  'force to 0 for now
-    DlgCheck(9, "Always Looking", 0, 12);
+    DlgGroup("Fixation", 1, 10, 50, 4);
+    DlgInteger(8, "Minimum saccades", 2, 2, 0, 11);  'force to 2 for now
+    DlgInteger(9, "Variable saccades", 0, 0, 0, 12);  'force to 0 for now
+    DlgCheck(10, "Always Looking", 0, 13);
     
-    DlgGroup("Timing", 1, 14, 50, 7);
-    DlgReal(10, "Fixation Acquisition Time (s)", 0, 1000, 0, 15);
-    DlgReal(11, "Fixation Hold Time (s)", 0, 10, 0, 16);
-    DlgReal(12, "Intermediate Grating Hold Time (s)", 0, 10, 0, 17);
-    DlgReal(13, "Final Grating Hold Time (s)", 0, 10, 0, 18);
-    DlgReal(14, "Fixation/Acq Timeout (s)", 0, 100, 0, 19);
-    DlgReal(15, "Intertrial Interval (s)", 0, 10, 0, 20);
+    DlgGroup("Timing", 1, 15, 50, 7);
+    DlgReal(11, "Fixation Acquisition Time (s)", 0, 1000, 0, 16);
+    DlgReal(12, "Fixation Hold Time (s)", 0, 10, 0, 17);
+    DlgReal(13, "Intermediate Grating Hold Time (s)", 0, 10, 0, 18);
+    DlgReal(14, "Final Grating Hold Time (s)", 0, 10, 0, 19);
+    DlgReal(15, "Fixation/Acq Timeout (s)", 0, 100, 0, 20);
+    DlgReal(16, "Intertrial Interval (s)", 0, 10, 0, 21);
     
-    DlgGroup("Reward", 1, 22, 50, 6);
-    DlgReal(16, "Main Reward delay (s)", 0, 3, 0, 23);
+    DlgGroup("Reward", 1, 23, 50, 5);
+    'DlgReal(16, "Main Reward delay (s)", 0, 3, 0, 23);  'never enabled
     DlgInteger(17, "Main Reward dur (ms)", 0, 1000, 0, 24);
     DlgReal(18, "Main Reward prob (0-1)", 0, 1, 0, 25);
     DlgInteger(19, "Intermediate Reward dur (ms)", 0, 1000, 0, 26);
@@ -326,9 +329,9 @@ func MultiSacScriptDialog%()
     'Right now we don't seem to need a callback, it's ready directly below if we do 
     DlgAllow(0xffff, 0, MultiSacScriptDialogChanged%);
 
-    i%:=DlgShow(nTrials%, g1tunInd%, g2tunInd%, grating1Persist%, grating2Wait%, stationary%, minSaccades%,   
-                varSaccades%, AlwaysLooking%, fixAcqTime, fixHoldTime, intGratingHoldTime, finalGratingHoldTime, 
-                fixAcqTimeout, ITI, mainRewardDelay, mainRewardMS%, mainRewardProb, intRewardMS%, intRewardProb);
+    i%:=DlgShow(nTrials%, g1tunInd%, g2tunInd%, grating1Persist%, grating2Wait%, fixptOffAsCue%, stationary%,    
+                minSaccades%, varSaccades%, AlwaysLooking%, fixAcqTime, fixHoldTime, intGratingHoldTime,  
+                finalGratingHoldTime, fixAcqTimeout, ITI, mainRewardMS%, mainRewardProb, intRewardMS%, intRewardProb);
     
     if i% = 1 then
         
@@ -379,10 +382,10 @@ func MultiSacScriptDialogChanged%(item%)
                      'If we ever enable these, we will need to base the enable/disable on the number of saccades
                      'It would be really cool if we could run a subdialog e.g. "orientation" based on the selection
     
-    DlgEnable(0,7);  'Disable minimum saccades, for now this is 2
-    DlgEnable(0,8);  'Disable variable saccades
+    DlgEnable(0,8);  'Disable minimum saccades, for now this is 2
+    DlgEnable(0,9);  'Disable variable saccades
     
-    DlgEnable(0,16);  'Disable reward delay (??)
+    'DlgEnable(0,16);  'Disable reward delay (??)  'never enabled
     
     'If there are no fixpts, do not allow reduced fixpts
 '    if DlgValue(5) = 0 then
@@ -413,12 +416,14 @@ proc GetMultiSacScriptParameters()
     finalGratingHoldTime := GetFloatRegistryValue(key$, "finalGratingHoldTime", finalGratingHoldTime);
     fixAcqTimeout := GetFloatRegistryValue(key$, "fixAcqTimeout", fixAcqTimeout);
     ITI := GetFloatRegistryValue(key$, "ITI", ITI);
-    mainRewardDelay := GetFloatRegistryValue(key$, "mainRewardDelay", mainRewardDelay);
+    'mainRewardDelay := GetFloatRegistryValue(key$, "mainRewardDelay", mainRewardDelay);  'never enabled
     intRewardMS% := GetIntRegistryValue%(key$, "intRewardMS", intRewardMS%);
     intRewardProb := GetFloatRegistryValue(key$, "intRewardProb", intRewardProb);
     mainRewardMS% := GetIntRegistryValue%(key$, "mainRewardMS", mainRewardMS%);
     mainRewardProb := GetFloatRegistryValue(key$, "mainRewardProb", mainRewardProb);
-    stationary% := GetIntRegistryValue%(key$, "stationary", stationary%);  
+    fixptOffAsCue% := GetIntRegistryValue%(key$, "fixptOffAsCue", fixptOffAsCue%);  
+    stationary% := GetIntRegistryValue%(key$, "stationary", stationary%); 
+    
     
 end;
 
@@ -440,11 +445,12 @@ proc SaveMultiSacScriptParameters()
     SetFloatRegistryValue(key$, "finalGratingHoldTime", finalGratingHoldTime);
     SetFloatRegistryValue(key$, "fixAcqTimeout", fixAcqTimeout);
     SetFloatRegistryValue(key$, "ITI", ITI);
-    SetFloatRegistryValue(key$, "mainRewardDelay", mainRewardDelay);
+    'SetFloatRegistryValue(key$, "mainRewardDelay", mainRewardDelay);  'never enabled
     SetIntRegistryValue(key$, "intRewardMS", intRewardMS%);
     SetFloatRegistryValue(key$, "intRewardProb", intRewardProb);
     SetIntRegistryValue(key$, "mainRewardMS", mainRewardMS%);
     SetFloatRegistryValue(key$, "mainRewardProb", mainRewardProb);
+    SetIntRegistryValue(key$, "fixptOffAsCue", fixptOffAsCue%); 
     SetIntRegistryValue(key$, "stationary", stationary%); 
     
 end;
@@ -682,7 +688,12 @@ func IdleProcessing%()
             if grating1Persist% = 0 then
                 DrawGrating(0,currentGrating%);  'Current grating not yet incremented, take down Spike2 monitor indicator
             endif
-            'DrawFix(0);  '??Don't know if we want to do this as soon as the grating is up, may improve behavior
+            'If turning fixation point off as a cue to "saccade now", request fixation down
+            if currentGrating% = 1 and fixptOffAsCue% = 1 then
+                safeSampleKey("f");
+                fixPtIsDown% := 1;  'we won't check this
+                DrawFix(0);	'Remove fixation from spike2 monitor
+            endif;
             
             currentGrating% += 1;  'Increment current grating, it is now time to acquire a new location
             
@@ -785,8 +796,8 @@ func IdleProcessing%()
         docase   
         case isLooking% = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
             LogStatus("WaitAcquireGrating", "Grating " + str$(currentGrating%) + " acquired at about " + str$(tNow));
-            'If fixation is up, request fixation down
-            if currentGrating% = 1 then
+            'If fixation is still up (not used as cue to "saccade now", request fixation down
+            if currentGrating% = 1 and fixptOffAsCue% = 0 then
                 safeSampleKey("f");
                 fixPtIsDown% := 1;  'we won't check this
                 DrawFix(0);	'Remove fixation from spike2 monitor
@@ -1600,7 +1611,7 @@ proc WriteParameterFile()
 	Print("Number of trials                         : %d\n", nTrials%);
     Print("Minimum saccades                         : %d\n", minSaccades%);
     Print("Variable saccades                        : %d\n", varSaccades%);
-    Print("Reward Delay (s)                         : %f\n", mainRewardDelay);
+    'Print("Reward Delay (s)                         : %f\n", mainRewardDelay);  'never enabled
     Print("Main reward probability                  : %f\n", mainRewardProb);
     Print("Main reward (ms)                         : %d\n", mainRewardMS%);
     Print("Intermediate reward probability          : %f\n", intRewardProb);
