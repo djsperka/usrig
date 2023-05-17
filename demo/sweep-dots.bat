@@ -1,0 +1,2 @@
+REM Demo of smooth pursuit.
+%~dp0\..\bin\remote.exe 127.0.0.1 7000 fixstim -b gray -a -p 2 -d 800 -f 0,0,1,blue -D -11,-8.5,2,green;-11,-6.5,2,green;-11,-4.5,2,green;-11,-2.5,2,green;-11,2.5,2,green;-11,4.5,2,green;-11,6.5,2,green;-11,8.5,2,green!-10,-7.5,4,red;-6,-7.5,4,red;-2,-7.5,4,red;2,-7.5,4,red;6,-7.5,4,red;10,-7.5,4,red!11,-8.5,2,white;11,-6.5,2,black;11,-4.5,2,white;11,-2.5,2,black;11,2.5,2,white;11,4.5,2,black;11,6.5,2,white;11,8.5,2,black!-10,7.5,4,red;-6,7.5,4,red;-2,7.5,4,red;2,7.5,4,red;6,7.5,4,red;10,7.5,4,red --sweep 4,0,5.5,3,90,5.0,4,180,5.5,3,270,5.0
