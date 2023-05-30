@@ -152,6 +152,7 @@ var stationary%;
 var grating1Persist%;  'this is for training purposes
 var grating2Wait%;  'this is for training purposes
 var fixptOffAsCue%;  'this is for training purposes
+var GratingAnswerDiam;
 
 var nGratings%;
 var nGratingsThisTrial%;
@@ -293,7 +294,7 @@ func MultiSacScriptDialog%()
 
         
     DlgCreate("MultiSac Parameters", 0, 0, 0, 0, -1);  'center dialog relative to screen and not to application window to eliminate cutting off the bottom of the dialog!
-    DlgGroup("Stimuli", 1, 1, 50, 8);
+    DlgGroup("Stimuli", 1, 1, 52, 8);
     DlgInteger(1, "Number of trials", 1, nMaxTrials%, 0, 2);
     DlgList(2, "Grating 1 tuning:",gratingTunList$[], 1, 0, 3);
     DlgList(3, "Grating 2 tuning:",gratingTunList$[], 1, 0, 4);
@@ -306,12 +307,13 @@ func MultiSacScriptDialog%()
     'Here we can enter additional gratings, up to a limit that may be imposed by Dan, but not yet needed
 
     
-    DlgGroup("Fixation", 1, 10, 50, 4);
+    DlgGroup("Fixation", 1, 10, 52, 4);
     DlgInteger(8, "Minimum saccades", 2, 2, 0, 11);  'force to 2 for now
     DlgInteger(9, "Variable saccades", 0, 0, 0, 12);  'force to 0 for now
-    DlgCheck(10, "Always Looking", 0, 13);
+    'DlgCheck(10, "Always Looking", 0, 13);  'Always Looking is disabled, and assigned to 0 below!  Restoring this checkbox alone will NOT restore Always Looking!
+    DlgReal(10, "Grating Ans Window Diam (deg), -1 = def", -1, 10, 0, 13);
     
-    DlgGroup("Timing", 1, 15, 50, 7);
+    DlgGroup("Timing", 1, 15, 52, 7);
     DlgReal(11, "Fixation Acquisition Time (s)", 0, 1000, 0, 16);
     DlgReal(12, "Fixation Hold Time (s)", 0, 10, 0, 17);
     DlgReal(13, "Intermediate Grating Hold Time (s)", 0, 10, 0, 18);
@@ -319,7 +321,7 @@ func MultiSacScriptDialog%()
     DlgReal(15, "Fixation/Acq Timeout (s)", 0, 100, 0, 20);
     DlgReal(16, "Intertrial Interval (s)", 0, 10, 0, 21);
     
-    DlgGroup("Reward", 1, 23, 50, 5);
+    DlgGroup("Reward", 1, 23, 52, 5);
     'DlgReal(16, "Main Reward delay (s)", 0, 3, 0, 23);  'never enabled
     DlgInteger(17, "Main Reward dur (ms)", 0, 1000, 0, 24);
     DlgReal(18, "Main Reward prob (0-1)", 0, 1, 0, 25);
@@ -330,10 +332,12 @@ func MultiSacScriptDialog%()
     DlgAllow(0xffff, 0, MultiSacScriptDialogChanged%);
 
     i%:=DlgShow(nTrials%, g1tunInd%, g2tunInd%, grating1Persist%, grating2Wait%, fixptOffAsCue%, stationary%,    
-                minSaccades%, varSaccades%, AlwaysLooking%, fixAcqTime, fixHoldTime, intGratingHoldTime,  
+                minSaccades%, varSaccades%, GratingAnswerDiam, fixAcqTime, fixHoldTime, intGratingHoldTime,  
                 finalGratingHoldTime, fixAcqTimeout, ITI, mainRewardMS%, mainRewardProb, intRewardMS%, intRewardProb);
     
     if i% = 1 then
+        
+        AlwaysLooking% := 0;  'disabling AlwaysLooking% - not really useful in this script
         
 		SaveMultiSacScriptParameters();
         
@@ -344,7 +348,11 @@ func MultiSacScriptDialog%()
         ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
         stimXLoc[0] := x;
         stimYLoc[0] := y;
-        msWindowRadius[0] := max(w,h)/2;  'If not circular (like that'll happen), use larger axis, we're not making an elliptical response window
+        if GratingAnswerDiam < 0 then  'if Grating Answer Diam is negative, use size of grating
+            msWindowRadius[0] := max(w,h)/2;  'If not circular (like that'll happen), use larger axis, we're not making an elliptical response window
+        else  'otherwise use given diameter
+            msWindowRadius[0] := GratingAnswerDiam/2; 'change to radius!
+        endif        
         'Set stationary stimulus if necessary
         if stationary% = 1 then
             'create/save StatStimulus grating parameters
@@ -357,7 +365,11 @@ func MultiSacScriptDialog%()
             ParseGratingParameters%(tempParams$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
             stimXLoc[j%-1] := x;
             stimYLoc[j%-1] := y;
-            msWindowRadius[j%-1] := max(w,h)/2;  'If not circular (like that'll happen), use larger axis, we're not making an elliptical response window
+            if GratingAnswerDiam < 0 then  'if Grating Answer Diam is negative, use size of grating
+                msWindowRadius[j%-1] := max(w,h)/2;  'If not circular (like that'll happen), use larger axis, we're not making an elliptical response window
+            else 'otherwise use given diameter
+                msWindowRadius[j%-1] := GratingAnswerDiam/2; 'change to radius!
+            endif;            
             'Set stationary stimulus if necessary
             if stationary% = 1 then
                 'create/save StatStimulus grating parameters
@@ -409,7 +421,8 @@ proc GetMultiSacScriptParameters()
     grating2Wait% := GetIntRegistryValue%(key$, "grating2Wait", grating2Wait%);
     minSaccades% := GetIntRegistryValue%(key$, "minSaccades", minSaccades%);
     varSaccades% := GetIntRegistryValue%(key$, "varSaccades", varSaccades%);
-    AlwaysLooking% := GetIntRegistryValue%(key$, "AlwaysLooking", AlwaysLooking%);
+    'AlwaysLooking% := GetIntRegistryValue%(key$, "AlwaysLooking", AlwaysLooking%);
+    GratingAnswerDiam := GetFloatRegistryValue(key$, "GratingAnswerDiam", GratingAnswerDiam);
     fixAcqTime := GetFloatRegistryValue(key$, "fixAcqTime", fixAcqTime);
     fixHoldTime := GetFloatRegistryValue(key$, "fixHoldTime", fixHoldTime);
     intGratingHoldTime := GetFloatRegistryValue(key$, "intGratingHoldTime", intGratingHoldTime);
@@ -438,7 +451,8 @@ proc SaveMultiSacScriptParameters()
     SetIntRegistryValue(key$, "grating2Wait", grating2Wait%);
     SetIntRegistryValue(key$, "minSaccades", minSaccades%);
     SetIntRegistryValue(key$, "varSaccades", varSaccades%);
-    SetIntRegistryValue(key$, "AlwaysLooking", AlwaysLooking%);
+    'SetIntRegistryValue(key$, "AlwaysLooking", AlwaysLooking%);
+    SetFloatRegistryValue(key$, "GratingAnswerDiam", GratingAnswerDiam);
     SetFloatRegistryValue(key$, "fixAcqTime", fixAcqTime);
     SetFloatRegistryValue(key$, "fixHoldTime", fixHoldTime);
     SetFloatRegistryValue(key$, "intGratingHoldTime", intGratingHoldTime);
