@@ -683,8 +683,11 @@ func IdleProcessing%()
             for i% := 0 to tunNumBDCurvesAllowed%-1 do
                 if tunBDWhichTunCurve[i%] = 1 then
                     SampleTextStr$ := SampleTextStr$ + tunBDTunCurveLabel$[i%] + "," + tunBDTuningValues$[OCindex%][i%] + ",";
-                    if i% = 7 or i% = 10 or i% = 13 then
+                    if i% = 7 or i% = 10 or i% = 13 or i% = 17 then
                         SampleTextStr$ := SampleTextStr$ + tunBDTuningValues$[OCindex%][i%+1] + ",";
+                    endif
+                    if i% = 17 then
+                        SampleTextStr$ := SampleTextStr$ + tunBDTuningValues$[OCindex%][i%+2] + ",";
                     endif
                 endif
             next
@@ -4776,6 +4779,9 @@ func Start%()
                     tunUseMaintainMode% := 0;
                     message("Maintain Fixation is incompatible with moving fixation points, Maintain Fixation has been turned OFF!");
                 endif
+            case tempchar$ = "--sweep" then
+                curveIndex% := 17;  'Curve index for duration/direction/degPerSec (17 is duration, 18 is direction, 19 is degPerSec)
+                valsPerSpec% := 3;  'These grating specs have a trio of values per spec
             else
                 'printlog("Grating spec " + tempchar$ + " unknown!  Quitting!\n");
                 halt
@@ -4794,7 +4800,8 @@ func Start%()
                 'printlog("Tuning value is %s\n",tempchar$);
                 'printlog("Spec remainder is %s\n",tempstr$);
                 tunBDTuningValues$[BDNumStim%][curveIndex%] := tempchar$;
-                if valsPerSpec% = 2 then
+                
+                if valsPerSpec% > 1 then  'if there are two values in this spec, read the second
                     'Find next comma, if we are at the last one in the entire sequence the value will be 0
                     commaLoc% := InStr(tempstr$,",");  
                     'Find next space, there should always be one
@@ -4805,6 +4812,19 @@ func Start%()
                         tunBDTuningValues$[BDNumStim%][curveIndex%+1] := tempchar$;
                     endif
                 endif
+                
+                if valsPerSpec% > 2 then  'if there are three values in this spec, read the third
+                    'Find next comma, if we are at the last one in the entire sequence the value will be 0
+                    commaLoc% := InStr(tempstr$,",");  
+                    'Find next space, there should always be one
+                    spaceLoc% := InStr(tempstr$," ");
+                    if commaLoc% > 0 and commaLoc% < spaceLoc% then
+                        tempchar$ := Left$(tempstr$,commaLoc%-1);  'Get leading character(s) corresponding to tuning value
+                        tempstr$ := DelStr$(tempstr$,1,commaLoc%);  'Decrement string
+                        tunBDTuningValues$[BDNumStim%][curveIndex%+2] := tempchar$;
+                    endif
+                endif
+                
                 'Increment number of stims, increment once for either single-value or dual-value specs, is now actual value
                 BDNumStim% += 1;
                 'Find next comma, if we are at the last one in the entire sequence the value will be 0
@@ -4819,14 +4839,19 @@ func Start%()
             'printlog("Final tuning value is %s\n",tempchar$);
             'printlog("Final spec remainder is %s\n",tempstr$);
             
-            BDNumStim% := BDNumStim% + 2 - valsPerSpec%;  'final adjustment of BDNumStim%, will be correct if 2 vals per stim and one short otherwise
-            
             docase
             case valsPerSpec% = 1 then
-                tunBDTuningValues$[BDNumStim%-1][curveIndex%] := tempchar$;  'BDNumStim% has been updated to actual value, not an index
+                tunBDTuningValues$[BDNumStim%][curveIndex%] := tempchar$;  'BDNumStim% has been incremented, but not used for the final trial; it is the correct index for the final trial
+                BDNumStim% += 1;  'Change BDNumStim% to the actual number of stimuli
             case valsPerSpec% = 2 then
-                printlog("BDNumStim-1 is %d and curveIndex+1 is %d\n",BDNumStim%-1,curveIndex%+1);
-                tunBDTuningValues$[BDNumStim%-1][curveIndex%+1] := tempchar$;  'We got CurveIndex% above; BDNumStim% has been updated to actual value, not an index    
+                'printlog("BDNumStim-1 is %d and curveIndex+1 is %d\n",BDNumStim%-1,curveIndex%+1);
+                tunBDTuningValues$[BDNumStim%-1][curveIndex%+1] := tempchar$;  'CurveIndex% adjusted for final value in spec; 
+                                                                               'BDNumStim% has been updated and used for previous value in spec, then updated again, so it is the actual # of stimuli, must adjust indexing   
+                'BDNumStim% is already actual number of stimuli
+            case valsPerSpec% = 3 then 
+                tunBDTuningValues$[BDNumStim%-1][curveIndex%+2] := tempchar$;  'CurveIndex% adjusted for final value in spec; 
+                                                                               'BDNumStim% has been updated and used for previous value in spec, then updated again, so it is the actual # of stimuli, must adjust indexing 
+                'BDNumStim% is already actual number of stimuli
             endcase
             
             
