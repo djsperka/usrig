@@ -488,12 +488,12 @@ func FreeViewerScriptDialog%()
             fvDoOpto% := fvExptType%;
             fvDoCSD% := 0;
             docase 'This is the consequence of having a "clever" dialog that requires you to "open up" the limits on a dialog entry
-            case fvNumPeriodsPerBlock% < 1 then
-                fvNumPeriodsPerBlock% := -fvNumPeriodsPerBlock%;
-                message("Negative NumPeriodsPerBlock has been changed to positive!");
             case fvNumPeriodsPerBlock% = 0 then
                 message("NumPeriodsPerBlock cannot be 0!  Quitting!");
                 halt;
+            case fvNumPeriodsPerBlock% < 1 then
+                fvNumPeriodsPerBlock% := -fvNumPeriodsPerBlock%;
+                message("Negative NumPeriodsPerBlock has been changed to positive!");
             endcase
         endcase
         
@@ -2447,6 +2447,12 @@ func IdleProcessing%()
                     DefaultReward();
                     tNow := View(DataWindow%).MaxTime();  'update tNow so the reward wait is as precise as possible
                     TotalRewards% += 1;
+                    ' turn off stimulus, get ready to advance
+                    if fvMaintainFixation% = 1 then
+                        SafeSampleKey("s");  'Take stim down, leave fixpt up
+                    else
+                        SafeSampleKey("X");  'Turn off all
+                    endif;
                     ChangeStateTo(stateWaitReward%,tNow);  'this seems to work fine
                 case fvPeriodCount% >= fvNumPeriods% or (Rand() < fvProbRewardEachPeriod) then
                     'Give reward if appropriate
