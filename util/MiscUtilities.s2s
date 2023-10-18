@@ -1062,6 +1062,116 @@ end
 
 
 
+'
+'
+'===== ArrUnique%() =====
+'
+'Will place unique values (sorted, ascending) from original%[] into unique%[].
+'Returns number of elements placed into unique%[].
+'Unique%[] is zeroed prior to operation to ensure no previously-held elements
+'   are taken as being present in original%[].
+'Unique%[] must be large enough to hold all unique values from original%[], but
+'   we do not check to ensure that this will hold true (e.g. that unique%[] is
+'   the same size as original%[]).
+func ArrUnique%(original%[],&unique%[])
+    var i%;
+    var currVal%;
+    var count% := 1;
+    
+    'ARRAYS ARE ALWAYS PASSED BY REFERENCE SO WE HAVE TO CREATE A LOCAL VARIABLE
+    'TO AVOID CHANGING THE ORIGINAL%[] ARRAY
+    var tempArray%[Len(original%[])];
+    ArrConst(tempArray%[],original%[]);
+    
+    ArrConst(unique%[],0);
+    ArrSort(tempArray%[]);    
+    currVal% := tempArray%[0];
+    unique%[0] := currVal%;
+    for i% := 1 to Len(tempArray%[])-1 do  'don't need to check first element
+        if tempArray%[i%] > currVal% then
+            currVal% := tempArray%[i%];
+            unique%[count%] := currVal%;
+            count% += 1;
+        endif
+    next
+    
+    return count%;
+    
+end
+
+
+'===== ArrUnique%() =====
+'
+'
+
+
+
+'
+'
+'===== ArrSetDiff%() =====
+'
+'Will find elements of set1%[] that are not members of set2%[], and will place
+'   those elements (unique) into setdiff%[].
+'Returns number of elements placed into setdiff%[]
+'Setdiff%[] is zeroed prior to operation to ensure no previously-held elements
+'   are taken as being present in setdiff%[].
+'Setdiff%[] must be large enough to hold all values from the operation, but we
+'   do not check to ensure that this will hold true (e.g. that setdiff%[] is
+'   the same size as set1%[]).
+'Relies on ArrUnique%()
+func ArrSetDiff%(set1%[],set2%[],&setdiff%[])
+    var s1%;
+    var s2%;
+    var u1%[Len(set1%[])];
+    var u2%[Len(set2%[])];
+    var i%;
+    var j%;
+    var count%;
+    
+    'ARRAYS ARE ALWAYS PASSED BY REFERENCE SO WE HAVE TO CREATE A LOCAL VARIABLE
+    'TO AVOID CHANGING THE SET1%[] AND SET2%[] ARRAYS
+    var tempArray1%[Len(set1%[])];
+    var tempArray2%[Len(set2%[])];
+    ArrConst(tempArray1%[],set1%[]);
+    ArrConst(tempArray2%[],set2%[]);
+    
+    ArrConst(setdiff%[],0);
+    s1% := ArrUnique%(tempArray1%[],u1%[]);
+    s2% := ArrUnique%(tempArray2%[],u2%[]);
+    
+    while i% < s1% do
+        while u2%[j%] < u1%[i%] and j% < s2% do  'elements are increasing; if u2%[j%] is smaller
+                                                 'than u1%[i%], then u2%[j%] is not present in u1%[],
+                                                 'but we don't care about these elements, advance j%
+                                                 'through u2%[] until we find an element that may be
+                                                 'present in u1%[], do not advance past end of u2%[]
+            j% += 1;
+        wend
+        
+        if u1%[i%] = u2%[j%] then  'u1%[i%] is present in u2%[], advance both i% and j%
+            i% += 1;
+            j% += 1;
+        else  'u2%[j%] > u1%[i%], OR u1[i%] > u2%[end]; u1%[i%] is not present in u2%[], place u1%[i%] 
+              'in setdiff%[] and advance i%, increment count%
+            setdiff%[count%] := u1%[i%];
+            count% += 1;
+            i% += 1;
+        endif
+        
+        if j% > s2%-1 then
+            j% := s2%-1;
+        endif
+
+    wend
+    
+    return count%;
+    
+end
+'===== ArrSetDiff%() =====
+'
+'
+
+
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
@@ -1526,4 +1636,57 @@ func SendTrialToMiddle%(nTrials%,unfinishedTrial%,minToSkip%,&trialOrder%[])
     endif;
       
     return status%;
+end
+
+
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' String2FloatArray%(instr$,&array[])
+'
+' This function reads floats from a space-separated string of floats, and places  
+' read floats in array[].  The function returns the number of floats found.  If
+' more floats are found than the length of array[], a modal message box will 
+' inform the user of the error and array[] will be filled to the maximum extent
+' possible.  Only numeric characters (including decimal points and negative signs)
+' and spaces are allowed in instr$.  Any other characters will result in an error
+' and a read of 0 values.
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func String2FloatArray%(instr$,&array[])
+    var count%;
+    var ind%;
+    var tempStr$ := "";
+    var nCh%;
+    var tempNum;
+    
+    while ind% <= Len(instr$) do
+        if Mid$(instr$,ind%+1,1) = " " or ind% = Len(instr$) then 'if we are looking at a separator, check to see if tempStr$ is a number, if so, place into array[]
+            if Len(tempStr$) > 0 then  
+                tempNum := Val(tempStr$,nCh%);
+                if nCh% = Len(tempStr$) then  'make sure entire string was converted to number, if fewer characters converted, string is corrupt
+                    if count% >= Len(array[]) then  'make sure there are not too many floats in the input string
+                        Message("There were more float values in the input string than elements in the container\narray (" + Str$(Len(array[])) + ")!  Returning first " + Str$(Len(array[])) + " values!");
+                        return count%;  'but return the number that were actually read
+                    endif
+                    array[count%] := tempNum;
+                    count% += 1;
+                else 'if there's an error, bail out claiming read of 0 values
+                    Message("Non-numeric character found in input string at: " + tempStr$);
+                    count% := 0;
+                    return count%;
+                endif
+            else
+                'tempStr$ will be empty if there is a double-separator, just noting the explicit skip here
+            endif
+            tempStr$ := "";  'reset tempStr$ after finding separator
+        else 'if we are not looking at a separator, build tempStr$  
+            tempStr$ += Mid$(instr$,ind%+1,1);
+        endif
+        ind% += 1;
+    wend
+    return count%;
 end
