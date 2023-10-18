@@ -217,6 +217,7 @@ var fvDisableGamma%;
 var fvMaintainFixation%;
 var fvExptType%;
 
+var fvIsMaintained%;  'we don't want to apply the fixation hold on maintained trials, this will track whether it is the first trial of a "maintain" or not
 var cmdLine$;  'if we want to print this out, has to be global!
 
 
@@ -1809,7 +1810,7 @@ func IdleProcessing%()
                         yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
                         docase
                         case LookingAtScreenOrFixpt%(xEye,yEye) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
-                            if fvHoldAcquisitionTime > 0 then
+                            if fvHoldAcquisitionTime > 0 and fvIsMaintained% = 0 then
                                 LogStatus("WaitForAcquisition", "Fixpt Acquired at " + str$(tNow));
                                 ChangeStateTo(stateHoldAcquisition%, tNow);
                                 remainInIdleLoop% := 0;  'if we are holding acquisition, take opportunity to give system idle time
@@ -1843,7 +1844,7 @@ func IdleProcessing%()
                 else 'not blitz mode, this is the original code
                     docase
                     case LookingAtScreenOrFixpt%(xEye,yEye) = 1 then  'here, successful acquisition overrides the acquisition timeout if they happen simultaneously
-                        if fvHoldAcquisitionTime > 0 then
+                        if fvHoldAcquisitionTime > 0 and fvIsMaintained% = 0 then
                             LogStatus("WaitForAcquisition", "Fixpt Acquired at " + str$(tNow));
                             ChangeStateTo(stateHoldAcquisition%, tNow);
                         else  'if we don't require holding acquisition, just start the stimulus now rather than waiting through a potential OS time slice
@@ -1928,6 +1929,8 @@ func IdleProcessing%()
             
         case iState% = stateWaitForBlank% then
             'This state only happens when the animal breaks fixation
+            fvIsMaintained% := 0;  'reset
+            
             if fvBlitzMode% = 1 then
                 remainInIdleLoop% := 0;  'do not use blitz mode  
             endif
@@ -1961,6 +1964,8 @@ func IdleProcessing%()
             endif
             
             fvGiveAcqTO% := 0;  'reset
+            
+            fvIsMaintained% := 0;  'reset
             
             if stateBegin% = 1 then
                 LogStatus("AcquisitionTO", "Begin acquisition timeout at " + str$(tNow));
@@ -2152,6 +2157,7 @@ func IdleProcessing%()
                 
                 fvAdvance% := 1;  'Advance, but not until stimulus is off
                 fvFixationWasBroken% := 0;  'Reset, we got this fixation break
+                fvIsMaintained% := 0;  'Reset, will be redundant if we go to stateWaitForBlank
                 
                 ' Now wait until stim is off
                 fvGiveLookingTO% := 0; 'TODO - Not sure about setting this to 0, animal might try to look for minimum no-TO time
@@ -2167,6 +2173,7 @@ func IdleProcessing%()
                 fvGiveLookingTO% := 1;
                 fvAdvance% := 0;
                 fvFixationWasBroken% := 0;  'Reset, we got this fixation break
+                fvIsMaintained% := 0;  'Reset, will be redundant if we go to stateWaitForBlank
                 
                 ' Now wait until stim is off
                 if fvDoImageSeries% = 1 or fvDoOpto% = 1 then
@@ -2591,6 +2598,7 @@ func IdleProcessing%()
                         case fvFixScreen% = 1 then
                             ChangeStateTo(statePrepareOpto%, tNow);
                         case fvMaintainFixation% = 1 then  'if maintaining, skip fixpt up, cannot get to stateIntertrialInterval if fix is broken
+                            fvIsMaintained% := 1;  'We can only get here if fixation is maintained
                             ChangeStateTo(stateLogTrialStart%,tNow);
                         else
                             ChangeStateTo(stateFixptUp%,tNow);
@@ -2611,6 +2619,7 @@ func IdleProcessing%()
                     case fvFixScreen% = 1 then
                         ChangeStateTo(statePrepareOpto%, tNow);
                     case fvMaintainFixation% = 1 then  'if maintaining, skip fixpt up, cannot get to stateIntertrialInterval if fix is broken
+                        fvIsMaintained% := 1;  'We can only get here if fixation is maintained
                         ChangeStateTo(stateLogTrialStart%,tNow);
                     else
                         ChangeStateTo(stateFixptUp%,tNow);
