@@ -167,7 +167,7 @@ var pulseFound%;
 var pulseFoundSlave%;
 var tOpt;
 var stimulusHoldTime;
-var tunMaintainITI;
+
 
 'variables for reading tuning files
 var tunFileLen%;
@@ -808,8 +808,8 @@ func IdleProcessing%()
             SampleText("-");
             ChangeStateTo(stateAbort%, tNow);
         else
-            if tNow - tStateStart > tunMaintainITI then  'now can have different times to create "image series"
-            'if tNow - tStateStart > tunStdInterTrialTime then
+            'if tNow - tStateStart > tunMaintainITI then  'now can have different times to create "image series"
+            if tNow - tStateStart > tunStdInterTrialTime then
                 '            SafeSampleKey("S");  'request stimulus
                 '            ChangeStateTo(stateWaitForStimTrigger%, tNow);
                 
@@ -1143,7 +1143,8 @@ func IdleProcessing%()
                 ChangeStateTo(stateMaintainFixation%, tStimulusDown);  'maintain fixation, but start "counting" at the time the stimulus went down
             case tunUseMaintainMode% >= 1 then
                 if tunBDImGrType%[nTrialsCompleted%-1] <> 1 then 'if the previous stimulus was either a grating or a terminal image, use standard ITI
-                    tunMaintainITI := tunStdInterTrialTime;
+                    'tunMaintainITI := tunStdInterTrialTime;
+                    tunMaintainITI := tunMaintainFixation;
                 else
                     tunMaintainITI := tunImageDelay;  'if the previous stimulus was a non-terminal image, use alternate (short) ITI to create "image series"
                 endif;
@@ -1178,7 +1179,7 @@ func IdleProcessing%()
         case Looking%(xEye, yEye) = 1 and Pause% = 0 then  'acquired new fixation point, don't move forward if pause is called
             LogStatus("WaitForJumpAcquisition", "Acquired fixation point in new position, trial continues");
             ChangeStateTo(stateMaintainFixation%, tStimulusDown);
-        case tNow > tStateStart + tunMaintainFixation or Pause% = 1 then  'failure to acquire fixation point, abort! will also take this route if pause is called
+        case tNow > tStateStart + tunMaintainITI or Pause% = 1 then  'failure to acquire fixation point, abort! will also take this route if pause is called
             tunFPJIsJump% := 0;  'Reset jump variable, this is no longer a legit jump because the fixpt will come down
             tInterTrialTime := tunMaintainFailTime;
     
@@ -1197,7 +1198,7 @@ func IdleProcessing%()
             ChangeStateTo(stateAbort%, tNow);
 
         else 
-            if tNow - tStateStart > tunMaintainFixation then
+            if tNow - tStateStart > tunMaintainITI then
 
                 LogStatus("MaintainFixation", "success");
                 
