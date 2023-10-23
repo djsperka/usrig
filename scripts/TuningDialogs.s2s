@@ -8,6 +8,7 @@
 #include "UsreyDAQ.s2s"
 
 const tunMaxTrials% := 10000;
+const tunMaxImages% := 1000;
 
 const tunTypeNone$ := "None";
 const tunTypeOrientation$ := "O";
@@ -75,6 +76,7 @@ const tundlgOptogeneticsButton% := 30;
 const tundlgFixptColorButton% := 31;
 const tundlgPolkaDotButton% := 32;
 const tundlgSelectTuningFileButton2% := 33;  'Needed for bakers dozen opto/condition file
+const tundlgSelectTuningFileButton3% := 34;  'Needed for bakers dozen image file
 
 ' A note about "steps". 
 ' The dialogs ask for a number of "steps". A step is a transition from one stimulus
@@ -297,14 +299,20 @@ var tunBakersDozenFileLoc$;
 var tunBDUseOCFile%;  'Use Opto/condition file?
 var tunBDOCFile$;
 var tunBakersDozenOCFileLoc$;
+var tunBDUseImageFile%;
+var tunBDImageFile$;
+var tunImageDur;       'additional values for using images within BD
+var tunImageDelay;     'additional values for using images within BD
+var tunImageNLevels%;  'additional values for using images within BD
+var tunNImagesInSeries%;  'additional values for using images within BD
 'Baker's Dozen tuning file read variables
-var tunNumBDCurvesAllowed% := 20;  'include paired curves as two curves
+var tunNumBDCurvesAllowed% := 22;  'include paired curves as two curves
 'Index order of BD curves:
 '0 = ORIentation; 1 = Temporal Freq; 2 = Spatial Freq; 3 = CONtrast
 '4 = FIXpoint COLor; 5 = AREA; 6 = PHASE; 7,8 = XYPOSition (paired)
 '9 = XPOSition; 10,11 = Width/Height (paired); 12 = DonutHole
 '13,14 = FIXXY position (paired); 15 = stimDELay; 16 = stimDURation
-'17,18,19 = SWEEP
+'17,18,19 = SWEEP, 20 = COLorVECtor, 21 = IMAGE??
 var tunBDTunCurveLabel$[tunNumBDCurvesAllowed%];
 tunBDTunCurveLabel$[0]  := "ORI";
 tunBDTunCurveLabel$[1]  := "TF";
@@ -326,11 +334,15 @@ tunBDTunCurveLabel$[16] := "DUR";
 tunBDTunCurveLabel$[17] := "SWEEP";  'This is Sweep Duration
 tunBDTunCurveLabel$[18] := "";  'Reserved for Sweep Direction
 tunBDTunCurveLabel$[19] := "";  'Reserved for Sweep DegPerSec
+tunBDTunCurveLabel$[20] := "COLVEC"; 
+'tunBDTunCurveLabel$[20] := "IMAGE"; 
 var tunBDWhichTunCurve[tunNumBDCurvesAllowed%];    'Will be 1 for each tuning curve that is specified in the BD file and 0 if not
 var tunBDTuningValues$[tunMaxTrials%][tunNumBDCurvesAllowed%];  'Will fill up to 5000 values, as STRINGS, column index is as above
 var tunPauseOnConditionChange% := 0;  'Currently only implemented for Baker's Dozen, will be used openly in idle loop
 var tunBDConditionLabel$[tunMaxTrials%];
 var tunTBTOpto%[tunMaxTrials%];  'this is only available in Baker's Dozen for now
+var tunBDImageList$[tunMaxImages%];  'again, we are only going to do images in the Baker's Dozen (we can interdigitate images and gratings)
+var tunBDImGrType%[tunMaxTrials%];    'if we are using images, to assign reward/duration, 0 = grating, 1 = first/intermediate image, 2 = final image in series
 
 
 'Fixpt Color
@@ -1032,6 +1044,13 @@ proc GetTuningCurveBakersDozenParameters()
     tunBDOCFile$ := GetStringRegistryValue$(key$, "OCFile", tunBDOCFile$);
     tunPauseOnConditionChange% := GetIntRegistryValue%(key$, "PauseOnConditionChange", tunPauseOnConditionChange%);
     tunRepeatForever% := GetIntRegistryValue%(key$, "RepeatForever", tunRepeatForever%);
+    tunBDUseImageFile% := GetIntRegistryValue%(key$, "BDUseImageFile", tunBDUseImageFile%);
+    tunBDImageFile$ := GetStringRegistryValue$(key$, "BDImageFile", tunBDImageFile$);
+    tunImageDur := GetFloatRegistryValue(key$, "ImageDur", tunImageDur);
+    tunNImagesInSeries% := GetIntRegistryValue%(key$, "NImagesInSeries", tunNImagesInSeries%);
+    tunImageDelay := GetFloatRegistryValue(key$, "ImageDelay", tunImageDelay);
+    tunImageNLevels% := GetIntRegistryValue%(key$, "ImageNLevels", tunImageNLevels%);
+
 end;
 
 proc SaveTuningCurveBakersDozenParameters()
@@ -1042,6 +1061,12 @@ proc SaveTuningCurveBakersDozenParameters()
     SetStringRegistryValue(key$, "OCFile", tunBDOCFile$);
     SetIntRegistryValue(key$, "PauseOnConditionChange", tunPauseOnConditionChange%);
     SetIntRegistryValue(key$, "RepeatForever", tunRepeatForever%);
+    SetIntRegistryValue(key$, "BDUseImageFile", tunBDUseImageFile%);
+    SetStringRegistryValue(key$, "BDImageFile", tunBDImageFile$);
+    SetFloatRegistryValue(key$, "ImageDur", tunImageDur);
+    SetIntRegistryValue(key$, "NImagesInSeries", tunNImagesInSeries%);
+    SetFloatRegistryValue(key$, "ImageDelay", tunImageDelay);
+    SetIntRegistryValue(key$, "ImageNLevels", tunImageNLevels%);
 end;
 
 
@@ -1859,11 +1884,21 @@ func TuningCurveDisparityAndBakersDozenDialog%()
         DlgString(3,40,255,"",3,5);  'for visual confirmation of selected opto/condition file
         DlgButton(tundlgSelectTuningFileButton2%, " Select Opto/Condition File ", SelectBakersDozenOCFile%, 2, 6);
         DlgCheck(4,"Pause on Condition Change",2,7);
-        DlgCheck(5,"Repeat Forever?",2,9);
+        
+        DlgCheck(5,"Use Image File?",2,9);
+        DlgString(6,40,255,"",3,10);  'for visual confirmation of selected opto/condition file
+        DlgButton(tundlgSelectTuningFileButton3%, " Select Image File ", SelectBakersDozenImageFile%, 2, 11);
+        DlgReal(7,"Image duration (s)",.05,10,22,12);
+        DlgInteger(8,"Images Per Image Series",1,100,22,13);
+        DlgReal(9,"Image ITI in series (s)",0,10,22,14);
+        DlgInteger(10,"Number of levels in image",1,256,22,15);
+        
+        DlgCheck(11,"Repeat Forever?",2,17);
         
         DlgAllow(0xffff, 0, TuningCurveBDDialogChanged%);
         
-        i% := DlgShow(tunBDTuningFile$,tunBDUseOCFile%,tunBDOCFile$,tunPauseOnConditionChange%,tunRepeatForever%);
+        i% := DlgShow(tunBDTuningFile$,tunBDUseOCFile%,tunBDOCFile$,tunPauseOnConditionChange%,tunBDUseImageFile%,
+                      tunBDImageFile$,tunImageDur,tunNImagesInSeries%,tunImageDelay,tunImageNLevels%,tunRepeatForever%);
         
         ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
         ' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't.
@@ -4647,6 +4682,25 @@ func SelectBakersDozenOCFile%()
 end;
 
 
+func SelectBakersDozenImageFile%()
+    'This generic function ought to work for any of the dialogs where we allow the selection of a tuning file
+
+    var status% := 1;
+    var direc$;
+    var fh0%;
+    
+    direc$ := FilePath$();  'get current directory
+    fh0%:=FileOpen(direc$+"*.txt",1,0,"Please select an image file");  'Find an image file
+    direc$ := FileName$(0);  'Get full path of selected file
+    FileClose(fh0%);  'Just close the file, we're not using it
+    DlgValue$(5,direc$);  'Place filename into dialog item 5 of calling dialog
+
+	return status%;  'return 1 so calling dialog doesn't close
+    
+end;
+
+
+
 func TuningCurveGenericDialogChanged%(item%)
     'This single dialog changed function can be used for ALL the tuning dialogs that allow file-based tuning curves
     '(at least currently) because they all have the same structure and therefore the same dialog positions to allow/disallow
@@ -4671,12 +4725,26 @@ func TuningCurveBDDialogChanged%(item%)
         DlgEnable(0,3);  'disable the string box with the text file name
         DlgEnable(0,-tundlgSelectTuningFileButton2%);  'disable the corresponding button
         DlgEnable(0,4);  'disable the pause on condition change checkbox
-    endif;
-    if DlgValue(2) = 1 then
+    else
         DlgEnable(1,3);  'enable the string box with the text file name
         DlgEnable(1,-tundlgSelectTuningFileButton2%);  'enable the corresponding button
         DlgEnable(1,4);  'enable the pause on condition change checkbox
     endif;
+    if DlgValue(5) = 0 then  'if we are not using an image file
+        DlgEnable(0,6);  'disable the string box with the image file name
+        DlgEnable(0,-tundlgSelectTuningFileButton3%);  'disable the corresponding button
+        DlgEnable(0,7);  'disable image duration
+        DlgEnable(0,8);  'disable number of images in series
+        DlgEnable(0,9);  'disable image delay
+        DlgEnable(0,10);  'disable image color levels
+    else
+        DlgEnable(1,6);  'enable the string box with the image file name
+        DlgEnable(1,-tundlgSelectTuningFileButton3%);  'enable the corresponding button
+        DlgEnable(1,7);  'enable image duration
+        DlgEnable(1,8);  'enable number of images in series
+        DlgEnable(1,9);  'enable image delay
+        DlgEnable(1,10);  'enable image color levels
+    endif
     return 1;
 end
 
