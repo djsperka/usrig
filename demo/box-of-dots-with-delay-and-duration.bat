@@ -1,2 +1,2 @@
 rem extra dot blue, green, yellow. Delay 20, 40, 60 frames.
-%~dp0\..\bin\remote.exe 127.0.0.1 7000 fixstim -f 0,0,1.0,red -b gray -d 813 -f 0,0,1,red -s -5,5,4,4,100,0.2,.25,0,0,b,s,e -T 0.25,0.5,1.0 -S .05,.2,.5 -D 0,0,.5,blue;1,0,.5,green;-1,0,.5,(255/255/0) -E 20,40,60 -t 1.0,2.0,3.0
+%~dp0\..\bin\remote.exe 127.0.0.1 7000 fixstim -f 0,0,1.0,red -a -b gray -d 813 -f 0,0,1,red -s -5,5,4,4,100,0.2,.25,0,0,b,s,e -T 0.25,0.5,1.0 -S .05,.2,.5 -D 0,0,.5,blue;1,0,.5,green;-1,0,.5,(255/255/0) -E 20,40,60 -t 1.0,2.0,3.0
