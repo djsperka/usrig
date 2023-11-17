@@ -1,0 +1,1 @@
+%~dp0\..\bin\remote.exe 127.0.0.1 7000 fixstim -f 0,0,1.0,red -b gray -d 813 -a -v -d 500 -f 0,0,.5,green -g 0,0,3,3,100,.5,0,45,b,s,e 
