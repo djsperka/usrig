@@ -1,0 +1,3091 @@
+' $Id$
+
+const ctCVSID$ := "$Id$";
+
+
+'Include Files
+
+#include "../util/ChannelUtilities.s2s"
+#include "../util/UsreyUtil.s2s"
+#include "../util/LogUtilities.s2s"
+#include "../util/MiscUtilities.s2s"
+#include "UsreyDAQ.s2s"
+#include "UsreyFixationPoint.s2s"
+#include "Joystick.s2s"
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' ConteTask script START
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+' Overall script control vars
+var Pause% := 0;
+
+
+' Channel numbers and handles
+var StimHandle%;			' handle for stimulus application
+var DataWindow%;		
+var XChannel%;
+var YChannel%;
+var JoyChannel%;  'does this need to be initiated?  Does not in CuedAtten, may be done in the joystick init stuff
+var StimChannel%;
+var FrameChannel%;
+var ReadyChannel%;
+var FixationPointChannel%;
+var AdvanceChannel%;
+var UtilityChannel%;
+
+'var ChangeChannel%;
+'var FrameSlaveChannel%;
+'var ReadySlaveChannel%;
+'var StimSlaveChannel%;
+'var DigitalLaserChannel%;
+'var StimulatorChannel%;
+var TimingChannel%;  'only for useTwo1401s, which is not implemented for this code
+
+
+
+' XY window stuff and display stuff
+var XYWindow%;			' 
+var iMonitorChannel%;	' channel number for monitor position display in xy window
+var iFixptChannel%;
+var iCueWindowChannel%;
+var iDisplayWindowGabor1%;
+var iDisplayWindowGabor2%;
+var iDisplayWindowFlanker1%;
+var iDisplayWindowFlanker2%;
+var iDisplayWindowFlanker3%;
+var iDisplayWindowFlanker4%;
+var CueWindowX[36],CueWindowY[36];	' points for displaying cue window in xy view
+var Gabor1WindowX[36],Gabor1WindowY[36];
+var Gabor2WindowX[36],Gabor2WindowY[36];
+var Flanker1WindowX[36],Flanker1WindowY[36];
+var Flanker2WindowX[36],Flanker2WindowY[36];
+var Flanker3WindowX[36],Flanker3WindowY[36];
+var Flanker4WindowX[36],Flanker4WindowY[36];
+var BackgroundColor$ := "gray";  'for right now, let's not even allow changing this...
+
+
+
+'for display in experimenter view of locations of stimuli
+'var mainX;  'the main grating patch is expected to be the one located over the receptive field
+'var mainY;
+var mainW;
+var mainH;
+'var dist1X;  'there are also four possible distracters, these are set in config
+'var dist1Y;
+'var dist1W;
+'var dist1H;
+
+
+' Utility vars
+var DialogOK%;      
+var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
+var tLast:=-1;		' last time we checked for a trigger. 
+var xEye, yEye;		' eye positions
+var tLastFixPtDisplayUpdate:=-1;	' last time view was updated
+var vTrigger;		' set by NextTime to indicate trigger transition
+var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
+var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
+var tTrigger:=-1;	' temp var for newly discovered trigger times
+var tRise, tFall;
+var tReward;
+var tAdvance;
+var tLastAdvance;
+var tLastFrameTrigger;
+var tITIStart;
+var FrameTriggersFound%;
+var leverReleased%;
+var drawFlankers%;   'for use with DrawMonitorScreen, uses plural to not step on local variable in DrawMonitorScreen
+var drawGabors%;     'for use with DrawMonitorScreen, uses plural to not step on local variable in DrawMonitorScreen
+var TextForSample$;  'ummmm, gotta go with the funky name here
+var TextForTarget$;  'and match it I guess
+var SequencerPeriodMS;
+var HBCycle% := 1;
+var ctRewardDurSec;
+ctRewardDurSec := (GetJuiceRewardMS%()+20)/1000;  'Set reward duration up top.  If we have any reason to think this will change through the experiment, then set it say each idle loop
+                                                  'I am paranoid and I'm adding another 20 ms following the reward.
+
+
+' Constants for states
+
+const stateVSGWait%:=0;		               'Wait for VSG to send ready signal, only used at beginning of experiment
+const stateEnsureLeverInOrigin%:=1;        'Make sure lever is in origin before starting a trial
+const stateWaitForLever%:=2;               'GNG, so we'll call lever/joystick "lever" - Lever is the very first action 
+const stateStartTrial%:=3;                 'Start trial, request fixpt
+const stateWaitForFixPtOn%:=4;             'Wait for fixpt up
+const stateWaitForAcquisition%:=5;         'Wait for acquisition of fixaiton point
+const stateWaitStimOnsetDelay%:=6;         'Wait through any stimulus onset delay
+const stateRequestStimulus%:=7;            'Request stimulus
+const stateMonitorFrameChannel%:=8;        'Ensure each cue/sample/target frame appears
+const stateResponseWindow%:=9;             'Response window, will be used for ctTrainingOptions% 2 and higher
+const stateTrialCompleted%:=10;            'Trial is done
+const stateReward%:=11;                    'Deliver reward
+const stateRewardWait%:=12;                'Wait through reward delivery
+const stateCheckAdvance%:=13;              'Make sure advance has happened (has been requested prior to reward delivery, if any)
+const stateITI%:=14;                       'Wait through ITI
+const stateAbort%:=15;                     'Wait through abort
+const stateWaitForBlank%:=16;              'Wait through blank - this state should only be approached via WaitForBlankTo()
+
+
+var iState% := stateVSGWait%;	'Always start in stateVSGWait%
+var nextState%;                 'For WaitForBlankTo(), allows waiting for blank then moving to next state 
+var stateBegin% := 1;           'Keep track of whether it is the first time through a state, for logging purposes
+
+
+var nTrials%;
+var nTrialsStarted%;
+var nTrialsCompleted%;
+var nTrialsAborted%;
+var Hits%;
+var Misses%;
+var FAs%;
+var CRs%;
+
+
+const ctMaxTrials% := 5000;
+
+var ctTrialOrder%[ctMaxTrials%];   'Will be shuffled indices, to randomize trial order 
+var cueDotPct[ctMaxTrials%];       'Percentage of cue dots on each trial
+var samp1Ori[ctMaxTrials%];        'Sample orientation on each trial, etc.
+var samp2Ori[ctMaxTrials%];
+var test1Ori[ctMaxTrials%];
+var test2Ori[ctMaxTrials%];
+var validity%[ctMaxTrials%];       'Validity on each trial, -1 = no change, 0 = invalid, 1 = valid (what if cueDotPct is 50?)
+var whichOriChange%[ctMaxTrials%]; '0 = no change, 1 = side 1 changes, 2 = side 2 changes
+var flankerIsH%[ctMaxTrials%];     '-2 = no flanker, vertical box; -1 = no flanker, horizontal box; 0 = flanker vertical; 1 = flanker horizontal
+
+var tic;  'Set a tick value equal to the duration of one clock tick in seconds, used to prevent finding
+          'the same "pulse" twice
+var pulseFound%;
+
+
+' Wavemarks and continuous ports
+var ctNWavemarks% := 0;
+var ctWavemarkPorts%[64];
+var ctNContinuous% := 0;
+var ctContinuousPorts%[64];
+
+
+' Dialog box variables
+var ctAlwaysPressing% := 1; 'If set joystick ignored - subject presumed to be pressing joystick always. TESTING ONLY.
+var ctAlwaysLooking% := 0;  'I don't think we'll actually ever want to set this to 1, but we can
+var ctCheckLooking%;        'OK, so AlwaysLooking is going to override CheckLooking; CheckLooking will be set based on RequireFixation
+var ctAdditionalWindowRadius;
+var ctTrainingOptions%;
+var ctRequireFixation%; 
+var nTrialsPerDataPoint%;
+var ctCountInvalid%;    'per data point
+var ctCountCatch%;  'per data point 
+var ctCountValid%;    'per data point
+var ctFixationOn%;
+var ctFixCrossWidthDeg;   'hopefully will have fixed dimensions and one value is all we need.
+var ctPatchOnsetDelay;
+var ctPatchToSampleDelay;
+var ctSampleToTargetDelay;  'Target is the "orientation change" if any
+var ctSampleDuration;
+var ctTargetDuration;
+var ctITI;
+var ctDotRadiusDeg;
+var ctDotColor1R%;     'I think it may not be easy to put vectors in the registry, so use scalars?
+var ctDotColor1G%;
+var ctDotColor1B%; 
+var ctDotColor2R%;
+var ctDotColor2G%;
+var ctDotColor2B%;
+var ctDotsPerPF%;      'using PF to abbreviate "patch frame"; a patch consists of N patch frames
+var ctPatchRadiusDeg;
+var ctRefreshPerPF%;   'How many monitor refreshes per frame
+var ctPFsPerPatch%;
+var ctResponseTime;
+var ctGaborXLoc;
+var ctGaborYLoc;
+var ctGaborHDeg;
+var ctGaborWDeg;
+var ctGaborSF;
+var ctGaborPhase;
+var ctGaborOriTemp;  'this is only for display
+var ctGaborDivisor;
+var ctPanelIsHoriz%;
+var ctPanelLinePixels%;
+var ctStimValsFromConfig%;
+var ctOrientationMatches%;
+var ctNDistractorOn%;
+var ctNDistractorOff%;
+var ctDotPctString$;
+var ctSampleOriString$;
+var ctOriChangeString$;
+var ctPatchDur;            'this is calculated
+var ctAbortPenalty;
+var ctFixAcqTime;
+
+'Variables that allow us to build the allowed tunable values from strings
+var ctDotPct[100];  '100 possible values is way too many
+var ctGaborOri[100];
+var ctGaborOriChange[100];
+var ctNDotPct%;
+var ctNSampleOri%;
+var ctNOriChange%;
+
+
+var ctMaxTrialPerDataPoint% := 1000;
+var ctResponseTimeText$ := "Response time (s)";
+var ctHoldTimeText$ := "Add'l hold time (s)";
+var ctPatchRadiusText$ := "Cue patch radius (deg)";
+var ctFixRadiusText$ := "Fixation radius (deg)";
+
+'Dialog Box Position Variables - will make things easier if we decide to rearrange
+var ctDlgnTrialsPerDataPoint% := 1;
+var ctDlgTrainingOptions% := 2;
+var ctDlgCountInvalid% := 3;    
+var ctDlgCountCatch% := 4;  
+var ctDlgCountValid% := 5; 
+var ctDlgRequireFixation% := 6; 
+var ctDlgFixationOn% := 7;
+var ctDlgAdditionalWindowRadius% := 8;
+var ctDlgFixCrossWidthDeg% := 9; 
+var ctDlgPatchOnsetDelay% := 10;
+var ctDlgPatchToSampleDelay% := 11;
+var ctDlgSampleToTargetDelay% := 12; 
+var ctDlgSampleDuration% := 13; 
+var ctDlgTargetDuration% := 14;
+var ctDlgITI% := 15;
+var ctDlgDotRadiusDeg% := 16;
+var ctDlgDotColor1R% := 17; 
+var ctDlgDotColor1G% := 18;
+var ctDlgDotColor1B% := 19; 
+var ctDlgDotColor2R% := 20;
+var ctDlgDotColor2G% := 21;
+var ctDlgDotColor2B% := 22;
+var ctDlgDotsPerPF% := 23;   
+var ctDlgPatchRadiusDeg% := 24;
+var ctDlgRefreshPerPF% := 25; 
+var ctDlgPFsPerPatch% := 26;
+var ctDlgResponseTime% := 27;
+var ctDlgGaborXLoc% := 28;
+var ctDlgGaborYLoc% := 29;
+var ctDlgGaborHDeg% := 30;
+var ctDlgGaborWDeg% := 31;
+var ctDlgGaborSF% := 32;
+var ctDlgGaborPhase% := 33;
+var ctDlgGaborDivisor% := 34;
+var ctDlgPanelIsHoriz% := 35;
+var ctDlgPanelLinePixels% := 36;
+var ctDlgStimValsFromConfig% := 37;
+var ctDlgAlwaysPressing% := 38;
+var ctDlgOrientationMatches% := 39;
+var ctDlgNDistractorOn% := 40;
+var ctDlgNDistractorOff% := 41;
+var ctDlgDotPctString% := 42;
+var ctDlgSampleOriString% := 43;
+var ctDlgOriChangeString% := 44;
+var ctDlgAbort% := 45;
+var ctDlgFixAcqTime% := 46;
+
+
+var ctDlgTotalTrials%;  'This just holds a pointer to the total trials text so we can update the text value
+var ctTotalTrialsText$;
+var ctGaborOriText$;
+var ctPatchDurText$;
+
+'Dialog Box Text Variables - will make things easier if we decide to rearrange
+'Value will be returned by DlgText when setting up the text box
+'Won't create a text value if we're never going to turn off the dialog entry, don't need it.
+var ctTxtCountInvalid%;    
+var ctTxtCountCatch%;  
+var ctTxtCountValid%; 
+var ctTxtRequireFixation%; 
+var ctTxtFixationOn%;
+var ctTxtAdditionalWindowRadius%;
+var ctTxtFixCrossWidthDeg%; 
+var ctTxtPatchOnsetDelay%;
+var ctTxtPatchToSampleDelay%;
+var ctTxtSampleToTargetDelay%; 
+var ctTxtSampleDuration%; 
+var ctTxtTargetDuration%; 
+var ctTxtDotRadiusDeg%;
+var ctTxtDotColor1%;  
+var ctTxtDotColor2%;
+var ctTxtDotsPerPF%;   
+var ctTxtPatchRadiusDeg%;
+var ctTxtRefreshPerPF%; 
+var ctTxtPFsPerPatch%;
+var ctTxtResponseTime%;
+var ctTxtGaborXLoc%;
+var ctTxtGaborYLoc%;
+var ctTxtGaborHDeg%;
+var ctTxtGaborWDeg%;
+var ctTxtGaborSF%;
+var ctTxtGaborPhase%;
+var ctTxtGaborOri%;
+var ctTxtGaborDivisor%;
+var ctTxtPanelLinePixels%;
+var ctTxtOrientationMatches%;
+var ctTxtNDistractorOn%;
+var ctTxtNDistractorOff%;
+var ctTxtDotPctString%;
+var ctTxtSampleOriString%;
+var ctTxtOriChangeString%;
+var ctTxtPatchDur%;
+var ctTxtAbort%;
+var ctTxtFixAcqTime%;
+
+
+var screenXDeg := 12.5;  'Manually setting screen degrees - we might want to calculate this based on manual screen cm or have degrees/cm in main dialog, but for now...
+var screenYDeg := 9.5;   
+
+
+
+
+'Done with variables
+
+
+
+GetConteTaskParameters();  'We will just get these right off the bat, this supports the pre-dialog box
+'that warns about AlwaysLooking - though this pre-dialog is currently disabled
+
+' Check if always looking flag is set. If so, issue a warning.
+' I'm thinking that this is kind of a pain in the butt, we can possibly just put it in the dialog box
+' and forget it.  If we want it back as a warning up front, it's an easy uncomment.
+'if AlwaysLooking% = 1 then
+'    if Query("Always looking is SET. Unset?") = 1 then
+'        AlwaysLooking% := 0;
+'    endif
+'endif
+
+' Init logging
+LogInit(1);
+
+UseTwo1401s% := DoWeUseTwo1401s%();
+
+if UseTwo1401s% = 1 then
+    'Two 1401s disabled because the port carrying the "change" trigger from the VSG has been stolen from one
+    'of the slave ports, we need to fix that (physically and code-wise) to allow Two 1401s to work.
+    message("Using two 1401s has been disabled for the Conte Task!  Talk to Dan/Jeff!  Quitting!");
+    halt;
+endif
+
+GetPortsAndNumWMsWFs%(ctNWavemarks%,ctNContinuous%,ctWavemarkPorts%[],ctContinuousPorts%[]);
+
+
+'Run the main dialog
+DialogOK% := ConteTaskDialog%();
+
+if DialogOK% = 1 then
+    LogInfo("Proceed with DAQ.");
+else
+	LogInfo("User cancel - exit gracefully\n");
+	Halt;
+endif;
+
+
+' Assign channel numbers for eye X,Y and trigger. 
+XChannel% := 25;
+YChannel% := 26;
+JoyChannel% := 27;
+
+TimingChannel% := 38;
+UtilityChannel% := 39;
+ReadyChannel% := 40;
+FrameChannel% := 41;
+StimChannel% := 42;
+AdvanceChannel% := 43;
+FixationPointChannel% := 44;
+'ReadySlaveChannel% := 45;
+'StimulatorChannel% := 46;
+'ChangeChannel% := 47;
+'DigitalLaserChannel% := 48;  'is 32 on Acute tuning, but let's not shove it in the midst of other stuff
+
+
+ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 44;  'FixationPointChannel% is highest non-electrode channel used by this function  
+
+
+
+
+'If we are not linking the two 1401s together, just use the standard order of operations:
+'1) create sampling configuration, 2) Initialize windows, 3) Initialize/run toolbar.
+'However, if we are linking the 1401s we have to do this in a different order, because we have to open up the second
+'instance of Spike 2 BEFORE setting up the sampling configuration/windows on the first instance.  Doing this in the
+'wrong order results in a non-fatal error in the second Spike2 instance indicating that the file which is preparing
+'to be recorded in the first instance cannot be accessed, despite no explicit attempt to access any such thing.
+'Hence, for the dual-1401 setups, we first initialize the toolbar, which has a specialty button "Start Plexon".  StartPlexon%()
+'launches the second instance and the associated script, and both scripts move forward independently to create their own
+'sampling configuration, initialize their own windows and are ready to have sampling started.  Note well that sampling
+'must be started on the POWER 1401/SLAVE 1401 (the second, non-dominant instance of Spike2) FIRST and on the 
+'MICRO 1401/MASTER 1401 (the first,  dominant instance of Spike 2) SECOND.  Starting sampling on the Micro will run 
+'the VSG program (Fixstim) which gives the sampling trigger and sets the experiment in motion.
+if UseTwo1401s% = 0 then
+    CreateSampleConfiguration();
+
+    ' Get display windows ready
+    InitializeWindows();
+    
+    tic := View(DataWindow%).BinSize(ReadyChannel%);
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+else
+    InitializeToolbar();
+endif;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' ConteTask script END
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+
+'From here on out, it's just various necessary functions
+
+
+proc GetConteTaskParameters()
+	var stmp$;
+	var key$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\ConteTask";
+    
+    ctAdditionalWindowRadius := GetFloatRegistryValue(key$, "AdditionalWindowRadius", ctAdditionalWindowRadius);
+    ctTrainingOptions% := GetIntRegistryValue%(key$, "TrainingOptions", ctTrainingOptions%);
+    ctRequireFixation% := GetIntRegistryValue%(key$, "RequireFixation", ctRequireFixation%);
+    nTrialsPerDataPoint% := GetIntRegistryValue%(key$, "nTrialsPerDataPoint", nTrialsPerDataPoint%);
+    ctCountInvalid% := GetIntRegistryValue%(key$, "CountInvalid", ctCountInvalid%);
+    ctCountCatch% := GetIntRegistryValue%(key$, "CountCatch", ctCountCatch%);
+    ctCountValid% := GetIntRegistryValue%(key$, "CountValid", ctCountValid%);
+    ctFixationOn% := GetIntRegistryValue%(key$, "FixationOn", ctFixationOn%);
+    ctFixCrossWidthDeg := GetFloatRegistryValue(key$, "FixCrossWidthDeg", ctFixCrossWidthDeg);
+    ctPatchOnsetDelay := GetFloatRegistryValue(key$, "PatchOnsetDelay", ctPatchOnsetDelay);
+    ctPatchToSampleDelay := GetFloatRegistryValue(key$, "PatchToSampleDelay", ctPatchToSampleDelay);
+    ctSampleToTargetDelay := GetFloatRegistryValue(key$, "SampleToTargetDelay", ctSampleToTargetDelay);
+    ctSampleDuration := GetFloatRegistryValue(key$, "SampleDuration", ctSampleDuration);
+    ctTargetDuration := GetFloatRegistryValue(key$, "TargetDuration", ctTargetDuration);
+    ctITI := GetFloatRegistryValue(key$, "ITI", ctITI);
+    ctDotRadiusDeg := GetFloatRegistryValue(key$, "DotRadiusDeg", ctDotRadiusDeg);
+    ctDotColor1R% := GetIntRegistryValue%(key$, "DotColor1R", ctDotColor1R%);
+    ctDotColor1G% := GetIntRegistryValue%(key$, "DotColor1G", ctDotColor1G%);
+    ctDotColor1B% := GetIntRegistryValue%(key$, "DotColor1B", ctDotColor1B%);
+    ctDotColor2R% := GetIntRegistryValue%(key$, "DotColor2R", ctDotColor2R%);
+    ctDotColor2G% := GetIntRegistryValue%(key$, "DotColor2G", ctDotColor2G%);
+    ctDotColor2B% := GetIntRegistryValue%(key$, "DotColor2B", ctDotColor2B%);
+    ctDotsPerPF% := GetIntRegistryValue%(key$, "DotsPerPF", ctDotsPerPF%);
+    ctPatchRadiusDeg := GetFloatRegistryValue(key$, "PatchRadiusDeg", ctPatchRadiusDeg);
+    ctRefreshPerPF% := GetIntRegistryValue%(key$, "RefreshPerPF", ctRefreshPerPF%);
+    ctPFsPerPatch% := GetIntRegistryValue%(key$, "PFsPerPatch", ctPFsPerPatch%);
+    ctResponseTime := GetFloatRegistryValue(key$, "ResponseTime", ctResponseTime);
+    ctGaborDivisor := GetFloatRegistryValue(key$, "GaborDivisor", ctGaborDivisor);
+    ctPanelIsHoriz% := GetIntRegistryValue%(key$, "PanelIsHoriz", ctPanelIsHoriz%);
+    ctPanelLinePixels% := GetIntRegistryValue%(key$, "PanelLinePixels", ctPanelLinePixels%);
+    ctStimValsFromConfig% := GetIntRegistryValue%(key$, "StimValsFromConfig", ctStimValsFromConfig%);
+    ctAlwaysPressing% := GetIntRegistryValue%(key$, "AlwaysPressing", ctAlwaysPressing%);
+    ctOrientationMatches% := GetIntRegistryValue%(key$, "OrientationMatches", ctOrientationMatches%);
+    ctNDistractorOn% := GetIntRegistryValue%(key$, "NDistractorOn", ctNDistractorOn%);
+    ctNDistractorOff% := GetIntRegistryValue%(key$, "NDistractorOff", ctNDistractorOff%);
+    ctDotPctString$ := GetStringRegistryValue$(key$, "DotPctString", ctDotPctString$);
+    ctSampleOriString$ := GetStringRegistryValue$(key$, "SampleOriString", ctSampleOriString$);
+    ctOriChangeString$ := GetStringRegistryValue$(key$, "OriChangeString", ctOriChangeString$);
+    ctAbortPenalty := GetFloatRegistryValue(key$, "AbortPenalty", ctAbortPenalty);
+    ctFixAcqTime := GetFloatRegistryValue(key$, "FixAcqTime", ctFixAcqTime);
+      
+end;
+
+proc SaveConteTaskParameters()
+	var key$;
+	var stmp$;
+	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\ConteTask";
+    
+    SetFloatRegistryValue(key$, "AdditionalWindowRadius", ctAdditionalWindowRadius);
+    SetIntRegistryValue(key$, "TrainingOptions", ctTrainingOptions%);
+    SetIntRegistryValue(key$, "RequireFixation", ctRequireFixation%);
+    SetIntRegistryValue(key$, "nTrialsPerDataPoint", nTrialsPerDataPoint%);
+    SetIntRegistryValue(key$, "CountInvalid", ctCountInvalid%);
+    SetIntRegistryValue(key$, "CountCatch", ctCountCatch%);
+    SetIntRegistryValue(key$, "CountValid", ctCountValid%);
+    SetIntRegistryValue(key$, "FixationOn", ctFixationOn%);
+    SetFloatRegistryValue(key$, "FixCrossWidthDeg", ctFixCrossWidthDeg);
+    SetFloatRegistryValue(key$, "PatchOnsetDelay", ctPatchOnsetDelay);
+    SetFloatRegistryValue(key$, "PatchToSampleDelay", ctPatchToSampleDelay);
+    SetFloatRegistryValue(key$, "SampleToTargetDelay", ctSampleToTargetDelay);
+    SetFloatRegistryValue(key$, "SampleDuration", ctSampleDuration);
+    SetFloatRegistryValue(key$, "TargetDuration", ctTargetDuration);
+    SetFloatRegistryValue(key$, "ITI", ctITI);
+    SetFloatRegistryValue(key$, "DotRadiusDeg", ctDotRadiusDeg);
+    SetIntRegistryValue(key$, "DotColor1R", ctDotColor1R%);
+    SetIntRegistryValue(key$, "DotColor1G", ctDotColor1G%);
+    SetIntRegistryValue(key$, "DotColor1B", ctDotColor1B%);
+    SetIntRegistryValue(key$, "DotColor2R", ctDotColor2R%);
+    SetIntRegistryValue(key$, "DotColor2G", ctDotColor2G%);
+    SetIntRegistryValue(key$, "DotColor2B", ctDotColor2B%);
+    SetIntRegistryValue(key$, "DotsPerPF", ctDotsPerPF%);
+    SetFloatRegistryValue(key$, "PatchRadiusDeg", ctPatchRadiusDeg);
+    SetIntRegistryValue(key$, "RefreshPerPF", ctRefreshPerPF%);
+    SetIntRegistryValue(key$, "PFsPerPatch", ctPFsPerPatch%);
+    SetFloatRegistryValue(key$, "ResponseTime", ctResponseTime);
+    SetFloatRegistryValue(key$, "GaborDivisor", ctGaborDivisor);
+    SetIntRegistryValue(key$, "PanelIsHoriz", ctPanelIsHoriz%);
+    SetIntRegistryValue(key$, "PanelLinePixels", ctPanelLinePixels%);
+    SetIntRegistryValue(key$, "StimValsFromConfig", ctStimValsFromConfig%);
+    SetIntRegistryValue(key$, "AlwaysPressing", ctAlwaysPressing%);
+    SetIntRegistryValue(key$, "OrientationMatches", ctOrientationMatches%);
+    SetIntRegistryValue(key$, "NDistractorOn", ctNDistractorOn%);
+    SetIntRegistryValue(key$, "NDistractorOff", ctNDistractorOff%);
+    SetStringRegistryValue(key$, "DotPctString", ctDotPctString$);
+    SetStringRegistryValue(key$, "SampleOriString", ctSampleOriString$);
+    SetStringRegistryValue(key$, "OriChangeString", ctOriChangeString$);
+    SetFloatRegistryValue(key$, "AbortPenalty", ctAbortPenalty);
+    SetFloatRegistryValue(key$, "FixAcqTime", ctFixAcqTime);
+    
+end;
+
+
+
+func ConteTaskDialog%()
+    var i%;
+    const nTOpts% := 5;
+    var trainingOptionsList$[nTOpts%];
+    const nFOpts% := 3;  'was 4, but it seems we will never require a saccade response
+    var fixationOptionsList$[nFOpts%];
+    var gr$;  'to grab the grating parameters for parsing
+    var iw, ih, tf, ctf;  'will hold "unused" grating parameters from the parse
+    var cv$, pat$, ap$;   'etc.
+    var con%;             'etc.
+    
+    var eightFloats[8]; 
+    var sevenFloats[7];    
+    var sixInts%[6];
+    var sevenInts%[7];  'OK, fine, this isn't exactly the greatest organization!  The dialog has evolved so much!
+    var threeStrings$[3];
+    
+
+
+    trainingOptionsList$[0] := "Reward for lever";    '"Press Lever - Instant Reward - Release - Wait ITI"
+    trainingOptionsList$[1] := "Reward for hold & release lever";   '"Hold Lever - Release (when fixpt down) - Reward - Wait ITI"
+    trainingOptionsList$[2] := "Reward for hold lever through cue then release";    '"Hold Lever - Patch - Release (when fixpt down) - Reward - Wait ITI"
+    trainingOptionsList$[3] := "Reward for hold lever through cue & sample then release";    '"Hold Lever - Patch & Sample - Release (when fixpt down) - Reward - Wait ITI"
+    trainingOptionsList$[4] := "Full task";    '"Hold Lever - Patch & Sample & Test - Release (early for change, late for no change) - Reward if correct - Wait ITI"
+                                               'We want to start this out with no temporal gap between Sample & Test, and then introduce that, but once Test comes it's the full task
+    
+    fixationOptionsList$[0] := "Fixation:  None - No Eye Channels"; 
+    fixationOptionsList$[1] := "Fixation:  Display Eye Position Only"; 'will create eye channels but not enforce fixation
+    fixationOptionsList$[2] := "Fixation:  Require Fixation"; 
+    'fixationOptionsList$[3] := "Fixation:  Require Saccade Response";  'we won't use this!
+    
+    
+    GetConteTaskParameters();
+    
+    'Calculate total trials for initial display 
+    nTrials% := CalcNumTrials%(ctTrainingOptions%,nTrialsPerDataPoint%,ctCountValid%,ctCountInvalid%,ctCountCatch%,
+                ctDotPctString$,ctSampleOriString$,ctOriChangeString$,ctNDistractorOn%,ctNDistractorOff%);
+    ctTotalTrialsText$ := "Total number of trials: " + Str$(nTrials%);
+    
+    
+    'Get values for gabor properties from the main stimulus
+    gr$ := GetGratingParameters$("Stimulus");
+    ParseGratingParameters%(gr$, ctGaborXLoc, ctGaborYLoc, ctGaborWDeg, ctGaborHDeg, iw, ih, con%, ctGaborSF, tf, ctGaborOriTemp, ctGaborPhase, cv$, pat$, ap$, ctf);
+    
+    'Make gabor orientation string, no longer allowing edit in the stimulus options portion of the dialog
+    ctGaborOriText$ := "RF Orientation (deg) = " + Str$(ctGaborOriTemp);
+    
+    'Convert to fixation-based coordinates (almost certainly fixation will be at 0,0, but we have to allow for other locations)
+    'For X, we want to find the rightward gabor
+    if (ctGaborXLoc - FixationX) > 0 then 'receptive field is to the right of fixation
+        ctGaborXLoc := ctGaborXLoc - FixationX;  'Get location of rightward gabor, relative to fixation
+    else 'receptive field is to the left of fixation
+        ctGaborXLoc := FixationX - ctGaborXLoc;  'Get location of RIGHTward gabor, relative to fixation
+    endif
+    'For Y, both gabors will be on the same side of fixation
+    ctGaborYLoc := ctGaborYLoc - FixationY;
+    
+    
+    'Calculate initial duration of cue patch, in text
+    ctPatchDurText$ := "Patch duration (s) = " + Str$(ctRefreshPerPF%*ctPFsPerPatch%/dataScreenHz,4,-3);  'in seconds, three decimal places
+    
+    
+    'Pack sixFloats[], sixInts%[], sevenFloats[], sevenInts%[], threeStrings$[]
+    eightFloats[0] := ctFixCrossWidthDeg;
+    eightFloats[1] := ctPatchOnsetDelay;
+    eightFloats[2] := ctPatchToSampleDelay;
+    eightFloats[3] := ctSampleToTargetDelay;
+    eightFloats[4] := ctSampleDuration;
+    eightFloats[5] := ctTargetDuration;
+    eightFloats[6] := ctITI;
+    eightFloats[7] := ctDotRadiusDeg;
+    
+    sixInts%[0] := ctDotColor1R%;
+    sixInts%[1] := ctDotColor1G%;
+    sixInts%[2] := ctDotColor1B%;
+    sixInts%[3] := ctDotColor2R%;
+    sixInts%[4] := ctDotColor2G%;
+    sixInts%[5] := ctDotColor2B%;
+    
+    sevenFloats[0] := ctGaborXLoc;
+    sevenFloats[1] := ctGaborYLoc;
+    sevenFloats[2] := ctGaborHDeg;
+    sevenFloats[3] := ctGaborWDeg;
+    sevenFloats[4] := ctGaborSF;
+    sevenFloats[5] := ctGaborPhase;
+    sevenFloats[6] := ctGaborDivisor;    
+    
+    sevenInts%[0] := ctPanelIsHoriz%;
+    sevenInts%[1] := ctPanelLinePixels%;
+    sevenInts%[2] := ctStimValsFromConfig%;
+    sevenInts%[3] := ctAlwaysPressing%;
+    sevenInts%[4] := ctOrientationMatches%;
+    sevenInts%[5] := ctNDistractorOn%;
+    sevenInts%[6] := ctNDistractorOff%;
+    
+    threeStrings$[0] := ctDotPctString$;
+    threeStrings$[1] := ctSampleOriString$;
+    threeStrings$[2] := ctOriChangeString$;
+    
+    
+    'Create variables for dialog layout
+    var wDlg% := 111;  '108+3
+    var c1% := 2;      'first column starts
+    var c22% := 56;    'second column starts, 2-col, 54+2
+    var c23% := 38;    'second column starts, 3-col, 36+2
+    var c33% := 74;    'third column starts, 3-col, 72+2
+    var hTrExpOpt% := 2; 'height of training/experimental options group
+    var hTrSpec% := 7;   'height of trial specification group
+    var hFix% := 3;      'height of fixation options group
+    var hTime% := 4;     'height of timing options group
+    var hCue% := 4;      'height of cue patch/cue dots options group
+    var hStim% := 5;     'height of stimulus options group
+    var sTrSpec% := hTrExpOpt% + 1;   'start line of trial specification group
+    var sFix% := sTrSpec% + hTrSpec%; 'start line of fixation options group
+    var sTime% := sFix% + hFix%;      'start line of timing options group, use sTime% to avoid potential future conflict with "stim%"
+    var sCue% := sTime% + hTime%;     'start line of cue patch.cue dots options group
+    var sStim% := sCue% + hCue%;      'start line of stimulus options group
+    var hDlg% := sStim% + hStim% + 2; 'height of entire dialog, add a line for the joystick dialog
+    var wNum% := 6;  'width of a numeric dialog entry box
+    
+    
+	DlgCreate("Conte Task Parameters",0,0,wDlg%,hDlg%);
+    DlgGroup("Training/Full Experiment Options",1,1,wDlg%-2,hTrExpOpt%);
+    DlgList(ctDlgTrainingOptions%,50,trainingOptionsList$[],nTOpts%,c1%+1,2);
+    
+    
+    
+    DlgGroup("Trial Specification",1,sTrSpec%,wDlg%-2,hTrSpec%);
+    ctDlgTotalTrials% := DlgText(ctTotalTrialsText$,c1%,sTrSpec%+1,50);
+    DlgInteger(ctDlgnTrialsPerDataPoint%,wNum%,1,ctMaxTrialPerDataPoint%,c33%+1,sTrSpec%+1);  DlgText("Trials/data point",c33%+wNum%+2,sTrSpec%+1);  'no variable to hold output of DlgText if we won't ever turn the field off
+    DlgInteger(ctDlgCountValid%,wNum%,0,ctMaxTrialPerDataPoint%,c1%+1,sTrSpec%+2);  ctTxtCountValid% := DlgText("Valid trials/data point",c1%+wNum%+2,sTrSpec%+2);
+    DlgInteger(ctDlgCountInvalid%,wNum%,0,ctMaxTrialPerDataPoint%,c23%+1,sTrSpec%+2);  ctTxtCountInvalid% := DlgText("Invalid trials/data point",c23%+wNum%+2,sTrSpec%+2);
+    DlgInteger(ctDlgCountCatch%,wNum%,-ctMaxTrialPerDataPoint%,ctMaxTrialPerDataPoint%,c33%+1,sTrSpec%+2);  ctTxtCountCatch% := DlgText("No-Change trials/data point",c33%+wNum%+2,sTrSpec%+2);
+    DlgString(ctDlgDotPctString%,60,400,"-0-9 .",c1%+1,sTrSpec%+3);  ctTxtDotPctString% := DlgText("Dot pct Color 1 values (0-100, space-separated)",c1%+60+2,sTrSpec%+3);
+    DlgString(ctDlgSampleOriString%,60,400,"-0-9 .",c1%+1,sTrSpec%+4);  ctTxtSampleOriString% := DlgText("Sample Orientation values (+/- deg, space-separated)",c1%+60+2,sTrSpec%+4);
+    DlgString(ctDlgOriChangeString%,60,400,"-0-9 .",c1%+1,sTrSpec%+5);  ctTxtOriChangeString% := DlgText("Orientation Change values (+/- deg, space-separated)",c1%+60+2,sTrSpec%+5);
+    DlgInteger(ctDlgNDistractorOn%,wNum%,0,100,c1%+1,sTrSpec%+6);  ctTxtNDistractorOn% := DlgText("Distractor trials/data point",c1%+wNum%+2,sTrSpec%+6);
+    DlgInteger(ctDlgNDistractorOff%,wNum%,0,100,c23%+1,sTrSpec%+6);  ctTxtNDistractorOff% := DlgText("No-Distractor trials/data point",c23%+wNum%+2,sTrSpec%+6);
+    DlgCheck(ctDlgOrientationMatches%, "L/R Sample Orientations match",c33%,sTrSpec%+6);
+    
+    
+    'This template is useful for "text left, box right", which after contemplation is my disfavored version
+    'DlgInteger(ctDlgnTrialsPerDataPoint%,6,1,ctMaxTrialPerDataPoint%,c22%-7,3);  DlgText("Num Trials",c1%,3);  'no variable to hold output of DlgText if we won't ever turn the field off
+    'DlgInteger(ctDlgCountValid%,6,0,100,wDlg%-2-7,3);  ctTxtCountValid% := DlgText("Count Trials Valid",c22%,3);
+    'DlgInteger(ctDlgCountInvalid%,6,0,100,c22%-7,4);  ctTxtCountInvalid% := DlgText("Base Contrast",c1%,4);
+    'DlgInteger(ctDlgCountCatch%,6,0,100,wDlg%-2-7,4);  ctTxtCountCatch% := DlgText("Change Contrast",c22%,4);
+    
+    
+    DlgGroup("Fixation Options",1,sFix%,wDlg%-2,hFix%);
+    DlgList(ctDlgRequireFixation%, 50, fixationOptionsList$[],nFOpts%,c1%+1,sFix%+1);
+    DlgReal(ctDlgFixAcqTime%,wNum%,0.1,100,c33%+1,sFix%+1);  ctTxtFixAcqTime% := DlgText("Fixation acquisition time (s)",c33%+wNum%+2,sFix%+1);
+    DlgCheck(ctDlgFixationOn%, "Fixation cross On",c1%,sFix%+2);
+    DlgReal(ctDlgFixCrossWidthDeg%,wNum%,0.1,10,c23%+1,sFix%+2);  ctTxtFixCrossWidthDeg% := DlgText("Fixation cross width (deg)",c23%+wNum%+2,sFix%+2);
+    DlgReal(ctDlgAdditionalWindowRadius%,wNum%,-5,10,c33%+1,sFix%+2);  ctTxtAdditionalWindowRadius% := DlgText("Add'l fix window radius (deg)",c33%+wNum%+2,sFix%+2);
+    
+
+    
+    DlgGroup("Timing Options",1,sTime%,wDlg%-2,hTime%);
+    DlgReal(ctDlgITI%,wNum%,0,100,c1%+1,sTime%+1);  DlgText("Intertrial interval (s)",c1%+wNum%+2,sTime%+1);
+    DlgReal(ctDlgPatchOnsetDelay%,wNum%,0,100,c23%+1,sTime%+1);  ctTxtPatchOnsetDelay% := DlgText("Cue patch onset delay (s)",c23%+wNum%+2,sTime%+1);
+    ctTxtPatchDur% := DlgText(ctPatchDurText$,c33%,sTime%+1);
+    DlgReal(ctDlgPatchToSampleDelay%,wNum%,0,100,c1%+1,sTime%+2);  ctTxtPatchToSampleDelay% := DlgText("Cue patch to sample gap (s)",c1%+wNum%+2,sTime%+2);
+    DlgReal(ctDlgSampleDuration%,wNum%,0,100,c23%+1,sTime%+2);  ctTxtSampleDuration% := DlgText("Sample duration (s)",c23%+wNum%+2,sTime%+2);
+    DlgReal(ctDlgSampleToTargetDelay%,wNum%,0,100,c33%+1,sTime%+2);  ctTxtSampleToTargetDelay% := DlgText("Sample to Test gap (s)",c33%+wNum%+2,sTime%+2);
+    DlgReal(ctDlgTargetDuration%,wNum%,0,100,c1%+1,sTime%+3);  ctTxtTargetDuration% := DlgText("Test duration (s)",c1%+wNum%+2,sTime%+3);
+    DlgReal(ctDlgResponseTime%,wNum%,0,100,c23%+1,sTime%+3);  ctTxtResponseTime% := DlgText(ctResponseTimeText$,c23%+wNum%+2,sTime%+3);
+    DlgReal(ctDlgAbort%,wNum%,0,100,c33%+1,sTime%+3);  ctTxtAbort% := DlgText("Add'l abort penalty (s)",c33%+wNum%+2,sTime%+3);
+    
+    
+    DlgGroup("Cue Dot And Cue Patch Options",1,sCue%,wDlg%-2,hCue%);
+    DlgReal(ctDlgPatchRadiusDeg%,wNum%,0,10,c1%+1,sCue%+1);  ctTxtPatchRadiusDeg% := DlgText(ctPatchRadiusText$,c1%+wNum%+2,sCue%+1);
+    DlgReal(ctDlgDotRadiusDeg%,wNum%,0,5,c23%+1,sCue%+1);  ctTxtDotRadiusDeg% := DlgText("Dot radius (deg)",c23%+wNum%+2,sCue%+1);
+    DlgInteger(ctDlgDotsPerPF%,wNum%,0,500,c33%+1,sCue%+1);  ctTxtDotsPerPF% := DlgText("Dots per patch frame",c33%+wNum%+2,sCue%+1);
+    DlgInteger(ctDlgPFsPerPatch%,wNum%,0,100,c1%+1,sCue%+2);  ctTxtPFsPerPatch% := DlgText("Patch frames per cue patch",c1%+wNum%+2,sCue%+2);
+    DlgInteger(ctDlgRefreshPerPF%,wNum%,0,100,c23%+1,sCue%+2);  ctTxtRefreshPerPF% := DlgText("Screen refreshes per patch frame",c23%+wNum%+2,sCue%+2);
+    DlgInteger(ctDlgDotColor1R%,4,0,255,c1%+1,sCue%+3); DlgInteger(ctDlgDotColor1G%,4,0,255,c1%+6,sCue%+3); DlgInteger(ctDlgDotColor1B%,4,0,255,c1%+11,sCue%+3); ctTxtDotColor1% := DlgText("Cue dot Color 1 (R/G/B)",c1%+16,sCue%+3);
+    DlgInteger(ctDlgDotColor2R%,4,0,255,c23%+1,sCue%+3); DlgInteger(ctDlgDotColor2G%,4,0,255,c23%+6,sCue%+3); DlgInteger(ctDlgDotColor2B%,4,0,255,c23%+11,sCue%+3); ctTxtDotColor2% := DlgText("Cue dot Color 2 (R/G/B)",c23%+16,sCue%+3);
+    
+    
+    
+    DlgGroup("Stimulus Options",1,sStim%,wDlg%-2,hStim%);
+    DlgCheck(ctDlgStimValsFromConfig%,"Get vals from config",c1%,sStim%+1);
+    ctTxtGaborOri% := DlgText(ctGaborOriText$,c23%,sStim%+1);
+    DlgReal(ctDlgGaborXLoc%,wNum%,0,40,c1%+1,sStim%+2);  ctTxtGaborXLoc% := DlgText("Gabor X location (deg right of fix)",c1%+wNum%+2,sStim%+2);
+    DlgReal(ctDlgGaborYLoc%,wNum%,-40,40,c23%+1,sStim%+2);  ctTxtGaborYLoc% := DlgText("Gabor Y location (deg above fix)",c23%+wNum%+2,sStim%+2);
+    DlgReal(ctDlgGaborSF%,wNum%,0,100,c33%+1,sStim%+2);  ctTxtGaborSF% := DlgText("Gabor Spatial Freq (cyc/deg)",c33%+wNum%+2,sStim%+2);
+    DlgReal(ctDlgGaborWDeg%,wNum%,0.1,20,c1%+1,sStim%+3);  ctTxtGaborWDeg% := DlgText("Gabor Width (diameter, deg)",c1%+wNum%+2,sStim%+3);
+    DlgReal(ctDlgGaborHDeg%,wNum%,0.1,20,c23%+1,sStim%+3);  ctTxtGaborHDeg% := DlgText("Gabor Height (diameter, deg)",c23%+wNum%+2,sStim%+3);
+    DlgReal(ctDlgGaborPhase%,wNum%,-360,360,c33%+1,sStim%+3);  ctTxtGaborPhase% := DlgText("Gabor Phase (deg)",c33%+wNum%+2,sStim%+3);
+    DlgReal(ctDlgGaborDivisor%,wNum%,0.1,20,c1%+1,sStim%+4);  ctTxtGaborDivisor% := DlgText("Gaussian mask factor",c1%+wNum%+2,sStim%+4);
+    DlgInteger(ctDlgPanelLinePixels%,wNum%,1,100,c23%+1,sStim%+4);  ctTxtPanelLinePixels% := DlgText("Border width (pixels)",c23%+wNum%+2,sStim%+4);
+    DlgCheck(ctDlgPanelIsHoriz%,"Flankers horizontal",c33%+1,sStim%+4);
+    
+    DlgCheck(ctDlgAlwaysPressing%,"Always Pressing?",c1%,hDlg%-2);
+    
+    DlgButton(51, "Joystick Dialog", CallJoystickConfigDialogUD%,2,hDlg%-1);
+
+    DlgAllow(0, 0, ConteTaskDialogChanged%);
+    
+    i% := DlgShow(nTrialsPerDataPoint%,ctTrainingOptions%,ctCountInvalid%,ctCountCatch%,ctCountValid%,ctRequireFixation%,
+                  ctFixationOn%,ctAdditionalWindowRadius,eightFloats[],sixInts%[],ctDotsPerPF%,ctPatchRadiusDeg,
+                  ctRefreshPerPF%,ctPFsPerPatch%,ctResponseTime,sevenFloats[],sevenInts%[],threeStrings$[],
+                  ctAbortPenalty,ctFixAcqTime);  'Now at 20!
+    
+    
+    if i% = 1 then        
+        
+        'Unpack eightFloats[], sevenFloats[], sixInts%[], sevenInts%[], threeStrings$[]
+        ctFixCrossWidthDeg := eightFloats[0];
+        ctPatchOnsetDelay := eightFloats[1];
+        ctPatchToSampleDelay := eightFloats[2];
+        ctSampleToTargetDelay := eightFloats[3];
+        ctSampleDuration := eightFloats[4];
+        ctTargetDuration := eightFloats[5];
+        ctITI := eightFloats[6];
+        ctDotRadiusDeg := eightFloats[7];
+    
+        ctDotColor1R% := sixInts%[0];
+        ctDotColor1G% := sixInts%[1];
+        ctDotColor1B% := sixInts%[2];
+        ctDotColor2R% := sixInts%[3];
+        ctDotColor2G% := sixInts%[4];
+        ctDotColor2B% := sixInts%[5];
+        
+        ctGaborXLoc := sevenFloats[0];
+        ctGaborYLoc := sevenFloats[1];
+        ctGaborHDeg := sevenFloats[2];
+        ctGaborWDeg := sevenFloats[3];
+        ctGaborSF := sevenFloats[4];
+        ctGaborPhase := sevenFloats[5];
+        ctGaborDivisor := sevenFloats[6]; 
+        
+        ctPanelIsHoriz% := sevenInts%[0];
+        ctPanelLinePixels% := sevenInts%[1];
+        ctStimValsFromConfig% := sevenInts%[2];
+        ctAlwaysPressing% := sevenInts%[3];
+        ctOrientationMatches% := sevenInts%[4];
+        ctNDistractorOn% := sevenInts%[5];
+        ctNDistractorOff% := sevenInts%[6];
+        
+        ctDotPctString$ := threeStrings$[0];
+        ctSampleOriString$ := threeStrings$[1];
+        ctOriChangeString$ := threeStrings$[2];
+        
+        
+        
+        
+        SaveConteTaskParameters();
+        
+        'Change value of ctRequireFixation to -1 if it is 1 (monitor eye position only), because that's what the code expects.
+        'This is not strictly necessary but allows commonplace conditionals (full fixation if ctRequireFixation = 1, fixation is at least monitored if ctRequireFixation <> 0)
+        docase 
+        case ctRequireFixation% = 1 then
+            ctRequireFixation% := -1;
+        case ctRequireFixation% = 2 then
+            ctRequireFixation% := 1;
+        endcase
+        
+        'Set ctCheckLooking%, this will be used by Looking%(), will be easier than asking for "and ctRequireFixation% = 1" for every check
+        docase
+        case ctAlwaysLooking% = 1 then
+            ctCheckLooking% := 0;
+        case ctRequireFixation% = 1 then
+            ctCheckLooking% := 1;
+        else
+            ctCheckLooking% := 0;
+        endcase
+        
+        
+        'ctAdditionalWindowRadius will apply to the fixation window around the cue patch - we can have this be NEGATIVE
+        'so that it is smaller than the cue patch, since we may want to have the animal fixate the cross tightly but
+        'still have a larger cue patch.  This calculation was originally predicated on monitoring fixation, but since a 
+        '"fixation" window will be displayed in any event that there is a cue patch on screen we should just always check
+        'Important note - the size of the FIXATION window will be dictated by this value in all cases, even if there is
+        'no cue
+        if ctPatchRadiusDeg + ctAdditionalWindowRadius < 0.1 then  '0.1 is obviously too tight of a window
+            message("The requested fixation window is too small (" + Str$(ctPatchRadiusDeg + ctAdditionalWindowRadius) + " deg)!  Quitting!");
+            halt;
+        else
+            'Overwrite the fixation parameters window radius
+            WindowRadius := ctPatchRadiusDeg + ctAdditionalWindowRadius;
+        endif      
+        
+        
+        'Get final value of patch duration
+        ctPatchDur := ctRefreshPerPF%*ctPFsPerPatch%/dataScreenHz;  'in seconds, three decimal places
+        
+        
+        
+        return 1;
+    else   
+        Printlog("Main Dialog was cancelled!\n");
+        return 0;
+    endif;
+    
+    
+end
+
+
+func ConteTaskDialogChanged%(item%)
+    var status% := 1;
+    
+    
+    
+    'Calculate total trials for display
+    nTrials% := CalcNumTrials%(DlgValue(ctDlgTrainingOptions%),DlgValue(ctDlgnTrialsPerDataPoint%),DlgValue(ctDlgCountValid%),DlgValue(ctDlgCountInvalid%),DlgValue(ctDlgCountCatch%),
+                DlgValue$(ctDlgDotPctString%),DlgValue$(ctDlgSampleOriString%),DlgValue$(ctDlgOriChangeString%),DlgValue(ctDlgNDistractorOn%),DlgValue(ctDlgNDistractorOff%));
+    
+    docase
+    case nTrials% > ctMaxTrials% then
+        ctTotalTrialsText$ := "TOO MANY TRIALS (5000 max): " + Str$(nTrials%);
+        DlgEnable(0,-1);  'disable "OK"
+    case nTrials% < 1 then
+        ctTotalTrialsText$ := "NO TRIALS SPECIFIED, CHECK FOR EMPTY DIALOG VALUE";
+        DlgEnable(0,-1);  'disable "OK"
+    else
+        ctTotalTrialsText$ := "Total number of trials: " + Str$(nTrials%);
+        DlgEnable(1,-1);  'Otherwise enable "OK"
+    endcase  
+    DlgValue$(ctDlgTotalTrials%,ctTotalTrialsText$);
+    
+    
+    
+    'Update value of patch duration, just do this every time since the dialog takes forever to refresh anyways
+    'Calculate initial duration of cue patch
+    ctPatchDurText$ := "Patch duration (s) = " + Str$(DlgValue(ctDlgRefreshPerPF%)*DlgValue(ctDlgPFsPerPatch%)/dataScreenHz,4,-3);  'in seconds, three decimal places
+    DlgValue$(ctTxtPatchDur%,ctPatchDurText$);
+    
+    
+    
+    
+    'Massive enable/disable based on training step
+    
+    'For Step 0 to Step 1, the only changes are that the "response" time and abort time come on ("response" time is hold time, label updated below)
+    'However, now that Step 0 does not allow a fixation point or fixation monitoring, the additional work on the
+    'fixation aspects of the dialog now make sense inside this step.
+    if DlgValue(ctDlgTrainingOptions%) > 0 then
+        DlgEnable(1,ctDlgResponseTime%,ctTxtResponseTime%);
+        DlgEnable(1,ctDlgAbort%,ctTxtAbort%);
+        DlgEnable(1,ctDlgRequireFixation%);  'enable fixation options
+        
+
+        'Force fixation cross to ON if fixation is required, because otherwise what do you fixate?
+        'Disable Additional Window Radius if we are not requiring/checking fixation
+        docase
+        case DlgValue(ctDlgRequireFixation%) > 1 then  'Note this is DlgValue, where monitor fixation is 2 (ctRequireFixation% variable is adjusted later)  
+            DlgValue(ctDlgFixationOn%,1);  'set value to 1
+            DlgEnable(0,ctDlgFixationOn%);  'and disable fixation checkbox
+            DlgEnable(1,ctDlgAdditionalWindowRadius%,ctTxtAdditionalWindowRadius%);  'enable additional window radius
+            DlgEnable(1,ctDlgPatchRadiusDeg%,ctTxtPatchRadiusDeg%);
+            DlgEnable(1,ctDlgFixAcqTime%,ctTxtFixAcqTime%);  'enable fixation acquisition time
+        case DlgValue(ctDlgRequireFixation%) = 1 then  
+            DlgEnable(1,ctDlgFixationOn%);  'enable fixation checkbox, do not update value
+            DlgEnable(1,ctDlgAdditionalWindowRadius%,ctTxtAdditionalWindowRadius%);  'enable additional window radius - this allows us to see whether the animal is near the window even if we aren't enforcing it
+            DlgEnable(1,ctDlgPatchRadiusDeg%,ctTxtPatchRadiusDeg%);
+            DlgEnable(0,ctDlgFixAcqTime%,ctTxtFixAcqTime%);  'disable fixation acquisition time
+        else
+            DlgEnable(1,ctDlgFixationOn%);  'enable fixation checkbox, do not update value
+            DlgEnable(0,ctDlgAdditionalWindowRadius%,ctTxtAdditionalWindowRadius%);  'disable additional window radius
+            DlgEnable(0,ctDlgFixAcqTime%,ctTxtFixAcqTime%);  'disable fixation acquisition time
+            if DlgValue(ctDlgTrainingOptions%) > 1 then
+                DlgEnable(1,ctDlgPatchRadiusDeg%,ctTxtPatchRadiusDeg%);
+            else
+                DlgEnable(0,ctDlgPatchRadiusDeg%,ctTxtPatchRadiusDeg%);
+            endif
+        endcase
+        
+        'Disable Fixation Cross size if fixation is not being displayed
+        if DlgValue(ctDlgFixationOn%) = 0 then
+            DlgEnable(0,ctDlgFixCrossWidthDeg%,ctTxtFixCrossWidthDeg%);
+        else
+            DlgEnable(1,ctDlgFixCrossWidthDeg%,ctTxtFixCrossWidthDeg%);
+        endif
+        
+        
+        
+    else 'for step 0
+        DlgEnable(0,ctDlgResponseTime%,ctTxtResponseTime%);
+        DlgEnable(0,ctDlgAbort%,ctTxtAbort%);
+        'For training option 0, do not allow fixation point or eye monitoring, this is purely press-lever-get-reward
+        DlgValue(ctDlgFixationOn%,0);  'set fixation value to off
+        DlgEnable(0,ctDlgFixationOn%);  'and disable fixation checkbox
+        DlgValue(ctDlgRequireFixation%,0);  'and set fixation options value to 0
+        DlgEnable(0,ctDlgRequireFixation%);  'and disable fixation options
+        DlgEnable(0,ctDlgFixCrossWidthDeg%,ctTxtFixCrossWidthDeg%);  'disable fixation cross width
+        DlgEnable(0,ctDlgAdditionalWindowRadius%,ctTxtAdditionalWindowRadius%);  'disable additional window radius
+        DlgEnable(0,ctDlgPatchRadiusDeg%,ctTxtPatchRadiusDeg%);
+    endif
+    
+    'For Step 1 to Step 2, values related to the patch come on
+    if DlgValue(ctDlgTrainingOptions%) > 1 then
+        DlgEnable(1,ctDlgPatchOnsetDelay%,ctTxtPatchOnsetDelay%);
+        DlgEnable(1,ctDlgDotRadiusDeg%,ctTxtDotRadiusDeg%);
+        DlgEnable(1,ctDlgDotColor1R%);
+        DlgEnable(1,ctDlgDotColor1G%);
+        DlgEnable(1,ctDlgDotColor1B%);
+        DlgEnable(1,ctTxtDotColor1%);
+        DlgEnable(1,ctDlgDotColor2R%);
+        DlgEnable(1,ctDlgDotColor2G%);
+        DlgEnable(1,ctDlgDotColor2B%);
+        DlgEnable(1,ctTxtDotColor2%);
+        DlgEnable(1,ctDlgDotsPerPF%,ctTxtDotsPerPF%);
+        DlgEnable(1,ctDlgRefreshPerPF%,ctTxtRefreshPerPF%);
+        DlgEnable(1,ctDlgPFsPerPatch%,ctTxtPFsPerPatch%);
+        DlgEnable(1,ctDlgDotPctString%,ctTxtDotPctString%);
+        DlgEnable(1,ctTxtPatchDur%);
+        DlgValue$(ctTxtPatchRadiusDeg%,ctPatchRadiusText$);
+    else
+        DlgEnable(0,ctDlgPatchOnsetDelay%,ctTxtPatchOnsetDelay%);
+        DlgEnable(0,ctDlgDotRadiusDeg%,ctTxtDotRadiusDeg%);
+        DlgEnable(0,ctDlgDotColor1R%);
+        DlgEnable(0,ctDlgDotColor1G%);
+        DlgEnable(0,ctDlgDotColor1B%);
+        DlgEnable(0,ctTxtDotColor1%);
+        DlgEnable(0,ctDlgDotColor2R%);
+        DlgEnable(0,ctDlgDotColor2G%);
+        DlgEnable(0,ctDlgDotColor2B%);
+        DlgEnable(0,ctTxtDotColor2%);
+        DlgEnable(0,ctDlgDotsPerPF%,ctTxtDotsPerPF%);
+        DlgEnable(0,ctDlgRefreshPerPF%,ctTxtRefreshPerPF%);
+        DlgEnable(0,ctDlgPFsPerPatch%,ctTxtPFsPerPatch%);
+        DlgEnable(0,ctDlgDotPctString%,ctTxtDotPctString%);
+        DlgEnable(0,ctTxtPatchDur%);
+        DlgValue$(ctTxtPatchRadiusDeg%,ctFixRadiusText$);  'Note that we will use the "fixation" text for step 0, where this is disabled
+    endif
+    
+    'For Step 2 to Step 3, all values related to the stim (except response time) come on
+    if DlgValue(ctDlgTrainingOptions%) > 2 then
+        DlgEnable(1,ctDlgPatchToSampleDelay%,ctTxtPatchToSampleDelay%);
+        DlgEnable(1,ctDlgSampleDuration%,ctTxtSampleDuration%);
+        DlgEnable(1,ctDlgGaborDivisor%,ctTxtGaborDivisor%);
+        DlgEnable(1,ctDlgPanelIsHoriz%);
+        DlgEnable(1,ctDlgPanelLinePixels%,ctTxtPanelLinePixels%);
+        DlgEnable(1,ctDlgStimValsFromConfig%);
+        DlgEnable(1,ctDlgOrientationMatches%);
+        DlgEnable(1,ctDlgNDistractorOn%,ctTxtNDistractorOn%);
+        DlgEnable(1,ctDlgNDistractorOff%,ctTxtNDistractorOff%);
+        DlgEnable(1,ctDlgSampleOriString%,ctTxtSampleOriString%);
+        'But do not bother enabling Gabor properties, as these will be enabled/disbled based on ctStimValuesFromConfig% below
+    else
+        DlgEnable(0,ctDlgPatchToSampleDelay%,ctTxtPatchToSampleDelay%);
+        DlgEnable(0,ctDlgSampleDuration%,ctTxtSampleDuration%);
+        DlgEnable(0,ctDlgGaborDivisor%,ctTxtGaborDivisor%);
+        DlgEnable(0,ctDlgPanelIsHoriz%);
+        DlgEnable(0,ctDlgPanelLinePixels%,ctTxtPanelLinePixels%);
+        DlgEnable(0,ctDlgStimValsFromConfig%);
+        DlgEnable(0,ctDlgOrientationMatches%);
+        DlgEnable(0,ctDlgNDistractorOn%,ctTxtNDistractorOn%);
+        DlgEnable(0,ctDlgNDistractorOff%,ctTxtNDistractorOff%);
+        DlgEnable(0,ctDlgSampleOriString%,ctTxtSampleOriString%);
+        'Also disable the values for the Gabor properties
+        DlgEnable(0,ctDlgGaborXLoc%,ctTxtGaborXLoc%);
+        DlgEnable(0,ctDlgGaborYLoc%,ctTxtGaborYLoc%);
+        DlgEnable(0,ctDlgGaborHDeg%,ctTxtGaborHDeg%);
+        DlgEnable(0,ctDlgGaborWDeg%,ctTxtGaborWDeg%);
+        DlgEnable(0,ctDlgGaborSF%,ctTxtGaborSF%);
+        DlgEnable(0,ctDlgGaborPhase%,ctTxtGaborPhase%);
+    endif
+    
+    'For Step 3 to Step 4, we add everything related to the test stimulus; response time label changes
+    if DlgValue(ctDlgTrainingOptions%) > 3 then
+        DlgEnable(1,ctDlgCountInvalid%,ctTxtCountInvalid%);
+        DlgEnable(1,ctDlgCountCatch%,ctTxtCountCatch%);
+        DlgEnable(1,ctDlgCountValid%,ctTxtCountValid%);
+        DlgEnable(1,ctDlgOriChangeString%,ctTxtOriChangeString%);
+        DlgEnable(1,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
+        DlgEnable(1,ctDlgTargetDuration%,ctTxtTargetDuration%);
+        DlgValue$(ctTxtResponseTime%,ctResponseTimeText$);
+    else
+        DlgEnable(0,ctDlgCountInvalid%,ctTxtCountInvalid%);
+        DlgEnable(0,ctDlgCountCatch%,ctTxtCountCatch%);
+        DlgEnable(0,ctDlgCountValid%,ctTxtCountValid%);
+        DlgEnable(0,ctDlgOriChangeString%,ctTxtOriChangeString%);
+        DlgEnable(0,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
+        DlgEnable(0,ctDlgTargetDuration%,ctTxtTargetDuration%);
+        DlgValue$(ctTxtResponseTime%,ctHoldTimeText$);
+    endif
+
+    
+    
+    
+    
+    
+    'This code enables us to grab values for the gabor from the config (main stimulus)
+    'but then to update them from there if desired.  Since only training step 3+ has a stimulus at all,
+    'don't bother to do anything (everything is already disabled) for steps 0-2.
+    docase
+    case DlgValue(ctDlgStimValsFromConfig%) = 1 and DlgValue(ctDlgTrainingOptions%) > 2 then
+        'Set values to those grabbed from main stimulus in config, and disable
+        DlgValue(ctDlgGaborXLoc%,ctGaborXLoc);
+        DlgValue(ctDlgGaborYLoc%,ctGaborYLoc);
+        DlgValue(ctDlgGaborHDeg%,ctGaborHDeg);
+        DlgValue(ctDlgGaborWDeg%,ctGaborWDeg);
+        DlgValue(ctDlgGaborSF%,ctGaborSF);
+        DlgValue(ctDlgGaborPhase%,ctGaborPhase);
+        DlgEnable(0,ctDlgGaborXLoc%,ctTxtGaborXLoc%);
+        DlgEnable(0,ctDlgGaborYLoc%,ctTxtGaborYLoc%);
+        DlgEnable(0,ctDlgGaborHDeg%,ctTxtGaborHDeg%);
+        DlgEnable(0,ctDlgGaborWDeg%,ctTxtGaborWDeg%);
+        DlgEnable(0,ctDlgGaborSF%,ctTxtGaborSF%);
+        DlgEnable(0,ctDlgGaborPhase%,ctTxtGaborPhase%);
+    case DlgValue(ctDlgTrainingOptions%) > 2 then
+        'Enable so values can be changed
+        DlgEnable(1,ctDlgGaborXLoc%,ctTxtGaborXLoc%);
+        DlgEnable(1,ctDlgGaborYLoc%,ctTxtGaborYLoc%);
+        DlgEnable(1,ctDlgGaborHDeg%,ctTxtGaborHDeg%);
+        DlgEnable(1,ctDlgGaborWDeg%,ctTxtGaborWDeg%);
+        DlgEnable(1,ctDlgGaborSF%,ctTxtGaborSF%);
+        DlgEnable(1,ctDlgGaborPhase%,ctTxtGaborPhase%);
+    endcase
+
+    return status%;
+end
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func IdleProcessing%()
+	var iStatus% := 1;
+    var remainInIdleLoop% := 1;  'initialize to 1 to get INTO idle loop	
+
+    while remainInIdleLoop% = 1 do  'do not cede time to OS in certain circumstances
+                                    'the general rule is going to be: if the subsequent state 
+                                    'does not involve waiting for something to happen/finish,
+                                    'then go ahead and jump straight to it
+        
+        'Get current time
+        tNow := View(DataWindow%).MaxTime();
+        
+        remainInIdleLoop% := 0;  'only run one idle cycle unless otherwise requested
+        
+        if ctRequireFixation% <> 0 then
+            xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+            yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+            
+            'Don't update display every time....
+            if tNow-tLastFixPtDisplayUpdate > .005 then
+                View(XYWindow%).XYAddData(1,xEye,yEye);
+                tLastFixPtDisplayUpdate := tNow;
+            endif
+        endif
+        
+        
+        
+        docase 
+        case iState% = stateVSGWait% then 
+            'Waiting for VSG to indicate it is ready. The indication is a pulse (up, then down, 1 frame apart) on port 6.
+            'Once VSG is ready, we start
+            if stateBegin% = 1 then
+                LogStatus("VSGWait", "Begin waiting for Ready Pulse from VSG at about " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
+            
+            if pulseFound% = 1 then
+                LogStatus("VSGWait", "Got Ready Pulse from VSG at exactly " + str$(tRise));
+                Yield(1.0);
+                tLastTrigger := tFall;
+                ChangeStateTo(stateEnsureLeverInOrigin%, tFall);
+                
+                if RecordEyeTrackerOutputFile% = 1 then
+                    'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+                    SafeSampleKey("1");
+                    yield(0.2);
+                    SafeSampleKey("1");
+                    yield(0.2);
+                    SafeSampleKey("1");
+                    yield(0.2);
+                    SafeSampleKey("1");
+                    yield(0.2);
+                endif;
+                
+            else
+                if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
+                    LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at exactly " + str$(tRise));
+                    tLastTrigger := tFall;
+                endif;
+            endif;
+            
+            
+            
+        '---Here is where the repeated trial sequence begins---   
+            
+        case iState% = stateEnsureLeverInOrigin% then    
+            ' Making sure lever is in origin to begin trial
+            if stateBegin% = 1 then
+                LogStatus("EnsureLeverInOrigin", "Checking for lever in origin at about " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            docase
+            case Answer%(0) = 0 then  'If lever in origin
+                LogStatus("EnsureLeverInOrigin", "Found lever in origin at about " + str$(tNow));
+                ChangeStateTo(stateWaitForLever%, tNow);
+            case Answer%(0) < 0 then  'If error indicated; only errors should be coding errors
+                message("There has been a problem reading the lever device! Check log file! Quitting!");
+                Stop%();  'Stop%() should do a clean quit
+            'else lever is not in origin, keep checking
+            endcase
+            
+            
+            
+        case iState% = stateWaitForLever% then    
+            'Waiting for lever press to begin trial
+            if stateBegin% = 1 then
+                LogStatus("WaitForLever", "Begin waiting for lever press from animal at about " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            if Answer%(1) = 1 then  'If lever is down
+                LogStatus("WaitForLever", "Found lever press at about " + str$(tNow));
+                if ctTrainingOptions% = 0 then
+                    'If delivering reward for lever press only, go straight to reward
+                    ChangeStateTo(stateReward%, tNow);
+                    nTrialsStarted% += 1;  'Seems redundant with completed in this case but OK
+                    nTrialsCompleted% += 1;
+                    remainInIdleLoop% := 1;  'deliver reward immediately
+                else
+                    ChangeStateTo(stateStartTrial%, tNow);
+                    remainInIdleLoop% := 1;  'start trial immediately
+                endif
+                
+            endif
+            
+            
+        case iState% = stateStartTrial% then
+            'Begin trial
+            
+            nTrialsStarted% += 1;
+            
+            'Put timing marker in both eyetracker file, smr file
+            if RecordEyeTrackerOutputFile% = 1 then
+                docase
+                case HBCycle% = 1 then
+                    SafeSampleKey("1");
+                case HBCycle% = 2 then
+                    SafeSampleKey("2");
+                case HBCycle% = 3 then
+                    SafeSampleKey("3");
+                case HBCycle% = 4 then
+                    SafeSampleKey("4");
+                case HBCycle% = 5 then
+                    SafeSampleKey("5");
+                case HBCycle% = 6 then
+                    SafeSampleKey("6");
+                case HBCycle% = 7 then
+                    SafeSampleKey("7");
+                endcase
+                HBCycle% += 1;  'increment HBCycle%
+                if HBCycle% = 8 then  'and cycle when necessary
+                    HBCycle% := 1;
+                endif
+                yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
+            endif;
+            
+            'Start trial. Put up fixation point if present, regardless of training step (except 0, which is already in reward state)
+            if ctFixationOn% = 1 then
+                LogStatus("StartTrial", "Request fixpt at about " + str$(tNow));
+                SafeSampleKey("F");
+                ChangeStateTo(stateWaitForFixPtOn%, tNow);   
+            else
+                LogStatus("StartTrial", "Start trial, no fixpt at about " + str$(tNow));
+                ChangeStateTo(stateWaitStimOnsetDelay%, tNow);  
+            endif        
+            
+            
+        case iState% = stateWaitForFixPtOn% then
+            'Waiting for fixation point onset
+            if stateBegin% = 1 then
+                LogStatus("WaitForFixPtOn", "Begin waiting for fixation point at about " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            'We are NOT going to check the lever here, because if it gets released we want to make sure the 
+            'fixpt is UP before we request it to go back down to avoid any weirdness 
+            if View(DataWindow%).FindRisingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 0 then
+                'Fixation point is up
+                LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
+                tLastTrigger := tTrigger;
+                DrawMonitorScreen(1,0,0,0);	'Draws the location of the fixpt in the Spike2 fixation display window
+                
+                if ctRequireFixation% = 1 then
+                    ChangeStateTo(stateWaitForAcquisition%, tTrigger);   
+                else
+                    ChangeStateTo(stateWaitStimOnsetDelay%, tNow);  
+                endif            
+            endif    
+            
+            
+            
+        case iState% = stateWaitForAcquisition% then    
+            'Waiting for fixation point acquisition
+            if stateBegin% = 1 then
+                LogStatus("WaitForAcquisition", "Begin waiting for fixation point at about " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            docase
+            case Answer%(1) = 0 then  'If lever in origin, go to abort penalty once fixation point is up
+                LogStatus("WaitForAcquisition", "Lever released");
+                SafeSampleKey("X");  'Drop fixation point
+                WaitForBlankTo(stateAbort%, tNow); 
+            case Looking%(xEye,yEye) = 1 then  'Note that Looking%() KNOWS if we're not monitoring fixation for any reason and returns 1
+                LogStatus("WaitForAcquisition", "Fixation point acquired at about " + str$(tNow));
+                ChangeStateTo(stateWaitStimOnsetDelay%, tNow);  
+            case tNow > tStateStart + ctFixAcqTime then
+                LogStatus("WaitForAcquisition", "Acquisition window over, abort");
+                SafeSampleKey("X");  'Drop fixation point
+                WaitForBlankTo(stateAbort%, tNow); 
+            endcase
+            
+            
+            
+        case iState% = stateWaitStimOnsetDelay% then
+            'Waiting through patch onset delay, unless we are in Training Step 1, in which case
+            'we are waiting through the fixpt hold and rewarding
+            if stateBegin% = 1 then
+                if ctTrainingOptions% >= 2 then
+                    LogStatus("WaitStimOnsetDelay", "Begin waiting through onset delay at about " + str$(tNow));
+                else
+                    LogStatus("WaitStimOnsetDelay", "Begin waiting through fixation point hold at about " + str$(tNow));
+                endif
+                stateBegin% := 0;
+            endif
+            
+            docase
+            case Answer%(1) = 0 then  'If lever is released while waiting, go to abort penalty
+                LogStatus("WaitStimOnsetDelay", "Lever released");
+                SafeSampleKey("X");  'Drop fixation point
+                WaitForBlankTo(stateAbort%, tNow); 
+            case Looking%(xEye,yEye) = 0 then  'If fixation broken while waiting, go to abort penalty
+                LogStatus("WaitStimOnsetDelay", "Fixation broken");
+                SafeSampleKey("X");  'Drop fixation point
+                WaitForBlankTo(stateAbort%, tNow);
+            case ctTrainingOptions% = 1 and tNow >= tStateStart + ctResponseTime then 'For training option 1, success, reward
+                LogStatus("WaitStimOnsetDelay", "Successful hold through delay");
+                SafeSampleKey("X");  'Drop fixation point
+                nTrialsCompleted% += 1;
+                WaitForBlankTo(stateReward%, tNow);
+            case ctTrainingOptions% >= 2 and tNow >= tStateStart + ctPatchOnsetDelay then  'For all other conditions, request stimulus
+                LogStatus("WaitStimOnsetDelay", "Successful hold through delay");
+                ChangeStateTo(stateRequestStimulus%,tNow);
+                remainInIdleLoop% := 1;  'request stimulus immediately
+            endcase
+            
+            
+            
+            
+        case iState% = stateRequestStimulus% then
+            'Request stimulus
+            LogStatus("RequestStimulus", "Stimulus requested at about " + str$(tNow));
+            SafeSampleKey("S");  'Request stimulus (will be cue[+sample[+target]])
+            ChangeStateTo(stateMonitorFrameChannel%,tNow);
+            tLastFrameTrigger := tNow;
+            remainInIdleLoop% := 1;  'monitor cue frames immediately
+            
+            
+            
+        case iState% = stateMonitorFrameChannel% then
+            'Watching for the appearance of each cue frame
+            
+            'On the first time through this state we will do considerably more than we normally do (i.e. just logging)
+            if stateBegin% = 1 then
+                LogStatus("MonitorFrameChannel", "Begin monitoring frame channel at about " + str$(tNow));
+                stateBegin% := 0;
+                FrameTriggersFound% := 0;
+                
+                'Create string for subsequent "sample" sampletexting; set drawFlankers% and drawGabors%
+                if ctTrainingOptions% >= 3 then 'don't bother to make this if we won't get to the sample epoch
+                    TextForSample$ := "Sample " + Str$(samp1Ori[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(samp2Ori[ctTrialOrder%[nTrialsCompleted%]]) + ",";
+                    docase
+                    case flankerIsH%[ctTrialOrder%[nTrialsCompleted%]] = -2 then
+                        TextForSample$ += "VertNoF";  'no flankers
+                    case flankerIsH%[ctTrialOrder%[nTrialsCompleted%]] = -1 then
+                        TextForSample$ += "HorizNoF";  'no flankers
+                    case flankerIsH%[ctTrialOrder%[nTrialsCompleted%]] = 0 then
+                        TextForSample$ += "VertF";  'vertical flankers
+                    case flankerIsH%[ctTrialOrder%[nTrialsCompleted%]] = 1 then
+                        TextForSample$ += "HorizF";  'horizontal flankers
+                    endcase
+
+                    if flankerIsH%[ctTrialOrder%[nTrialsCompleted%]] >= -1 then
+                        drawFlankers% := -1;
+                    else
+                        drawFlankers% := 1;
+                    endif                
+                    drawGabors% := whichOriChange%[ctTrialOrder%[nTrialsCompleted%]]+1;  'drawGabors% value happens to be whichOriChange% + 1
+                endif
+                
+                'Create string for subsequent "target" sampletexting;
+                if ctTrainingOptions% = 4 then 'don't bother to make this if we won't get to the target epoch
+                    TextForTarget$ := "Target " + Str$(test1Ori[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2Ori[ctTrialOrder%[nTrialsCompleted%]]) + ",";
+                    docase
+                    case validity%[ctTrialOrder%[nTrialsCompleted%]] = -1 then
+                        TextForTarget$ += "NoChange,";
+                    case validity%[ctTrialOrder%[nTrialsCompleted%]] = 0 then
+                        TextForTarget$ += "Invalid,";
+                    case validity%[ctTrialOrder%[nTrialsCompleted%]] = 1 then
+                        TextForTarget$ += "Valid,";
+                    endcase
+                    docase
+                    case whichOriChange%[ctTrialOrder%[nTrialsCompleted%]] = 0 then
+                        TextForTarget$ += "NoChange";
+                    case whichOriChange%[ctTrialOrder%[nTrialsCompleted%]] = 1 then
+                        TextForTarget$ += "Side1Change";
+                    case whichOriChange%[ctTrialOrder%[nTrialsCompleted%]] = 2 then
+                        TextForTarget$ += "Side2Change";
+                    endcase
+                endif
+                
+                
+            endif
+            
+            docase
+            case Answer%(1) = 0 then  'If lever is released while stimulus is playing, go to abort penalty
+                LogStatus("MonitorFrameChannel", "Lever released");
+                SafeSampleKey("X");  'Drop fixation point
+                WaitForBlankTo(stateAbort%, tNow);
+            case Looking%(xEye,yEye) = 0 then  'If fixation broken while stimulus is playing, go to abort penalty
+                LogStatus("MonitorFrameChannel", "Fixation broken");
+                SafeSampleKey("X");  'Drop fixation point
+                WaitForBlankTo(stateAbort%, tNow); 
+            'case View(DataWindow%).FindRisingEdge%(FrameChannel%, tLastFrameTrigger, tTrigger) = 0 then
+            case View(DataWindow%).FindPulseUp%(FrameChannel%, tLastFrameTrigger+tic, tTrigger, tFall) = 1 then
+                'Found a trigger, let's figure out what it is, by counting
+                FrameTriggersFound% += 1;
+                docase
+                case FrameTriggersFound% <= ctPFsPerPatch% then 'This pulse indicates a cue patch-frame up
+                    LogStatus("MonitorFrameChannel", "Cue Frame #" + Str$(FrameTriggersFound%) + " found at " + Str$(tTrigger));
+                    if FrameTriggersFound% = 1 then
+                        SampleText("Cue Frame #1, percent color 1 is " + Str$(cueDotPct[ctTrialOrder%[nTrialsCompleted%]]),tTrigger);  'on the first patch-frame, indicate dot percentage
+                        DrawMonitorScreen(0,1,0,0);  'Draw cue on monitor screen
+                    else
+                        SampleText("Cue Frame #" + Str$(FrameTriggersFound%),tTrigger);  'let's sampletext every patch-frame in the cue
+                    endif
+                case FrameTriggersFound% = ctPFsPerPatch%+1 then 'This pulse indicates cue down; enter hold period for training option 2
+                    LogStatus("MonitorFrameChannel", "Cue down at " + Str$(tTrigger));
+                    SampleText("Cue Down",tTrigger);
+                    DrawMonitorScreen(0,-1,0,0);  'Remove cue on monitor screen
+                    'Break out after cues for training option 2
+                    if ctTrainingOptions% = 2 then 'we need to wait through the delay period (if any) then wait for release
+                        ChangeStateTo(stateResponseWindow%,tTrigger);
+                    endif        
+                case FrameTriggersFound% = ctPFsPerPatch%+2 then 'This pulse indicates sample on
+                    LogStatus("MonitorFrameChannel", "Sample up at " + Str$(tTrigger));
+                    SampleText(TextForSample$,tTrigger);
+                    DrawMonitorScreen(0,0,1,drawFlankers%);
+                case FrameTriggersFound% = ctPFsPerPatch%+3 then 'This pulse indicates sample off; enter hold period for training option 3
+                    LogStatus("MonitorFrameChannel", "Sample down at " + Str$(tTrigger));
+                    SampleText("Sample Down",tTrigger);
+                    DrawMonitorScreen(0,0,-1,-drawFlankers%);
+                    'Break out after sample for training option 3
+                    if ctTrainingOptions% = 3 then 'we need to wait through the delay period (if any) then wait for release
+                        ChangeStateTo(stateResponseWindow%,tTrigger);
+                    endif 
+                case FrameTriggersFound% = ctPFsPerPatch%+4 then 'This pulse indicates target on
+                    LogStatus("MonitorFrameChannel", "Target up at " + Str$(tTrigger));
+                    SampleText(TextForTarget$,tTrigger);
+                    DrawMonitorScreen(0,0,drawGabors%,drawFlankers%);
+                case FrameTriggersFound% = ctPFsPerPatch%+5 then 'This pulse indicates target off, enters response window for training option 4
+                    LogStatus("MonitorFrameChannel", "Target down at " + Str$(tTrigger));
+                    SampleText("Target Down",tTrigger);
+                    DrawMonitorScreen(0,0,-1,-drawFlankers%);  'remove gabors and flankers from monitor screen
+                    ChangeStateTo(stateResponseWindow%,tTrigger);
+                endcase
+                tLastFrameTrigger := tFall;                
+            case tNow > tStateStart + ctPatchDur + ctPatchToSampleDelay + ctSampleDuration + ctSampleToTargetDelay + ctTargetDuration + ctResponseTime + 1 then 
+                'just in case things go all wrong, we should bail after one second too long
+                'note that we should expect to NOT wait through the response window, so there's actually extra time, can't hurt
+                message("Waited for one second beyond end of stimuli, but did not find all expected triggers!  Quitting!");
+                Stop%();
+            endcase
+            
+            
+            
+            
+        case iState% = stateResponseWindow% then
+            'For training options 2 and higher, we have reached the response window
+            'The fixation point is up during this window, and will be taken down at the end.
+            'A response in this window is only appropriate if there has been a change 
+            'in the target stimulus, otherwise response should be withheld (including
+            'all training options with no target)
+            if stateBegin% = 1 then
+                LogStatus("ResponseWindow", "Entered response window at about " + str$(tNow));
+                stateBegin% := 0;
+                leverReleased% := 0;  'reset
+            endif
+            
+            docase
+            case Looking%(xEye,yEye) = 0 then  'If fixation broken during response window, go to abort penalty
+                LogStatus("ResponseWindow", "Fixation broken");
+                SafeSampleKey("X");  'Drop fixation point
+                WaitForBlankTo(stateAbort%, tNow); 
+            case Answer%(1) = 0 then  'If lever is released during response window, end trial, go to TrialCompleted
+                LogStatus("ResponseWindow", "Lever released");
+                SafeSampleKey("X");  'Drop fixation point
+                leverReleased% := 1;
+                WaitForBlankTo(stateTrialCompleted%, tNow);
+            case tNow >= tStateStart + ctResponseTime then  'If lever is held through entire window, end trial, go to TrialCompleted
+                LogStatus("ResponseWindow", "Window closed");
+                SafeSampleKey("X");  'Drop fixation point
+                leverReleased% := 0;
+                WaitForBlankTo(stateTrialCompleted%, tNow);
+            endcase
+            
+         
+            
+        case iState% = stateTrialCompleted% then    
+            'Trial is complete, advance and reward if appropriate
+            nTrialsCompleted% += 1;
+            LogStatus("TrialComplete", "Trial " + Str$(nTrialsCompleted%) + " complete at about " + Str$(tNow) + "\n");
+            
+            
+            'We can only get to this state if we are in ctTrainingOptions% >= 2, in all cases we need to advance
+            LogStatus("TrialComplete", "Advancing stimulus at about " + str$(tNow) + "\n");
+            SafeSampleKey("a");  'Advance stimulus
+            tITIStart := tNow;  'Set start time of ITI now, "X" has already been called
+            
+            docase
+            case ctTrainingOptions% < 4 and leverReleased% = 0 then  'Held lever through training, correct
+                LogStatus("TrialComplete", "Successful hold of lever (training)");
+                ChangeStateTo(stateReward%,tNow);
+                remainInIdleLoop% := 1;  'start reward immediately 
+            case ctTrainingOptions% < 4 and leverReleased% = 1 then  'Released lever through training, incorrect
+                LogStatus("TrialComplete", "Unsuccessful trial, released lever (training)");
+                ChangeStateTo(stateCheckAdvance%,tNow);
+            case leverReleased% = 1 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] > 0 then 'Hit
+                LogStatus("TrialComplete", "Hit");
+                SampleText("Trial " + Str$(nTrialsCompleted%) + ": Hit");
+                Hits% += 1;
+                ChangeStateTo(stateReward%,tNow);
+                remainInIdleLoop% := 1;  'start reward immediately 
+            case leverReleased% = 0 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] > 0 then 'Miss
+                LogStatus("TrialComplete", "Miss");
+                SampleText("Trial " + Str$(nTrialsCompleted%) + ": Miss");
+                Misses% += 1;
+                ChangeStateTo(stateCheckAdvance%,tNow);
+            case leverReleased% = 0 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'Correct rejection
+                LogStatus("TrialComplete", "Correct Rejection");
+                SampleText("Trial " + Str$(nTrialsCompleted%) + ": Correct Rejection");
+                CRs% += 1;
+                ChangeStateTo(stateReward%,tNow);
+                remainInIdleLoop% := 1;  'start reward immediately
+            case leverReleased% = 1 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'FA 
+                LogStatus("TrialComplete", "False Alarm");
+                SampleText("Trial " + Str$(nTrialsCompleted%) + ": False Alarm");
+                FAs% += 1;
+                ChangeStateTo(stateCheckAdvance%,tNow);
+            endcase         
+            
+            
+            
+        case iState% = stateReward% then
+            'For now being simple - if we get into the reward state, deliver a reward and move on!
+            'There's no maintain fixation option, because the animal has to press, I guess I KNOW Henry is going to request "maintain" but it ain't happening to start
+            'Assume that 'X' has already been given
+            LogStatus("Reward", "Reward delivered at about " + str$(tNow) + "\n");
+            DefaultReward();
+            tReward := View(DataWindow%).MaxTime();  'use tReward so the reward wait is as precise as possible
+            tITIStart := tReward;  'include reward wait in ITI, slightly updating to account for any delay in reward delivery
+            TotalRewards% += 1;
+            ChangeStateTo(stateRewardWait%,tReward);
+            
+            
+            
+        case iState% = stateRewardWait% then
+            'Waiting for reward delivery to end
+            if stateBegin% = 1 then
+                LogStatus("RewardWait", "Begin waiting for reward delivery to complete at " + str$(tReward));
+                stateBegin% := 0;
+            endif
+            
+            if tNow > tReward + ctRewardDurSec then
+                LogStatus("RewardWait", "Reward delivery completed at about " + str$(tNow) + "\n");
+                if ctTrainingOptions% >= 2 then
+                    ChangeStateTo(stateCheckAdvance%,tNow);
+                else
+                    ChangeStateTo(stateITI%,tNow);  'there is no advance for early training stages, just repeated reward delivery
+                endif;
+            endif
+            
+            
+               
+        case iState% = stateCheckAdvance% then
+            'Checking that advance has occurred
+            if stateBegin% = 1 then
+                LogStatus("CheckAdvance", "Checking that advance has occured at about " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            'Here is a good place to check and see if we are done!
+            if nTrialsCompleted% >= nTrials% then
+                LogStatus("CheckAdvance", "All Trials Completed!");
+                Stop%();
+            endif
+            
+            'The Advance channel will toggle, we don't care whether the edge is up or down
+            if FindEdge%(AdvanceChannel%, tLastAdvance+tic, tAdvance) > -1 then
+                LogStatus("CheckAdvance", "Advance occured at " + str$(tAdvance));
+                ChangeStateTo(stateITI%,tNow);
+                tLastAdvance := tAdvance;
+            endif
+            
+            
+            
+        case iState% = stateITI% then
+            'Waiting through intertrial interval
+            if stateBegin% = 1 then
+                LogStatus("ITI", "Began waiting through ITI at about " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            if tNow > tITIStart + ctITI then
+                LogStatus("ITI", "ITI complete at about " + str$(tNow));
+                ChangeStateTo(stateEnsureLeverInOrigin%,tNow);
+            endif
+            
+            
+            
+        case iState% = stateAbort% then  
+            'Trial aborted, do not reward or advance          
+            LogStatus("Abort", "Abort at about " + str$(tNow)); 
+            
+            nTrialsAborted% += 1;
+            
+            'Wait through abort time, if any, then go to stateITI%
+            if tNow >= tStateStart + ctAbortPenalty then
+                LogStatus("Abort", "Abort wait complete at about " + str$(tNow)); 
+                tITIStart := tNow;
+                ChangeStateTo(stateITI%,tNow);
+            endif
+            
+            
+            
+        'Special case - can only get here using WaitForBlankTo(), which specifies the next state to go to
+        case iState% = stateWaitForBlank% then  
+            'Waiting for screen blank
+            if stateBegin% = 1 then
+                LogStatus("WaitForBlank", "Began waiting for blank screen at about " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            if View(DataWindow%).FindFallingEdge%(StimChannel%, tStateStart, tTrigger) = 1 or View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 1 then
+                'Fixation point is off
+                tLastTrigger := tTrigger;
+                LogStatus("WaitForBlank", "Blank screen at " + str$(tTrigger));
+                DrawMonitorScreen(-1,-1,-1,-1);	'remove everything from spike 2 monitor screen
+                ChangeStateTo(nextState%,tNow);
+            endif
+            
+            
+        endcase
+        
+    wend 'end while RemainInIdleLoop% = 1
+    
+    
+    return iStatus%;
+end;
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+    if iState% = stateWaitForBlank% then  'this is not allowed and is a coding error, must use WaitForBlankTo()
+        message("Coding error - disallowed ChangeStateTo(stateWaitForBlank%,...)!  Quitting!");
+        halt;  'Coding error, this won't happen live, we'll catch it in testing if we accidentally do it 
+    endif
+    stateBegin% := 1;  'Reset for next state
+	if tStart > 0 then 
+        tStateStart := tStart; 
+    endif;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'WaitForBlankTo() - this is essentially the same as ChangeStateTo(), except it goes to an intermediate
+'state which waits for a screen blank and THEN goes to the specified state.  stateWaitForBlank is an unusual
+'state in that it can be called in a lot of contexts, which justifies an easier way of keeping track of
+'which state we want to go to next
+proc WaitForBlankTo(stateTo%, tStart)
+	nextState% := stateTo%;
+    stateBegin% := 1;  'Reset for next state
+    iState% := stateWaitForBlank%;
+	if tStart > 0 then 
+        tStateStart := tStart; 
+    endif;
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc CreateSampleConfiguration()
+    var key$;
+    var primaryTxt$;
+    var secondaryTxt$;
+    
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
+    
+	SampleClear(); 'Set standard sampling state
+    SampleChannels(64);  '32 does not work, we need more!
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    
+    ' Set path for new data files, and for those saved automatically
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+    
+    
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    DoSampleAutoName(key$,"ct","ct",primaryTxt$,secondaryTxt$);   
+    SampleAutoFile(1);  'Enable automatic file naming
+    
+    ' Text marks make extraction easier
+    SampleTextMark(200);  'Channel 30 is textmark channel
+    
+
+	'----Event Channel recording definitions----
+    if ctTrainingOptions% > 1 then   'don't create recording channels if just training; we don't use the VSG until index 2
+        SampleEvent(FrameChannel%, 0, 2, 3600);
+        SampleComment$(FrameChannel%,"Frame");
+        SampleTitle$(FrameChannel%,"Frame");
+        
+        SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+        SampleComment$(ReadyChannel%,"Ready");
+        SampleTitle$(ReadyChannel%,"Ready");
+        
+        SampleEvent(FixationPointChannel%, 2, 2, 3600); 'Trigger channel, level
+        SampleComment$(FixationPointChannel%,"Fixpt");
+        SampleTitle$(FixationPointChannel%,"Fixpt");
+        
+        
+        
+        if UseTwo1401s% = 1 then  'currently disabled above, can't get there so just leaving the code intact
+            
+'            SampleEvent(FrameSlaveChannel%, 4, 2, 3600);
+'            SampleComment$(FrameSlaveChannel%,"Frame-Slave");
+'            SampleTitle$(FrameSlaveChannel%,"Frame-Slave");
+'            
+'            SampleEvent(ReadySlaveChannel%, 5, 2, 3600); 'Trigger channel, level
+'            SampleComment$(ReadySlaveChannel%,"Ready-Slave");
+'            SampleTitle$(ReadySlaveChannel%,"Ready-Slave");
+'            
+'            SampleEvent(StimSlaveChannel%, 7, 2,3600); 'Trigger channel, level
+'            SampleComment$(StimSlaveChannel%,"Stim-Slave");
+'            SampleTitle$(StimSlaveChannel%,"Stim-Slave");
+            
+        endif
+    endif   
+    
+    'Create a stim channel
+    SampleEvent(StimChannel%, 3, 2, 3600); 'Trigger channel, level
+	SampleComment$(StimChannel%,"Stim");
+	SampleTitle$(StimChannel%,"Stim");
+    
+    'Create an advance channel - we currently believe it is on port 4, have to confirm
+    SampleEvent(AdvanceChannel%, 4, 2, 3600); 'Trigger channel, level
+	SampleComment$(AdvanceChannel%,"Advance");
+	SampleTitle$(AdvanceChannel%,"Advance");
+    
+    'Create joystick channel, ALL scenarios will use the joystick 
+    printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPort%());
+    var ok%;
+    ok%:=SampleWaveform(JoyChannel%, GetJoystickPort%(), 1000);
+    SampleTitle$(JoyChannel%, JoystickPortLabel$);
+    if ok% < 0 then
+        printlog("Error opening joystick channel: %s\n",Error$(ok%));
+    endif;
+    
+    
+    'Possible digital marker channels.  Opto/INTAN have been removed as they seem super unlikely here, can be added back in from Freeviewer, etc.
+    docase
+    case UseTwo1401s% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32
+    case RecordEyeTrackerOutputFile% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
+    endcase
+       
+    if ctRequireFixation% <> 0 then  'don't set up eye channels unless we are looking at eye position
+        'ctRequireFixation% of -1 means display fixation position but don't require LookingCue%()
+        'Set up eye channels 
+        SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+        SampleTitle$(XChannel%,EyeXPortLabel$);
+        SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+        SampleTitle$(YChannel%,EyeYPortLabel$);
+    endif
+    
+    
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);       
+        SampleTitle$(UtilityChannel%,UtilityPortLabel$);
+    endif;
+
+    
+    if UseTwo1401s% = 1 then
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+    endif;
+
+    
+    '----Set up "spiking" Electrode Channels----
+    SetUpElectrodeConfiguration(ctNWavemarks%,ExcludedChans%[]);
+    
+    
+	if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+
+	DoSampleOptimise();
+	SampleMode(1); 'Continuous sampling
+    
+end;
+
+
+
+
+proc InitializeWindows()
+    
+    var index%;
+    var twopi;
+    twopi := 2.0*4.0*ATan(1.0);
+    
+	'Open the data sampling window
+	DataWindow% := FileNew(0,4);  'show spike shape setup dialog
+    printlog("datawindow is %d\n",dataWindow%);
+	Window(0,48,100,95);
+	XRange(0, 30);
+	View(DataWindow%).WindowVisible(1);
+    
+    
+    
+    
+    'Open an XY view to display on screen stimuli, eye position
+    XYWindow% := FileNew(12);  'the XY view has a default channel - this will hold the location of the animal's gaze
+    XRange(-30,30);
+    YRange(-2,-30,30);
+    XYDrawMode(0,5,0);
+    WindowVisible(1);
+    Window(0, 0, 100, 47);
+    XYColour(1,16);  'red
+    XYSize(1,-1);
+    
+    
+    'Create a new channel in the XY view to show the monitor's location, plot this no matter what
+    iMonitorChannel% := XYSetChan(0);
+    XYColour(iMonitorChannel%,13);  'blue
+    XYDrawMode(iMonitorChannel%,3,1);
+    XYJoin(iMonitorChannel%,2);
+    XYAddData(iMonitorChannel%,-screenXDeg,-screenYDeg);
+    XYAddData(iMonitorChannel%,screenXDeg,-screenYDeg);
+    XYAddData(iMonitorChannel%,screenXDeg,screenYDeg);
+    XYAddData(iMonitorChannel%,-screenXDeg,screenYDeg);
+    
+    
+    'Create a new channel in the XY view to display the fixation point, if fixation point is on
+    if ctFixationOn% = 1 then
+        iFixptChannel% := XYSetChan(0);
+        XYColour(iFixptChannel%,16);  'red
+    endif
+    
+
+    'Create a new channel in the XY view to display the CueWindow if a cue patch is present
+    if ctTrainingOptions% >= 2 then
+        'Calcuate the cue window - WindowRadius is updated in the dialog code, and corresponds to the size of the cue patch, +/- a settable value
+        for index% := 0 to 35 do
+            CueWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
+            CueWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
+        next;
+        
+        'Create a new channel in the XY view to display the cue stimulus
+        iCueWindowChannel% := XYSetChan(0);
+        XYColour(iCueWindowChannel%,13);  'blue
+        XYDrawMode(iCueWindowChannel%,2,1);
+        XYJoin(iCueWindowChannel%,1);
+        'Draw the cue window, no not yet
+        'XYAddData(iCueWindowChannel%, CueWindowX[], CueWindowY[]);
+    endif;
+    
+    
+ 
+    'There are no saccade answer windows! Joystick response only! 
+    
+    
+    'Create new channels in the XY view to display the gabor/flankers, if they are present
+    if ctTrainingOptions% > 2 then
+        'The width/height values that we use correspond to the W/H of the BOX around the gabor, but the 
+        'mask will fade things out before that; to make the screen display look reasonable we need to
+        'implement a divisive factor that will make the display in Spike2 look not silly
+        var dispFac := 1.5;  'Trying 1.5 to start, we'll just have to adjust by eye if this isn't great
+        
+        var xOffset;  'These values will help us account for the positions of the flankers
+        var yOffset;
+        
+        'Set the radii of the gabor/flanker patches
+        mainW := ctGaborWDeg/(2*dispFac);
+        mainH := ctGaborHDeg/(2*dispFac);
+        
+        'Set the X/Y offsets of the flanker patches
+        if ctPanelIsHoriz% = 1 then
+            'Horizontal panels will have X offsets
+            xOffset := ctGaborWDeg;
+            yOffset := 0;
+        else
+            'Vertical panels will have Y offsets
+            xOffset := 0;
+            yOffset := ctGaborHDeg;
+        endif
+        
+
+        'Create new channels in the XY view to display the gabor/flanker windows
+        'reuse FixationX, FixationY
+        'Gabor 1 stimulus window
+        for index% := 0 to 35 do
+            Gabor1WindowX[index%] := FixationX+ctGaborXLoc + (mainW * Cos(index% * twopi/36.0));
+            Gabor1WindowY[index%] := FixationY+ctGaborYLoc + (mainH * Sin(index% * twopi/36.0));
+        next;
+        iDisplayWindowGabor1% := XYSetChan(0);
+        XYColour(iDisplayWindowGabor1%,13);  'blue
+        XYDrawMode(iDisplayWindowGabor1%,2,1);
+        XYJoin(iDisplayWindowGabor1%,1);
+        'Draw the gabor window, no not yet
+        'XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
+        
+        'Gabor 2 stimulus window
+        for index% := 0 to 35 do
+            Gabor2WindowX[index%] := FixationX-ctGaborXLoc + (mainW * Cos(index% * twopi/36.0));
+            Gabor2WindowY[index%] := FixationY+ctGaborYLoc + (mainH * Sin(index% * twopi/36.0));
+        next;
+        iDisplayWindowGabor2% := XYSetChan(0);
+        XYColour(iDisplayWindowGabor2%,13);  'blue
+        XYDrawMode(iDisplayWindowGabor2%,2,1);
+        XYJoin(iDisplayWindowGabor2%,1);
+        'Draw the gabor window, no not yet
+        'XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
+        
+        
+        'Flanker 1 stimulus window
+        'Note that one of xOffset or yOffset will be 0 based on whether panel is horiz/vert, so we can just
+        'add/subtract both, the zeroed one won't contribute.  Nice and easy!
+        for index% := 0 to 35 do
+            Flanker1WindowX[index%] := FixationX+ctGaborXLoc + xOffset + (mainW * Cos(index% * twopi/36.0));
+            Flanker1WindowY[index%] := FixationY+ctGaborYLoc + yOffset + (mainH * Sin(index% * twopi/36.0));
+        next;
+        iDisplayWindowFlanker1% := XYSetChan(0);
+        XYColour(iDisplayWindowFlanker1%,13);  'blue
+        XYDrawMode(iDisplayWindowFlanker1%,2,1);
+        XYJoin(iDisplayWindowFlanker1%,1);
+        'Draw the flanker window, no not yet
+        'XYAddData(iDisplayWindowFlanker1%, Flanker1WindowX[], Flanker1WindowY[]);
+        
+        'Flanker 2 stimulus window
+        for index% := 0 to 35 do
+            Flanker2WindowX[index%] := FixationX+ctGaborXLoc - xOffset + (mainW * Cos(index% * twopi/36.0));
+            Flanker2WindowY[index%] := FixationY+ctGaborYLoc - yOffset + (mainH * Sin(index% * twopi/36.0));
+        next;
+        iDisplayWindowFlanker2% := XYSetChan(0);
+        XYColour(iDisplayWindowFlanker2%,13);  'blue
+        XYDrawMode(iDisplayWindowFlanker2%,2,1);
+        XYJoin(iDisplayWindowFlanker2%,1);
+        'Draw the flanker window, no not yet
+        'XYAddData(iDisplayWindowFlanker2%, Flanker2WindowX[], Flanker2WindowY[]);
+        
+        'Flanker 3 stimulus window
+        for index% := 0 to 35 do
+            Flanker3WindowX[index%] := FixationX-ctGaborXLoc + xOffset + (mainW * Cos(index% * twopi/36.0));
+            Flanker3WindowY[index%] := FixationY+ctGaborYLoc + yOffset + (mainH * Sin(index% * twopi/36.0));
+        next;
+        iDisplayWindowFlanker3% := XYSetChan(0);
+        XYColour(iDisplayWindowFlanker3%,13);  'blue
+        XYDrawMode(iDisplayWindowFlanker3%,2,1);
+        XYJoin(iDisplayWindowFlanker3%,1);
+        'Draw the flanker window, no not yet
+        'XYAddData(iDisplayWindowFlanker3%, Flanker3WindowX[], Flanker3WindowY[]);
+        
+        'Flanker 4 stimulus window
+        for index% := 0 to 35 do
+            Flanker4WindowX[index%] := FixationX-ctGaborXLoc - xOffset + (mainW * Cos(index% * twopi/36.0));
+            Flanker4WindowY[index%] := FixationY+ctGaborYLoc - yOffset + (mainH * Sin(index% * twopi/36.0));
+        next;
+        iDisplayWindowFlanker4% := XYSetChan(0);
+        XYColour(iDisplayWindowFlanker4%,13);  'blue
+        XYDrawMode(iDisplayWindowFlanker4%,2,1);
+        XYJoin(iDisplayWindowFlanker4%,1);
+        'Draw the flanker window, no not yet
+        'XYAddData(iDisplayWindowFlanker4%, Flanker4WindowX[], Flanker4WindowY[]);
+                
+    endif;
+    
+    
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitializeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+    if UseTwo1401s% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
+        ToolbarSet(1,"Sample start",Start%);
+    endif;
+	ToolbarSet(2,"Sample stop", Stop%);
+	ToolbarSet(3,"Juice", Juice%);
+	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
+	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
+    ToolbarSet(6,"Select Wavemarks",SelectWavemarkDialog%);   'this may be an older unused functionality??
+    ToolbarSet(7,"Adjust Joystick",CallJoystickConfigDialogUD%);
+	ToolbarSet(8,"Quit",Quit%);
+	ToolbarEnable(2,0);
+	ToolbarEnable(4,0);
+	ToolbarEnable(5,0);
+	Toolbar("Go",0x3ff);
+
+end;
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func StartPlexon%()
+    
+    
+    'Start the Power1401!  This is a bit cumbersome, and I'm not sure it's transferable, but it's a start, perhaps.
+    var fp$;  'to hold current file path
+    fp$ := SetPathToScriptDirectory$();
+    
+    'Must run this BEFORE the PROGRUN command, because both this sequence AND SetPlexon...
+    'access the same directory, and this was causing conflicts because they were running
+    'simultaneously.  Here, CreateSampleConfiguration is done accessing the directory before
+    'SetPlexon... is started, and everything is kosher.
+    CreateSampleConfiguration();    
+    
+    StartSecondInstanceOfSpike2();
+    
+    FilePathSet(fp$);  'change the file path back to what it was
+    fp$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp$); 'and tell the world to verify
+    
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+
+    ' Get display windows ready
+    InitializeWindows();    
+    
+    return 1; 'stay in toolbar
+    
+end
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+    var Opener$;
+    var ProgName$;
+    var RemoteArg$ := "";     'Extra arg needed if vsg is not on local machine...
+    var BGColor$;
+    var Dist2Screen$;
+    var TriggerPort$;
+    var FixationCrossArg$;
+    var CueColorArg$;
+    var Verbose$ := " -v ";  'For now, verbose is always on 
+    var i%, j%, k%, m%, n%, p%, q%;
+    var startSecs := 5;
+    var cmdLine$;
+    var CSVFileName$;
+    var CSVHandle%;
+    var dotSupplyFileName$;
+    var dotSupplyHandle%;
+    var count%;
+    var eof%;
+    var dotPctFileLen%;
+    var s;
+    var xy[ctDotsPerPF%*ctPFsPerPatch%][2];
+    var xyVector[ctDotsPerPF%*2];  'construct anew for each frame
+    var color%[ctDotsPerPF%*ctPFsPerPatch%];  'This variable is actually unused, but is filled by GenerateConteCuePatchColors() and we may as well keep it
+    var numColor%[ctPFsPerPatch%][2];
+    var OK%;
+    var leftTOri;  'orientation of left target
+    var rightTOri;
+    var nCue% := 1;  'These various variables need to be 1 if training stage is such that they are unused, for below code
+    var nOri% := 1;
+    var nDist% := 1;
+    var nCh% := 1;
+    var nValid%;
+    var cue[100];
+    var ori[100];
+    var oriCh[100];
+    var valid%[100];
+    var dist%[100];
+    
+    
+    
+    'It only makes sense to create and write the files if we will be using them, so training options of 2 or higher
+    if ctTrainingOptions% > 1 then
+        
+        
+        'Get filenames of files we need to eventually write
+        CSVFileName$ := GetScriptDir$(0)+"..\\..\\ConteCSVFile.csv"; 'This is a comma separated value file which specifies most details of each trial
+        dotSupplyFileName$ := GetScriptDir$(0)+"..\\..\\ConteDotsFile.bin";  'This is a binary file which holds dot locations for the cue
+        
+        'Create the big set of counterbalanced trials for this experimental session
+        'Start by getting values to use for the counterbalance, based on which training step we are at
+        n% := nTrialsPerDataPoint%; 
+        
+        'For training step 2 (hold through cue), determine number of cues (always do this)
+        nCue% := String2FloatArray%(ctDotPctString$,cue[]);
+        
+        'For training step 3 (hold through sample), get values to calculate unique trials
+        if ctTrainingOptions% > 2 then
+            nOri% := String2FloatArray%(ctSampleOriString$,ori[]);
+            nDist% := ctNDistractorOn% + ctNDistractorOff%;
+            for i% := 0 to ctNDistractorOn%-1 do
+                dist%[i%] := 1;
+            next
+            for i% := 0 to ctNDistractorOff%-1 do
+                dist%[i%+ctNDistractorOn%] := -1;
+            next
+        else
+            nOri% := 1;
+            nDist% := 1;
+            ctPatchToSampleDelay := ctResponseTime;  'Response time will apply to patch-to-sample delay if there is no sample
+            ctSampleDuration := 0;  'Turn off stimulus after patch-to-sample (i.e. response time) delay 
+            ctSampleToTargetDelay := 0;  'Don't think this is necessary but just in case
+            ctTargetDuration := 0;  'Don't think this is necessary, but just in case
+        endif;
+        
+        'For training step 4 (i.e. full task), get values to calculate unique trials
+        if ctTrainingOptions% > 3 then
+            nCh% := String2FloatArray%(ctOriChangeString$,oriCh[]);
+            nValid% := ctCountValid% + ctCountInvalid% + ctCountCatch%;
+            for i% := 0 to ctCountValid%-1 do
+                valid%[i%] := 1;
+            next
+            for i% := 0 to ctCountInvalid%-1 do
+                valid%[i%+ctCountValid%] := 0;
+            next
+            for i% := 0 to ctCountCatch%-1 do
+                valid%[i%+ctCountValid%+ctCountInvalid%] := -1;
+            next
+        else
+            ctSampleToTargetDelay := ctResponseTime;  'Response time will apply to sample-to-target delay if there is no target
+            ctTargetDuration := 0;  'Turn off stimulus after sample-to-target (i.e. response time) delay 
+        endif;
+        
+        
+        'Write out the variables that hold the counterbalance
+        'Put random indices into ctTrialOrder%[], easy when you write a function to do it!
+        ArrRandIndices(ctTrialOrder%[0:nTrials%]);
+        
+        'loop through n, CuePct, Ori, OriCh, Dist, Valid
+        for i% := 1 to n% do
+            for j% := 0 to nCue%-1 do
+                for k% := 0 to nOri%-1 do
+                    for m% := 0 to nCh%-1 do
+                        for p% := 0 to nDist%-1 do
+                            for q% := 0 to nValid%-1 do
+                                'Setting cue dot pct and validity is easy
+                                cueDotPct[count%] := cue[j%];
+                                validity%[count%] := valid%[q%];
+                                
+                                'Set which orientation changes, more complicated
+                                docase      
+                                case valid%[q%] = -1 then 'This is a no change trial (will also catch if cue == 50)
+                                    whichOriChange%[count%] := 0;
+                                case cue[j%] > 50 and valid%[q%] = 1 then 'cue indicates color 1, valid
+                                    whichOriChange%[count%] := 1;
+                                case cue[j%] > 50 and valid%[q%] = 0 then 'cue indicates color 1, invalid
+                                    whichOriChange%[count%] := 2;
+                                case cue[j%] < 50 and valid%[q%] = 1 then 'cue indicates color 2, valid
+                                    whichOriChange%[count%] := 2;
+                                case cue[j%] < 50 and valid%[q%] = 0 then 'cue indicates color 2, invalid
+                                    whichOriChange%[count%] := 1; 
+                                case cue[j%] = 50 then  'valid/invalid is meaningless
+                                    'roll a die, that's fine, we ignore "valid/invalid"
+                                    whichOriChange%[count%] := round(rand(1,1));  'value will be a 1 or a 2
+                                endcase
+                                
+                                'Set orientation/absence of distractors, note that for now there is no ability to flip distractor orientation within-experiment
+                                if dist%[p%] = 1 then 'distractors are on
+                                    flankerIsH%[count%] := ctPanelIsHoriz%;
+                                else 'distractors are off
+                                    flankerIsH%[count%] := ctPanelIsHoriz%-2; 
+                                endif
+                                
+                                'Set orientations of sample and test stimuli, kinda complicated, I hope I don't have to trudge through this later
+                                docase
+                                case whichOriChange%[count%] = 1 then 'if stimulus 1 changes, stimulus 1 gets the chosen orientation
+                                    samp1Ori[count%] := ori[k%];
+                                    test1Ori[count%] := ori[k%]+oriCh[m%];
+                                    if ctOrientationMatches% = 1 then  'if orientation matches, both samp2 and test2 match original orientation
+                                        samp2Ori[count%] := ori[k%];
+                                        test2Ori[count%] := ori[k%];
+                                    else  'otherwise, select a random orientation for samp2
+                                        samp2Ori[count%] := ori[floor(rand(nOri%,0))];  'Selects a random orientation
+                                        test2Ori[count%] := samp2Ori[count%];  'and match
+                                    endif
+                                case whichOriChange%[count%] = 2 then 'if stimulus 2 changes, stimulus 2 gets the chosen orientation
+                                    samp2Ori[count%] := ori[k%];
+                                    test2Ori[count%] := ori[k%]+oriCh[m%];
+                                    if ctOrientationMatches% = 1 then  'if orientation matches, both samp1 and test1 match original orientation
+                                        samp1Ori[count%] := ori[k%];
+                                        test1Ori[count%] := ori[k%];
+                                    else  'otherwise, select a random orientation for samp1
+                                        samp1Ori[count%] := ori[floor(rand(nOri%,0))];  'Selects a random orientation
+                                        test1Ori[count%] := samp1Ori[count%];  'and match
+                                    endif
+                                else 'whichOriChange%[count%] = 0, randomize which side gets the designated orientation
+                                    if ctOrientationMatches% = 1 then 'unless the sides match, then Oprah is passing out the designated orientation
+                                        samp1Ori[count%] := ori[k%];
+                                        test1Ori[count%] := ori[k%];
+                                        samp2Ori[count%] := ori[k%];
+                                        test2Ori[count%] := ori[k%];
+                                    else
+                                        if round(rand(1,0)) = 1 then
+                                            samp1Ori[count%] := ori[k%];
+                                            samp2Ori[count%] := ori[floor(rand(nOri%,0))];  'Selects a random orientation
+                                        else
+                                            samp2Ori[count%] := ori[k%];
+                                            samp1Ori[count%] := ori[floor(rand(nOri%,0))];  'Selects a random orientation
+                                        endif
+                                        test1Ori[count%] := samp1Ori[count%];  'and match
+                                        test2Ori[count%] := samp2Ori[count%];  
+                                    endif
+                                endcase
+                                
+                                count% += 1;  'increment counter
+                            next
+                        next
+                    next
+                next
+            next
+        next
+        
+        'We have now filled the following variables, for use in creating the CSV/binary file and beyond
+        '   ctTrialOrder%[];   'Will be shuffled indices, to randomize trial order 
+        '   cueDotPct[];       'Percentage of cue dots on each trial
+        '   samp1Ori[];        'Sample orientation on each trial, etc.
+        '   samp2Ori[];
+        '   test1Ori[];
+        '   test2Ori[];
+        '   validity%[];       'Validity on each trial, -1 = no change, 0 = invalid, 1 = valid (if cueDotPct is 50, validity value is not updated, but side 1/2 is randomly selected)
+        '   whichOriChange%[]; '0 = no change, 1 = side 1 changes, 2 = side 2 changes
+        '   flankerIsH%[];     '0 = vertical flankers, 1 = horizontal flankers, -1 = no flankers
+                
+        
+        'Write binary file holding dot percentages on each patch
+        'Spec for binary file is now:
+        'Int1 Int2 FloatX1 FloatY1 FloatX2 FloatY2 ... FloatX(Int1+Int2) FloatY(Int1+Int2) Int1 Int2 FloatX1...
+        '
+        'The idea here is that for each "Patch Set" (one trial) we will designate the number of color1 dots and
+        'the number of color2 dots (color1 and color2 will be defined in the CSV file) and that the VSG will
+        'perform the randomization.  The VSG performing the randomization will make the binary file smaller.
+        'So the file read process will sum Int1 and Int2, know that it needs to read Int1+Int2 X,Y pairs per
+        'patch, and know from the CSV file that it will have a certain number of patches per Patch Set.
+        '
+        'The X and Y values are to be scaled to a unit circle (-0.5 to 0.5) and Dan will expand to the requested
+        'size.
+        
+        
+        dotSupplyHandle% := FileOpen(dotSupplyFileName$,9,1);
+        if dotSupplyHandle% < 0 then
+            printlog("Opening binary file for writing failed with error %d\n",dotSupplyHandle%);
+            halt;
+        endif;
+        
+        s := Seconds();
+        for i% := 0 to nTrials%-1 do  'loop through every trial
+            'Calculate the number of dots of each color present in each patch on this trial
+            GenerateConteCuePatchColors(ctDotsPerPF%,ctPFsPerPatch%,cueDotPct[ctTrialOrder%[i%]],color%[],numColor%[][]);
+            'Create random XY positions for each dot on this trial - technically these are not separated by patch, and don't need to be
+            GenerateConteCuePatchXY(ctDotsPerPF%,ctPFsPerPatch%,0.5,xy[][]);  'force to unit circle instead of patch size
+            
+            for j% := 0 to ctPFsPerPatch%-1 do 'loop through each patch frame on this trial
+                'write both numColor values for this patch frame to binary file, 4 byte integer
+                OK% := view(dotSupplyHandle%).BWrite(numColor%[j%][]);  
+                if OK% < 0 then
+                    message("Problem with 'color' binary write on patch# " + Str$(i%+1) + " frame# " + Str$(j%+1) + "!");
+                    FileClose(dotSupplyHandle%);
+                endif;
+                
+                'construct xyVector for this patch frame
+                for k% := 0 to ctDotsPerPF%-1 do
+                    xyVector[k%*2] := xy[(j%*ctDotsPerPF%)+k%][0];
+                    xyVector[(k%*2)+1] := xy[(j%*ctDotsPerPF%)+k%][1];
+                next
+                
+                'write all X,Y pairs for this patch frame to binary file, double (8 bytes)
+                OK% := view(dotSupplyHandle%).BWrite(xyVector);
+                if OK% < 0 then
+                    message("Problem with xy vector binary write on patch# " + Str$(i%+1) + " frame# " + Str$(j%+1) + "!");
+                    FileClose(dotSupplyHandle%);
+                endif;
+            next
+            ArrConst(numColor%[][],0);  'reset numColor values, as we use an increment scheme above    
+        next
+        
+        FileClose(dotSupplyHandle%);
+        printlog("A total of %d patches required %f seconds to create and write to binary file!\n",ctPFsPerPatch%*nTrials%,Seconds()-s);
+        
+        
+        
+        'Write CSV file
+        
+        CSVHandle% := FileOpen(CSVFileName$,8,1);
+        if CSVHandle% < 0 then
+            printlog("Opening CSV file for writing failed with error %d\n",CSVHandle%);
+            halt;
+        endif;
+        
+        s := Seconds();
+        for i% := 0 to nTrials%-1 do  'loop through every trial
+            'Target orientation for left and right gabors has been calculated above in the counterbalance code
+            
+            'We are going to use the Is_H to also turn on/off the flankers - if it is -1, there will be no flankers
+            'In order to end a trial early, we will use ctSampleDuration or ctTargetDuration, either being 0 will
+            'cut the trial off at that point, but will allow us to have the fixation point up during the "delay"
+            
+            
+            'Write to file
+            Print("%f,%f,%f,%f,%f,%d,%d,",FixationX,FixationY,ctPatchRadiusDeg*2,ctPatchRadiusDeg*2,ctDotRadiusDeg*2,ctRefreshPerPF%,ctPFsPerPatch%);  'cue patch params
+            Print("%f,%f,%f,%f,%f,",ctPatchToSampleDelay*1000,ctSampleDuration*1000,ctSampleToTargetDelay*1000,ctTargetDuration*1000,ctResponseTime*1000);  'timing params
+            Print("(%d/%d/%d),(%d/%d/%d),",ctDotColor1R%,ctDotColor1G%,ctDotColor1B%,ctDotColor2R%,ctDotColor2G%,ctDotColor2B%);  'colors - NOTE: colors are placeholders, VSG will use command line colors (but these columns DO have to be legal, though unused, colors)
+            Print("%f,%f,%f,%f,%f,%f,",FixationX-ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,samp1Ori[i%],ctGaborSF);  'Sample A (left = 1), part 1
+            Print("%f,%f,%d,%d,0,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Sample A (left = 1), part 2, color for A is color 0
+            Print("%f,%f,%f,%f,%f,%f,",FixationX+ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,samp2Ori[i%],ctGaborSF);  'Sample B (right = 2), part 1
+            Print("%f,%f,%d,%d,1,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Sample B (right = 2), part 2, color for B is color 1
+            Print("%f,%f,%f,%f,%f,%f,",FixationX-ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,test1Ori[i%],ctGaborSF);  'Test A (left = 1), part 1
+            Print("%f,%f,%d,%d,0,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Test A (left = 1), part 2, color for A is color 0
+            Print("%f,%f,%f,%f,%f,%f,",FixationX+ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,test2Ori[i%],ctGaborSF);  'Test B (right = 2), part 1
+            Print("%f,%f,%d,%d,1",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);   'Tset B (right = 2), part 2, color for B is color 1
+            Print("\n");
+            
+        next
+        
+        FileClose(CSVHandle%);
+        printlog("CSV file of %d trials required %f seconds to create and write!\n",nTrials%,Seconds()-s);
+        
+    endif
+    
+    
+    'printlog("Got here OK\n");
+    'halt;  'temporarily allowing dialog to stop here, TODO move it down as testing allows, or remove altogether
+
+'    ' Open serial port for VSG comms re: stimulus jump-advance...let's not do this
+'    'OpenSerialPortToVSG();
+'    
+	'start sampling
+    if UseTwo1401s% = 1 then
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        'Send timing pulse
+        SampleSeqVar(11,20);  'set for 20 ms pulse (Was not specified!  Two 1401s has been inactive for years and "T" may have been accidentally co-opted?)
+        SafeSampleKey("T");
+    else
+    	SampleStart(0); 'Start sampling now
+    endif;
+    
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
+    
+    
+    'Set sequencer variable 5, this value is appropriate for no rivalry
+    SampleSeqVar(5, 0);
+    
+    
+	' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");
+    
+    'Get the clock period of the sequencer, in MS, must do this after starting sampling
+    SequencerPeriodMS := SampleSeqClock(1);  
+    
+    
+    'Begin building the command line argument
+    Opener$ := "cmd /k " + bin$;
+    
+    ' Get remote args if needed
+    if GetUseRemoteStimulus%() = 1 then
+        RemoteArg$  := " " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
+    endif;
+    
+    if GetUseRemoteStimulus%() = 1 then
+        ProgName$ := "\\remote.exe "; 'set program name for one VSG
+    else
+        ProgName$ := "\\fixstim.exe "; 'set program name for one VSG
+    endif;
+    
+    
+    'Set background color
+    BGColor$ := " -b " + BackgroundColor$;
+    
+    'Set distance to screen
+    Dist2Screen$ := " -d " + GetDistanceToScreenMM$();
+    
+    'Set trigger port
+    TriggerPort$ := " -p 2 ";  'This one's hard-coded for now
+    
+    'Turn on verbose
+    Verbose$ := " -v ";
+    
+    'Update fixation cross argument
+    FixationCrossArg$ := Mid$(FixationArg$,5);  'Start with 5th character (remove " -f ") so we can insert the "+"
+    FixationCrossArg$ := " -f +," + FixationCrossArg$ + "," + Str$(ctPanelLinePixels%);  'Can also place a cross "orientation" argument at end to rotate it, but leaving that out here for default 0
+    
+    'Build cue color argument
+    CueColorArg$ := " -c (" + Str$(ctDotColor1R%) + "/" + Str$(ctDotColor1G%) + "/" + Str$(ctDotColor1B%) + "),(" + Str$(ctDotColor2R%) + "/" + Str$(ctDotColor2G%) + "/" + Str$(ctDotColor2B%) + ") ";
+
+    'Build simple command line, point to spec file
+    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + BGColor$ + Dist2Screen$ + FixationCrossArg$ + CueColorArg$;
+    cmdLine$ := cmdLine$ + "--dotsupply " + GetScriptDir$(0) + "..\\..\\ConteDotsFile.bin" + "--trials " + GetScriptDir$(0) + "..\\..\\ConteCSVFile.csv";
+    
+ 
+  
+    ' Initial text marks
+    ' djs Always version 3. NO difference if maintainmode is used or not. 
+    SampleText("ConteTask,3," + str$(Len(cmdLine$)));
+    SampleText(ctCVSID$);
+    for i% := 1 to Len(cmdLine$) step 100 do
+        SampleText(Mid$(cmdLine$, i%, 100));
+    next    
+    
+    
+	'Begin the stimulus program. It will take a few seconds for the VSG to initialize.
+	PrintLog(cmdLine$+"\n"); 
+    
+    StimHandle% := ProgRun(cmdLine$, 1);
+    if StimHandle% <0 then 
+        Message("Could not start stimulus."); 
+        halt; 
+    endif
+    
+    
+    'Set values for the joystick
+    'Change offset of joystick channel
+    View(DataWindow%).ChanOffset(JoyChannel%,joystickOffset);  'use value from registry
+    InitJoystick(JoyChannel%);  'initialize the joystick
+    GetJoystickParameters();  'get voltage values for thresholds
+    DisplayJoystickParametersUD();  'write values to log file
+    
+    'set YRange for JoyChannel...this seems weird...I think the voltages should be larger than that...TODO check this out
+    'View(DataWindow%).YRange(JoyChannel%,0,1);
+
+    
+    
+    'If we are asking the eyetracker to record an output file, open the file and start recording
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("I");  'Open the file (this is done by setting a DIGLOW bit), file name will be saved in a sampletext
+        yield(0.5);
+        SafeSampleKey("W");  'Begin recording the file
+        yield(0.5);
+    endif
+    
+	
+	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);
+	ToolbarEnable(1,0);
+	ToolbarEnable(7,0);
+	ToolbarEnable(8,0);
+	View(DataWindow%);
+	Yield(5);
+    return 1;
+    
+    
+    
+end
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+    
+	' Disable idle process func
+	ToolbarSet(0,"");
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
+    endif
+
+    
+    ' Tell stim app to shut down.
+	SafeSampleKey("Q");
+	SampleStop();
+    
+    
+    ProgKill(StimHandle%);
+    while ProgStatus(StimHandle%) > 0 do
+        Yield();
+    wend
+
+    
+    
+	' Write parameter file
+	WriteParameterFile();
+
+	' Increment daily totals and save then  TODO Record H/M/FA/CR? Do that in PAR file. Put into (sample)bar?
+	TotalTrials% += nTrialsStarted%;
+	SaveDailyTotals();
+    
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func PauseStimuli%();
+Pause% :=1;
+ToolbarEnable(4,0);
+ToolbarEnable(5,1);
+return 1;
+end
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func ResumeStimuli%();
+Pause% :=0;
+ToolbarEnable(4,1);
+ToolbarEnable(5,0);
+return 1;
+end
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Juice%()  'note that this function is only used for Toolbar-based juice delivery
+    if JuicerType% = 1 then  'open-high juicer, dispense based on ms
+        DeliverReward();
+    else
+        if JuicerType% = 2 then  'open-low juicer, dispense based on number of hits
+            DeliverRewardNumber();
+        endif;
+    endif;
+    return 1;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func SelectWavemarkDialog%()
+	var iReturn%:=1;
+	var i%;
+    var whichWaveMark% := 1;
+	DlgCreate("Select Wavemark");
+	DlgInteger(1, "Input Wavemark to view, -1 for all", -1, 256);  'max is based on highest possible wavemark value
+    
+	i% := DlgShow(whichWaveMark%);
+
+	if i% = 1 then
+		PrintLog("SelectWavemarkDialog - user hit OK\n");
+        for i% := 0 to ctNWavemarks%-1 do  'for each wavemark channel
+            View(DataWindow%).MarkMask(i%+1,0,0,-1);  'exclude all codes on layer 0
+            View(DataWindow%).MarkMask(i%+1,0,1,whichWaveMark%);  'then include requested code (or all, if -1) on layer 0
+        next;       
+	endif;
+	if i% = 0 then
+		PrintLog("SelectWavemarkDialog - user hit Cancel\n");
+	endif;
+    'PrintLog("Return value is %d\n", iReturn%);  'always return 1, so don't bother reporting this
+	return iReturn%;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc WriteParameterFile()
+	var parFileName$;
+	var parFileBase$;
+	var parHandle%;
+    var i%, j%;
+    
+
+
+	' get filename for parfile (data file + "par" extension) and open it
+	View(DataWindow%);
+	parFileBase$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
+	parFileName$ := parFileBase$ + ".par";
+	PrintLog("par filename is " + parFileName$ + "\n");
+	parHandle% := FileOpen(parFileName$, 8, 1);
+
+	' write general info - eye coil gains, dist to screen
+	Print("Parameters for %s\n\n", parFileBase$);
+
+	Print("General information\n");
+	Print("-------------------\n\n");
+	Print("Distance to screen (MM)    : %s\n", GetDistanceToScreenMM$());
+	Print("Eye coil software gain (X) : %f\n", DegreesPerVoltX);
+	Print("Eye coil software gain (Y) : %f\n", DegreesPerVoltY);
+    Print("Eye coil offset, V (X)     : %f\n", XVoltOffset);
+    Print("Eye coil offset, V (Y)     : %f\n", YVoltOffset);
+	Print("Eye coil sampling freq (Hz): %d\n", EyeCoilSamplingFrequency%);
+    Print("Wavemark ports             : %s\n", GetWavemarkPorts$());
+    Print("Continuous ports           : %s\n", GetContinuousPorts$());
+	Print("Reward size (ms)           : %d\n", GetJuiceRewardMS%());
+	Print("Background color           : %s\n", BackgroundColor$);
+    
+	Print("\nExperimental parameters\n");
+	Print("-------------------------\n\n");
+
+    Print("Always looking?                          : %d\n", ctAlwaysLooking%);
+	Print("Always pressing?                         : %d\n", ctAlwaysPressing%);
+    Print("Check looking?                           : %d\n", ctCheckLooking%);
+    Print("Training option                          : %d\n", ctTrainingOptions%);
+    Print("Number of trials                         : %d\n", nTrials%);
+'    'Print("Reward Delay (s)                         : %f\n", mainRewardDelay);  'never enabled
+	Print("Inter-trial interval                     : %f\n", ctITI);
+    Print("Fixation cross on?                       : %d\n", ctFixationOn%);
+    Print("Fixation cross width (deg)               : %f\n", ctFixCrossWidthDeg);
+    Print("Require fixation?                        : %d\n", ctRequireFixation%);
+    Print("Acquisition time (s)                     : %f\n", ctFixAcqTime);
+    Print("Patch onset delay (s)                    : %f\n", ctPatchOnsetDelay);
+    Print("Patch duration (s)                       : %f\n", ctPatchDur);
+    Print("Dots per patch frame                     : %d\n", ctDotsPerPF%);
+    Print("Dot color 1 R/G/B                        : %d %d %d\n", ctDotColor1R%,ctDotColor1G%,ctDotColor1B%);
+    Print("Dot color 2 R/G/B                        : %d %d %d\n", ctDotColor2R%,ctDotColor2G%,ctDotColor2B%);
+    Print("Dot radius (deg)                         : %f\n", ctDotRadiusDeg);
+    Print("Monitor refreshes per patch frame        : %d\n", ctRefreshPerPF%);
+    Print("Patch frames per patch                   : %d\n", ctPFsPerPatch%);
+    Print("Patch radius (deg)                       : %f\n", ctPatchRadiusDeg);
+    Print("Additional window radius (deg)           : %f\n", ctAdditionalWindowRadius);
+    Print("Patch to sample delay (s)                : %f\n", ctPatchToSampleDelay);
+    Print("Sample duration (s)                      : %f\n", ctSampleDuration);
+    Print("Sample to target delay (s)               : %f\n", ctSampleToTargetDelay);
+    Print("Target duration (s)                      : %f\n", ctTargetDuration);  
+    Print("Response time (s)                        : %f\n", ctResponseTime);  
+    Print("Abort penalty (s)                        : %f\n", ctAbortPenalty); 
+    Print("Trials per data point                    : %d\n", nTrialsPerDataPoint%);
+    Print("Invalid per data point                   : %d\n", ctCountInvalid%);
+    Print("Valid per data point                     : %d\n", ctCountValid%);
+    Print("Catch per data point                     : %d\n", ctCountCatch%);
+    Print("N distractor on per data point           : %d\n", ctNDistractorOn%);
+    Print("N distractor off per data point          : %d\n", ctNDistractorOff%);
+    Print("Orientations match?                      : %d\n", ctOrientationMatches%);
+    Print("Dot percentages                          : %s\n", ctDotPctString$);
+    Print("Sample orientations                      : %s\n", ctSampleOriString$);
+    Print("Orientation changes                      : %s\n", ctOriChangeString$);
+    
+    
+    
+    Print("\nStimulus parameters\n");
+	Print("-------------------------\n\n");
+    
+    Print("Take stim values from config?            : %d\n", ctStimValsFromConfig%);
+    Print("Gabor/flanker radius width (deg)         : %f\n", mainW);
+    Print("Gabor/flanker radius height (deg)        : %f\n", mainH);
+    Print("Gabor X location (deg)                   : %f\n", ctGaborXLoc);
+    Print("Gabor Y location (deg)                   : %f\n", ctGaborYLoc);
+    Print("Panel height (deg)                       : %f\n", ctGaborHDeg);
+    Print("Panel width (deg)                        : %f\n", ctGaborWDeg);
+    Print("Panel is horizontal?                     : %d\n", ctPanelIsHoriz%);
+    Print("Panel line width (pixels)                : %d\n", ctPanelLinePixels%);
+    Print("Gabor spatial frequency (cyc/deg)        : %f\n", ctGaborSF);
+    Print("Gabor phase (deg)                        : %f\n", ctGaborPhase);
+    Print("Gabor spatial factor                     : %f\n", ctGaborDivisor);
+
+
+    Print("\nResults\n");
+	Print("-------------------------\n\n");
+    Print("N trials started                         : %d\n", nTrialsStarted%);
+    Print("N trials completed                       : %d\n", nTrialsCompleted%);
+    Print("N trials aborted                         : %d\n", nTrialsAborted%);
+    Print("Hits                                     : %d\n", Hits%);
+    Print("Misses                                   : %d\n", Misses%);
+    Print("False alarms                             : %d\n", FAs%);
+    Print("Correct rejections                       : %d\n", CRs%);
+    
+    
+	' close parfile
+	FileClose(0);
+
+end;
+
+
+
+' Used to hard-quit from toolbar. This will close data files without saving!!! 
+' It is important that this function be disabled once sampling is started!!!
+
+func Quit%()
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
+    endif
+    
+	FileClose(-1,-1);
+	return 0;
+end;
+
+
+
+func CallJoystickConfigDialogUD%()
+    'This function was written simply to prevent "odd" autonaming of files when saving joystick calibration data
+    'Unfortunately, there doesn't seem to be a way to *not* save the data as SampleStop automatically saves it, so
+    'this is the next best thing.  Should work for either dialog-based or toolbar-based calls of Joystick config
+    var key$;
+    var primaryTxt$;
+    var secondaryTxt$;
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
+    
+    'Set autoname to use a joystick-based name
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+
+    
+    DoSampleAutoName(key$,"joystick","joy",primaryTxt$,secondaryTxt$);    
+    
+    JoystickConfigDialogUD%();
+    
+    'Set autoname back to what it should be once we return
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
+    FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
+
+    DoSampleAutoName(key$,"ct","ct",primaryTxt$,secondaryTxt$);
+    
+    return 1;
+end
+
+
+
+
+
+
+'proc GetTuningCurveDotPercentParameters()
+'	var stmp$;
+'	var key$;
+'	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\ConteTask\\DotPercent";
+'    
+'    ctDotPercentNSteps% := GetIntRegistryValue%(key$, "NSteps", ctDotPercentNSteps%);
+'    ctDotPercentNRepeats% := GetIntRegistryValue%(key$, "NRepeats", ctDotPercentNRepeats%);
+'    ctDotPercentMinPercent := GetFloatRegistryValue(key$, "MinDotPercent", ctDotPercentMinPercent);
+'    ctDotPercentMaxPercent := GetFloatRegistryValue(key$, "MaxDotPercent", ctDotPercentMaxPercent);
+'    ctDotPercentProgression% := GetIntRegistryValue%(key$, "Progression", ctDotPercentProgression%);
+'    ctDotPercentUseFile% := GetIntRegistryValue%(key$, "UseFile", ctDotPercentUseFile%);
+'    ctDotPercentTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", ctDotPercentTuningFile$);
+'end;
+
+'proc SaveTuningCurveDotPercentParameters()
+'	var key$;
+'	key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Scripts\\ConteTask\\DotPercent";
+'    
+'    SetIntRegistryValue(key$, "NSteps", ctDotPercentNSteps%);
+'    SetIntRegistryValue(key$, "NRepeats", ctDotPercentNRepeats%);
+'    SetFloatRegistryValue(key$, "MinDotPercent", ctDotPercentMinPercent);
+'    SetFloatRegistryValue(key$, "MaxDotPercent", ctDotPercentMaxPercent);
+'    SetIntRegistryValue(key$, "Progression", ctDotPercentProgression%);
+'    SetIntRegistryValue(key$, "UseFile", ctDotPercentUseFile%);
+'    SetStringRegistryValue(key$, "TuningFile", ctDotPercentTuningFile$);
+'end;
+
+
+
+
+
+'func TuningCurveDotPercentDialog%()
+'	var iReturn% := 0;
+'	var i%;
+'    var zero%;
+'    
+'    'We are removing nRepeats and allowing the number of repeats to effectively be set at the main dialog
+'    
+'    GetTuningCurveDotPercentParameters();    
+'    
+'	DlgCreate("Dot Percentage Tuning Curve Parameters");
+'	DlgInteger(1, "Number of Steps", 1, 100);
+'	'DlgInteger(2, "Number of Repeats", 1, 10);
+'    DlgInteger(2, "Repeats done in main dialog", 1, 10);
+'	DlgReal(3, "Min Dot Percentage, Symmetrical (%)", 0, 50);
+'	DlgReal(4, "Max Dot Percentage, Symmetrical (%)", 0, 50);
+'	DlgCheck(5, "Random Progression");
+'    DlgCheck(6, "Use File For Tuning Values (one trial per pct ONLY)");
+'    DlgString(7,40,255,"",3);  'for visual confirmation of selected seq file
+'    DlgButton(3, " Select Tuning File ", SelectTuningFile%, 2, 8);
+'
+'    DlgAllow(0xffff, 0, TuningCurveDotPercentDialogChanged%);
+'
+'	'i% := DlgShow(ctDotPercentNSteps%, ctDotPercentNRepeats%, ctDotPercentMinPercent, ctDotPercentMaxPercent, ctDotPercentProgression%, ctDotPercentUseFile%, ctDotPercentTuningFile$);
+'    i% := DlgShow(ctDotPercentNSteps%, zero%, ctDotPercentMinPercent, ctDotPercentMaxPercent, ctDotPercentProgression%, ctDotPercentUseFile%, ctDotPercentTuningFile$);
+'    ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+'	' When user hits OK we alwaus save the parameters, and when user hits Cancel we don't. 
+'	if i% = 1 then
+'        
+'		SaveTuningCurveDotPercentParameters();
+'    
+'        iReturn% := 1;
+'        
+'	endif;
+'
+'	return iReturn%;
+'end;
+'
+'
+'func TuningCurveDotPercentDialogChanged%(item%)
+'    
+'    DlgEnable(0,2);
+'    
+'    if DlgValue(6) = 0 then  'If we are not using a tuning file
+'        DlgEnable(0,7);  'disable the string box with the text file name (button still works)
+'        DlgEnable(1,1);  'enable nSteps, min, and max
+'        DlgEnable(1,3);
+'        DlgEnable(1,4);
+'    endif;
+'    if DlgValue(6) = 1 then
+'        DlgEnable(1,7);  'enable the string box with the text file name
+'        DlgEnable(0,1);  'disable nSteps, min, and max
+'        DlgEnable(0,3);
+'        DlgEnable(0,4);
+'    endif;
+'    return 1;
+'end
+
+
+
+func SelectTuningFile%()
+    'This generic function ought to work for any of the dialogs where we allow the selection of a tuning file
+
+    var status% := 1;
+    var direc$;
+    var fh0%;
+    
+    direc$ := FilePath$();  'get current directory
+    fh0%:=FileOpen(direc$+"*.txt",1,0,"Please select a tuning file");  'Find a tuning file
+    direc$ := FileName$(0);  'Get full path of selected file
+    FileClose(fh0%);  'Just close the file, we're not using it
+    DlgValue$(7,direc$);  'Place filename into dialog item 7 of calling dialog
+
+	return status%;  'return 1 so calling dialog doesn't close
+    
+end;
+
+
+
+func GenerateConteCuePatchColors(nDots%,nFrames%,redProp,&color%[],&numColor%[][])
+    var count%;
+    var ii%;
+    var jj%;
+    var redPropAdj;  'We know people will do silly things like not know whether to use 55 or .55, so just fix it
+                     '(And, to be fair, the main dialog asks for PERCENT, but this function uses PROPORTION so...)
+                     'Look, it's just going to almost certainly always be percent and we'll just do the math here
+    docase
+    case redProp > 100 then  'Should not be a common error, but may as well check
+        message("Percentage of red dots (" + Str$(redProp) + ") exceeds 100%!  Quitting!");
+        halt;
+    case redProp < 0 then  'Should not be a common error, but may as well check
+        message("Percentage of red dots (" + Str$(redProp) + ") is negative!  Quitting!");
+        halt;
+    case redProp <= 1 then  'This is clearly proportion as required by the function, keep it
+        redPropAdj := redProp;
+    else  'This is clearly percentage, make it a proportion
+        redPropAdj := redProp/100;
+    endcase
+    
+    count% := round(nDots%*nFrames%*redPropAdj);  'Total number of red dots in all frames, must explicitly round or will floor
+    ArrConst(color%[0:count%],1);  'Put in ones for "red"
+    ArrConst(color%[count%:],2);  'Put in twos for "green"
+    ArrSort(color%[],-1);  'Shuffle them
+    for ii% := 0 to nFrames%-1 do
+        for jj% := 0 to nDots%-1 do
+            if color%[(nDots%*ii%)+jj%] = 1 then
+                numColor%[ii%][0] += 1;
+            else
+                numColor%[ii%][1] += 1;
+            endif
+        next
+    next
+end
+
+
+
+
+func GenerateConteCuePatchXY(nDots%,nFrames%,patchRadius,&xy[][])
+    var oversize% := round(nDots%*nFrames%*1.7);  'We are going to "overproduce" random dots in the square to ensure 
+                                                  'there are enough dots falling in the circle.  There is a tradeoff
+                                                  'between making too many dots (which is slower) and making too few
+                                                  'dots (which means we have to try again).  Although 1.5x is enough
+                                                  'to fill the circle on the first try most of the time, there are
+                                                  'enough failures that things go faster with more dots made.  1.7x
+                                                  'seems to be the sweet spot from my testing.
+    var xyTemp[oversize%][2];  
+    var nDotsInCircle% := 0;
+    var uhoh%;  'Don't let WHILE loop get stuck
+    var ii%;
+    
+    'Create dot locations until there are enough dots inside the circle
+    'Note that we create all dots for all patch frames at once, and we
+    'separate them out to individual frames outside of this function
+    while nDotsInCircle% < nDots%*nFrames% and uhoh% < 100 do
+        nDotsInCircle% := 0;  'reset nDotsInCircle%
+        rand(xyTemp[][],patchRadius*2,-patchRadius);  'put random values into xyTemp, values will fall into the square patch bounding the circle
+        'Boy, I love being able to do matrix math instead of looping!  But looping it is!
+        for ii% := 0 to oversize%-1 do
+            docase
+            'Break out of the FOR loop rather than continuing to the end if we have enough dots; makes the entire code run about 5% faster
+            case nDotsInCircle% >= nDots%*nFrames% then  
+                break
+            'If this dot is inside the circle, put it into XY
+            case (((xyTemp[ii%][0]*xyTemp[ii%][0]) + (xyTemp[ii%][1]*xyTemp[ii%][1])) < (patchRadius*patchRadius)) and (nDotsInCircle% < nDots%*nFrames%) then
+                xy[nDotsInCircle%][0] := xyTemp[ii%][0];
+                xy[nDotsInCircle%][1] := xyTemp[ii%][1];
+                nDotsInCircle% += 1;  'and increment
+            endcase;
+        next
+        uhoh% += 1;  'keep track of how many times we have failed to find enough dots in the circle
+        'If there were enough dots in the circle, the WHILE will not execute again
+    wend
+    
+    'This should not happen (like probability WAY less than 1 in 2^100)
+    if uhoh% >= 100 then
+        message("Looks like the WHILE loop in GenerateConteCuePatchXY failed! You have basically hit the lottery!");
+        halt;
+    endif
+end
+
+
+
+
+func CalcNumTrials%(opt%,TrialsPP%,ValidPP%,InvalidPP%,CatchPP%,CuePct$,Ori$,OriChange$,DistOn%,DistOff%);
+    'This function will calculate the total number of trials requested by the Conte task dialog
+    'It will use the training options value to determine which input variables to consider
+    var n%;
+    var uTrials% := 1;  'Start at 1, will multiply by various values
+    var nCue%;
+    var nOri%;
+    var nOriCh%;
+    var cue[100];  'these just allow us to use String2FloatArray
+    var ori[100];
+    var oriCh[100];
+    
+    'Start by assigning number of trials per point
+    'For training steps 0/1 (reward on lever/reward on hold) this will determine how many rewards before
+    'the program stops, for other training steps this will be data points per counterbalanced trial
+    n% := TrialsPP%; 
+    
+    'For training step 2 (hold through cue), determine number of cues and calculate unique trials
+    if opt% > 1 then
+        uTrials% := String2FloatArray%(CuePct$,cue[]);
+    endif;
+    
+    'For training step 3 (hold through sample), determine number of cues and calculate unique trials
+    if opt% > 2 then
+        uTrials% := uTrials% * String2FloatArray%(Ori$,ori[]);
+        uTrials% := uTrials% * (DistOn%+DistOff%);
+    endif;
+    
+    'For training step 4 (full task), determine number of cues and calculate unique trials
+    if opt% > 3 then
+        uTrials% := uTrials% * String2FloatArray%(OriChange$,oriCh[]);
+        uTrials% := uTrials% * (ValidPP%+InvalidPP%+CatchPP%);
+    endif;
+    
+
+    'Get total number of trials
+    n% := n%*uTrials%;
+    
+    return n%;
+end
+
+
+proc DrawMonitorScreen(drawFix%,drawCue%,drawGabor%,drawFlanker%)
+    'This function simply allows us to draw/erase the four main elements which
+    'compose the Spike2 monitor screen (fixpt, cue patch, gabors, flankers)
+    'Enter 1 to draw the element, -1 to erase, 0 to do nothing
+    'For drawGabor%, we can also indicate an orientation change by turning the 
+    'indicator red as:
+    'drawGabor%    gabor1    gabor2
+    '   -1          off       off
+    '    0            no action       
+    '    1          blue      blue
+    '    2          red       blue      (orientation change on 1)
+    '    3          blue      red       (orientation change on 2)
+    
+    'Note that it will probably be easier to ensure the existence of the
+    'various plotting channels here than to try to check conditionally in
+    'the idle loop every time we call this function; rather, when calling
+    'this function, just indicate the items that *would* happen here if they
+    'are active, and here we will make sure that they are active
+    
+    if ctFixationOn% = 1 then
+        docase
+        case drawFix% = 1 then
+            'Draw fixpt in xy window
+            View(XYWindow%).XYAddData(iFixptChannel%, FixationX, FixationY);
+        case drawFix% = -1 then 
+            'Delete fixpt
+            View(XYWindow%).XYDelete(iFixptChannel%);
+        endcase
+    endif
+    
+    if ctTrainingOptions% > 1 then
+        docase
+        case drawCue% = 1 then
+            'Draw cue window in xy window
+            View(XYWindow%).XYAddData(iCueWindowChannel%, CueWindowX[], CueWindowY[]);
+        case drawCue% = -1 then 
+            'Delete cue window
+            View(XYWindow%).XYDelete(iCueWindowChannel%);
+        endcase
+    endif
+    
+    if ctTrainingOptions% > 2 then
+        docase
+        case drawGabor% = 1 then
+            'Draw gabor windows in xy window
+            View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
+            View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
+            XYColour(iDisplayWindowGabor1%,13);  'blue
+            XYColour(iDisplayWindowGabor2%,13);  'blue
+        case drawGabor% = 2 then
+            'Draw gabor windows in xy window
+            View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
+            View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
+            XYColour(iDisplayWindowGabor1%,16);  'red
+            XYColour(iDisplayWindowGabor2%,13);  'blue
+        case drawGabor% = 3 then
+            'Draw gabor windows in xy window
+            View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
+            View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
+            XYColour(iDisplayWindowGabor1%,13);  'blue
+            XYColour(iDisplayWindowGabor2%,16);  'red
+        case drawGabor% = -1 then 
+            'Delete gabor windows
+            View(XYWindow%).XYDelete(iDisplayWindowGabor1%);
+            View(XYWindow%).XYDelete(iDisplayWindowGabor2%);
+        endcase
+        
+        docase
+        case drawFlanker% = 1 then
+            'Draw flanker windows in xy window
+            View(XYWindow%).XYAddData(iDisplayWindowFlanker1%, Flanker1WindowX[], Flanker1WindowY[]);
+            View(XYWindow%).XYAddData(iDisplayWindowFlanker2%, Flanker2WindowX[], Flanker2WindowY[]);
+            View(XYWindow%).XYAddData(iDisplayWindowFlanker3%, Flanker3WindowX[], Flanker3WindowY[]);
+            View(XYWindow%).XYAddData(iDisplayWindowFlanker4%, Flanker4WindowX[], Flanker4WindowY[]);
+        case drawFlanker% = -1 then 
+            'Delete flanker windows
+            View(XYWindow%).XYDelete(iDisplayWindowFlanker1%);
+            View(XYWindow%).XYDelete(iDisplayWindowFlanker2%);
+            View(XYWindow%).XYDelete(iDisplayWindowFlanker3%);
+            View(XYWindow%).XYDelete(iDisplayWindowFlanker4%);
+        endcase
+    endif
+    
+
+    
+    
+end
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Note that we only have ONE joystick channel defined, so only one axis - in this case
+'we expect the up/down axis
+'Used to accept a channel input, but since there's only one, what's the point?
+'Used to accept a "now" input but it didn't DO anything because the functions that we
+'call here just use maxtime().  That may not be ideal, but let's not mess with success for now.
+'We need to specify a "go forward" value whenever we call this to ensure that the AlwaysPressing 
+'feature will perform as expected
+func Answer%(goForward%)
+    var ans% := -1;
+    var v;
+    'v := ChanValue(chan%,now);
+    'printlog("voltage is %f\n",v);
+    
+    if ctAlwaysPressing% = 1 then
+        return goForward%;
+    endif
+    
+    
+    if ChanKind(JoyChannel%) > 0 then  'if the channel does not exist, return -2 (was 0, but 0 is now used as a meaningful output)
+        ans% := GetJoystickPositionUD%(v);   
+    else
+        ans% := -2;
+    endif;
+        
+    docase
+    case ans% = -1 then
+        printlog("There has been an error in reading the joystick!  GetJoystickPosition% has returned -1!\n");
+    case ans% = -2 then
+        printlog("Joystick Channel does not appear to exist!  GetJoystickPosition% has returned -2!\n");
+    endcase
+    
+    'For the purposes of this true GNG task, anything that is not "lever down" is "lever in origin"
+    if ans% > -1 and ans% <> 1 then
+        ans% := 0;
+    endif;
+    
+    
+	return ans%;
+    
+    'This function will return:
+    '1 if joystick is down
+    '0 if joystick is not down ("in origin" - note that "up" is also "in origin")
+    '-1 or -2 on error
+    
+    'Note that it would not be difficult to have more returns from this function
+    'GetJoystickPositionUD%() will return one of six possible values:
+    '1  - joystick down
+    '15 - joystick in no-man's land between down and center
+    '2  - joystick in center
+    '25 - joystick in no-man's land between center and up
+    '3  - joystick up
+    '-1 - error
+    'These values can be manipulated any way you like - for current purposes, 0/1/-1 is sufficient  
+end;
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Looking%(EyePosX,EyePosY)
+	'Determine if the eye position is within the fixation window
+    
+    'We seem unlikely to use ctAlwaysLooking% here, because we have the ability to turn off eye
+    'position monitoring, and we have ctAlwaysPressing% to simulate the joystick.  For testing we
+    'will likely use ctAlwaysPressing%, and if we test monitoring eye position the point will be
+    'to use the mouse to simulate looking/not looking.  ctAlwaysPressing% is the true test mode.
+    'Instead, use ctCheckLooking% (which ctAlwaysLooking% will override at time of setting) to
+    'return 1 in cases where we are not monitoring fixation for whatever reason
+    if ctCheckLooking% = 0 then 
+        return 1; 
+    endif;
+ 
+	if (Pow(EyePosX-FixationX,2) + Pow(EyePosY-FixationY,2)) <= Pow(WindowRadius,2) then 
+        return 1; 
+    else 
+        return 0; 
+    endif
+end;
