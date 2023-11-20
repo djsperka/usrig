@@ -1095,7 +1095,10 @@ func IdleProcessing%()
             
             pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+tic, tRise, tFall);
             
-            if pulseFound% = 1 then
+            docase
+            'case ctTrainingOptions% = 0 then
+            '    LogStatus("VSGWait", "VSG does not run for training level 0, move to next state!");
+            case pulseFound% = 1 then
                 LogStatus("VSGWait", "Got Ready Pulse from VSG at exactly " + str$(tRise));
                 Yield(1.0);
                 tLastTrigger := tFall;
@@ -1113,12 +1116,10 @@ func IdleProcessing%()
                     yield(0.2);
                 endif;
                 
-            else
-                if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
+            case pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                     LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at exactly " + str$(tRise));
                     tLastTrigger := tFall;
-                endif;
-            endif;
+            endcase;
             
             
             
@@ -1660,37 +1661,37 @@ proc CreateSampleConfiguration()
     
 
 	'----Event Channel recording definitions----
-    if ctTrainingOptions% > 1 then   'don't create recording channels if just training; we don't use the VSG until index 2
-        SampleEvent(FrameChannel%, 0, 2, 3600);
-        SampleComment$(FrameChannel%,"Frame");
-        SampleTitle$(FrameChannel%,"Frame");
+    'Just make these channels even in the event we don't need them, messing with success and all that
+    SampleEvent(FrameChannel%, 0, 2, 3600);
+    SampleComment$(FrameChannel%,"Frame");
+    SampleTitle$(FrameChannel%,"Frame");
+    
+    SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+    SampleComment$(ReadyChannel%,"Ready");
+    SampleTitle$(ReadyChannel%,"Ready");
+    
+    SampleEvent(FixationPointChannel%, 2, 2, 3600); 'Trigger channel, level
+    SampleComment$(FixationPointChannel%,"Fixpt");
+    SampleTitle$(FixationPointChannel%,"Fixpt");
+    
+    
+    
+    if UseTwo1401s% = 1 then  'currently disabled above, can't get there so just leaving the code intact
         
-        SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
-        SampleComment$(ReadyChannel%,"Ready");
-        SampleTitle$(ReadyChannel%,"Ready");
+        '            SampleEvent(FrameSlaveChannel%, 4, 2, 3600);
+        '            SampleComment$(FrameSlaveChannel%,"Frame-Slave");
+        '            SampleTitle$(FrameSlaveChannel%,"Frame-Slave");
+        '            
+        '            SampleEvent(ReadySlaveChannel%, 5, 2, 3600); 'Trigger channel, level
+        '            SampleComment$(ReadySlaveChannel%,"Ready-Slave");
+        '            SampleTitle$(ReadySlaveChannel%,"Ready-Slave");
+        '            
+        '            SampleEvent(StimSlaveChannel%, 7, 2,3600); 'Trigger channel, level
+        '            SampleComment$(StimSlaveChannel%,"Stim-Slave");
+        '            SampleTitle$(StimSlaveChannel%,"Stim-Slave");
         
-        SampleEvent(FixationPointChannel%, 2, 2, 3600); 'Trigger channel, level
-        SampleComment$(FixationPointChannel%,"Fixpt");
-        SampleTitle$(FixationPointChannel%,"Fixpt");
-        
-        
-        
-        if UseTwo1401s% = 1 then  'currently disabled above, can't get there so just leaving the code intact
-            
-'            SampleEvent(FrameSlaveChannel%, 4, 2, 3600);
-'            SampleComment$(FrameSlaveChannel%,"Frame-Slave");
-'            SampleTitle$(FrameSlaveChannel%,"Frame-Slave");
-'            
-'            SampleEvent(ReadySlaveChannel%, 5, 2, 3600); 'Trigger channel, level
-'            SampleComment$(ReadySlaveChannel%,"Ready-Slave");
-'            SampleTitle$(ReadySlaveChannel%,"Ready-Slave");
-'            
-'            SampleEvent(StimSlaveChannel%, 7, 2,3600); 'Trigger channel, level
-'            SampleComment$(StimSlaveChannel%,"Stim-Slave");
-'            SampleTitle$(StimSlaveChannel%,"Stim-Slave");
-            
-        endif
-    endif   
+    endif
+ 
     
     'Create a stim channel
     SampleEvent(StimChannel%, 3, 2, 3600); 'Trigger channel, level
@@ -2370,9 +2371,15 @@ func Start%()
     'Build cue color argument
     CueColorArg$ := " -c (" + Str$(ctDotColor1R%) + "/" + Str$(ctDotColor1G%) + "/" + Str$(ctDotColor1B%) + "),(" + Str$(ctDotColor2R%) + "/" + Str$(ctDotColor2G%) + "/" + Str$(ctDotColor2B%) + ") ";
 
-    'Build simple command line, point to spec file
-    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + BGColor$ + Dist2Screen$ + FixationCrossArg$ + CueColorArg$;
-    cmdLine$ := cmdLine$ + "--dotsupply " + GetScriptDir$(0) + "..\\..\\ConteDotsFile.bin" + "--trials " + GetScriptDir$(0) + "..\\..\\ConteCSVFile.csv";
+    'Build opener to command line
+    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + BGColor$ + Dist2Screen$ + FixationCrossArg$;
+    
+    'If doing partial/full Conte task, point to spec file
+    if ctTrainingOptions% >= 2 then
+        cmdLine$ := cmdLine$ + CueColorArg$ + "--dotsupply " + GetScriptDir$(0) + "..\\..\\ConteDotsFile.bin" + "--trials " + GetScriptDir$(0) + "..\\..\\ConteCSVFile.csv";
+    else  'Otherwise, just put in a fake grating to make it happy
+        cmdLine$ := cmdLine$ + " " + GetGratingParameters$("Stimulus");
+    endif
     
  
   
