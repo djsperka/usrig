@@ -50,6 +50,7 @@ var TimingChannel%;  'only for useTwo1401s, which is not implemented for this co
 var XYWindow%;			' 
 var iMonitorChannel%;	' channel number for monitor position display in xy window
 var iFixptChannel%;
+var iFixptWindowChannel%;
 var iCueWindowChannel%;
 var iDisplayWindowGabor1%;
 var iDisplayWindowGabor2%;
@@ -339,8 +340,6 @@ var screenYDeg := 9.5;
 
 
 'Done with variables
-
-
 
 GetConteTaskParameters();  'We will just get these right off the bat, this supports the pre-dialog box
 'that warns about AlwaysLooking - though this pre-dialog is currently disabled
@@ -1235,7 +1234,7 @@ func IdleProcessing%()
         case iState% = stateWaitForAcquisition% then    
             'Waiting for fixation point acquisition
             if stateBegin% = 1 then
-                LogStatus("WaitForAcquisition", "Begin waiting for fixation point at about " + str$(tNow));
+                LogStatus("WaitForAcquisition", "Begin waiting for fixation acquisition at about " + str$(tNow));
                 stateBegin% := 0;
             endif
             
@@ -1278,9 +1277,13 @@ func IdleProcessing%()
                 WaitForBlankTo(stateAbort%, tNow);
             case ctTrainingOptions% = 1 and tNow >= tStateStart + ctResponseTime then 'For training option 1, success, reward
                 LogStatus("WaitStimOnsetDelay", "Successful hold through delay");
-                SafeSampleKey("X");  'Drop fixation point
                 nTrialsCompleted% += 1;
-                WaitForBlankTo(stateReward%, tNow);
+                if ctFixationOn% = 1 then
+                    SafeSampleKey("X");  'Drop fixation point
+                    WaitForBlankTo(stateReward%, tNow);
+                else
+                    ChangeStateTo(stateReward%, tNow);
+                endif
             case ctTrainingOptions% >= 2 and tNow >= tStateStart + ctPatchOnsetDelay then  'For all other conditions, request stimulus
                 LogStatus("WaitStimOnsetDelay", "Successful hold through delay");
                 ChangeStateTo(stateRequestStimulus%,tNow);
@@ -1532,12 +1535,6 @@ func IdleProcessing%()
                 stateBegin% := 0;
             endif
             
-            'Here is a good place to check and see if we are done!
-            if nTrialsCompleted% >= nTrials% then
-                LogStatus("CheckAdvance", "All Trials Completed!");
-                Stop%();
-            endif
-            
             'The Advance channel will toggle, we don't care whether the edge is up or down
             if FindEdge%(AdvanceChannel%, tLastAdvance+tic, tAdvance) > -1 then
                 LogStatus("CheckAdvance", "Advance occured at " + str$(tAdvance));
@@ -1553,7 +1550,13 @@ func IdleProcessing%()
                 LogStatus("ITI", "Began waiting through ITI at about " + str$(tNow));
                 stateBegin% := 0;
             endif
-            
+        
+            'Here is a good place to check and see if we are done!
+            if nTrialsCompleted% >= nTrials% then
+                LogStatus("ITI", "All Trials Completed!");
+                Stop%();
+            endif
+        
             if tNow > tITIStart + ctITI then
                 LogStatus("ITI", "ITI complete at about " + str$(tNow));
                 ChangeStateTo(stateEnsureLeverInOrigin%,tNow);
@@ -1806,16 +1809,25 @@ proc InitializeWindows()
     if ctFixationOn% = 1 then
         iFixptChannel% := XYSetChan(0);
         XYColour(iFixptChannel%,16);  'red
+        if ctRequireFixation% <> 0 then
+            iFixptWindowChannel% := XYSetChan(0);
+            XYColour(iFixptWindowChannel%,16);  'red, I guess
+            XYDrawMode(iFixptWindowChannel%,2,0);  'Make points invisible
+            XYDrawMode(iFixptWindowChannel%,3,1);  'Dotted line
+            XYJoin(iFixptWindowChannel%,1);
+        endif
     endif
+
+    'Calcuate the "cue" window in any case because we use it for fixation display as well
+    'WindowRadius is updated in the dialog code, and corresponds to the size of the cue patch, +/- a settable value
+    for index% := 0 to 35 do
+        CueWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
+        CueWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
+    next;
     
 
     'Create a new channel in the XY view to display the CueWindow if a cue patch is present
-    if ctTrainingOptions% >= 2 then
-        'Calcuate the cue window - WindowRadius is updated in the dialog code, and corresponds to the size of the cue patch, +/- a settable value
-        for index% := 0 to 35 do
-            CueWindowX[index%] := FixationX + WindowRadius * Cos(index% * twopi/36.0);
-            CueWindowY[index%] := FixationY + WindowRadius * Sin(index% * twopi/36.0);
-        next;
+    if ctTrainingOptions% >= 2 then      
         
         'Create a new channel in the XY view to display the cue stimulus
         iCueWindowChannel% := XYSetChan(0);
@@ -2372,14 +2384,14 @@ func Start%()
     CueColorArg$ := " -c (" + Str$(ctDotColor1R%) + "/" + Str$(ctDotColor1G%) + "/" + Str$(ctDotColor1B%) + "),(" + Str$(ctDotColor2R%) + "/" + Str$(ctDotColor2G%) + "/" + Str$(ctDotColor2B%) + ") ";
 
     'Build opener to command line
-    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + BGColor$ + Dist2Screen$ + FixationCrossArg$;
+    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + TriggerPort$ + BGColor$ + Dist2Screen$ + FixationCrossArg$;
     
     'If doing partial/full Conte task, point to spec file
     if ctTrainingOptions% >= 2 then
-        cmdLine$ := cmdLine$ + CueColorArg$ + "--dotsupply " + GetScriptDir$(0) + "..\\..\\ConteDotsFile.bin" + "--trials " + GetScriptDir$(0) + "..\\..\\ConteCSVFile.csv";
-    else  'Otherwise, just put in a fake grating to make it happy
-        cmdLine$ := cmdLine$ + " " + GetGratingParameters$("Stimulus");
-    endif
+        cmdLine$ := cmdLine$ + CueColorArg$ + "--dotsupply " + GetScriptDir$(0) + "..\\..\\ConteDotsFile.bin" + " --trials " + GetScriptDir$(0) + "..\\..\\ConteCSVFile.csv";
+    else  'Otherwise, just put in a fake grating/tuning curve to make it happy
+        cmdLine$ := cmdLine$ + " -s " + GetGratingParameters$("Stimulus") + " -O 90 ";
+    endif 
     
  
   
@@ -2472,7 +2484,8 @@ func Stop%()
 	' Increment daily totals and save then  TODO Record H/M/FA/CR? Do that in PAR file. Put into (sample)bar?
 	TotalTrials% += nTrialsStarted%;
 	SaveDailyTotals();
-    
+
+    halt
 end;
 
 
@@ -2951,9 +2964,17 @@ proc DrawMonitorScreen(drawFix%,drawCue%,drawGabor%,drawFlanker%)
         case drawFix% = 1 then
             'Draw fixpt in xy window
             View(XYWindow%).XYAddData(iFixptChannel%, FixationX, FixationY);
+            'Draw fixpt window in xy window
+            if ctRequireFixation% <> 0 then
+                View(XYWindow%).XYAddData(iFixptWindowChannel%, CueWindowX[], CueWindowY[]);  'fixpoint window is identical to cue window  
+            endif
         case drawFix% = -1 then 
             'Delete fixpt
             View(XYWindow%).XYDelete(iFixptChannel%);
+            'Delete fixpt window
+            if ctRequireFixation% <> 0 then
+                View(XYWindow%).XYDelete(iFixptWindowChannel%);  
+            endif
         endcase
     endif
     
