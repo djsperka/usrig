@@ -2351,17 +2351,34 @@ func Start%()
     
     'Begin building the command line argument
     Opener$ := "cmd /k " + bin$;
-    
-    ' Get remote args if needed
-    if GetUseRemoteStimulus%() = 1 then
-        RemoteArg$  := " " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
-    endif;
-    
-    if GetUseRemoteStimulus%() = 1 then
-        ProgName$ := "\\remote.exe "; 'set program name for one VSG
+
+
+    'Get remote args, program name...will use FIXSTIM for training steps 0,1 and CONTE for all higher training steps
+    if ctTrainingOptions% >= 2 then
+        ' Get remote args if needed
+        if GetUseRemoteStimulus%() = 1 then
+            RemoteArg$  := " " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " conte ";
+        endif;
+        
+        if GetUseRemoteStimulus%() = 1 then
+            ProgName$ := "\\remote.exe "; 'set program name for one VSG
+        else
+            ProgName$ := "\\conte.exe "; 'set program name for one VSG
+        endif;
+        
     else
-        ProgName$ := "\\fixstim.exe "; 'set program name for one VSG
-    endif;
+        ' Get remote args if needed
+        if GetUseRemoteStimulus%() = 1 then
+            RemoteArg$  := " " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
+        endif;
+        
+        if GetUseRemoteStimulus%() = 1 then
+            ProgName$ := "\\remote.exe "; 'set program name for one VSG
+        else
+            ProgName$ := "\\fixstim.exe "; 'set program name for one VSG
+        endif;
+    endif
+
     
     
     'Set background color
@@ -2381,14 +2398,14 @@ func Start%()
     FixationCrossArg$ := " -f +," + FixationCrossArg$ + "," + Str$(ctPanelLinePixels%);  'Can also place a cross "orientation" argument at end to rotate it, but leaving that out here for default 0
     
     'Build cue color argument
-    CueColorArg$ := " -c (" + Str$(ctDotColor1R%) + "/" + Str$(ctDotColor1G%) + "/" + Str$(ctDotColor1B%) + "),(" + Str$(ctDotColor2R%) + "/" + Str$(ctDotColor2G%) + "/" + Str$(ctDotColor2B%) + ") ";
+    CueColorArg$ := " -c (" + Str$(ctDotColor1R%) + "/" + Str$(ctDotColor1G%) + "/" + Str$(ctDotColor1B%) + ") -c (" + Str$(ctDotColor2R%) + "/" + Str$(ctDotColor2G%) + "/" + Str$(ctDotColor2B%) + ") ";
 
     'Build opener to command line
     cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + TriggerPort$ + BGColor$ + Dist2Screen$ + FixationCrossArg$;
     
     'If doing partial/full Conte task, point to spec file
     if ctTrainingOptions% >= 2 then
-        cmdLine$ := cmdLine$ + CueColorArg$ + "--dotsupply " + GetScriptDir$(0) + "..\\..\\ConteDotsFile.bin" + " --trials " + GetScriptDir$(0) + "..\\..\\ConteCSVFile.csv";
+        cmdLine$ := cmdLine$ + CueColorArg$ + "--dot-supply " + GetScriptDir$(0) + "..\\..\\ConteDotsFile.bin" + " --trials " + GetScriptDir$(0) + "..\\..\\ConteCSVFile.csv";
     else  'Otherwise, just put in a fake grating/tuning curve to make it happy
         cmdLine$ := cmdLine$ + " -s " + GetGratingParameters$("Stimulus") + " -O 90 ";
     endif 
