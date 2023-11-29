@@ -1367,7 +1367,6 @@ func IdleProcessing%()
                 LogStatus("MonitorFrameChannel", "Fixation broken");
                 SafeSampleKey("X");  'Drop fixation point
                 WaitForBlankTo(stateAbort%, tNow); 
-            'case View(DataWindow%).FindRisingEdge%(FrameChannel%, tLastFrameTrigger, tTrigger) = 0 then
             case View(DataWindow%).FindPulseUp%(FrameChannel%, tLastFrameTrigger+tic, tTrigger, tFall) = 1 then
                 'Found a trigger, let's figure out what it is, by counting
                 FrameTriggersFound% += 1;
@@ -1375,14 +1374,14 @@ func IdleProcessing%()
                 case FrameTriggersFound% <= ctPFsPerPatch% then 'This pulse indicates a cue patch-frame up
                     LogStatus("MonitorFrameChannel", "Cue Frame #" + Str$(FrameTriggersFound%) + " found at " + Str$(tTrigger));
                     if FrameTriggersFound% = 1 then
-                        SampleText("Cue Frame #1, percent color 1 is " + Str$(cueDotPct[ctTrialOrder%[nTrialsCompleted%]]),tTrigger);  'on the first patch-frame, indicate dot percentage
+                        SampleText("Cue Frame #1, trial " + Str$(nTrialsCompleted%+1) + ", percent color 1 is " + Str$(cueDotPct[ctTrialOrder%[nTrialsCompleted%]]),tTrigger);  'on the first patch-frame, indicate dot percentage
                         DrawMonitorScreen(0,1,0,0);  'Draw cue on monitor screen
                     else
-                        SampleText("Cue Frame #" + Str$(FrameTriggersFound%),tTrigger);  'let's sampletext every patch-frame in the cue
+                        SampleText("Cue Frame #" + Str$(FrameTriggersFound%) + ", trial " + Str$(nTrialsCompleted%+1),tTrigger);  'let's sampletext every patch-frame in the cue
                     endif
                 case FrameTriggersFound% = ctPFsPerPatch%+1 then 'This pulse indicates cue down; enter hold period for training option 2
                     LogStatus("MonitorFrameChannel", "Cue down at " + Str$(tTrigger));
-                    SampleText("Cue Down",tTrigger);
+                    SampleText("Cue Down, trial " + Str$(nTrialsCompleted%+1),tTrigger);
                     DrawMonitorScreen(0,-1,0,0);  'Remove cue on monitor screen
                     'Break out after cues for training option 2
                     if ctTrainingOptions% = 2 then 'we need to wait through the delay period (if any) then wait for release
@@ -1394,7 +1393,7 @@ func IdleProcessing%()
                     DrawMonitorScreen(0,0,1,drawFlankers%);
                 case FrameTriggersFound% = ctPFsPerPatch%+3 then 'This pulse indicates sample off; enter hold period for training option 3
                     LogStatus("MonitorFrameChannel", "Sample down at " + Str$(tTrigger));
-                    SampleText("Sample Down",tTrigger);
+                    SampleText("Sample Down, trial " + Str$(nTrialsCompleted%+1),tTrigger);
                     DrawMonitorScreen(0,0,-1,-drawFlankers%);
                     'Break out after sample for training option 3
                     if ctTrainingOptions% = 3 then 'we need to wait through the delay period (if any) then wait for release
@@ -1406,7 +1405,7 @@ func IdleProcessing%()
                     DrawMonitorScreen(0,0,drawGabors%,drawFlankers%);
                 case FrameTriggersFound% = ctPFsPerPatch%+5 then 'This pulse indicates target off, enters response window for training option 4
                     LogStatus("MonitorFrameChannel", "Target down at " + Str$(tTrigger));
-                    SampleText("Target Down",tTrigger);
+                    SampleText("Target Down, trial " + Str$(nTrialsCompleted%+1),tTrigger);
                     DrawMonitorScreen(0,0,-1,-drawFlankers%);  'remove gabors and flankers from monitor screen
                     ChangeStateTo(stateResponseWindow%,tTrigger);
                 endcase
@@ -2050,7 +2049,7 @@ func Start%()
     var nOri% := 1;
     var nDist% := 1;
     var nCh% := 1;
-    var nValid%;
+    var nValid% := 1;
     var cue[100];
     var ori[100];
     var oriCh[100];
@@ -2073,6 +2072,8 @@ func Start%()
         
         'For training step 2 (hold through cue), determine number of cues (always do this)
         nCue% := String2FloatArray%(ctDotPctString$,cue[]);
+        printlog("Number of cues found is %d\n",nCue%);
+        printlog("Cue values found are %f\n",cue[]);
         
         'For training step 3 (hold through sample), get values to calculate unique trials
         if ctTrainingOptions% > 2 then
@@ -2116,8 +2117,13 @@ func Start%()
         'Put random indices into ctTrialOrder%[], easy when you write a function to do it!
         ArrRandIndices(ctTrialOrder%[0:nTrials%]);
         
+        printlog("Random indices are: %d\n",ctTrialOrder%[0:nTrials%]);
+        
+        printlog("Performing counterbalance: nRepeats = %d, nCues = %d, nOri = %d, ",n%,nCue%,nOri%);
+        printlog("nOriChange = %d, nDistractor = %d, nValid = %d, total trials = %d\n",nCh%,nDist%,nValid%,nTrials%);
+        
         'loop through n, CuePct, Ori, OriCh, Dist, Valid
-        for i% := 1 to n% do
+        for i% := 1 to n% do  'i% is not used as an index, just for getting correct count of trials
             for j% := 0 to nCue%-1 do
                 for k% := 0 to nOri%-1 do
                     for m% := 0 to nCh%-1 do
@@ -3010,22 +3016,22 @@ proc DrawMonitorScreen(drawFix%,drawCue%,drawGabor%,drawFlanker%)
         docase
         case drawGabor% = 1 then
             'Draw gabor windows in xy window
-            View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
-            View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
             XYColour(iDisplayWindowGabor1%,13);  'blue
             XYColour(iDisplayWindowGabor2%,13);  'blue
+            View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
+            View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
         case drawGabor% = 2 then
             'Draw gabor windows in xy window
-            View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
-            View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
             XYColour(iDisplayWindowGabor1%,16);  'red
             XYColour(iDisplayWindowGabor2%,13);  'blue
-        case drawGabor% = 3 then
-            'Draw gabor windows in xy window
             View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
             View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
+        case drawGabor% = 3 then
+            'Draw gabor windows in xy window
             XYColour(iDisplayWindowGabor1%,13);  'blue
             XYColour(iDisplayWindowGabor2%,16);  'red
+            View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
+            View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
         case drawGabor% = -1 then 
             'Delete gabor windows
             View(XYWindow%).XYDelete(iDisplayWindowGabor1%);
