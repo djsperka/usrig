@@ -1141,8 +1141,8 @@ func IdleProcessing%()
                 message("There has been a problem reading the lever device! Check log file! Quitting!");
                 Stop%();  'Stop%() should do a clean quit
             else 
-                LogStatus("EnsureLeverInOrigin", "Lever is still down at about " + str$(tNow));
-                'Just check again
+                'LogStatus("EnsureLeverInOrigin", "Lever is still down at about " + str$(tNow));
+                'Just check again...but don't write it, this spams the log
             endcase
             
             
@@ -2449,8 +2449,8 @@ func Start%()
     InitJoystick2(JoyChannel%,GetJoystickPort%());  'initialize the joystick
     DisplayJoystickParametersUD();  'write values to log file
     
-    'set YRange for JoyChannel...was [0 1] for some reason, that's not good, [-5 5] should be fine, if the joystick has much less dynamic range it's easy to change
-    View(DataWindow%).YRange(JoyChannel%,-5,5);
+    'set YRange for JoyChannel...was [0 1] for some reason, that's not good
+    View(DataWindow%).YRange(JoyChannel%,-1,1);  '[-5 5] ain't great, we can do [-1 1] because the voltage off this baby is not huge (more like [-0.5 0.6])
 
     
     

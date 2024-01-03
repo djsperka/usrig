@@ -110,12 +110,25 @@ func SetJoystickOffset%()
     if SampleStatus() > -1 then  'if we are currently sampling, or prepared to sample, don't allow calibration
         message("This function cannot be used if sampling is currently occurring!");
     else
+        'Get the port number that is specified in the current config if the joystick has not been initialized (this is common)
+        if jsIsInitialized% = 0 then
+            jsPortNumber% := GetJoystickPort%();
+        endif
+        
+        'Reset the sampling configuration
+        SampleClear(0);
+        
         'Get the current offset value
         GetJoystickParameters();
+        printlog("Setting Joystick Offset\n");
+        printlog("Original joystick offset is %f volts\n",joystickOffset);
+        printlog("Joystick port number is %d\n",jsPortNumber%);
         
         'Create sampling configuration with current port/channel
-        SampleWaveform(jsChannelNumber%,jsPortNumber%,5000); 
-        SampleCalibrate(jsChannelNumber%,"volt",1,joystickOffset);  'set offset of novel channel to registry value
+        'SampleWaveform(jsChannelNumber%,jsPortNumber%,5000); 
+        'SampleCalibrate(jsChannelNumber%,"volt",1,joystickOffset);  'set offset of novel channel to registry value
+        SampleWaveform(1,jsPortNumber%,5000); 'Channel number is irrelevant for novel channel, cannot be -999 as jsChannelNumber% default
+        SampleCalibrate(1,"volt",1,joystickOffset);  'set offset of novel channel to registry value
         'Start sampling, sample for about 5 seconds,
         samplemode(1);   'sets continuous recording
         jview% := FileNew(0,1+2+4);
@@ -125,7 +138,9 @@ func SetJoystickOffset%()
         wend;
         
         'Get mean channel value, using registry offset
-        currentVal := ChanMeasure(jsChannelNumber%,2,0,5);
+        'currentVal := ChanMeasure(jsChannelNumber%,2,0,5);
+        currentVal := ChanMeasure(1,2,0,5);
+        printlog("Current voltage value (joystick zeroed) is %f\n",currentVal);
         
         'Stop sampling
         SampleStop();
@@ -136,7 +151,7 @@ func SetJoystickOffset%()
         'Save the new offset value to the registry
         SaveJoystickParameters();
         
-        PrintLog("Joystick Offset :  %f\n", joystickOffset);
+        PrintLog("New Joystick Offset :  %f\n",joystickOffset);
         
         'Offset value from registry will be used to adjust the offset of the joystick channel each time it is initialized
         
@@ -416,6 +431,8 @@ func JoystickConfigDialog%()   'This is only mildly different from the proc of s
     
     var status%;
     
+    GetJoystickParameters();
+    
     DlgCreate("Joystick Configuration", 40, 40);
     
     DlgReal(1,"(1) Center-to-Left Voltage",-20,20);  '+/-20V should cover the range of any imaginable joystick
@@ -430,6 +447,7 @@ func JoystickConfigDialog%()   'This is only mildly different from the proc of s
     
     if status% = 1 then
         PrintLog("Status = 1\n");
+        SaveJoystickParameters();
     endif
     
     return 1;  'return of >0 allows calling dialog to remain open, return 1 whether the dialog is OKed or cancelled.
@@ -463,13 +481,15 @@ func JoystickConfigDialogUD%()   'This is only mildly different from the proc of
     var iNoGaps% := 0;
     var status%;
     
+    GetJoystickParameters();
+    
     DlgCreate("Joystick Configuration (up/down)", 40, 40);
     
     DlgReal(1,"(1) Center-to-Down Voltage",-20,20);  '+/-20V should cover the range of any imaginable joystick
     DlgReal(2,"(2) Down-to-Center Voltage",-20,20);  'L2C must be >= than C2L, but this will be checked by the callback fxn
     DlgReal(3,"(3) Up-to-Center Voltage",-20,20);
     DlgReal(4,"(4) Center-to-Up Voltage",-20,20);  'C2R must be >= than R2C, but this will be checked by the callback fxn
-    DlgCheck(5,"Invert X Voltage");
+    DlgCheck(5,"Invert Y Voltage");
     DlgButton(101, "Set Joystick Offset", SetJoystickOffset%, 1, 7); 
     DlgAllow(0, 0, JoystickDialogCheck%);    
     
@@ -477,6 +497,7 @@ func JoystickConfigDialogUD%()   'This is only mildly different from the proc of
     
     if status% = 1 then
         PrintLog("Status = 1\n");
+        SaveJoystickParameters();
     endif
     
     return 1;  'return of >0 allows calling dialog to remain open, return 1 whether the dialog is OKed or cancelled.
