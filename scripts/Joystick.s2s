@@ -5,26 +5,32 @@
 #include "../util/UsreyUtil.s2s"
 
 const JSLeft% := 1;
-const JSCenter% := 2;
 const JSRight% := 3;
-const JSHalfLeft% := 15;  'It's an integer, so we can't do 1.5, and as this is being added later, some scripts may count on checking literal values rather than, say, JSLeft%, so we shouldn't change JSLeft% to 10
-const JSHalfRight% := 25;
 const JSDown% := 1;  'Please note that Down/Up are NOT intended to be used together with Left/Right as a two-axis joystick at this point
 const JSUp% := 3;    'Instead it just makes things make a bit more sense to use different variables for an up/down setup.
-const JSHalfDown% := 15;
-const JSHalfUp% := 25;
+
+const JSCenter% := 2; 'Currently, since there is only one joystick axis, JSCenter% acts for EITHER.  This will not work
+                      'for a two-axis setup and we will need to define a second variable to designate the position
+                      'between "down" and "up"
 
 const JSUndefined% := 0;
 const JSError% := -1;
 
-var jsLeftHigh := 1;
-var jsCenterLow := 2;
-var jsCenterHigh := 3;
-var jsRightLow := 4;
-var jsDownUpperEdge := 1;       'Please note that Down/Up are NOT intended to be used together with Left/Right as a two-axis joystick at this point
-var jsCenterLowerEdgeUD := 2;   'Instead it just makes things make a bit more sense to use different variables for an up/down setup.
-var jsCenterUpperEdgeUD := 3;
-var jsUpLowerEdge := 4;
+
+var jsC2L := -3;  'center to left, "outer" threshold
+var jsL2C := -2;  'left to center, "inner" threshold
+var jsR2C := 2;   'right to center, "inner" threshold
+var jsC2R := 3;   'center to right, "outer" threshold
+
+var jsC2D := -3;  'center to down, "outer" threshold
+var jsD2C := -2;  'down to center, "inner" threshold
+var jsU2C := 2;   'up to center, "inner" threshold
+var jsC2U := 3;   'center to up, "outer" threshold
+
+var jsPrevPos% := JSUndefined%;  'We need to keep track of the previous joystick position to utilize inner/outer thresholds
+
+var jsXInverted% := 0;  'if 1, polarity of the X-axis (normally left-negative, right-positive) should be taken to be inverted
+var jsYInverted% := 0;  'if 1, polarity of the Y-axis (normally down-negative, up-positive) should be taken to be inverted
 var jsChannelNumber% := -999;
 var jsPortNumber% := 0;
 var jsIsInitialized% := 0;
@@ -67,6 +73,7 @@ end
 '
 ' Same as InitJoystick, but also assigns port number
 ' InitJoystick currently maintained in case anything still calls it.
+' Have updated hopefully all scripts that use joystick to call InitJoystick2
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
@@ -77,6 +84,105 @@ proc InitJoystick2(channel%,port%)
     return;
 end
 
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' SetJoystickOffset%
+'
+' This function can only be run when sampling is not occurring,
+' because it opens a new sampling instance to find the joystick
+' offset, then sets joystickOffset in the registry based on the
+' current value.  This joystickOffset value is then used at each
+' instance of setting up a joystick channel to ensure that when
+' the joystick is in the origin, the value of the joystick channel
+' is zero.
+'
+' This function can only be run when a joystick is present!
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+func SetJoystickOffset%()
+    var jview%;
+    var currentVal;
+    if SampleStatus() > -1 then  'if we are currently sampling, or prepared to sample, don't allow calibration
+        message("This function cannot be used if sampling is currently occurring!");
+    else
+        'Get the current offset value
+        GetJoystickParameters();
+        
+        'Create sampling configuration with current port/channel
+        SampleWaveform(jsChannelNumber%,jsPortNumber%,5000); 
+        SampleCalibrate(jsChannelNumber%,"volt",1,joystickOffset);  'set offset of novel channel to registry value
+        'Start sampling, sample for about 5 seconds,
+        samplemode(1);   'sets continuous recording
+        jview% := FileNew(0,1+2+4);
+        SampleStart();   'start sampling
+        while view(jview%).maxtime() < 5 do
+            yield(1);
+        wend;
+        
+        'Get mean channel value, using registry offset
+        currentVal := ChanMeasure(jsChannelNumber%,2,0,5);
+        
+        'Stop sampling
+        SampleStop();
+        
+        'Adjust the offset
+        joystickOffset := joystickOffset - currentVal;
+        
+        'Save the new offset value to the registry
+        SaveJoystickParameters();
+        
+        PrintLog("Joystick Offset :  %f\n", joystickOffset);
+        
+        'Offset value from registry will be used to adjust the offset of the joystick channel each time it is initialized
+        
+    endif
+    
+end
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' GetJoystickVoltage%
+'
+' Returns voltage currently read on joystick channel. Returns 0 if a 
+' value was read, or -1 if the joystick channel was not initialized 
+' (i.e. InitJoystick() was not called), or if there is some other 
+' error (wrong channel number, e.g.). 
+'
+' Note that we currently have only one joystick channel.  If we ever
+' decide to use two channels we'll have to update a ton of stuff.
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+func GetJoystickVoltage%(&v)
+    var status% := -1;
+    var data%;
+    if jsIsInitialized% <> 0 then
+        v := ChanValue(jsChannelNumber%, MaxTime(), data%);
+        if data% = 1 then
+            status% := 0;
+        endif
+    endif
+    return status%;
+end
+
+
+
+
+
+
+' ======================================================================
+'
+' The following functions were updated on 1/2/2024, see overhaul note 
+' below this section
+'
+' ======================================================================
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -93,19 +199,24 @@ proc GetJoystickParameters()
     var key$;
     var stmp$;
     key$ := GetRegistryKey$(1) + "\\Joystick";
-    jsLeftHigh := GetFloatRegistryValue(key$, "LeftHigh", jsLeftHigh);
-    jsCenterLow := GetFloatRegistryValue(key$, "CenterLow", jsCenterLow);
-    jsCenterHigh := GetFloatRegistryValue(key$, "CenterHigh", jsCenterHigh);
-    jsRightLow := GetFloatRegistryValue(key$, "RightLow", jsRightLow);
+    jsC2L := GetFloatRegistryValue(key$, "C2L", jsC2L);
+    jsC2R := GetFloatRegistryValue(key$, "C2R", jsC2R);
+    jsL2C := GetFloatRegistryValue(key$, "L2C", jsL2C);
+    jsR2C := GetFloatRegistryValue(key$, "R2C", jsR2C);
+    jsXInverted% := GetIntRegistryValue%(key$, "XInverted", jsXInverted%);
     
-    jsDownUpperEdge := GetFloatRegistryValue(key$, "DownUpperEdge", jsDownUpperEdge);
-    jsCenterLowerEdgeUD := GetFloatRegistryValue(key$, "CenterLowerEdgeUD", jsCenterLowerEdgeUD);
-    jsCenterUpperEdgeUD := GetFloatRegistryValue(key$, "CenterUpperEdgeUD", jsCenterUpperEdgeUD);
-    jsUpLowerEdge := GetFloatRegistryValue(key$, "UpLowerEdge", jsUpLowerEdge);
+    jsC2U := GetFloatRegistryValue(key$, "C2U", jsC2U);
+    jsC2D := GetFloatRegistryValue(key$, "C2D", jsC2D);
+    jsU2C := GetFloatRegistryValue(key$, "U2C", jsU2C);
+    jsD2C := GetFloatRegistryValue(key$, "D2C", jsD2C);
+    jsYInverted% := GetIntRegistryValue%(key$, "YInverted", jsYInverted%);
    
     joystickOffset := GetFloatRegistryValue(key$, "joystickOffset", joystickOffset);
     return;
 end
+
+
+
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
@@ -119,100 +230,60 @@ end
 proc SaveJoystickParameters()
     var key$;
     key$ := GetRegistryKey$(1) + "\\Joystick";
-    SetFloatRegistryValue(key$, "LeftHigh", jsLeftHigh);
-    SetFloatRegistryValue(key$, "CenterLow", jsCenterLow);
-    SetFloatRegistryValue(key$, "CenterHigh", jsCenterHigh);
-    SetFloatRegistryValue(key$, "RightLow", jsRightLow);
+    SetFloatRegistryValue(key$, "C2L", jsC2L);
+    SetFloatRegistryValue(key$, "C2R", jsC2R);
+    SetFloatRegistryValue(key$, "L2C", jsL2C);
+    SetFloatRegistryValue(key$, "R2C", jsR2C);
+    SetIntRegistryValue(key$, "XInverted", jsXInverted%);
     
-    SetFloatRegistryValue(key$, "DownUpperEdge", jsDownUpperEdge);
-    SetFloatRegistryValue(key$, "CenterLowerEdgeUD", jsCenterLowerEdgeUD);
-    SetFloatRegistryValue(key$, "CenterUpperEdgeUD", jsCenterUpperEdgeUD);
-    SetFloatRegistryValue(key$, "UpLowerEdge", jsUpLowerEdge);
+    SetFloatRegistryValue(key$, "C2U", jsC2U);
+    SetFloatRegistryValue(key$, "C2D", jsC2D);
+    SetFloatRegistryValue(key$, "U2C", jsU2C);
+    SetFloatRegistryValue(key$, "D2C", jsD2C);
+    SetIntRegistryValue(key$, "YInverted", jsYInverted%);
     
     SetFloatRegistryValue(key$, "joystickOffset", joystickOffset);
     return;
 end
 
 
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DisplayJoystickParameters[UD]
+'
+' These functions print current joystick settings to the log file 
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
 proc DisplayJoystickParameters()
     PrintLog("**************************************\n\n");
-    PrintLog("JSLeft  :       v < %f\n", jsLeftHigh);
-    PrintLog("JSCenter:  %f < v < %f\n", jsCenterLow, jsCenterHigh);
-    PrintLog("JSRight :  %f < v\n", jsRightLow);
-    PrintLog("Offset :  %f\n", joystickOffset);
+    
+    PrintLog("JSCenterToLeft  :  %f\n", jsC2L);
+    PrintLog("JSLeftToCenter  :  %f\n", jsL2C);
+    PrintLog("JSCenterToRight :  %f\n", jsC2R);
+    PrintLog("JSRightToCenter :  %f\n", jsR2C);
+    PrintLog("Offset          :  %f\n", joystickOffset);
+    Printlog("X Inverted      :  %d\n", jsXInverted%);
     PrintLog("\n**************************************\n");
     return;
 end
 
 proc DisplayJoystickParametersUD()  'Same thing, but for up/down
     PrintLog("**************************************\n\n");
-    PrintLog("JSDown  :       v < %f\n", jsDownUpperEdge);
-    PrintLog("JSCenter:  %f < v < %f\n", jsCenterLowerEdgeUD, jsCenterUpperEdgeUD);
-    PrintLog("JSUp :  %f < v\n", jsUpLowerEdge);
-    PrintLog("Offset :  %f\n", joystickOffset);
+    
+    PrintLog("JSCenterToDown :  %f\n", jsC2D);
+    PrintLog("JSDownToCenter :  %f\n", jsD2C);
+    PrintLog("JSCenterToUp   :  %f\n", jsC2U);
+    PrintLog("JSUpToCenter   :  %f\n", jsU2C);
+    PrintLog("Offset         :  %f\n", joystickOffset);
+    Printlog("Y Inverted     :  %d\n", jsYInverted%);
     PrintLog("\n**************************************\n");
     return;
 end
 
-func GetJoystickLeftHigh()
-    return jsLeftHigh;
-end
 
-func GetJoystickCenterLow()
-    return jsCenterLow;
-end
-
-func GetJoystickCenterHigh()
-    return jsCenterHigh;
-end
-
-func GetJoystickRightLow()
-    return jsRightLow;
-end
-
-'And the same things, but for up/down
-func GetJoystickDownUpperEdge()
-    return jsDownUpperEdge;
-end
-
-func GetJoystickCenterLowerEdgeUD()
-    return jsCenterLowerEdgeUD;
-end
-
-func GetJoystickCenterUpperEdgeUD()
-    return jsCenterUpperEdgeUD;
-end
-
-func GetJoystickUpLowerEdge()
-    return jsUpLowerEdge;
-end
-
-
-
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'
-' GetJoystickVoltage%
-'
-' Returns voltage currently read on joystick channel. Returns 0 if a 
-' value was read, or -1 if the joystick channel was not initialized 
-' (i.e. InitJoystick() was not called), or if there is some other 
-' error (wrong channel number, e.g.). 
-'
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-
-func GetJoystickVoltage%(&v)
-    var status% := -1;
-    var data%;
-    if jsIsInitialized% <> 0 then
-        v := ChanValue(jsChannelNumber%, MaxTime(), data%);
-        if data% = 1 then
-            status% := 0;
-        endif
-    endif
-    return status%;
-end
-
-    
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -230,35 +301,49 @@ func GetJoystickPosition%(&v)
     var pos% := JSError%;
     var s%;
     
-    ' Check if debugging (initialized with channel < 0). If so, present a dialog to get 
-    ' joystick position
-    
+    'Removing debug dialog from eariler version, return undefined if joystick channel is negative
     if jsIsInitialized% <> 0 and jsChannelNumber% < 0 then
-        
-        pos% := JoystickPositionDialog%();
-        
+        pos% := JSUndefined%;
     else
-        
         s% := GetJoystickVoltage%(v);
-        'printlog("voltage is %f, jsLeftHigh is %f and jsRightLow is %f\n",v,jsLeftHigh,jsRightLow);
-        if s% = 0 then
-            
-            docase
-            case v <= jsLeftHigh then
-                pos% := JSLeft%;
-            case v < jsCenterLow then
-                pos% := JSHalfLeft%;  'was JSUndefined%, change should not affect any code that I can tell
-            case v <= jsCenterHigh then
-                pos% := JSCenter%;
-            case v < jsRightLow then
-                pos% := JSHalfRight%;  'was JSUndefined%, change should not affect any code that I can tell
-            else
-                pos% := JSRight%;
-            endcase
-        endif
+        if jsXInverted% = 1 then 'invert voltage if necessary
+            v := -v;
+        endif;
         
+        if s% = 0 then
+            docase
+            case jsPrevPos% = JSLeft% then  'if the joystick was left, use "inner" left threshold
+                docase
+                case v <= jsL2C then
+                    pos% := JSLeft%;
+                case v <= jsC2R then
+                    pos% := JSCenter%;
+                else
+                    pos% := JSRight%;
+                endcase
+            case jsPrevPos% = JSRight% then   'if the joystick was right, use "inner" right threshold
+                docase
+                case v <= jsC2L then
+                    pos% := JSLeft%;
+                case v <= jsR2C then
+                    pos% := JSCenter%;
+                else
+                    pos% := JSRight%;
+                endcase
+            else  'joystick was neither left nor right (center, or never checked), use both outer thresholds     
+                docase
+                case v <= jsC2L then
+                    pos% := JSLeft%;
+                case v <= jsC2R then
+                    pos% := JSCenter%;
+                else
+                    pos% := JSRight%;
+                endcase
+            endcase 
+        endif
     endif
     
+    jsPrevPos% := pos%;  'Keep a record of the most recent joystick position
     return pos%;
 end
 
@@ -278,118 +363,70 @@ func GetJoystickPositionUD%(&v)
     var pos% := JSError%;
     var s%;
     
-    ' Check if debugging (initialized with channel < 0). If so, present a dialog to get 
-    ' joystick position
-    
+    'Removing debug dialog from eariler version, return undefined if joystick channel is negative
     if jsIsInitialized% <> 0 and jsChannelNumber% < 0 then
-        
-        'It'snot entirely clear what this is, probably some way to fake joystick data, I'm not copying it over for up/down
-        'pos% := JoystickPositionDialog%();
-        
+        pos% := JSUndefined%;
     else
-        
-        s% := GetJoystickVoltage%(v);
-        'printlog("voltage is %f, jsLeftHigh is %f and jsRightLow is %f\n",v,jsLeftHigh,jsRightLow);
+        s% := GetJoystickVoltage%(v); 'invert voltage if necessary
+        if jsYInverted% = 1 then
+            v := -v;
+        endif;
+
         if s% = 0 then
-            
             docase
-            case v <= jsDownUpperEdge then
-                pos% := JSDown%;
-            case v < jsCenterLowerEdgeUD then
-                pos% := JSHalfDown%;  'was JSUndefined%, change should not affect any code that I can tell
-            case v <= jsCenterUpperEdgeUD then
-                pos% := JSCenter%;
-            case v < jsUpLowerEdge then
-                pos% := JSHalfUp%;  'was JSUndefined%, change should not affect any code that I can tell
-            else
-                pos% := JSUp%;
-            endcase
+            case jsPrevPos% = JSDown% then  'if the joystick was down, use "inner" down threshold
+                docase
+                case v <= jsD2C then
+                    pos% := JSDown%;
+                case v <= jsC2U then
+                    pos% := JSCenter%;
+                else
+                    pos% := JSUp%;
+                endcase
+            case jsPrevPos% = JSUp% then   'if the joystick was up, use "inner" up threshold
+                docase
+                case v <= jsC2D then
+                    pos% := JSDown%;
+                case v <= jsU2C then
+                    pos% := JSCenter%;
+                else
+                    pos% := JSUp%;
+                endcase
+            else  'joystick was neither down nor up (center, or never checked), use both outer thresholds     
+                docase
+                case v <= jsC2D then
+                    pos% := JSDown%;
+                case v <= jsC2U then
+                    pos% := JSCenter%;
+                else
+                    pos% := JSUp%;
+                endcase
+            endcase 
         endif
-        
     endif
     
+    jsPrevPos% := pos%;  'Keep a record of the most recent joystick position
     return pos%;
 end
 
 
 
-
-func JoystickPositionDialog%()
-    var val%;
-    var pos%;
-    DlgCreate("Joystick Position");
-    DlgButton(100, "Undefined");
-    DlgButton(101, "Left");
-    DlgButton(102, "Center");
-    DlgButton(103, "Right");
-    val% := DlgShow();
-    if val% = 0 or val% = 1 then
-        pos% := JSError%;
-    else
-        pos% := val% - 100;
-    endif
-    return pos%;
-end
-
-
-proc JoystickConfigDialog()
-    var volts:=0.0;
-    var iUseJoystick% := 0;
-    var iNoGaps% := 0;
-    var iJoystickChannel% := 0;
+func JoystickConfigDialog%()   'This is only mildly different from the proc of same name (minus the %) 
+                               'Since it appears nothing actually calls the proc I have not updated it
+    
     var status%;
     
     DlgCreate("Joystick Configuration", 40, 40);
-    DlgAllow(0, 0, JoystickDialogCheck%);
-    DlgReal(1, "Voltage to set", -5, 5);
-    DlgCheck(2, "Use Joystick");
-    DlgInteger(3, "Joystick Channel", 0, 29);
-    DlgCheck(4, "No gaps");
-    DlgButton(100, "Left Hi", JoystickConfigLeftHigh%, 1, 5); 
-    DlgButton(101, "Ctr Low", JoystickConfigCenterLow%, 1, 6); 
-    DlgButton(102, "Ctr Hi", JoystickConfigCenterHigh%, 1, 7); 
-    DlgButton(103, "Right Low", JoystickConfigRightLow%, 1, 8); 
-    jsDlgLeftHighTextItem% := DlgText(str$(jsLeftHigh), 20, 5, 4);
-    jsDlgCenterLowTextItem% := DlgText(str$(jsCenterLow), 20, 6, 4);
-    jsDlgCenterHighTextItem% := DlgText(str$(jsCenterHigh), 20, 7, 4);
-    jsDlgRightLowTextItem% := DlgText(str$(jsRightLow), 20, 8, 4);
-
-    status% := DlgShow(volts, iUseJoystick%, iJoystickChannel%, iNoGaps%);
     
-    if status% = 1 then
-        PrintLog("Status = 1\n");
-    endif
+    DlgReal(1,"(1) Center-to-Left Voltage",-20,20);  '+/-20V should cover the range of any imaginable joystick
+    DlgReal(2,"(2) Left-to-Center Voltage",-20,20);  'L2C must be >= than C2L, but this will be checked by the callback fxn
+    DlgReal(3,"(3) Right-to-Center Voltage",-20,20);
+    DlgReal(4,"(4) Center-to-Right Voltage",-20,20);  'C2R must be >= than R2C, but this will be checked by the callback fxn
+    DlgCheck(5,"Invert X Voltage");
+    DlgButton(101, "Set Joystick Offset", SetJoystickOffset%, 1, 10); 
+    DlgAllow(0, 0, JoystickDialogCheck%);    
     
-    return;
-end
-
-
-func JoystickConfigDialog%()   'This is only mildly different from the proc of same name (minus the %) above, 
-                               'but to call this from a dialog button it has to be an integer function
-    
-    var volts:=0.0;  'please note that the value here is competely unused
-    var iUseJoystick% := 0;
-    var iNoGaps% := 0;
-    var iJoystickChannel% := 0;  'please note that the value here is competely unused
-    var status%;
-    
-    DlgCreate("Joystick Configuration", 40, 40);
-    DlgAllow(0, 0, JoystickDialogCheck%);
-    DlgReal(1, "Voltage to set", -5, 5);
-    DlgCheck(2, "Use Joystick");
-    DlgInteger(3, "Joystick Channel", 0, 29);
-    DlgCheck(4, "No gaps");
-    DlgButton(100, "Left Hi", JoystickConfigLeftHigh%, 1, 5); 
-    DlgButton(101, "Ctr Low", JoystickConfigCenterLow%, 1, 6); 
-    DlgButton(102, "Ctr Hi", JoystickConfigCenterHigh%, 1, 7); 
-    DlgButton(103, "Right Low", JoystickConfigRightLow%, 1, 8); 
-    jsDlgLeftHighTextItem% := DlgText(str$(jsLeftHigh), 20, 5, 4);
-    jsDlgCenterLowTextItem% := DlgText(str$(jsCenterLow), 20, 6, 4);
-    jsDlgCenterHighTextItem% := DlgText(str$(jsCenterHigh), 20, 7, 4);
-    jsDlgRightLowTextItem% := DlgText(str$(jsRightLow), 20, 8, 4);
-    DlgButton(104, "Set Joystick Offset", SetJoystickOffset%, 1, 10);     
-    
-    status% := DlgShow(volts, iUseJoystick%, iJoystickChannel%, iNoGaps%);
+    status% := DlgShow(jsC2L,jsL2C,jsR2C,jsC2R,jsXInverted%);
     
     if status% = 1 then
         PrintLog("Status = 1\n");
@@ -401,82 +438,42 @@ end
 
 func JoystickDialogCheck%(item%)
     var status% := 1;
-    docase
-    case item% = 0 then
-        PrintLog("value of use joystick check %d\n", DlgValue(2));
-        DlgEnable(1-DlgValue(2), 1);
-        PrintLog("value of no gaps check %d\n", DlgValue(4));
-        DlgEnable(1-DlgValue(4), -101, -103);
-    case item% = 2 then
-        PrintLog("value of use joystick check %d\n", DlgValue(2));
-        DlgEnable(1-DlgValue(2), 1);
-    case item% = 3 then
-        PrintLog("js init %d\n", DlgValue(3));
-        InitJoystick(DlgValue(3));
-    case item% = 4 then
-        PrintLog("value of no gaps check %d\n", DlgValue(4));        
-        DlgEnable(1-DlgValue(4), -101, -103);
-    endcase
+    if DlgValue(2) < DlgValue(1) then
+        message("Error: (2) must be >= (1)");
+        DlgValue(2,DlgValue(1));
+    endif
+    if DlgValue(4) < DlgValue(3) then
+        message("Error: (4) must be >= (3)");
+        DlgValue(4,DlgValue(3));
+    endif
     if SampleStatus() > -1 then 'if we are currently sampling, or prepared to sample, don't allow calibration
-        DlgEnable(0,-104);
+        DlgEnable(0,-101);
     else
-        DlgEnable(1,-104);
+        DlgEnable(1,-101);
     endif;
     return status%;
 end
 
 
 
-proc JoystickConfigDialogUD()
-    var volts:=0.0;
-    var iNoGaps% := 0;
-    var status%;
-    
-    DlgCreate("Joystick Configuration", 40, 40);
-    DlgAllow(0, 0, JoystickDialogCheckUD%);
-    DlgReal(1, "Voltage to set", -5, 5);
-    DlgCheck(2, "No gaps");
-    DlgButton(100, "Down Hi", JoystickConfigDownUpperEdge%, 1, 3); 
-    DlgButton(101, "Ctr Low", JoystickConfigCenterLowerEdgeUD%, 1, 4); 
-    DlgButton(102, "Ctr Hi", JoystickConfigCenterUpperEdgeUD%, 1, 5); 
-    DlgButton(103, "Up Low", JoystickConfigUpLowerEdge%, 1, 6); 
-    jsDlgDownUpperEdgeTextItem% := DlgText(str$(jsDownUpperEdge), 20, 3, 4);
-    jsDlgCenterLowTextItem% := DlgText(str$(jsCenterLowerEdgeUD), 20, 4, 4);
-    jsDlgCenterHighTextItem% := DlgText(str$(jsCenterUpperEdgeUD), 20, 5, 4);
-    jsDlgUpLowerEdgeTextItem% := DlgText(str$(jsUpLowerEdge), 20, 6, 4);  
-    
-    status% := DlgShow(volts, iNoGaps%);
-    
-    if status% = 1 then
-        PrintLog("Status = 1\n");
-    endif
-    
-    return;
-end
-
-
-func JoystickConfigDialogUD%()   'This is only mildly different from the proc of same name (minus the %) above, 
-                               'but to call this from a dialog button it has to be an integer function
+func JoystickConfigDialogUD%()   'This is only mildly different from the proc of same name (minus the %) 
+                                 'Since it appears nothing actually calls the proc I have not updated it
     
     var volts:=0.0;  'please note that the value here is competely unused
     var iNoGaps% := 0;
     var status%;
     
-    DlgCreate("Joystick Configuration", 40, 40);
-    DlgAllow(0, 0, JoystickDialogCheckUD%);
-    DlgReal(1, "Voltage to set", -5, 5);
-    DlgCheck(2, "No gaps");
-    DlgButton(100, "Down Hi", JoystickConfigDownUpperEdge%, 1, 3); 
-    DlgButton(101, "Ctr Low", JoystickConfigCenterLowerEdgeUD%, 1, 4); 
-    DlgButton(102, "Ctr Hi", JoystickConfigCenterUpperEdgeUD%, 1, 5); 
-    DlgButton(103, "Up Low", JoystickConfigUpLowerEdge%, 1, 6); 
-    jsDlgDownUpperEdgeTextItem% := DlgText(str$(jsDownUpperEdge), 20, 3, 4);
-    jsDlgCenterLowTextItem% := DlgText(str$(jsCenterLowerEdgeUD), 20, 4, 4);
-    jsDlgCenterHighTextItem% := DlgText(str$(jsCenterUpperEdgeUD), 20, 5, 4);
-    jsDlgUpLowerEdgeTextItem% := DlgText(str$(jsUpLowerEdge), 20, 6, 4);
-    DlgButton(104, "Set Joystick Offset", SetJoystickOffset%, 1, 10); 
-
-    status% := DlgShow(volts, iNoGaps%);
+    DlgCreate("Joystick Configuration (up/down)", 40, 40);
+    
+    DlgReal(1,"(1) Center-to-Down Voltage",-20,20);  '+/-20V should cover the range of any imaginable joystick
+    DlgReal(2,"(2) Down-to-Center Voltage",-20,20);  'L2C must be >= than C2L, but this will be checked by the callback fxn
+    DlgReal(3,"(3) Up-to-Center Voltage",-20,20);
+    DlgReal(4,"(4) Center-to-Up Voltage",-20,20);  'C2R must be >= than R2C, but this will be checked by the callback fxn
+    DlgCheck(5,"Invert X Voltage");
+    DlgButton(101, "Set Joystick Offset", SetJoystickOffset%, 1, 7); 
+    DlgAllow(0, 0, JoystickDialogCheck%);    
+    
+    status% := DlgShow(jsC2D,jsD2C,jsU2C,jsC2U,jsYInverted%);
     
     if status% = 1 then
         PrintLog("Status = 1\n");
@@ -486,234 +483,649 @@ func JoystickConfigDialogUD%()   'This is only mildly different from the proc of
 end
 
 
-func JoystickDialogCheckUD%(item%)
-    var status% := 1;
-    docase
-    case item% = 0 then
-        PrintLog("value of no gaps check %d\n", DlgValue(2));
-        DlgEnable(1-DlgValue(2), -101, -103);
-    case item% = 2 then
-        PrintLog("value of no gaps check %d\n", DlgValue(2));        
-        DlgEnable(1-DlgValue(2), -101, -103);
-    endcase
-    if SampleStatus() > -1 then 'if we are currently sampling, or prepared to sample, don't allow calibration
-        DlgEnable(0,-104);
-    else
-        DlgEnable(1,-104);
-    endif;
-    return status%;
-end
 
 
 
-func SetJoystickOffset%()
-    var jview%;
-    var currentVal;
-    if SampleStatus() > -1 then  'if we are currently sampling, or prepared to sample, don't allow calibration
-        message("This function cannot be used if sampling is currently occurring!");
-    else
-        'Get the current offset value
-        GetJoystickParameters();
-        
-        'Create sampling configuration with current port/channel
-        SampleWaveform(jsChannelNumber%,jsPortNumber%,5000); 
-        SampleCalibrate(jsChannelNumber%,"volt",1,joystickOffset);
-        'Start sampling, sample for about 5 seconds,
-        samplemode(1);   'sets continuous recording
-        jview% := FileNew(0,1+2+4);
-        SampleStart();   'start sampling
-        while view(jview%).maxtime() < 5 do
-            yield(1);
-        wend;
-        
-        'Get mean channel value
-        currentVal := ChanMeasure(jsChannelNumber%,2,0,5);
-        
-        'Stop sampling
-        SampleStop();
-        
-        'Adjust the offsets
-        joystickOffset := joystickOffset - currentVal;
-        
-        'Save the new offset values
-        SaveJoystickParameters();
-        
-        PrintLog("Joystick Offset :  %f\n", joystickOffset);
-        
-    endif
-    
-end
 
 
 
-func JoystickConfigLeftHigh%()
-    var key$;
-    var v;
-    if DlgValue(2) = 0 then
-        v := DlgValue(1);
-    else
-        if GetJoystickVoltage%(v) <> 0 then
-            LogError("", "Error reading joystick voltage. Check channel number.\n");
-            return 1;
-        endif
-    endif
-    
-    key$ := GetRegistryKey$(1) + "\\Joystick";
-    SetFloatRegistryValue(key$, "LeftHigh", v);
-    DlgValue$(jsDlgLeftHighTextItem%, str$(v));
-    
-    if DlgValue(4) = 1 then
-        SetFloatRegistryValue(key$, "CenterLow", v);
-        DlgValue$(jsDlgCenterLowTextItem%, str$(v));
-    endif
-    
-    GetJoystickParameters();
-    DisplayJoystickParameters();
-    return 1;
-end
+' ====================================================================
+'
+' OVERHAUL LEFTOVERS
+'
+' On 1/2/2024, jj performed a massive overhaul of the joystick code.
+' The below code, now commented out, was previously used.  This old
+' system had a few issues/quirks that needed to be updated:
+' 1) Joystick position was reported with five possible positions:
+'    Left, undefined, center, undefined, Right (or up/down).  This
+'    makes little sense as the buffer position between states does
+'    not serve any good purpose.  A far better method is to have
+'    inward and outward thresholds to prevent bouncing.
+' 2) Joystick config dialogs used a complicated button scheme that
+'    confused both users and programmers. 
+' 3) Since joysticks can be wired backwards, we need a checkbox to
+'    allow easy fixes of this.
+'
+' The code below here is commented-out leftover code from the overhaul
+' in case it it ever useful or needs to be revisited.
+'
+' Note that current code only uses a single joystick axis, either
+' defined as L/R or U/D.  Future code may need to be updated to allow
+' two joystick axes simultaneously.  This will require updates here as
+' well as to the DAQ code that assigns channels/ports.
+'
+' ====================================================================
 
-func JoystickConfigCenterLow%()
-    var key$;
-    var v;
-    if DlgValue(2) = 0 then
-        v := DlgValue(1);
-    else
-        if GetJoystickVoltage%(v) <> 0 then
-            LogError("", "Error reading joystick voltage. Check channel number.\n");
-            return 1;
-        endif
-    endif
-    
-    key$ := GetRegistryKey$(1) + "\\Joystick";
-    SetFloatRegistryValue(key$, "CenterLow", v);
-    DlgValue$(jsDlgCenterLowTextItem%, str$(v));
-    
-    GetJoystickParameters();
-    DisplayJoystickParameters();
-    return 1;
-end
 
-func JoystickConfigCenterHigh%()
-    var key$;
-    var v;
-    if DlgValue(2) = 0 then
-        v := DlgValue(1);
-    else
-        if GetJoystickVoltage%(v) <> 0 then
-            LogError("", "Error reading joystick voltage. Check channel number.\n");
-            return 1;
-        endif
-    endif
-    
-    key$ := GetRegistryKey$(1) + "\\Joystick";
-    SetFloatRegistryValue(key$, "CenterHigh", v);
-    DlgValue$(jsDlgCenterHighTextItem%, str$(v));
-    
-    if DlgValue(4) = 1 then
-        SetFloatRegistryValue(key$, "RightLow", v);
-        DlgValue$(jsDlgRightLowTextItem%, str$(v));
-    endif
-    
-    GetJoystickParameters();
-    DisplayJoystickParameters();
-    return 1;
-end
-
-func JoystickConfigRightLow%()
-    var key$;
-    var v;
-    if DlgValue(2) = 0 then
-        v := DlgValue(1);
-    else
-        if GetJoystickVoltage%(v) <> 0 then
-            LogError("", "Error reading joystick voltage. Check channel number.\n");
-            return 1;
-        endif
-    endif
-    
-    key$ := GetRegistryKey$(1) + "\\Joystick";
-    SetFloatRegistryValue(key$, "RightLow", v);
-    DlgValue$(jsDlgRightLowTextItem%, str$(v));
-    
-    GetJoystickParameters();
-    DisplayJoystickParameters();
-    return 1;
-end
+'var jsLeftHigh := 1;
+'var jsCenterLow := 2;
+'var jsCenterHigh := 3;
+'var jsRightLow := 4;
+'var jsDownUpperEdge := 1;       'Please note that Down/Up are NOT intended to be used together with Left/Right as a two-axis joystick at this point
+'var jsCenterLowerEdgeUD := 2;   'Instead it just makes things make a bit more sense to use different variables for an up/down setup.
+'var jsCenterUpperEdgeUD := 3;
+'var jsUpLowerEdge := 4;
+'const JSHalfDown% := 15;
+'const JSHalfUp% := 25;
+'const JSHalfLeft% := 15;  'It's an integer, so we can't do 1.5, and as this is being added later, some scripts may count on checking literal values rather than, say, JSLeft%, so we shouldn't change JSLeft% to 10
+'const JSHalfRight% := 25;
 
 
 
-'The up/down versions are simplified as don't allw the use of the current joystick position to set a limit, as that's hard to do anyway.
-func JoystickConfigDownUpperEdge%()
-    var key$;
-    var v;
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' GetJoystickParameters
+'
+' Called automatically when this file is included in a script. No need to 
+' call it from scripts. This function fetches joystick settings for the 
+' current configuration from the registry. 
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-    v := DlgValue(1);
+'proc GetJoystickParameters()
+'    var key$;
+'    var stmp$;
+'    key$ := GetRegistryKey$(1) + "\\Joystick";
+'    jsLeftHigh := GetFloatRegistryValue(key$, "LeftHigh", jsLeftHigh);
+'    jsCenterLow := GetFloatRegistryValue(key$, "CenterLow", jsCenterLow);
+'    jsCenterHigh := GetFloatRegistryValue(key$, "CenterHigh", jsCenterHigh);
+'    jsRightLow := GetFloatRegistryValue(key$, "RightLow", jsRightLow);
+'    jsXInverted% := GetIntRegistryValue%(key$, "XInverted", jsXInverted%);
+'    
+'    jsDownUpperEdge := GetFloatRegistryValue(key$, "DownUpperEdge", jsDownUpperEdge);
+'    jsCenterLowerEdgeUD := GetFloatRegistryValue(key$, "CenterLowerEdgeUD", jsCenterLowerEdgeUD);
+'    jsCenterUpperEdgeUD := GetFloatRegistryValue(key$, "CenterUpperEdgeUD", jsCenterUpperEdgeUD);
+'    jsUpLowerEdge := GetFloatRegistryValue(key$, "UpLowerEdge", jsUpLowerEdge);
+'    jsYInverted% := GetIntRegistryValue%(key$, "YInverted", jsYInverted%);
+'   
+'    joystickOffset := GetFloatRegistryValue(key$, "joystickOffset", joystickOffset);
+'    return;
+'end
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' SaveJoystickParameters
+'
+' This function saves joystick settings for the 
+' current configuration in the registry. 
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+'proc SaveJoystickParameters()
+'    var key$;
+'    key$ := GetRegistryKey$(1) + "\\Joystick";
+'    SetFloatRegistryValue(key$, "LeftHigh", jsLeftHigh);
+'    SetFloatRegistryValue(key$, "CenterLow", jsCenterLow);
+'    SetFloatRegistryValue(key$, "CenterHigh", jsCenterHigh);
+'    SetFloatRegistryValue(key$, "RightLow", jsRightLow);
+'    SetIntRegistryValue(key$, "XInverted", jsXInverted%);
+'    
+'    SetFloatRegistryValue(key$, "DownUpperEdge", jsDownUpperEdge);
+'    SetFloatRegistryValue(key$, "CenterLowerEdgeUD", jsCenterLowerEdgeUD);
+'    SetFloatRegistryValue(key$, "CenterUpperEdgeUD", jsCenterUpperEdgeUD);
+'    SetFloatRegistryValue(key$, "UpLowerEdge", jsUpLowerEdge);
+'    SetIntRegistryValue(key$, "YInverted", jsYInverted%);
+'    
+'    SetFloatRegistryValue(key$, "joystickOffset", joystickOffset);
+'    return;
+'end
+
+
+'proc DisplayJoystickParameters()
+'    PrintLog("**************************************\n\n");
+'    PrintLog("JSLeft  :       v < %f\n", jsLeftHigh);
+'    PrintLog("JSCenter:  %f < v < %f\n", jsCenterLow, jsCenterHigh);
+'    PrintLog("JSRight :  %f < v\n", jsRightLow);
+'    PrintLog("Offset  :  %f\n", joystickOffset);
+'    Printlog("Inverted:  %d\n", jsXInverted%);
+'    PrintLog("\n**************************************\n");
+'    return;
+'end
+'
+'proc DisplayJoystickParametersUD()  'Same thing, but for up/down
+'    PrintLog("**************************************\n\n");
+'    PrintLog("JSDown  :       v < %f\n", jsDownUpperEdge);
+'    PrintLog("JSCenter:  %f < v < %f\n", jsCenterLowerEdgeUD, jsCenterUpperEdgeUD);
+'    PrintLog("JSUp    :  %f < v\n", jsUpLowerEdge);
+'    PrintLog("Offset  :  %f\n", joystickOffset);
+'    Printlog("Inverted:  %d\n", jsYInverted%);
+'    PrintLog("\n**************************************\n");
+'    return;
+'end
+
+
+
+
+
+
 
     
-    key$ := GetRegistryKey$(1) + "\\Joystick";
-    SetFloatRegistryValue(key$, "DownUpperEdge", v);
-    DlgValue$(jsDlgDownUpperEdgeTextItem%, str$(v));
-    
-    if DlgValue(2) = 1 then
-        SetFloatRegistryValue(key$, "CenterLowerEdgeUD", v);
-        DlgValue$(jsDlgCenterLowTextItem%, str$(v));
-    endif
-    
-    GetJoystickParameters();
-    DisplayJoystickParametersUD();
-    return 1;
-end
 
-func JoystickConfigCenterLowerEdgeUD%()
-    var key$;
-    var v;
-    
-    v := DlgValue(1);
 
-    
-    key$ := GetRegistryKey$(1) + "\\Joystick";
-    SetFloatRegistryValue(key$, "CenterLowerEdgeUD", v);
-    DlgValue$(jsDlgCenterLowTextItem%, str$(v));
-    
-    GetJoystickParameters();
-    DisplayJoystickParametersUD();
-    return 1;
-end
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' GetJoystickPosition%
+'
+' Tests current voltage from joystick channel and determines position, 
+' either JSLeft%, JSCenter%, JSRight% or JSUndefined%. If JoystickInit()
+' has not been called JSError% is returned. 
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-func JoystickConfigCenterUpperEdgeUD%()
-    var key$;
-    var v;
-    
-    v := DlgValue(1);
 
-    
-    key$ := GetRegistryKey$(1) + "\\Joystick";
-    SetFloatRegistryValue(key$, "CenterUpperEdgeUD", v);
-    DlgValue$(jsDlgCenterHighTextItem%, str$(v));
-    
-    if DlgValue(2) = 1 then
-        SetFloatRegistryValue(key$, "UpLowerEdge", v);
-        DlgValue$(jsDlgUpLowerEdgeTextItem%, str$(v));
-    endif
-    
-    GetJoystickParameters();
-    DisplayJoystickParametersUD();
-    return 1;
-end
+'func GetJoystickPosition%(&v)
+'    var pos% := JSError%;
+'    var s%;
+'    
+'    ' Check if debugging (initialized with channel < 0). If so, present a dialog to get 
+'    ' joystick position
+'    
+'    if jsIsInitialized% <> 0 and jsChannelNumber% < 0 then
+'        
+'        pos% := JoystickPositionDialog%();
+'        
+'    else
+'        
+'        s% := GetJoystickVoltage%(v);
+'        if jsXInverted% = 1 then
+'            v := -v;
+'        endif;
+'        'printlog("voltage is %f, jsLeftHigh is %f and jsRightLow is %f\n",v,jsLeftHigh,jsRightLow);
+'        if s% = 0 then
+'            
+'            docase
+'            case v <= jsLeftHigh then
+'                pos% := JSLeft%;
+'            case v < jsCenterLow then
+'                pos% := JSHalfLeft%;  'was JSUndefined%, change should not affect any code that I can tell
+'            case v <= jsCenterHigh then
+'                pos% := JSCenter%;
+'            case v < jsRightLow then
+'                pos% := JSHalfRight%;  'was JSUndefined%, change should not affect any code that I can tell
+'            else
+'                pos% := JSRight%;
+'            endcase
+'        endif
+'        
+'    endif
+'    
+'    return pos%;
+'end
 
-func JoystickConfigUpLowerEdge%()
-    var key$;
-    var v;
 
-    v := DlgValue(1);
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' GetJoystickPositionUD%
+'
+' Tests current voltage from joystick channel and determines position, 
+' either JSDown%, JSCenter%, JSUp% or JSUndefined%. If JoystickInit()
+' has not been called JSError% is returned. 
+'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-    
-    key$ := GetRegistryKey$(1) + "\\Joystick";
-    SetFloatRegistryValue(key$, "UpLowerEdge", v);
-    DlgValue$(jsDlgUpLowerEdgeTextItem%, str$(v));
-    
-    GetJoystickParameters();
-    DisplayJoystickParametersUD();
-    return 1;
-end
 
+'func GetJoystickPositionUD%(&v)
+'    var pos% := JSError%;
+'    var s%;
+'    
+'    ' Check if debugging (initialized with channel < 0). If so, present a dialog to get 
+'    ' joystick position
+'    
+'    if jsIsInitialized% <> 0 and jsChannelNumber% < 0 then
+'        
+'        'It's not entirely clear what this is, probably some way to fake joystick data, I'm not copying it over for up/down
+'        'pos% := JoystickPositionDialog%();
+'        
+'    else
+'        
+'        s% := GetJoystickVoltage%(v);
+'        if jsYInverted% = 1 then
+'            v := -v;
+'        endif;
+'        'printlog("voltage is %f, jsLeftHigh is %f and jsRightLow is %f\n",v,jsLeftHigh,jsRightLow);
+'        if s% = 0 then
+'            
+'            docase
+'            case v <= jsDownUpperEdge then
+'                pos% := JSDown%;
+'            case v < jsCenterLowerEdgeUD then
+'                pos% := JSHalfDown%;  'was JSUndefined%, change should not affect any code that I can tell
+'            case v <= jsCenterUpperEdgeUD then
+'                pos% := JSCenter%;
+'            case v < jsUpLowerEdge then
+'                pos% := JSHalfUp%;  'was JSUndefined%, change should not affect any code that I can tell
+'            else
+'                pos% := JSUp%;
+'            endcase
+'        endif
+'        
+'    endif
+'    
+'    return pos%;
+'end
+
+
+
+'func JoystickPositionDialog%()
+'    var val%;
+'    var pos%;
+'    DlgCreate("Joystick Position");
+'    DlgButton(100, "Undefined");
+'    DlgButton(101, "Left");
+'    DlgButton(102, "Center");
+'    DlgButton(103, "Right");
+'    val% := DlgShow();
+'    if val% = 0 or val% = 1 then
+'        pos% := JSError%;
+'    else
+'        pos% := val% - 100;
+'    endif
+'    return pos%;
+'end
+
+' 'Note that this PROC has been deprecated 1/2/2024, I cannot find a function that calls it, so it should be unnecessary -jj
+'proc JoystickConfigDialog()
+'    var volts:=0.0;
+'    var iUseJoystick% := 0;
+'    var iNoGaps% := 0;
+'    var iJoystickChannel% := 0;
+'    var status%;
+'    
+'    DlgCreate("Joystick Configuration", 40, 40);
+'    DlgAllow(0, 0, JoystickDialogCheck%);
+'    DlgReal(1, "Voltage to set", -5, 5);
+'    DlgCheck(2, "Use Joystick");
+'    DlgInteger(3, "Joystick Channel", 0, 29);
+'    DlgCheck(4, "No gaps");
+'    DlgButton(100, "Left Hi", JoystickConfigLeftHigh%, 1, 5); 
+'    DlgButton(101, "Ctr Low", JoystickConfigCenterLow%, 1, 6); 
+'    DlgButton(102, "Ctr Hi", JoystickConfigCenterHigh%, 1, 7); 
+'    DlgButton(103, "Right Low", JoystickConfigRightLow%, 1, 8); 
+'    jsDlgLeftHighTextItem% := DlgText(str$(jsLeftHigh), 20, 5, 4);
+'    jsDlgCenterLowTextItem% := DlgText(str$(jsCenterLow), 20, 6, 4);
+'    jsDlgCenterHighTextItem% := DlgText(str$(jsCenterHigh), 20, 7, 4);
+'    jsDlgRightLowTextItem% := DlgText(str$(jsRightLow), 20, 8, 4);
+'
+'    status% := DlgShow(volts, iUseJoystick%, iJoystickChannel%, iNoGaps%);
+'    
+'    if status% = 1 then
+'        PrintLog("Status = 1\n");
+'    endif
+'    
+'    return;
+'end
+'
+'
+'func JoystickConfigDialog%()   'This is only mildly different from the proc of same name (minus the %) above, 
+'                               'but to call this from a dialog button it has to be an integer function
+'    
+'    var volts:=0.0;  'please note that the value here is competely unused
+'    var iUseJoystick% := 0;
+'    var iNoGaps% := 0;
+'    var iJoystickChannel% := 0;  'please note that the value here is competely unused
+'    var status%;
+'    
+'    DlgCreate("Joystick Configuration", 40, 40);
+'    DlgAllow(0, 0, JoystickDialogCheck%);
+'    DlgReal(1, "Voltage to set", -5, 5);
+'    DlgCheck(2, "Use Joystick");
+'    DlgInteger(3, "Joystick Channel", 0, 29);
+'    DlgCheck(4, "No gaps");
+'    DlgButton(100, "Left Hi", JoystickConfigLeftHigh%, 1, 5); 
+'    DlgButton(101, "Ctr Low", JoystickConfigCenterLow%, 1, 6); 
+'    DlgButton(102, "Ctr Hi", JoystickConfigCenterHigh%, 1, 7); 
+'    DlgButton(103, "Right Low", JoystickConfigRightLow%, 1, 8); 
+'    jsDlgLeftHighTextItem% := DlgText(str$(jsLeftHigh), 20, 5, 4);
+'    jsDlgCenterLowTextItem% := DlgText(str$(jsCenterLow), 20, 6, 4);
+'    jsDlgCenterHighTextItem% := DlgText(str$(jsCenterHigh), 20, 7, 4);
+'    jsDlgRightLowTextItem% := DlgText(str$(jsRightLow), 20, 8, 4);
+'    DlgButton(104, "Set Joystick Offset", SetJoystickOffset%, 1, 10);     
+'    
+'    status% := DlgShow(volts, iUseJoystick%, iJoystickChannel%, iNoGaps%);
+'    
+'    if status% = 1 then
+'        PrintLog("Status = 1\n");
+'    endif
+'    
+'    return 1;  'return of >0 allows calling dialog to remain open, return 1 whether the dialog is OKed or cancelled.
+'end
+'
+'
+'func JoystickDialogCheck%(item%)
+'    var status% := 1;
+'    docase
+'    case item% = 0 then
+'        PrintLog("value of use joystick check %d\n", DlgValue(2));
+'        DlgEnable(1-DlgValue(2), 1);
+'        PrintLog("value of no gaps check %d\n", DlgValue(4));
+'        DlgEnable(1-DlgValue(4), -101, -103);
+'    case item% = 2 then
+'        PrintLog("value of use joystick check %d\n", DlgValue(2));
+'        DlgEnable(1-DlgValue(2), 1);
+'    case item% = 3 then
+'        PrintLog("js init %d\n", DlgValue(3));
+'        InitJoystick(DlgValue(3));
+'    case item% = 4 then
+'        PrintLog("value of no gaps check %d\n", DlgValue(4));        
+'        DlgEnable(1-DlgValue(4), -101, -103);
+'    endcase
+'    if SampleStatus() > -1 then 'if we are currently sampling, or prepared to sample, don't allow calibration
+'        DlgEnable(0,-104);
+'    else
+'        DlgEnable(1,-104);
+'    endif;
+'    return status%;
+'end
+'
+'
+' 'Note that this PROC has been deprecated 1/2/2024, I cannot find a function that calls it, so it should be unnecessary -jj
+'proc JoystickConfigDialogUD()
+'    var volts:=0.0;
+'    var iNoGaps% := 0;
+'    var status%;
+'    
+'    DlgCreate("Joystick Configuration", 40, 40);
+'    DlgAllow(0, 0, JoystickDialogCheckUD%);
+'    DlgReal(1, "Voltage to set", -5, 5);
+'    DlgCheck(2, "No gaps");
+'    DlgButton(100, "Down Hi", JoystickConfigDownUpperEdge%, 1, 3); 
+'    DlgButton(101, "Ctr Low", JoystickConfigCenterLowerEdgeUD%, 1, 4); 
+'    DlgButton(102, "Ctr Hi", JoystickConfigCenterUpperEdgeUD%, 1, 5); 
+'    DlgButton(103, "Up Low", JoystickConfigUpLowerEdge%, 1, 6); 
+'    jsDlgDownUpperEdgeTextItem% := DlgText(str$(jsDownUpperEdge), 20, 3, 4);
+'    jsDlgCenterLowTextItem% := DlgText(str$(jsCenterLowerEdgeUD), 20, 4, 4);
+'    jsDlgCenterHighTextItem% := DlgText(str$(jsCenterUpperEdgeUD), 20, 5, 4);
+'    jsDlgUpLowerEdgeTextItem% := DlgText(str$(jsUpLowerEdge), 20, 6, 4);  
+'    
+'    status% := DlgShow(volts, iNoGaps%);
+'    
+'    if status% = 1 then
+'        PrintLog("Status = 1\n");
+'    endif
+'    
+'    return;
+'end
+'
+'
+'func JoystickConfigDialogUD%()   'This is only mildly different from the proc of same name (minus the %) above, 
+'                               'but to call this from a dialog button it has to be an integer function
+'    
+'    var volts:=0.0;  'please note that the value here is competely unused
+'    var iNoGaps% := 0;
+'    var status%;
+'    
+'    DlgCreate("Joystick Configuration", 40, 40);
+'    DlgAllow(0, 0, JoystickDialogCheckUD%);
+'    DlgReal(1, "Voltage to set", -5, 5);
+'    DlgCheck(2, "No gaps");
+'    DlgButton(100, "Down Hi", JoystickConfigDownUpperEdge%, 1, 3); 
+'    DlgButton(101, "Ctr Low", JoystickConfigCenterLowerEdgeUD%, 1, 4); 
+'    DlgButton(102, "Ctr Hi", JoystickConfigCenterUpperEdgeUD%, 1, 5); 
+'    DlgButton(103, "Up Low", JoystickConfigUpLowerEdge%, 1, 6); 
+'    jsDlgDownUpperEdgeTextItem% := DlgText(str$(jsDownUpperEdge), 20, 3, 4);
+'    jsDlgCenterLowTextItem% := DlgText(str$(jsCenterLowerEdgeUD), 20, 4, 4);
+'    jsDlgCenterHighTextItem% := DlgText(str$(jsCenterUpperEdgeUD), 20, 5, 4);
+'    jsDlgUpLowerEdgeTextItem% := DlgText(str$(jsUpLowerEdge), 20, 6, 4);
+'    DlgButton(104, "Set Joystick Offset", SetJoystickOffset%, 1, 10); 
+'
+'    status% := DlgShow(volts, iNoGaps%);
+'    
+'    if status% = 1 then
+'        PrintLog("Status = 1\n");
+'    endif
+'    
+'    return 1;  'return of >0 allows calling dialog to remain open, return 1 whether the dialog is OKed or cancelled.
+'end
+'
+'
+'func JoystickDialogCheckUD%(item%)
+'    var status% := 1;
+'    docase
+'    case item% = 0 then
+'        PrintLog("value of no gaps check %d\n", DlgValue(2));
+'        DlgEnable(1-DlgValue(2), -101, -103);
+'    case item% = 2 then
+'        PrintLog("value of no gaps check %d\n", DlgValue(2));        
+'        DlgEnable(1-DlgValue(2), -101, -103);
+'    endcase
+'    if SampleStatus() > -1 then 'if we are currently sampling, or prepared to sample, don't allow calibration
+'        DlgEnable(0,-104);
+'    else
+'        DlgEnable(1,-104);
+'    endif;
+'    return status%;
+'end
+
+
+
+
+
+
+
+'func JoystickConfigLeftHigh%()
+'    var key$;
+'    var v;
+'    if DlgValue(2) = 0 then
+'        v := DlgValue(1);
+'    else
+'        if GetJoystickVoltage%(v) <> 0 then
+'            LogError("", "Error reading joystick voltage. Check channel number.\n");
+'            return 1;
+'        endif
+'    endif
+'    
+'    key$ := GetRegistryKey$(1) + "\\Joystick";
+'    SetFloatRegistryValue(key$, "LeftHigh", v);
+'    DlgValue$(jsDlgLeftHighTextItem%, str$(v));
+'    
+'    if DlgValue(4) = 1 then
+'        SetFloatRegistryValue(key$, "CenterLow", v);
+'        DlgValue$(jsDlgCenterLowTextItem%, str$(v));
+'    endif
+'    
+'    GetJoystickParameters();
+'    DisplayJoystickParameters();
+'    return 1;
+'end
+'
+'func JoystickConfigCenterLow%()
+'    var key$;
+'    var v;
+'    if DlgValue(2) = 0 then
+'        v := DlgValue(1);
+'    else
+'        if GetJoystickVoltage%(v) <> 0 then
+'            LogError("", "Error reading joystick voltage. Check channel number.\n");
+'            return 1;
+'        endif
+'    endif
+'    
+'    key$ := GetRegistryKey$(1) + "\\Joystick";
+'    SetFloatRegistryValue(key$, "CenterLow", v);
+'    DlgValue$(jsDlgCenterLowTextItem%, str$(v));
+'    
+'    GetJoystickParameters();
+'    DisplayJoystickParameters();
+'    return 1;
+'end
+'
+'func JoystickConfigCenterHigh%()
+'    var key$;
+'    var v;
+'    if DlgValue(2) = 0 then
+'        v := DlgValue(1);
+'    else
+'        if GetJoystickVoltage%(v) <> 0 then
+'            LogError("", "Error reading joystick voltage. Check channel number.\n");
+'            return 1;
+'        endif
+'    endif
+'    
+'    key$ := GetRegistryKey$(1) + "\\Joystick";
+'    SetFloatRegistryValue(key$, "CenterHigh", v);
+'    DlgValue$(jsDlgCenterHighTextItem%, str$(v));
+'    
+'    if DlgValue(4) = 1 then
+'        SetFloatRegistryValue(key$, "RightLow", v);
+'        DlgValue$(jsDlgRightLowTextItem%, str$(v));
+'    endif
+'    
+'    GetJoystickParameters();
+'    DisplayJoystickParameters();
+'    return 1;
+'end
+'
+'func JoystickConfigRightLow%()
+'    var key$;
+'    var v;
+'    if DlgValue(2) = 0 then
+'        v := DlgValue(1);
+'    else
+'        if GetJoystickVoltage%(v) <> 0 then
+'            LogError("", "Error reading joystick voltage. Check channel number.\n");
+'            return 1;
+'        endif
+'    endif
+'    
+'    key$ := GetRegistryKey$(1) + "\\Joystick";
+'    SetFloatRegistryValue(key$, "RightLow", v);
+'    DlgValue$(jsDlgRightLowTextItem%, str$(v));
+'    
+'    GetJoystickParameters();
+'    DisplayJoystickParameters();
+'    return 1;
+'end
+'
+'
+'
+''The up/down versions are simplified as don't allw the use of the current joystick position to set a limit, as that's hard to do anyway.
+'func JoystickConfigDownUpperEdge%()
+'    var key$;
+'    var v;
+'
+'    v := DlgValue(1);
+'
+'    
+'    key$ := GetRegistryKey$(1) + "\\Joystick";
+'    SetFloatRegistryValue(key$, "DownUpperEdge", v);
+'    DlgValue$(jsDlgDownUpperEdgeTextItem%, str$(v));
+'    
+'    if DlgValue(2) = 1 then
+'        SetFloatRegistryValue(key$, "CenterLowerEdgeUD", v);
+'        DlgValue$(jsDlgCenterLowTextItem%, str$(v));
+'    endif
+'    
+'    GetJoystickParameters();
+'    DisplayJoystickParametersUD();
+'    return 1;
+'end
+'
+'func JoystickConfigCenterLowerEdgeUD%()
+'    var key$;
+'    var v;
+'    
+'    v := DlgValue(1);
+'
+'    
+'    key$ := GetRegistryKey$(1) + "\\Joystick";
+'    SetFloatRegistryValue(key$, "CenterLowerEdgeUD", v);
+'    DlgValue$(jsDlgCenterLowTextItem%, str$(v));
+'    
+'    GetJoystickParameters();
+'    DisplayJoystickParametersUD();
+'    return 1;
+'end
+'
+'func JoystickConfigCenterUpperEdgeUD%()
+'    var key$;
+'    var v;
+'    
+'    v := DlgValue(1);
+'
+'    
+'    key$ := GetRegistryKey$(1) + "\\Joystick";
+'    SetFloatRegistryValue(key$, "CenterUpperEdgeUD", v);
+'    DlgValue$(jsDlgCenterHighTextItem%, str$(v));
+'    
+'    if DlgValue(2) = 1 then
+'        SetFloatRegistryValue(key$, "UpLowerEdge", v);
+'        DlgValue$(jsDlgUpLowerEdgeTextItem%, str$(v));
+'    endif
+'    
+'    GetJoystickParameters();
+'    DisplayJoystickParametersUD();
+'    return 1;
+'end
+'
+'func JoystickConfigUpLowerEdge%()
+'    var key$;
+'    var v;
+'
+'    v := DlgValue(1);
+'
+'    
+'    key$ := GetRegistryKey$(1) + "\\Joystick";
+'    SetFloatRegistryValue(key$, "UpLowerEdge", v);
+'    DlgValue$(jsDlgUpLowerEdgeTextItem%, str$(v));
+'    
+'    GetJoystickParameters();
+'    DisplayJoystickParametersUD();
+'    return 1;
+'end
+
+
+
+'These appear unused (and they are kind of silly) jj 1/2/24
+'
+'func GetJoystickLeftHigh()
+'    return jsLeftHigh;
+'end
+'
+'func GetJoystickCenterLow()
+'    return jsCenterLow;
+'end
+'
+'func GetJoystickCenterHigh()
+'    return jsCenterHigh;
+'end
+'
+'func GetJoystickRightLow()
+'    return jsRightLow;
+'end
+'
+''And the same things, but for up/down
+'func GetJoystickDownUpperEdge()
+'    return jsDownUpperEdge;
+'end
+'
+'func GetJoystickCenterLowerEdgeUD()
+'    return jsCenterLowerEdgeUD;
+'end
+'
+'func GetJoystickCenterUpperEdgeUD()
+'    return jsCenterUpperEdgeUD;
+'end
+'
+'func GetJoystickUpLowerEdge()
+'    return jsUpLowerEdge;
+'end

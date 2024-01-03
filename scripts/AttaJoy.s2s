@@ -224,7 +224,7 @@ var tCircleOn := -1;
 '===========================================================================================
 
 LogInit(1);
-InitJoystick(13);
+InitJoystick2(13,GetJoystickPort%());
 ajTrialTypesList$[0] := "Both";
 ajTrialTypesList$[1] := "Red";
 ajTrialTypesList$[2] := "Green";
@@ -554,10 +554,15 @@ proc InitializeWindows()
 	XYAddData(ajChanMonitor%, -9, 7);
     
     ' Set up joystick range numbers
-    lh := GetJoystickLeftHigh();
-    cl := GetJoystickCenterLow();
-    ch := GetJoystickCenterHigh();
-    rl := GetJoystickRightLow();
+'    lh := GetJoystickLeftHigh();
+'    cl := GetJoystickCenterLow();
+'    ch := GetJoystickCenterHigh();
+'    rl := GetJoystickRightLow();
+    'Updated for new joystick code, 1/2/24 -jj
+    lh := jsC2L;
+    cl := jsL2C;
+    ch := jsR2C;
+    rl := JSC2R;
     
     ' We'll take the joystick voltage 'v' (which should be between 1 and 4volts) and 
     ' convert it for display in the xy window like this:
@@ -1325,7 +1330,8 @@ func Start%()
         SampleText("AttaJoy,1");
         SampleText(ajCVSID$);
         SampleText(cmdLine$);
-        tMark$ := Print$("%f,%f,%f,%f", GetJoystickLeftHigh(), GetJoystickCenterLow(), GetJoystickCenterHigh(), GetJoystickRightLow());
+        'tMark$ := Print$("%f,%f,%f,%f", GetJoystickLeftHigh(), GetJoystickCenterLow(), GetJoystickCenterHigh(), GetJoystickRightLow());
+        tMark$ := Print$("%f,%f,%f,%f", jsC2L, jsL2C, jsR2C, jsC2R);  'updated or new joystick code 1/2/24 -jj
         SampleText(tMark$);
         
         'Begin the stimulus program. It will take a few seconds for the VSG to initialize.

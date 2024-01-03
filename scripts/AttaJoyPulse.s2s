@@ -217,7 +217,7 @@ var tCircleOn := -1;
 '===========================================================================================
 
 LogInit(1);
-InitJoystick(13);
+InitJoystick2(13,GetJoystickPort%());
 ajTrialTypesList$[0] := "Both";
 ajTrialTypesList$[1] := "Red";
 ajTrialTypesList$[2] := "Green";
@@ -435,10 +435,15 @@ proc InitializeWindows()
 	XYAddData(ajChanMonitor%, -9, 7);
     
     ' Set up joystick range numbers
-    lh := GetJoystickLeftHigh();
-    cl := GetJoystickCenterLow();
-    ch := GetJoystickCenterHigh();
-    rl := GetJoystickRightLow();
+'    lh := GetJoystickLeftHigh();
+'    cl := GetJoystickCenterLow();
+'    ch := GetJoystickCenterHigh();
+'    rl := GetJoystickRightLow();
+    'Updated for new joystick code, 1/2/24 -jj
+    lh := jsC2L;
+    cl := jsL2C;
+    ch := jsR2C;
+    rl := JSC2R;
     
     ' We'll take the joystick voltage 'v' (which should be between 1 and 4volts) and 
     ' convert it for display in the xy window like this:
@@ -698,7 +703,7 @@ func IdleProcessing%()
             
         case iState% = stateT1Success% then
             
-            DeliverReward(ajRewardSize%);
+            DeliverRewardLocal(ajRewardSize%);
             ajUniversalIntertrialTime := ajTrainingSuccessPauseTime;
             trialgenTrialIndexCompleted(ajTrialTypeIndex%);
             ChangeStateTo(stateIntertrialWait%, tNow);
@@ -800,7 +805,7 @@ func IdleProcessing%()
                 case ajDoHoldFixationMiniReward% = 1 and (tNow-tStateStart)/ajHoldFixationTime > ajHoldFixationMiniRewardFraction and ajHoldFixationMiniRewardEnable% = 1 then
                     LogStatus("stateHoldFixation", "Mini-reward fraction " + str$((tNow-tStateStart)/ajHoldFixationTime));
                     ajHoldFixationMiniRewardEnable% := 0;
-                    DeliverReward(1);
+                    DeliverRewardLocal(1);
                 else
                     iLoop% := 0;
                 endcase
@@ -822,7 +827,7 @@ func IdleProcessing%()
             SampleKey("X");
             Yield();
             trialgenTrialIndexCompleted(ajTrialTypeIndex%);
-            DeliverReward(ajRewardSize%);
+            DeliverRewardLocal(ajRewardSize%);
             ajUniversalIntertrialTime := ajTrainingSuccessPauseTime;
             ChangeStateTo(stateWaitForFixptOff%, tNow);
             iLoop% := 0;
@@ -981,7 +986,7 @@ func IdleProcessing%()
             
             SampleKey("X");
             Yield();
-            DeliverReward(ajRewardSize%);
+            DeliverRewardLocal(ajRewardSize%);
             LogStatus("TuningSuccess", "TODO: Analysis!");
             ajUniversalIntertrialTime := ajCorrectResponsePauseTime;
             ChangeStateTo(stateWaitForFixptOff%, tNow);
@@ -1016,7 +1021,7 @@ func IdleProcessing%()
             SampleKey("X");
             Yield();
             trialgenTrialIndexCompleted(ajTrialTypeIndex%);
-            DeliverReward(ajRewardSize%);
+            DeliverRewardLocal(ajRewardSize%);
             ajUniversalIntertrialTime := ajTrainingSuccessPauseTime;
             ChangeStateTo(stateWaitForFixptOff%, tNow);
             iLoop% := 0;
@@ -1066,7 +1071,7 @@ func IdleProcessing%()
             trialgenTrialIndexCompleted(ajTrialTypeIndex%);
             SampleKey("X");
             Yield();
-            DeliverReward(ajRewardSize%);
+            DeliverRewardLocal(ajRewardSize%);
             ajUniversalIntertrialTime := ajCorrectResponsePauseTime;
             ChangeStateTo(stateWaitForFixptOff%, tNow);
             
@@ -1162,14 +1167,14 @@ proc ChangeStateTo(stateTo%, tStart)
 	if tStart > 0 then tStateStart := tStart; endif;
 end;
 
-proc DeliverReward(iNumRewards%)
+proc DeliverRewardLocal(iNumRewards%)
     SampleSeqVar(1, iNumRewards%);
     SampleKey("R");
     return;
 end
 
 func ajChanFixptWindowDisplay()
-    DeliverReward(1);
+    DeliverRewardLocal(1);
     return 1;
 end
 
@@ -1298,7 +1303,11 @@ func StartTuningTrials%()
     if ChanList(list%[], 0x10) > 0 then
         View(ajWindowData%);
         for i% := 1 to list%[0] do
-            ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
+            'ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ
+            'Hmm, this appears to be a problem!
+            'The code here has been missing for Who Knows How Long, being accidentally replaced by somebody
+            'sleeping on the keyboard.  Since it's so commonly used, I am not going to try to figure out how
+            'to fix it, whatever it was doing.  1-2-24 -jj
         next
     else
         Message("No wavemark channels configured, not setting up PSTH plots.");
@@ -1321,7 +1330,7 @@ func Resume%()
 end
 
 func Reward%()
-    DeliverReward(1);
+    DeliverRewardLocal(1);
     return 0;
 end
 

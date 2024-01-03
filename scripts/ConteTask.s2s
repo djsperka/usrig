@@ -160,7 +160,7 @@ var flankerIsH%[ctMaxTrials%];     '-2 = no flanker, vertical box; -1 = no flank
 var tic;  'Set a tick value equal to the duration of one clock tick in seconds, used to prevent finding
           'the same "pulse" twice
 var pulseFound%;
-
+var tempAnswer%;
 
 ' Wavemarks and continuous ports
 var ctNWavemarks% := 0;
@@ -1131,14 +1131,18 @@ func IdleProcessing%()
                 stateBegin% := 0;
             endif
             
+            tempAnswer% := Answer%(JSCenter%); 'don't want to poll the joystick multiple times as the state
+                                               'could conceivably change in between pollings, just do it once
             docase
-            case Answer%(0) = 0 then  'If lever in origin
+            case tempAnswer% = JSCenter% or tempAnswer% = JSUp%  then  'If lever in origin (or up)
                 LogStatus("EnsureLeverInOrigin", "Found lever in origin at about " + str$(tNow));
                 ChangeStateTo(stateWaitForLever%, tNow);
-            case Answer%(0) < 0 then  'If error indicated; only errors should be coding errors
+            case tempAnswer% < 0 then  'If error indicated; only errors should be coding errors
                 message("There has been a problem reading the lever device! Check log file! Quitting!");
                 Stop%();  'Stop%() should do a clean quit
-            'else lever is not in origin, keep checking
+            else 
+                LogStatus("EnsureLeverInOrigin", "Lever is still down at about " + str$(tNow));
+                'Just check again
             endcase
             
             
@@ -1150,7 +1154,7 @@ func IdleProcessing%()
                 stateBegin% := 0;
             endif
             
-            if Answer%(1) = 1 then  'If lever is down
+            if Answer%(JSDown%) = JSDown% then  'If lever is down (unlike above this is a single-poll, no need for tempAnswer%)
                 LogStatus("WaitForLever", "Found lever press at about " + str$(tNow));
                 if ctTrainingOptions% = 0 then
                     'If delivering reward for lever press only, go straight to reward
@@ -1239,7 +1243,7 @@ func IdleProcessing%()
             endif
             
             docase
-            case Answer%(1) = 0 then  'If lever in origin, go to abort penalty once fixation point is up
+            case Answer%(JSDown%) <> JSDown% then  'If lever in origin (or up, or undefined, or broken), go to abort penalty once fixation point is up
                 LogStatus("WaitForAcquisition", "Lever released");
                 SafeSampleKey("X");  'Drop fixation point
                 WaitForBlankTo(stateAbort%, tNow); 
@@ -1267,7 +1271,7 @@ func IdleProcessing%()
             endif
             
             docase
-            case Answer%(1) = 0 then  'If lever is released while waiting, go to abort penalty
+            case Answer%(JSDown%) <> JSDown% then  'If lever is released while waiting, go to abort penalty
                 LogStatus("WaitStimOnsetDelay", "Lever released");
                 SafeSampleKey("X");  'Drop fixation point
                 WaitForBlankTo(stateAbort%, tNow); 
@@ -1359,7 +1363,7 @@ func IdleProcessing%()
             endif
             
             docase
-            case Answer%(1) = 0 then  'If lever is released while stimulus is playing, go to abort penalty
+            case Answer%(JSDown%) <> JSDown% then  'If lever is released while stimulus is playing, go to abort penalty
                 LogStatus("MonitorFrameChannel", "Lever released");
                 SafeSampleKey("X");  'Drop fixation point
                 WaitForBlankTo(stateAbort%, tNow);
@@ -1437,7 +1441,7 @@ func IdleProcessing%()
                 LogStatus("ResponseWindow", "Fixation broken");
                 SafeSampleKey("X");  'Drop fixation point
                 WaitForBlankTo(stateAbort%, tNow); 
-            case Answer%(1) = 0 then  'If lever is released during response window, end trial, go to TrialCompleted
+            case Answer%(JSDown%) <> JSDown% then  'If lever is released during response window, end trial, go to TrialCompleted
                 LogStatus("ResponseWindow", "Lever released");
                 SafeSampleKey("X");  'Drop fixation point
                 leverReleased% := 1;
@@ -2247,7 +2251,8 @@ func Start%()
             
             for j% := 0 to ctPFsPerPatch%-1 do 'loop through each patch frame on this trial
                 'write both numColor values for this patch frame to binary file, 4 byte integer
-                OK% := view(dotSupplyHandle%).BWrite(numColor%[j%][]);  
+                OK% := view(dotSupplyHandle%).BWrite(numColor%[j%][]); 
+                'printlog("On Patch %d, num color 1 is %d and num color 2 is %d\n",j%+1,numColor%[j%][0],numColor%[j%][1]);                
                 if OK% < 0 then
                     message("Problem with 'color' binary write on patch# " + Str$(i%+1) + " frame# " + Str$(j%+1) + "!");
                     FileClose(dotSupplyHandle%);
@@ -2438,14 +2443,14 @@ func Start%()
     
     
     'Set values for the joystick
+    GetJoystickParameters();  'get voltage values for thresholds, offset
     'Change offset of joystick channel
     View(DataWindow%).ChanOffset(JoyChannel%,joystickOffset);  'use value from registry
-    InitJoystick(JoyChannel%);  'initialize the joystick
-    GetJoystickParameters();  'get voltage values for thresholds
+    InitJoystick2(JoyChannel%,GetJoystickPort%());  'initialize the joystick
     DisplayJoystickParametersUD();  'write values to log file
     
-    'set YRange for JoyChannel...this seems weird...I think the voltages should be larger than that...TODO check this out
-    'View(DataWindow%).YRange(JoyChannel%,0,1);
+    'set YRange for JoyChannel...was [0 1] for some reason, that's not good, [-5 5] should be fine, if the joystick has much less dynamic range it's easy to change
+    View(DataWindow%).YRange(JoyChannel%,-5,5);
 
     
     
@@ -3072,9 +3077,7 @@ end
 'feature will perform as expected
 func Answer%(goForward%)
     var ans% := -1;
-    var v;
-    'v := ChanValue(chan%,now);
-    'printlog("voltage is %f\n",v);
+    var v;  'will fill with actual voltage
     
     if ctAlwaysPressing% = 1 then
         return goForward%;
@@ -3088,34 +3091,21 @@ func Answer%(goForward%)
     endif;
         
     docase
-    case ans% = -1 then
+    case ans% = JSError% then
         printlog("There has been an error in reading the joystick!  GetJoystickPosition% has returned -1!\n");
-    case ans% = -2 then
+    case ans% = -2 then  'this is a bit silly as we are assigning this directly above, but OK
         printlog("Joystick Channel does not appear to exist!  GetJoystickPosition% has returned -2!\n");
-    endcase
-    
-    'For the purposes of this true GNG task, anything that is not "lever down" is "lever in origin"
-    if ans% > -1 and ans% <> 1 then
-        ans% := 0;
-    endif;
-    
+    endcase    
     
 	return ans%;
     
     'This function will return:
-    '1 if joystick is down
+    'JSDown% if joystick is down
+    'JSCenter% if joystick is in center
+    'JSUp% if joystick is up 
     '0 if joystick is not down ("in origin" - note that "up" is also "in origin")
     '-1 or -2 on error
-    
-    'Note that it would not be difficult to have more returns from this function
-    'GetJoystickPositionUD%() will return one of six possible values:
-    '1  - joystick down
-    '15 - joystick in no-man's land between down and center
-    '2  - joystick in center
-    '25 - joystick in no-man's land between center and up
-    '3  - joystick up
-    '-1 - error
-    'These values can be manipulated any way you like - for current purposes, 0/1/-1 is sufficient  
+     
 end;
 
 

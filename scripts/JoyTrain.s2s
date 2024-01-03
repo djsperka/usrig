@@ -371,7 +371,7 @@ func Start%()
     var Tune$;
     var Extras$;
     var stimSpec$;
-    var x, y, w, h, iw, ih, sf, tf, ori, phase;
+    var x, y, w, h, iw, ih, sf, tf, ori, phase, ctf;
     var contrast%; 
     var cv$, pattern$, aperture$;
     var ProgName$;
@@ -405,7 +405,7 @@ func Start%()
     Stim$ := " -s " + stimSpec$;
     
     'Parse the grating parameters, we really only want contrast
-    ParseGratingParameters%(stimSpec$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$);
+    ParseGratingParameters%(stimSpec$, x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
     'Use the currently-requested contrast at THE contrast
     Tune$ := " -C " + str$(contrast%);
     'Set the rest of the command line stuff
@@ -561,7 +561,7 @@ func IdleProcessing%()
     case iState% = stateWaitJoyCenter% then
         'This is the start point for every trial - we have to wait here to make sure that the joystick has been centered.
         if tNow > tStateStart + ITI then 
-            if JoyAnswer%(JoyChannel%,tNow) = 2 or superFake% = 0 then
+            if JoyAnswer%(JoyChannel%,tNow) = JSCenter% or superFake% = 0 then
                 PrintLog("state stateWaitJoyCenter: Joystick is in center, trial starting at %f\n",tNow);
                 
                 if showStimulus% = 1 then
@@ -574,11 +574,11 @@ func IdleProcessing%()
         
     case iState% = stateWaitJoyOut% then
         docase  'TODO - make sure that below definitions work with regard to Up/Down with actual joystick setup, may need to swap "1" and "3" from results of JoyAnswer%()
-        case (JoyAnswer%(JoyChannel%,tNow) = 1 or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 1) then
+        case (JoyAnswer%(JoyChannel%,tNow) = JSUp% or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 1) then
             DefaultReward();  'do not use Reward%() because that increments the experimenter-gave-reward variable
             PrintLog("stateWaitJoyOut: Up response, rewarding.\n");
             ChangeStateTo(stateTrialComplete%, tNow);
-        case (JoyAnswer%(JoyChannel%,tNow) = 3 or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 2) then
+        case (JoyAnswer%(JoyChannel%,tNow) = JSDown% or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 2) then
             DefaultReward();  'do not use Reward%() because that increments the experimenter-gave-reward variable
             PrintLog("stateWaitJoyOut: Down response, rewarding.\n");
             ChangeStateTo(stateTrialComplete%, tNow);
@@ -605,14 +605,14 @@ func IdleProcessing%()
         
     case iState% = stateWaitJoyOutStimulus% then
         docase  'TODO - make sure that below definitions work with regard to Up/Down with actual joystick setup, may need to swap "1" and "3" from results of JoyAnswer%()
-        case (JoyAnswer%(JoyChannel%,tNow) = 1 or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 1) then
+        case (JoyAnswer%(JoyChannel%,tNow) = JSUp% or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 1) then
             SafeSampleKey("X");  'Request stimulus down
             DrawStim(0);  'Remove stimulus indicator from XY window
             DefaultReward();  'do not use Reward%() because that increments the experimenter-gave-reward variable
             trialCount% += 1;  'Keep track of how many times the experimenter gave a reward
             PrintLog("stateWaitJoyOutStimulus: Up response, rewarding.\n");
             ChangeStateTo(stateWaitForBlank%, tNow);
-        case (JoyAnswer%(JoyChannel%,tNow) = 3 or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 2) then
+        case (JoyAnswer%(JoyChannel%,tNow) = JSDown% or superFake% = 1) and (directionForReward% = 0 or directionForReward% = 2) then
             SafeSampleKey("X");  'Request stimulus down
             DrawStim(0);  'Remove stimulus indicator from XY window
             DefaultReward();  'do not use Reward%() because that increments the experimenter-gave-reward variable
@@ -723,10 +723,10 @@ func JoyAnswer%(chan%,now)
 	return ans%;
     
     'This function will return:
-    '1 if joystick is left (Up?  Down?)
-    '2 if joystick is center
-    '3 if joystick is right (Down? Up?)
-    '0 if joystick is in undefined position (between left/center or between center/right)
+    'JSDown% if joystick is Down
+    'JSCenter% if joystick is center
+    'JSUp% if joystick is Up
+    '0 if joystick is in undefined position
     '-1 on error
 end;
 

@@ -224,7 +224,7 @@ ButtonPort% := 5;  'This appears to be correct
 JoyChannel% := 13;
 
 
-InitJoystick(JoyChannel%);
+InitJoystick2(JoyChannel%,GetJoystickPort%());
 
 if dhIsHuman% = 0 then
     ' Fetch electrode information. 
@@ -558,10 +558,15 @@ proc InitializeWindows()
         'If using joystick (not just fixating) set up joystick stuff
         if dhUseJoystick% = 1 then
             ' Set up joystick range numbers
-            lh := GetJoystickLeftHigh();
-            cl := GetJoystickCenterLow();
-            ch := GetJoystickCenterHigh();
-            rl := GetJoystickRightLow();
+            '    lh := GetJoystickLeftHigh();
+            '    cl := GetJoystickCenterLow();
+            '    ch := GetJoystickCenterHigh();
+            '    rl := GetJoystickRightLow();
+            'Updated for new joystick code, 1/2/24 -jj
+            lh := jsC2L;
+            cl := jsL2C;
+            ch := jsR2C;
+            rl := JSC2R;
         
             ' We'll take the joystick voltage 'v' (which should be between 1 and 4volts) and 
             ' convert it for display in the xy window like this:

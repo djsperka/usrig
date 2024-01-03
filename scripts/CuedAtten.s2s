@@ -2040,12 +2040,12 @@ func IdleProcessing%()
             endif;
             tempanswer% := Answer%(JoyChannel%,tNow);
             'printlog("stateWaitForJoystickInCenter%: d\n",tempanswer% );
-            if tempanswer% = 2 or skipToCheckJoystickInRight% = 1 or caRequireSaccadeResponse% = 1 then  'if joystick is in center, or has previously been centered
+            if tempanswer% = JSCenter% or skipToCheckJoystickInRight% = 1 or caRequireSaccadeResponse% = 1 then  'if joystick is in center, or has previously been centered
                 'Allow dual report, but either case will advance the state
                 if joystickHasBeenCentered% = 1 then
                     PrintLog("state stateWaitForJoystickInCenter: Joystick has previously been centered\n");
                 endif;
-                if tempanswer% = 2 then
+                if tempanswer% = JSCenter% then
                     PrintLog("state stateWaitForJoystickInCenter: Joystick is in center\n");
                 endif;
                 
@@ -2095,7 +2095,7 @@ func IdleProcessing%()
 '                joystickHasBeenCentered% := 1;  'presumably joystick has not gone right yet
 '            endif
             tempanswer% := Answer%(JoyChannel%,tNow);
-            if tempanswer% = 3 then  'if joystick is in right
+            if tempanswer% = JSRight% then  'if joystick is in right
                 PrintLog("stateWaitForJoystickInRight: Joystick in right\n");
                 docase
                 case caTrainingOptions% = 0 then
@@ -2130,7 +2130,7 @@ func IdleProcessing%()
             endif;
             
             tempanswer% := Answer%(JoyChannel%,tNow);
-            if tempanswer% = 3 then  'if joystick is still in right
+            if tempanswer% = JSRight% then  'if joystick is still in right
                 if tNow - tStateStart > caTrainingHoldTime then
                     caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand);
                     docase
@@ -2185,7 +2185,7 @@ func IdleProcessing%()
             
             tempanswer% := Answer%(JoyChannel%,tNow);
             'printlog("Joystick is in position %d\n",tempanswer% );
-            if tempanswer% = 2 then  'if joystick is in center
+            if tempanswer% = JSCenter% then  'if joystick is in center
                 Reward%();
                 PrintLog("stateWaitForJoystickInCenterAndReward: Joystick in center, reward\n");
                 if caTrainingOptions% = 2 then
@@ -2315,13 +2315,13 @@ func IdleProcessing%()
                 docase
                 case joystickInStartPosition% = 0 then  'if a response has occurred, quit while you're ahead
                     docase
-                    case tempanswer% = 2 then 'return to center (not applicable for forced choice)
+                    case tempanswer% = JSCenter% then 'return to center (not applicable for forced choice)
                         PrintLog("stateHoldFixationToStimOn: joystick returned to center, aborting trial.\n");
                         FAIsResponse% := 1;
                         ChangeStateTo(stateAbort%, tNow);
                         SampleText("Joystick not held, False Alarm response before stimulus on, trial aborted",tNow);
                         joystickHasBeenCentered% := 1;  'joystick centered by FA
-                    case tempanswer% = 1 then 'overshot or left
+                    case tempanswer% = JSLeft% then 'overshot or left
                         PrintLog("stateHoldFixationToStimOn: joystick moved to left, aborting trial.\n");
                         FAIsResponse% := 1;
                         ChangeStateTo(stateAbort%, tNow);
@@ -2332,7 +2332,7 @@ func IdleProcessing%()
                             SampleText("Joystick not held, False Alarm response all the way to left before stimulus on, trial aborted",tNow); 
                             joystickHasBeenCentered% := 1;  'joystick centered by FA - overshot is centering
                         endif;
-                    case tempanswer% = 3 then 'right, cannot currently be overshot because all GNG start in right, and overshot can only occur in GNG
+                    case tempanswer% = JSRight% then 'right, cannot currently be overshot because all GNG start in right, and overshot can only occur in GNG
                         PrintLog("stateHoldFixationToStimOn: joystick moved to right, aborting trial.\n");
                         FAIsResponse% := 1;
                         ChangeStateTo(stateAbort%, tNow);
@@ -2478,7 +2478,7 @@ func IdleProcessing%()
             if joystickHasBeenCentered% = 0 and caRequireSaccadeResponse% = 0 then   'don't bother if we are using saccade response
                 tempanswer% := Answer%(JoyChannel%,tNow);
                 'printlog("Joystick is in position %d\n",tempanswer% );
-                if tempanswer% = 2 then
+                if tempanswer% = JSCenter% then
                     joystickHasBeenCentered% := 1;
                 endif
             endif            
@@ -2535,13 +2535,13 @@ func IdleProcessing%()
             if tNow - tStateStart < caFalseAlarmCheckWindow then
                 tempanswer% := Answer%(JoyChannel%,tNow);
                 docase
-                case tempanswer% = 2 then 'return to center
+                case tempanswer% = JSCenter% then 'return to center
                     PrintLog("stateCheckFalseAlarm: joystick returned to center " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
                     SampleText("Joystick not held, False Alarm response " + GetCurrentEpoch$() + ", trial aborted",tNow);
                     joystickHasBeenCentered% := 1;  'joystick centered by FA
-                case tempanswer% = 1 then 'overshot
+                case tempanswer% = JSLeft% then 'overshot
                     PrintLog("stateCheckFalseAlarm: joystick moved to left " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
@@ -2595,7 +2595,7 @@ func IdleProcessing%()
                 'for image cue response training, if answer is allowed before "contrast change" and answer has occurred in appropriate window                    
                 case joystickInStartPosition% = 0 and caTrainingOptions% = 5 and tNow >= trialEarlyGoTime + tStateStart then  
                     ' Got an answer. Record marker for correct/incorrect answer
-                    if tempanswer% = 3 then
+                    if tempanswer% = JSRight% then
                         printlog("Response Right\n");
                         joystickHasBeenCentered% := 0;  'joystick not centered
                     else
@@ -2604,7 +2604,7 @@ func IdleProcessing%()
                     endif
                     SafeSampleKey("X");  'turn off stimulus first thing
                     docase
-                    case tempanswer% = 3 and trialResponseDirection% = 3 then  'right expected, response to right
+                    case tempanswer% = JSRight% and trialResponseDirection% = 3 then  'right expected, response to right
                         caCountAllTrialsCorrect% += 1;
                         caCountRightTrialsCorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand);
@@ -2612,7 +2612,7 @@ func IdleProcessing%()
                         'getPreciseTiming := 0;
                         Reward%();
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow); 
-                    case tempanswer% = 1 and trialResponseDirection% = 1 then 'left expected, response to left
+                    case tempanswer% = JSLeft% and trialResponseDirection% = 1 then 'left expected, response to left
                         caCountAllTrialsCorrect% += 1;
                         caCountLeftTrialsCorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand);
@@ -2620,50 +2620,50 @@ func IdleProcessing%()
                         'getPreciseTiming := 0;
                         Reward%();
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow); 
-                    case tempanswer% = 1 and trialResponseDirection% = 3 then 'right expected, response to left
+                    case tempanswer% = JSLeft% and trialResponseDirection% = 3 then 'right expected, response to left
                         caCountAllTrialsIncorrect% += 1;
                         caCountRightTrialsIncorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand) + caMissPenalty;
                         SampleText("Miss, Response Left, Expected Response Right",tNow);
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);
-                    case tempanswer% = 3 and trialResponseDirection% = 1 then 'left expected, response to right
+                    case tempanswer% = JSRight% and trialResponseDirection% = 1 then 'left expected, response to right
                         caCountAllTrialsIncorrect% += 1;
                         caCountLeftTrialsIncorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand) + caMissPenalty;
                         SampleText("Miss, Response Right, Expected Response Left",tNow);
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);
-                    case tempanswer% = 1 and trialResponseDirection% = 0 then 'no response expected, response to left
+                    case tempanswer% = JSLeft% and trialResponseDirection% = 0 then 'no response expected, response to left
                         caCountAllTrialsIncorrect% += 1;
                         caCountNontargetTrialsIncorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand) + caMissPenalty;
                         SampleText("False Alarm " + GetCurrentEpoch$() + ", Response Left, Expected No Response",tNow);
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);
-                    case tempanswer% = 3 and trialResponseDirection% = 0 then 'no response expected, response to right
+                    case tempanswer% = JSRight% and trialResponseDirection% = 0 then 'no response expected, response to right
                         caCountAllTrialsIncorrect% += 1;
                         caCountNontargetTrialsIncorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand) + caMissPenalty;
                         SampleText("False Alarm " + GetCurrentEpoch$() + ", Response Right, Expected No Response",tNow);
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);    
                     endcase
-                case joystickInStartPosition% = 0 and tempanswer% = 2 then 'FA in GNG
+                case joystickInStartPosition% = 0 and tempanswer% = JSCenter% then 'FA in GNG
                     PrintLog("stateHoldFixationToCC: false alarm " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
                     SampleText("False Alarm " + GetCurrentEpoch$() + ", trial aborted",tNow);
                     joystickHasBeenCentered% := 1;  'joystick centered by FA
-                case joystickInStartPosition% = 0 and tempanswer% = 1 and caTrainingOptions% < 5 then 'answer and overshot in GNG
+                case joystickInStartPosition% = 0 and tempanswer% = JSLeft% and caTrainingOptions% < 5 then 'answer and overshot in GNG
                     PrintLog("stateHoldFixationToCC: false alarm and overshot " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
                     SampleText("False Alarm and overshot " + GetCurrentEpoch$() + ", trial aborted",tNow);
                     joystickHasBeenCentered% := 1;  'joystick centered by FA - overshot is centering
-                case joystickInStartPosition% = 0 and tempanswer% = 1 then 'FA Left in forced choice
+                case joystickInStartPosition% = 0 and tempanswer% = JSLeft% then 'FA Left in forced choice
                     PrintLog("stateHoldFixationToCC: false alarm (left) " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
                     SampleText("False Alarm (left) " + GetCurrentEpoch$() + ", trial aborted",tNow);
                     joystickHasBeenCentered% := 0;  'joystick not centered 
-                case joystickInStartPosition% = 0 and tempanswer% = 3 then 'FA Right in forced choice
+                case joystickInStartPosition% = 0 and tempanswer% = JSRight% then 'FA Right in forced choice
                     PrintLog("stateHoldFixationToCC: false alarm (right) " + GetCurrentEpoch$() + ", aborting trial.\n");
                     FAIsResponse% := 1;
                     ChangeStateTo(stateAbort%, tNow);
@@ -2801,9 +2801,9 @@ func IdleProcessing%()
                     ChangeStateTo(stateAbort%, tNow);
                     abortIsPostCC% := 1;
                     
-                case iAnswer% = 2 or iAnswer% = 1 then
+                case iAnswer% = JSCenter% or iAnswer% = JSLeft% then
                     ' Got an answer. Record marker for correct/incorrect answer
-                    if iAnswer% = 2 then
+                    if iAnswer% = JSCenter% then
                         printlog("Got answer\n");
                         caIsOvershot$ := "";  'back to center, all good
                         joystickHasBeenCentered% := 1;  'joystick centered by answer
@@ -3109,7 +3109,7 @@ func IdleProcessing%()
                     abortIsPostCC% := 1;
                 case joystickInStartPosition% = 0 then  'for image cue response training
                     ' Got an answer. Record marker for correct/incorrect answer
-                    if iAnswer% = 3 then
+                    if iAnswer% = JSRight% then
                         printlog("Response Right\n");
                         joystickHasBeenCentered% := 0;  'joystick not centered
                     else
@@ -3119,7 +3119,7 @@ func IdleProcessing%()
                     SafeSampleKey("X");  'turn off stimulus first thing
                     'printlog("trialResponseDirection is %d\n",trialResponseDirection%);  'just for testing
                     docase
-                    case iAnswer% = 3 and trialResponseDirection% = 3 then  'right expected, response to right
+                    case iAnswer% = JSRight% and trialResponseDirection% = 3 then  'right expected, response to right
                         caCountAllTrialsCorrect% += 1;
                         caCountRightTrialsCorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand);
@@ -3127,7 +3127,7 @@ func IdleProcessing%()
                         'getPreciseTiming := 0;
                         Reward%();
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow); 
-                    case iAnswer% = 1 and trialResponseDirection% = 1 then 'left expected, response to left
+                    case iAnswer% = JSLeft% and trialResponseDirection% = 1 then 'left expected, response to left
                         caCountAllTrialsCorrect% += 1;
                         caCountLeftTrialsCorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand);
@@ -3135,25 +3135,25 @@ func IdleProcessing%()
                         'getPreciseTiming := 0;
                         Reward%();
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow); 
-                    case iAnswer% = 1 and trialResponseDirection% = 3 then 'right expected, response to left
+                    case iAnswer% = JSLeft% and trialResponseDirection% = 3 then 'right expected, response to left
                         caCountAllTrialsIncorrect% += 1;
                         caCountRightTrialsIncorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand) + caMissPenalty;
                         SampleText("Miss, Response Left, Expected Response Right",tNow);
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);
-                    case iAnswer% = 3 and trialResponseDirection% = 1 then 'left expected, response to right
+                    case iAnswer% = JSRight% and trialResponseDirection% = 1 then 'left expected, response to right
                         caCountAllTrialsIncorrect% += 1;
                         caCountLeftTrialsIncorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand) + caMissPenalty;
                         SampleText("Miss, Response Right, Expected Response Left",tNow);
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);
-                    case iAnswer% = 1 and trialResponseDirection% = 0 then 'no response expected, response to left
+                    case iAnswer% = JSLeft% and trialResponseDirection% = 0 then 'no response expected, response to left
                         caCountAllTrialsIncorrect% += 1;
                         caCountNontargetTrialsIncorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand) + caMissPenalty;
                         SampleText("False Alarm " + GetCurrentEpoch$() + ", Response Left, Expected No Response",tNow);
                         ChangeStateTo(stateTrialCompletedWaitForBlank%, tNow);
-                    case iAnswer% = 3 and trialResponseDirection% = 0 then 'no response expected, response to right
+                    case iAnswer% = JSRight% and trialResponseDirection% = 0 then 'no response expected, response to right
                         caCountAllTrialsIncorrect% += 1;
                         caCountNontargetTrialsIncorrect% += 1;
                         caInterTrialTime2 := GetInterTrialTime(caInterTrialTime,caInterTrialTimeRand) + caMissPenalty;
@@ -3188,7 +3188,7 @@ func IdleProcessing%()
             if joystickHasBeenCentered% = 0 and caRequireSaccadeResponse% = 0 then 'don't bother if we are using saccade response
                 tempanswer% := Answer%(JoyChannel%,tNow);
                 'printlog("Joystick is in position %d\n",tempanswer% );
-                if tempanswer% = 2 then
+                if tempanswer% = JSCenter% then
                     joystickHasBeenCentered% := 1;
                 endif
             endif
@@ -3215,7 +3215,7 @@ func IdleProcessing%()
             'during the pause, check for administering withheld reward
             if rewardWithheld% = 1 then
                 tempanswer% := Answer%(JoyChannel%,tNow);
-                if tempanswer% = 2 then  'if joystick is in center
+                if tempanswer% = JSCenter% then  'if joystick is in center
                     Reward%();  'Give reward now that joystick is in center
                     rewardWithheld% := 0;  'reset
                 endif;  
@@ -3768,10 +3768,10 @@ func Answer%(chan%,now)
 	return ans%;
     
     'This function will return:
-    '1 if joystick is left
-    '2 if joystick is center
-    '3 if joystick is right
-    '0 if joystick is in undefined position (between left/center or between center/right)
+    'JSLeft% if joystick is left
+    'JSCenter% if joystick is center
+    'JSRight% if joystick is right
+    '0 if joystick is in undefined position
     '-1 on error
 end;
 
@@ -3810,12 +3810,12 @@ func JoyInStartPosition%(pos%)
     docase
     case caRequireSaccadeResponse% then 'during Require Saccade Response scenarios the joystick is absent, by default return 1 as if "joystick" is "ready"
         sp% := 1;
-    case caTrainingOptions% <= 4 and pos% = 3 then  'For all "regular" experiments (GNG), the start position is "right"
+    case caTrainingOptions% <= 4 and pos% = JSRight% then  'For all "regular" experiments (GNG), the start position is "right"
         sp% := 1;
-    case caTrainingOptions% = 5 and pos% = 2 then  'For cue image forced choice experiments, the start position is "center"
+    case caTrainingOptions% = 5 and pos% = JSCenter% then  'For cue image forced choice experiments, the start position is "center"
         sp% := 1
-    case pos% = 0 then
-        sp% := 1;  'If the joystick is in an "intermediate position" just call that "still in start position"
+    'case pos% = 0 then  'there are no "intermediate positions" as of 1/2/24 -jj
+    '    sp% := 1;  'If the joystick is in an "intermediate position" just call that "still in start position"
     else  'anything that does not trigger any of the above conditions is not in the start position
         sp% := 0;
     endcase
