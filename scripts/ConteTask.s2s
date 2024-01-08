@@ -21,7 +21,7 @@ const ctCVSID$ := "$Id$";
 
 ' Overall script control vars
 var Pause% := 0;
-
+var anyScreenUp% := 0;
 
 ' Channel numbers and handles
 var StimHandle%;			' handle for stimulus application
@@ -1225,7 +1225,7 @@ func IdleProcessing%()
                 LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
                 tLastTrigger := tTrigger;
                 DrawMonitorScreen(1,0,0,0);	'Draws the location of the fixpt in the Spike2 fixation display window
-                
+                anyScreenUp% := 1;  'Note that we have successfully placed SOMETHING on the screen
                 if ctRequireFixation% = 1 then
                     ChangeStateTo(stateWaitForAcquisition%, tTrigger);   
                 else
@@ -1304,7 +1304,7 @@ func IdleProcessing%()
             ChangeStateTo(stateMonitorFrameChannel%,tNow);
             tLastFrameTrigger := tNow;
             remainInIdleLoop% := 1;  'monitor cue frames immediately
-            
+            anyScreenUp% := 1;  'Note that we have (presumably) successfully placed SOMETHING on the screen
             
             
         case iState% = stateMonitorFrameChannel% then
@@ -1590,13 +1590,20 @@ func IdleProcessing%()
                 stateBegin% := 0;
             endif
             
-            if View(DataWindow%).FindFallingEdge%(StimChannel%, tStateStart, tTrigger) = 1 or View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 1 then
+            docase
+            case anyScreenUp% = 0 then
+                'There's no screen to come down
+                LogStatus("WaitForBlank", "No screen to blank, moving forward at about " + str$(tNow));
+                DrawMonitorScreen(-1,-1,-1,-1);	'remove everything from spike 2 monitor screen
+                ChangeStateTo(nextState%,tNow);
+            case View(DataWindow%).FindFallingEdge%(StimChannel%, tStateStart, tTrigger) = 1 or View(DataWindow%).FindFallingEdge%(FixationPointChannel%, tStateStart, tTrigger) = 1 then
                 'Fixation point is off
                 tLastTrigger := tTrigger;
                 LogStatus("WaitForBlank", "Blank screen at " + str$(tTrigger));
                 DrawMonitorScreen(-1,-1,-1,-1);	'remove everything from spike 2 monitor screen
+                anyScreenUp% := 0;  'Reset anyScreenUp%
                 ChangeStateTo(nextState%,tNow);
-            endif
+            endcase
             
             
         endcase
