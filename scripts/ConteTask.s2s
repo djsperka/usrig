@@ -220,6 +220,9 @@ var ctOriChangeString$;
 var ctPatchDur;            'this is calculated
 var ctAbortPenalty;
 var ctFixAcqTime;
+var ctGaborOn%:=1;
+var ctFlankerOn%:=1;
+var ctCueRectOn%:=1;
 
 'Variables that allow us to build the allowed tunable values from strings
 var ctDotPct[100];  '100 possible values is way too many
@@ -334,7 +337,7 @@ var ctTxtFixAcqTime%;
 
 
 var screenXDeg := 12.5;  'Manually setting screen degrees - we might want to calculate this based on manual screen cm or have degrees/cm in main dialog, but for now...
-var screenYDeg := 9.5;   
+var screenYDeg := 9.5;   'Note that these are only used for placement of the "monitor box" in the Spike2 Eye Position XY view.  TODO - get actual degree values from config.
 
 
 
@@ -342,7 +345,7 @@ var screenYDeg := 9.5;
 'Done with variables
 
 GetConteTaskParameters();  'We will just get these right off the bat, this supports the pre-dialog box
-'that warns about AlwaysLooking - though this pre-dialog is currently disabled
+                           'that warns about AlwaysLooking - though this pre-dialog is currently disabled
 
 ' Check if always looking flag is set. If so, issue a warning.
 ' I'm thinking that this is kind of a pain in the butt, we can possibly just put it in the dialog box
@@ -486,7 +489,15 @@ proc GetConteTaskParameters()
     ctOriChangeString$ := GetStringRegistryValue$(key$, "OriChangeString", ctOriChangeString$);
     ctAbortPenalty := GetFloatRegistryValue(key$, "AbortPenalty", ctAbortPenalty);
     ctFixAcqTime := GetFloatRegistryValue(key$, "FixAcqTime", ctFixAcqTime);
-      
+    ctGaborOn% := GetIntRegistryValue%(key$, "GaborOn", ctGaborOn%);
+    ctFlankerOn% := GetIntRegistryValue%(key$, "FlankerOn", ctFlankerOn%);
+    ctCueRectOn% := GetIntRegistryValue%(key$, "CueRectOn", ctCueRectOn%);
+    
+    
+
+
+    
+    
 end;
 
 proc SaveConteTaskParameters()
@@ -534,6 +545,9 @@ proc SaveConteTaskParameters()
     SetStringRegistryValue(key$, "OriChangeString", ctOriChangeString$);
     SetFloatRegistryValue(key$, "AbortPenalty", ctAbortPenalty);
     SetFloatRegistryValue(key$, "FixAcqTime", ctFixAcqTime);
+    SetIntRegistryValue(key$, "GaborOn", ctGaborOn%);
+    SetIntRegistryValue(key$, "FlankerOn", ctFlankerOn%);
+    SetIntRegistryValue(key$, "CueRectOn", ctCueRectOn%);
     
 end;
 
@@ -2303,19 +2317,50 @@ func Start%()
             'cut the trial off at that point, but will allow us to have the fixation point up during the "delay"
             
             
+            'This is old code for use before a redesign of the CSV file (redesign implemented about 2/13/24)
+            'Keeping it around as a template for the new version of the CSV file, but will not feel the need
+            'to retain it once all is ready to go because it's not like we'll be going back.
+            'This version has 12 values that the cue patch and timing, two color variables,
+            'and 11 values each that specify SampleA, SampleB, TestA, and TestB
+            'Write to file
+            'Print("%f,%f,%f,%f,%f,%d,%d,",FixationX,FixationY,ctPatchRadiusDeg*2,ctPatchRadiusDeg*2,ctDotRadiusDeg*2,ctRefreshPerPF%,ctPFsPerPatch%);  'cue patch params
+            'Print("%f,%f,%f,%f,%f,",ctPatchToSampleDelay*1000,ctSampleDuration*1000,ctSampleToTargetDelay*1000,ctTargetDuration*1000,ctResponseTime*1000);  'timing params
+            'Print("(%d/%d/%d),(%d/%d/%d),",ctDotColor1R%,ctDotColor1G%,ctDotColor1B%,ctDotColor2R%,ctDotColor2G%,ctDotColor2B%);  'colors - NOTE: colors are placeholders, VSG will use command line colors (but these columns DO have to be legal, though unused, colors)
+            'Print("%f,%f,%f,%f,%f,%f,",FixationX-ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,samp1Ori[i%],ctGaborSF);  'Sample A (left = 1), part 1
+            'Print("%f,%f,%d,%d,0,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Sample A (left = 1), part 2, color for A is color 0
+            'Print("%f,%f,%f,%f,%f,%f,",FixationX+ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,samp2Ori[i%],ctGaborSF);  'Sample B (right = 2), part 1
+            'Print("%f,%f,%d,%d,1,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Sample B (right = 2), part 2, color for B is color 1
+            'Print("%f,%f,%f,%f,%f,%f,",FixationX-ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,test1Ori[i%],ctGaborSF);  'Test A (left = 1), part 1
+            'Print("%f,%f,%d,%d,0,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Test A (left = 1), part 2, color for A is color 0
+            'Print("%f,%f,%f,%f,%f,%f,",FixationX+ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,test2Ori[i%],ctGaborSF);  'Test B (right = 2), part 1
+            'Print("%f,%f,%d,%d,1",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);   'Test B (right = 2), part 2, color for B is color 1
+            'Print("\n");
+            
+            'The latest version of the CSV file (about 2/13/24) consists of the following:
+            '7 values specifying the cue patch (same as before)
+            '5 values specifying some timing parameters (same as before) - for these sections a positive value
+            '  is interpreted as duration in ms; a value of 0 skips the section; a value of -1 ends presentation
+            '  at that section (and of course does not display that section)
+            '14 values each specifying the Sample A/Sample B/Test A/Test B stimuli 
             'Write to file
             Print("%f,%f,%f,%f,%f,%d,%d,",FixationX,FixationY,ctPatchRadiusDeg*2,ctPatchRadiusDeg*2,ctDotRadiusDeg*2,ctRefreshPerPF%,ctPFsPerPatch%);  'cue patch params
             Print("%f,%f,%f,%f,%f,",ctPatchToSampleDelay*1000,ctSampleDuration*1000,ctSampleToTargetDelay*1000,ctTargetDuration*1000,ctResponseTime*1000);  'timing params
-            Print("(%d/%d/%d),(%d/%d/%d),",ctDotColor1R%,ctDotColor1G%,ctDotColor1B%,ctDotColor2R%,ctDotColor2G%,ctDotColor2B%);  'colors - NOTE: colors are placeholders, VSG will use command line colors (but these columns DO have to be legal, though unused, colors)
             Print("%f,%f,%f,%f,%f,%f,",FixationX-ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,samp1Ori[i%],ctGaborSF);  'Sample A (left = 1), part 1
             Print("%f,%f,%d,%d,0,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Sample A (left = 1), part 2, color for A is color 0
+            'Print("%f,%f,%f,",ctGaborOn%*??,ctFlankerOn%*??,ctCueRectOn%*??);  'Sample A (left = 1), part 3, contrasts
             Print("%f,%f,%f,%f,%f,%f,",FixationX+ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,samp2Ori[i%],ctGaborSF);  'Sample B (right = 2), part 1
             Print("%f,%f,%d,%d,1,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Sample B (right = 2), part 2, color for B is color 1
+            'Print("%f,%f,%f,",ctGaborOn%*??,ctFlankerOn%*??,ctCueRectOn%*??);  'Sample B (right = 2), part 3, contrasts
             Print("%f,%f,%f,%f,%f,%f,",FixationX-ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,test1Ori[i%],ctGaborSF);  'Test A (left = 1), part 1
             Print("%f,%f,%d,%d,0,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Test A (left = 1), part 2, color for A is color 0
+            'Print("%f,%f,%f,",ctGaborOn%*??,ctFlankerOn%*??,ctCueRectOn%*??);  'Test A (left = 1), part 3, contrasts
             Print("%f,%f,%f,%f,%f,%f,",FixationX+ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,test2Ori[i%],ctGaborSF);  'Test B (right = 2), part 1
-            Print("%f,%f,%d,%d,1",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);   'Tset B (right = 2), part 2, color for B is color 1
+            Print("%f,%f,%d,%d,1,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Test B (right = 2), part 2, color for B is color 1
+            'Print("%f,%f,%f",ctGaborOn%*??,ctFlankerOn%*??,ctCueRectOn%*??);   'Test B (right = 2), part 3, contrasts
             Print("\n");
+            
+
+
             
         next
         
