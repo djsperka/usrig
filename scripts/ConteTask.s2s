@@ -100,19 +100,23 @@ var FrameTriggersFound%;
 var leverReleased%;
 var drawFlankers%;   'for use with DrawMonitorScreen, uses plural to not step on local variable in DrawMonitorScreen
 var drawGabors%;     'for use with DrawMonitorScreen, uses plural to not step on local variable in DrawMonitorScreen
+var fixDrawn%;       'Keep track of whether each particular element is drawn, just so we don't ask to put up/take down when unnecessary
+var cueDrawn%;
+var gaborDrawn%;
+var flankerDrawn%;
 var TextForSample$;  'ummmm, gotta go with the funky name here
 var TextForTarget$;  'and match it I guess
 var SequencerPeriodMS;
 var HBCycle% := 1;
 var ctRewardDurSec;
-ctRewardDurSec := (GetJuiceRewardMS%()+20)/1000;  'Set reward duration up top.  If we have any reason to think this will change through the experiment, then set it say each idle loop
+ctRewardDurSec := (GetJuiceRewardMS%()+20)/1000;  'Set reward duration up top.  Nowhere in the script can change this.
                                                   'I am paranoid and I'm adding another 20 ms following the reward.
 
 
 ' Constants for states
 
 const stateVSGWait%:=0;		               'Wait for VSG to send ready signal, only used at beginning of experiment
-const stateEnsureLeverInOrigin%:=1;        'Make sure lever is in origin before starting a trial
+const stateEnforceLeverInOrigin%:=1;        'Make sure lever is in origin before starting a trial
 const stateWaitForLever%:=2;               'GNG, so we'll call lever/joystick "lever" - Lever is the very first action 
 const stateStartTrial%:=3;                 'Start trial, request fixpt
 const stateWaitForFixPtOn%:=4;             'Wait for fixpt up
@@ -155,7 +159,20 @@ var test1Ori[ctMaxTrials%];
 var test2Ori[ctMaxTrials%];
 var validity%[ctMaxTrials%];       'Validity on each trial, -1 = no change, 0 = invalid, 1 = valid (what if cueDotPct is 50?)
 var whichOriChange%[ctMaxTrials%]; '0 = no change, 1 = side 1 changes, 2 = side 2 changes
-var flankerIsH%[ctMaxTrials%];     '-2 = no flanker, vertical box; -1 = no flanker, horizontal box; 0 = flanker vertical; 1 = flanker horizontal
+var flankerIsH%;                   '-2 = no flanker, vertical box; -1 = no flanker, horizontal box; 0 = flanker vertical; 1 = flanker horizontal; cue box shrinks if flankers are off
+
+var samp1Contrast%[ctMaxTrials%];
+var samp2Contrast%[ctMaxTrials%];
+var test1Contrast%[ctMaxTrials%];
+var test2Contrast%[ctMaxTrials%];
+var samp1FlankerContrast%[ctMaxTrials%];
+var samp2FlankerContrast%[ctMaxTrials%];
+var test1FlankerContrast%[ctMaxTrials%];
+var test2FlankerContrast%[ctMaxTrials%];
+var samp1CueRectContrast%[ctMaxTrials%];
+var samp2CueRectContrast%[ctMaxTrials%];
+var test1CueRectContrast%[ctMaxTrials%];
+var test2CueRectContrast%[ctMaxTrials%];
 
 var tic;  'Set a tick value equal to the duration of one clock tick in seconds, used to prevent finding
           'the same "pulse" twice
@@ -200,8 +217,10 @@ var ctPatchRadiusDeg;
 var ctRefreshPerPF%;   'How many monitor refreshes per frame
 var ctPFsPerPatch%;
 var ctResponseTime;
-var ctGaborXLoc;
+var ctGaborXLoc;   'This will be the location of the "primary" (typically: "receptive field") gabor
 var ctGaborYLoc;
+var ctGabor2XLoc;  'This will be the location of the counterpart gabor
+var ctGabor2YLoc;
 var ctGaborHDeg;
 var ctGaborWDeg;
 var ctGaborSF;
@@ -220,6 +239,12 @@ var ctOriChangeString$;
 var ctPatchDur;            'this is calculated
 var ctAbortPenalty;
 var ctFixAcqTime;
+var ctGaborVC%;
+var ctGaborInvC%;
+var ctFlankerVC%;
+var ctFlankerInvC%;
+var ctCueRectVC%;
+var ctCueRectInvC%;
 
 'Variables that allow us to build the allowed tunable values from strings
 var ctDotPct[100];  '100 possible values is way too many
@@ -283,6 +308,13 @@ var ctDlgSampleOriString% := 43;
 var ctDlgOriChangeString% := 44;
 var ctDlgAbort% := 45;
 var ctDlgFixAcqTime% := 46;
+var ctDlgSampVC% := 47;
+var ctDlgSampInvC% := 48;
+var ctDlgFlankerVC% := 49;
+var ctDlgFlankerInvC% := 50;
+var ctDlgCueRectVC% := 51;
+var ctDlgCueRectInvC% := 52;
+
 
 
 var ctDlgTotalTrials%;  'This just holds a pointer to the total trials text so we can update the text value
@@ -331,10 +363,16 @@ var ctTxtOriChangeString%;
 var ctTxtPatchDur%;
 var ctTxtAbort%;
 var ctTxtFixAcqTime%;
+var ctTxtSampVC%;
+var ctTxtSampInvC%;
+var ctTxtFlankerVC%;
+var ctTxtFlankerInvC%;
+var ctTxtCueRectVC%;
+var ctTxtCueRectInvC%;
 
 
 var screenXDeg := 12.5;  'Manually setting screen degrees - we might want to calculate this based on manual screen cm or have degrees/cm in main dialog, but for now...
-var screenYDeg := 9.5;   
+var screenYDeg := 9.5;   'Note that these are only used for placement of the "monitor box" in the Spike2 Eye Position XY view.  TODO - get actual degree values from config.
 
 
 
@@ -342,7 +380,7 @@ var screenYDeg := 9.5;
 'Done with variables
 
 GetConteTaskParameters();  'We will just get these right off the bat, this supports the pre-dialog box
-'that warns about AlwaysLooking - though this pre-dialog is currently disabled
+                           'that warns about AlwaysLooking - though this pre-dialog is currently disabled
 
 ' Check if always looking flag is set. If so, issue a warning.
 ' I'm thinking that this is kind of a pain in the butt, we can possibly just put it in the dialog box
@@ -486,7 +524,15 @@ proc GetConteTaskParameters()
     ctOriChangeString$ := GetStringRegistryValue$(key$, "OriChangeString", ctOriChangeString$);
     ctAbortPenalty := GetFloatRegistryValue(key$, "AbortPenalty", ctAbortPenalty);
     ctFixAcqTime := GetFloatRegistryValue(key$, "FixAcqTime", ctFixAcqTime);
-      
+    ctGaborVC% := GetIntRegistryValue%(key$, "GaborVC", ctGaborVC%);
+    ctGaborInvC% := GetIntRegistryValue%(key$, "GaborInvC", ctGaborInvC%);
+    ctFlankerVC% := GetIntRegistryValue%(key$, "FlankerVC", ctFlankerVC%);
+    ctFlankerInvC% := GetIntRegistryValue%(key$, "FlankerInvC", ctFlankerInvC%);
+    ctCueRectVC% := GetIntRegistryValue%(key$, "CueRectVC", ctCueRectVC%);
+    ctCueRectInvC% := GetIntRegistryValue%(key$, "CueRectInvC", ctCueRectInvC%);
+    
+
+    
 end;
 
 proc SaveConteTaskParameters()
@@ -534,6 +580,12 @@ proc SaveConteTaskParameters()
     SetStringRegistryValue(key$, "OriChangeString", ctOriChangeString$);
     SetFloatRegistryValue(key$, "AbortPenalty", ctAbortPenalty);
     SetFloatRegistryValue(key$, "FixAcqTime", ctFixAcqTime);
+    SetIntRegistryValue(key$, "GaborVC", ctGaborVC%);
+    SetIntRegistryValue(key$, "GaborInvC", ctGaborInvC%);
+    SetIntRegistryValue(key$, "FlankerVC", ctFlankerVC%);
+    SetIntRegistryValue(key$, "FlankerInvC", ctFlankerInvC%);
+    SetIntRegistryValue(key$, "CueRectVC", ctCueRectVC%);
+    SetIntRegistryValue(key$, "CueRectInvC", ctCueRectInvC%);
     
 end;
 
@@ -549,21 +601,22 @@ func ConteTaskDialog%()
     var iw, ih, tf, ctf;  'will hold "unused" grating parameters from the parse
     var cv$, pat$, ap$;   'etc.
     var con%;             'etc.
+    var tempColor%;  'for color randomization
     
     var eightFloats[8]; 
     var sevenFloats[7];    
-    var sixInts%[6];
+    var sixPlusOneInts%[7];  'This was nicer when it was just the RGB variables, but alas!
     var sevenInts%[7];  'OK, fine, this isn't exactly the greatest organization!  The dialog has evolved so much!
     var threeStrings$[3];
-    
+    var sixInts%[6];
 
 
     trainingOptionsList$[0] := "Reward for lever";    '"Press Lever - Instant Reward - Release - Wait ITI"
     trainingOptionsList$[1] := "Reward for hold & release lever";   '"Hold Lever - Release (when fixpt down) - Reward - Wait ITI"
     trainingOptionsList$[2] := "Reward for hold lever through cue then release";    '"Hold Lever - Patch - Release (when fixpt down) - Reward - Wait ITI"
-    trainingOptionsList$[3] := "Reward for hold lever through cue & sample then release";    '"Hold Lever - Patch & Sample - Release (when fixpt down) - Reward - Wait ITI"
-    trainingOptionsList$[4] := "Full task";    '"Hold Lever - Patch & Sample & Test - Release (early for change, late for no change) - Reward if correct - Wait ITI"
-                                               'We want to start this out with no temporal gap between Sample & Test, and then introduce that, but once Test comes it's the full task
+    trainingOptionsList$[3] := "Hold lever through cue then release for matching cue rect";    '"Hold Lever - Patch - One Cue Box - Release if match/Hold if non-match - Reward - Wait ITI"
+    trainingOptionsList$[4] := "Full task";    '"Hold Lever - Patch & Sample & Test - Release (early for change, hold for no change) - Reward if correct - Wait ITI"
+    
     
     fixationOptionsList$[0] := "Fixation:  None - No Eye Channels"; 
     fixationOptionsList$[1] := "Fixation:  Display Eye Position Only"; 'will create eye channels but not enforce fixation
@@ -587,13 +640,8 @@ func ConteTaskDialog%()
     ctGaborOriText$ := "RF Orientation (deg) = " + Str$(ctGaborOriTemp);
     
     'Convert to fixation-based coordinates (almost certainly fixation will be at 0,0, but we have to allow for other locations)
-    'For X, we want to find the rightward gabor
-    if (ctGaborXLoc - FixationX) > 0 then 'receptive field is to the right of fixation
-        ctGaborXLoc := ctGaborXLoc - FixationX;  'Get location of rightward gabor, relative to fixation
-    else 'receptive field is to the left of fixation
-        ctGaborXLoc := FixationX - ctGaborXLoc;  'Get location of RIGHTward gabor, relative to fixation
-    endif
-    'For Y, both gabors will be on the same side of fixation
+    'This conversion of the "primary" gabor location is only for the dialog box
+    ctGaborXLoc := ctGaborXLoc - FixationX;  
     ctGaborYLoc := ctGaborYLoc - FixationY;
     
     
@@ -601,7 +649,7 @@ func ConteTaskDialog%()
     ctPatchDurText$ := "Patch duration (s) = " + Str$(ctRefreshPerPF%*ctPFsPerPatch%/dataScreenHz,4,-3);  'in seconds, three decimal places
     
     
-    'Pack sixFloats[], sixInts%[], sevenFloats[], sevenInts%[], threeStrings$[]
+    'Pack sixFloats[], sixPlusOneInts%[], sevenFloats[], sevenInts%[], threeStrings$[], sixInts%[]
     eightFloats[0] := ctFixCrossWidthDeg;
     eightFloats[1] := ctPatchOnsetDelay;
     eightFloats[2] := ctPatchToSampleDelay;
@@ -611,12 +659,13 @@ func ConteTaskDialog%()
     eightFloats[6] := ctITI;
     eightFloats[7] := ctDotRadiusDeg;
     
-    sixInts%[0] := ctDotColor1R%;
-    sixInts%[1] := ctDotColor1G%;
-    sixInts%[2] := ctDotColor1B%;
-    sixInts%[3] := ctDotColor2R%;
-    sixInts%[4] := ctDotColor2G%;
-    sixInts%[5] := ctDotColor2B%;
+    sixPlusOneInts%[0] := ctDotColor1R%;
+    sixPlusOneInts%[1] := ctDotColor1G%;
+    sixPlusOneInts%[2] := ctDotColor1B%;
+    sixPlusOneInts%[3] := ctDotColor2R%;
+    sixPlusOneInts%[4] := ctDotColor2G%;
+    sixPlusOneInts%[5] := ctDotColor2B%;
+    sixPlusOneInts%[6] := ctDotsPerPF%;
     
     sevenFloats[0] := ctGaborXLoc;
     sevenFloats[1] := ctGaborYLoc;
@@ -638,6 +687,13 @@ func ConteTaskDialog%()
     threeStrings$[1] := ctSampleOriString$;
     threeStrings$[2] := ctOriChangeString$;
     
+    sixInts%[0] := ctGaborVC%;
+    sixInts%[1] :=  ctGaborInvC%;
+    sixInts%[2] :=  ctFlankerVC%;
+    sixInts%[3] :=  ctFlankerInvC%;
+    sixInts%[4] :=  ctCueRectVC%;
+    sixInts%[5] :=  ctCueRectInvC%;
+    
     
     'Create variables for dialog layout
     var wDlg% := 111;  '108+3
@@ -651,12 +707,14 @@ func ConteTaskDialog%()
     var hTime% := 4;     'height of timing options group
     var hCue% := 4;      'height of cue patch/cue dots options group
     var hStim% := 5;     'height of stimulus options group
+    var hStimCont% := 3; 'height of stimulus contrast options group
     var sTrSpec% := hTrExpOpt% + 1;   'start line of trial specification group
     var sFix% := sTrSpec% + hTrSpec%; 'start line of fixation options group
     var sTime% := sFix% + hFix%;      'start line of timing options group, use sTime% to avoid potential future conflict with "stim%"
     var sCue% := sTime% + hTime%;     'start line of cue patch.cue dots options group
     var sStim% := sCue% + hCue%;      'start line of stimulus options group
-    var hDlg% := sStim% + hStim% + 2; 'height of entire dialog, add a line for the joystick dialog
+    var sStimCont% := sStim% + hStim%; 'start line of stimulus contrast options group
+    var hDlg% := sStim% + hStim% + hStimCont% + 2; 'height of entire dialog, add a line for the joystick dialog
     var wNum% := 6;  'width of a numeric dialog entry box
     
     
@@ -669,13 +727,13 @@ func ConteTaskDialog%()
     DlgGroup("Trial Specification",1,sTrSpec%,wDlg%-2,hTrSpec%);
     ctDlgTotalTrials% := DlgText(ctTotalTrialsText$,c1%,sTrSpec%+1,50);
     DlgInteger(ctDlgnTrialsPerDataPoint%,wNum%,1,ctMaxTrialPerDataPoint%,c33%+1,sTrSpec%+1);  DlgText("Trials/data point",c33%+wNum%+2,sTrSpec%+1);  'no variable to hold output of DlgText if we won't ever turn the field off
-    DlgInteger(ctDlgCountValid%,wNum%,0,ctMaxTrialPerDataPoint%,c1%+1,sTrSpec%+2);  ctTxtCountValid% := DlgText("Valid trials/data point",c1%+wNum%+2,sTrSpec%+2);
-    DlgInteger(ctDlgCountInvalid%,wNum%,0,ctMaxTrialPerDataPoint%,c23%+1,sTrSpec%+2);  ctTxtCountInvalid% := DlgText("Invalid trials/data point",c23%+wNum%+2,sTrSpec%+2);
-    DlgInteger(ctDlgCountCatch%,wNum%,-ctMaxTrialPerDataPoint%,ctMaxTrialPerDataPoint%,c33%+1,sTrSpec%+2);  ctTxtCountCatch% := DlgText("No-Change trials/data point",c33%+wNum%+2,sTrSpec%+2);
+    DlgInteger(ctDlgCountValid%,wNum%,0,ctMaxTrialPerDataPoint%,c1%+1,sTrSpec%+2);  ctTxtCountValid% := DlgText("Valid trials/data point (respond)",c1%+wNum%+2,sTrSpec%+2);
+    DlgInteger(ctDlgCountInvalid%,wNum%,0,ctMaxTrialPerDataPoint%,c23%+1,sTrSpec%+2);  ctTxtCountInvalid% := DlgText("Invalid trials/data point (respond)",c23%+wNum%+2,sTrSpec%+2);
+    DlgInteger(ctDlgCountCatch%,wNum%,-ctMaxTrialPerDataPoint%,ctMaxTrialPerDataPoint%,c33%+1,sTrSpec%+2);  ctTxtCountCatch% := DlgText("No-Change trials/data point (hold)",c33%+wNum%+2,sTrSpec%+2);
     DlgString(ctDlgDotPctString%,60,400,"-0-9 .",c1%+1,sTrSpec%+3);  ctTxtDotPctString% := DlgText("Dot pct Color 1 values (0-100, space-separated)",c1%+60+2,sTrSpec%+3);
     DlgString(ctDlgSampleOriString%,60,400,"-0-9 .",c1%+1,sTrSpec%+4);  ctTxtSampleOriString% := DlgText("Sample Orientation values (+/- deg, space-separated)",c1%+60+2,sTrSpec%+4);
     DlgString(ctDlgOriChangeString%,60,400,"-0-9 .",c1%+1,sTrSpec%+5);  ctTxtOriChangeString% := DlgText("Orientation Change values (+/- deg, space-separated)",c1%+60+2,sTrSpec%+5);
-    DlgInteger(ctDlgNDistractorOn%,wNum%,0,100,c1%+1,sTrSpec%+6);  ctTxtNDistractorOn% := DlgText("Distractor trials/data point",c1%+wNum%+2,sTrSpec%+6);
+    DlgInteger(ctDlgNDistractorOn%,wNum%,0,100,c1%+1,sTrSpec%+6);  ctTxtNDistractorOn% := DlgText("Distractor trials/data point (0=off)",c1%+wNum%+2,sTrSpec%+6);
     DlgInteger(ctDlgNDistractorOff%,wNum%,0,100,c23%+1,sTrSpec%+6);  ctTxtNDistractorOff% := DlgText("No-Distractor trials/data point",c23%+wNum%+2,sTrSpec%+6);
     DlgCheck(ctDlgOrientationMatches%, "L/R Sample Orientations match",c33%,sTrSpec%+6);
     
@@ -722,15 +780,24 @@ func ConteTaskDialog%()
     DlgGroup("Stimulus Options",1,sStim%,wDlg%-2,hStim%);
     DlgCheck(ctDlgStimValsFromConfig%,"Get vals from config",c1%,sStim%+1);
     ctTxtGaborOri% := DlgText(ctGaborOriText$,c23%,sStim%+1);
-    DlgReal(ctDlgGaborXLoc%,wNum%,0,40,c1%+1,sStim%+2);  ctTxtGaborXLoc% := DlgText("Gabor X location (deg right of fix)",c1%+wNum%+2,sStim%+2);
-    DlgReal(ctDlgGaborYLoc%,wNum%,-40,40,c23%+1,sStim%+2);  ctTxtGaborYLoc% := DlgText("Gabor Y location (deg above fix)",c23%+wNum%+2,sStim%+2);
+    DlgReal(ctDlgGaborXLoc%,wNum%,0,40,c1%+1,sStim%+2);  ctTxtGaborXLoc% := DlgText("Gabor 1 X Loc (deg right of fix)",c1%+wNum%+2,sStim%+2);
+    DlgReal(ctDlgGaborYLoc%,wNum%,-40,40,c23%+1,sStim%+2);  ctTxtGaborYLoc% := DlgText("Gabor 1 Y Loc (deg above fix)",c23%+wNum%+2,sStim%+2);
     DlgReal(ctDlgGaborSF%,wNum%,0,100,c33%+1,sStim%+2);  ctTxtGaborSF% := DlgText("Gabor Spatial Freq (cyc/deg)",c33%+wNum%+2,sStim%+2);
     DlgReal(ctDlgGaborWDeg%,wNum%,0.1,20,c1%+1,sStim%+3);  ctTxtGaborWDeg% := DlgText("Gabor Width (diameter, deg)",c1%+wNum%+2,sStim%+3);
     DlgReal(ctDlgGaborHDeg%,wNum%,0.1,20,c23%+1,sStim%+3);  ctTxtGaborHDeg% := DlgText("Gabor Height (diameter, deg)",c23%+wNum%+2,sStim%+3);
     DlgReal(ctDlgGaborPhase%,wNum%,-360,360,c33%+1,sStim%+3);  ctTxtGaborPhase% := DlgText("Gabor Phase (deg)",c33%+wNum%+2,sStim%+3);
     DlgReal(ctDlgGaborDivisor%,wNum%,0.1,20,c1%+1,sStim%+4);  ctTxtGaborDivisor% := DlgText("Gaussian mask factor",c1%+wNum%+2,sStim%+4);
-    DlgInteger(ctDlgPanelLinePixels%,wNum%,1,100,c23%+1,sStim%+4);  ctTxtPanelLinePixels% := DlgText("Border width (pixels)",c23%+wNum%+2,sStim%+4);
-    DlgCheck(ctDlgPanelIsHoriz%,"Flankers horizontal",c33%+1,sStim%+4);
+    DlgInteger(ctDlgPanelLinePixels%,wNum%,1,100,c23%+1,sStim%+4);  ctTxtPanelLinePixels% := DlgText("Cue rect border width (pixels)",c23%+wNum%+2,sStim%+4);
+    DlgCheck(ctDlgPanelIsHoriz%,"Panel orientation horizontal",c33%+1,sStim%+4);
+    
+    DlgGroup("Stimulus Contrasts",1,sStimCont%,wDlg%-2,hStimCont%);
+    DlgInteger(ctDlgSampVC%,wNum%,0,100,c1%+1,sStimCont%+1);  ctTxtSampVC% := DlgText("Valid Gabor Contrast (0-100)",c1%+wNum%+2,sStimCont%+1);
+    DlgInteger(ctDlgFlankerVC%,wNum%,0,100,c23%+1,sStimCont%+1);  ctTxtFlankerVC% := DlgText("Valid Flanker Contrast (0-100)",c23%+wNum%+2,sStimCont%+1);
+    DlgInteger(ctDlgCueRectVC%,wNum%,0,100,c33%+1,sStimCont%+1);  ctTxtCueRectVC% := DlgText("Valid Cue Rect Contrast (0-100)",c33%+wNum%+2,sStimCont%+1);
+    DlgInteger(ctDlgSampInvC%,wNum%,0,100,c1%+1,sStimCont%+2);  ctTxtSampInvC% := DlgText("Invalid Gabor Contrast (0-100)",c1%+wNum%+2,sStimCont%+2);
+    DlgInteger(ctDlgFlankerInvC%,wNum%,0,100,c23%+1,sStimCont%+2);  ctTxtFlankerInvC% := DlgText("Invalid Flanker Contrast (0-100)",c23%+wNum%+2,sStimCont%+2);
+    DlgInteger(ctDlgCueRectInvC%,wNum%,0,100,c33%+1,sStimCont%+2);  ctTxtCueRectInvC% := DlgText("Invalid Cue Rect Contrast (0-100)",c33%+wNum%+2,sStimCont%+2);  
+    
     
     DlgCheck(ctDlgAlwaysPressing%,"Always Pressing?",c1%,hDlg%-2);
     
@@ -739,14 +806,14 @@ func ConteTaskDialog%()
     DlgAllow(0, 0, ConteTaskDialogChanged%);
     
     i% := DlgShow(nTrialsPerDataPoint%,ctTrainingOptions%,ctCountInvalid%,ctCountCatch%,ctCountValid%,ctRequireFixation%,
-                  ctFixationOn%,ctAdditionalWindowRadius,eightFloats[],sixInts%[],ctDotsPerPF%,ctPatchRadiusDeg,
+                  ctFixationOn%,ctAdditionalWindowRadius,eightFloats[],sixPlusOneInts%[],ctPatchRadiusDeg,
                   ctRefreshPerPF%,ctPFsPerPatch%,ctResponseTime,sevenFloats[],sevenInts%[],threeStrings$[],
-                  ctAbortPenalty,ctFixAcqTime);  'Now at 20!
+                  ctAbortPenalty,ctFixAcqTime,sixInts%[]);  'Now at 20!
     
     
     if i% = 1 then        
         
-        'Unpack eightFloats[], sevenFloats[], sixInts%[], sevenInts%[], threeStrings$[]
+        'Unpack eightFloats[], sevenFloats[], sixPlusOneInts%[], sevenInts%[], threeStrings$[], sixInts%[]
         ctFixCrossWidthDeg := eightFloats[0];
         ctPatchOnsetDelay := eightFloats[1];
         ctPatchToSampleDelay := eightFloats[2];
@@ -756,12 +823,13 @@ func ConteTaskDialog%()
         ctITI := eightFloats[6];
         ctDotRadiusDeg := eightFloats[7];
     
-        ctDotColor1R% := sixInts%[0];
-        ctDotColor1G% := sixInts%[1];
-        ctDotColor1B% := sixInts%[2];
-        ctDotColor2R% := sixInts%[3];
-        ctDotColor2G% := sixInts%[4];
-        ctDotColor2B% := sixInts%[5];
+        ctDotColor1R% := sixPlusOneInts%[0];
+        ctDotColor1G% := sixPlusOneInts%[1];
+        ctDotColor1B% := sixPlusOneInts%[2];
+        ctDotColor2R% := sixPlusOneInts%[3];
+        ctDotColor2G% := sixPlusOneInts%[4];
+        ctDotColor2B% := sixPlusOneInts%[5];
+        ctDotsPerPF% := sixPlusOneInts%[6];
         
         ctGaborXLoc := sevenFloats[0];
         ctGaborYLoc := sevenFloats[1];
@@ -783,10 +851,52 @@ func ConteTaskDialog%()
         ctSampleOriString$ := threeStrings$[1];
         ctOriChangeString$ := threeStrings$[2];
         
-        
+        ctGaborVC% := sixInts%[0];
+        ctGaborInvC% := sixInts%[1];
+        ctFlankerVC% := sixInts%[2];
+        ctFlankerInvC% := sixInts%[3];
+        ctCueRectVC% := sixInts%[4];
+        ctCueRectInvC% := sixInts%[5];
         
         
         SaveConteTaskParameters();
+        
+        
+        'Get "secondary" gabor location based on requested orientation
+        if ctPanelIsHoriz% = 1 then
+            ctGabor2XLoc := -ctGaborXLoc;  'opposite side of fixation, coordinates relative to fixation
+            ctGabor2YLoc := ctGaborYLoc;  'If panel is horizontal, Y is same for both
+        else
+            ctGabor2XLoc := ctGaborXLoc;  'If panel is vertical, X is same for both
+            ctGabor2YLoc := -ctGaborYLoc;  'opposite side of fixation, coordinates relative to fixation
+        endif
+        'Convert gabor locations back to literal coordinates
+        ctGaborXLoc := ctGaborXLoc + FixationX;  
+        ctGaborYLoc := ctGaborYLoc + FixationY;
+        ctGabor2XLoc := ctGabor2XLoc + FixationX;  
+        ctGabor2YLoc := ctGabor2YLoc + FixationY;
+        
+        
+        'Randomize color/location assignment
+        'The idea here is to make everything as easy as possible down the road.  Color 1 is the "receptive field"
+        'color, color 2 is the other color.  But to make sure that color 1 is not always "on the right" or "on top"
+        'or whatever, we will simply randomly swap them half the time.  The program will continue as always, as if
+        'the experimenter was randomly swapping them, but this takes the burden off the experimenter.
+        'We make sure to do this after saving the parameters so things don't get swapped in the dialog.
+        if Rand(1,0) > 0.5 then
+            tempColor% := ctDotColor1R%;
+            ctDotColor1R% := ctDotColor2R%;
+            ctDotColor2R% := tempColor%;
+            
+            tempColor% := ctDotColor1G%;
+            ctDotColor1G% := ctDotColor2G%;
+            ctDotColor2G% := tempColor%;
+            
+            tempColor% := ctDotColor1B%;
+            ctDotColor1B% := ctDotColor2B%;
+            ctDotColor2B% := tempColor%;
+        endif
+        
         
         'Change value of ctRequireFixation to -1 if it is 1 (monitor eye position only), because that's what the code expects.
         'This is not strictly necessary but allows commonplace conditionals (full fixation if ctRequireFixation = 1, fixation is at least monitored if ctRequireFixation <> 0)
@@ -823,7 +933,7 @@ func ConteTaskDialog%()
         endif      
         
         
-        'Get final value of patch duration
+        'Get final value of patch duration - this value is only used once in the idle loop??
         ctPatchDur := ctRefreshPerPF%*ctPFsPerPatch%/dataScreenHz;  'in seconds, three decimal places
         
         
@@ -842,6 +952,10 @@ func ConteTaskDialogChanged%(item%)
     var status% := 1;
     
     
+    'Force value of ctDlgNDistractorOff% if ctDlgNDistractorOn% is 0
+    if DlgValue(ctDlgNDistractorOn%) = 0 then
+        DlgValue(ctDlgNDistractorOff%,1);
+    endif
     
     'Calculate total trials for display
     nTrials% := CalcNumTrials%(DlgValue(ctDlgTrainingOptions%),DlgValue(ctDlgnTrialsPerDataPoint%),DlgValue(ctDlgCountValid%),DlgValue(ctDlgCountInvalid%),DlgValue(ctDlgCountCatch%),
@@ -977,6 +1091,15 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(1,ctDlgNDistractorOn%,ctTxtNDistractorOn%);
         DlgEnable(1,ctDlgNDistractorOff%,ctTxtNDistractorOff%);
         DlgEnable(1,ctDlgSampleOriString%,ctTxtSampleOriString%);
+        DlgEnable(1,ctDlgSampVC%,ctTxtSampVC%);
+        DlgEnable(1,ctDlgSampInvC%,ctTxtSampInvC%);
+        DlgEnable(1,ctDlgFlankerVC%,ctTxtFlankerVC%);
+        DlgEnable(1,ctDlgFlankerInvC%,ctTxtFlankerInvC%);
+        DlgEnable(1,ctDlgCueRectVC%,ctTxtCueRectVC%);
+        DlgEnable(1,ctDlgCueRectInvC%,ctTxtCueRectInvC%);
+        DlgEnable(1,ctDlgCountValid%,ctTxtCountValid%);
+        DlgEnable(1,ctDlgCountInvalid%,ctTxtCountInvalid%);
+        
         'But do not bother enabling Gabor properties, as these will be enabled/disbled based on ctStimValuesFromConfig% below
     else
         DlgEnable(0,ctDlgPatchToSampleDelay%,ctTxtPatchToSampleDelay%);
@@ -996,21 +1119,25 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(0,ctDlgGaborWDeg%,ctTxtGaborWDeg%);
         DlgEnable(0,ctDlgGaborSF%,ctTxtGaborSF%);
         DlgEnable(0,ctDlgGaborPhase%,ctTxtGaborPhase%);
+        DlgEnable(0,ctDlgSampVC%,ctTxtSampVC%);
+        DlgEnable(0,ctDlgSampInvC%,ctTxtSampInvC%);
+        DlgEnable(0,ctDlgFlankerVC%,ctTxtFlankerVC%);
+        DlgEnable(0,ctDlgFlankerInvC%,ctTxtFlankerInvC%);
+        DlgEnable(0,ctDlgCueRectVC%,ctTxtCueRectVC%);
+        DlgEnable(0,ctDlgCueRectInvC%,ctTxtCueRectInvC%);
+        DlgEnable(0,ctDlgCountValid%,ctTxtCountValid%);
+        DlgEnable(0,ctDlgCountInvalid%,ctTxtCountInvalid%);
     endif
     
     'For Step 3 to Step 4, we add everything related to the test stimulus; response time label changes
     if DlgValue(ctDlgTrainingOptions%) > 3 then
-        DlgEnable(1,ctDlgCountInvalid%,ctTxtCountInvalid%);
         DlgEnable(1,ctDlgCountCatch%,ctTxtCountCatch%);
-        DlgEnable(1,ctDlgCountValid%,ctTxtCountValid%);
         DlgEnable(1,ctDlgOriChangeString%,ctTxtOriChangeString%);
         DlgEnable(1,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
         DlgEnable(1,ctDlgTargetDuration%,ctTxtTargetDuration%);
         DlgValue$(ctTxtResponseTime%,ctResponseTimeText$);
     else
-        DlgEnable(0,ctDlgCountInvalid%,ctTxtCountInvalid%);
         DlgEnable(0,ctDlgCountCatch%,ctTxtCountCatch%);
-        DlgEnable(0,ctDlgCountValid%,ctTxtCountValid%);
         DlgEnable(0,ctDlgOriChangeString%,ctTxtOriChangeString%);
         DlgEnable(0,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
         DlgEnable(0,ctDlgTargetDuration%,ctTxtTargetDuration%);
@@ -1101,7 +1228,7 @@ func IdleProcessing%()
                 LogStatus("VSGWait", "Got Ready Pulse from VSG at exactly " + str$(tRise));
                 Yield(1.0);
                 tLastTrigger := tFall;
-                ChangeStateTo(stateEnsureLeverInOrigin%, tFall);
+                ChangeStateTo(stateEnforceLeverInOrigin%, tFall);
                 
                 if RecordEyeTrackerOutputFile% = 1 then
                     'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
@@ -1124,24 +1251,24 @@ func IdleProcessing%()
             
         '---Here is where the repeated trial sequence begins---   
             
-        case iState% = stateEnsureLeverInOrigin% then    
+        case iState% = stateEnforceLeverInOrigin% then    
             ' Making sure lever is in origin to begin trial
             if stateBegin% = 1 then
-                LogStatus("EnsureLeverInOrigin", "Checking for lever in origin at about " + str$(tNow));
+                LogStatus("EnforceLeverInOrigin", "Checking for lever in origin at about " + str$(tNow));
                 stateBegin% := 0;
             endif
             
-            tempAnswer% := Answer%(JSCenter%); 'don't want to poll the joystick multiple times as the state
-                                               'could conceivably change in between pollings, just do it once
+            tempAnswer% := Answer%(JSCenter%); 'poll the joystick here, check result in case statement
+                                               
             docase
             case tempAnswer% = JSCenter% or tempAnswer% = JSUp%  then  'If lever in origin (or up)
-                LogStatus("EnsureLeverInOrigin", "Found lever in origin at about " + str$(tNow));
+                LogStatus("EnforceLeverInOrigin", "Found lever in origin at about " + str$(tNow));
                 ChangeStateTo(stateWaitForLever%, tNow);
             case tempAnswer% < 0 then  'If error indicated; only errors should be coding errors
                 message("There has been a problem reading the lever device! Check log file! Quitting!");
                 Stop%();  'Stop%() should do a clean quit
             else 
-                'LogStatus("EnsureLeverInOrigin", "Lever is still down at about " + str$(tNow));
+                'LogStatus("EnforceLeverInOrigin", "Lever is still down at about " + str$(tNow));
                 'Just check again...but don't write it, this spams the log
             endcase
             
@@ -1307,7 +1434,8 @@ func IdleProcessing%()
             anyScreenUp% := 1;  'Note that we have (presumably) successfully placed SOMETHING on the screen
             
             
-        case iState% = stateMonitorFrameChannel% then
+        case iState% = stateMonitorFrameChannel% then  'TODO - make sure this makes sense, currently does not allow any
+                                                       'response before response window, which is probably not valid in all cases now
             'Watching for the appearance of each cue frame
             
             'On the first time through this state we will do considerably more than we normally do (i.e. just logging)
@@ -1316,31 +1444,43 @@ func IdleProcessing%()
                 stateBegin% := 0;
                 FrameTriggersFound% := 0;
                 
-                'Create string for subsequent "sample" sampletexting; set drawFlankers% and drawGabors%
+                'Create strings for subsequent sampletexting - Cue sampletext is easy and created on the fly
+                'Create string for "sample" sampletext; set drawFlankers% and drawGabors%
                 if ctTrainingOptions% >= 3 then 'don't bother to make this if we won't get to the sample epoch
-                    TextForSample$ := "Sample " + Str$(samp1Ori[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(samp2Ori[ctTrialOrder%[nTrialsCompleted%]]) + ",";
+                    TextForSample$ := "Sample; GaborOri " + Str$(samp1Ori[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(samp2Ori[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
+                    TextForSample$ += "GaborCont " + Str$(samp1Contrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(samp2Contrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
+                    TextForSample$ += "CueRectCont " + Str$(samp1CueRectContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(samp2CueRectContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
                     docase
-                    case flankerIsH%[ctTrialOrder%[nTrialsCompleted%]] = -2 then
-                        TextForSample$ += "VertNoF";  'no flankers
-                    case flankerIsH%[ctTrialOrder%[nTrialsCompleted%]] = -1 then
-                        TextForSample$ += "HorizNoF";  'no flankers
-                    case flankerIsH%[ctTrialOrder%[nTrialsCompleted%]] = 0 then
-                        TextForSample$ += "VertF";  'vertical flankers
-                    case flankerIsH%[ctTrialOrder%[nTrialsCompleted%]] = 1 then
-                        TextForSample$ += "HorizF";  'horizontal flankers
+                    case flankerIsH% = -1 then
+                        TextForSample$ += "NoFlankers";  'no flankers - note that this does NOT address contrast of flankers, this means square box
+                    case flankerIsH% = 0 then
+                        TextForSample$ += "VertFlankerCont " + Str$(samp1FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(samp2FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]);  'vertical flankers
+                    case flankerIsH% = 1 then
+                        TextForSample$ += "HorizFlankerCont " + Str$(samp1FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(samp2FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]);  'horizontal flankers
                     endcase
 
-                    if flankerIsH%[ctTrialOrder%[nTrialsCompleted%]] >= -1 then
-                        drawFlankers% := -1;
+                    if flankerIsH% = -1 then
+                        drawFlankers% := 0;
                     else
                         drawFlankers% := 1;
                     endif                
                     drawGabors% := whichOriChange%[ctTrialOrder%[nTrialsCompleted%]]+1;  'drawGabors% value happens to be whichOriChange% + 1
                 endif
                 
-                'Create string for subsequent "target" sampletexting;
+                'Create string for "target" sampletext
                 if ctTrainingOptions% = 4 then 'don't bother to make this if we won't get to the target epoch
-                    TextForTarget$ := "Target " + Str$(test1Ori[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2Ori[ctTrialOrder%[nTrialsCompleted%]]) + ",";
+                    TextForTarget$ := "Target; GaborOri " + Str$(test1Ori[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2Ori[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
+                    TextForTarget$ += "GaborCont " + Str$(test1Contrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2Contrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
+                    TextForTarget$ += "CueRectCont " + Str$(test1CueRectContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2CueRectContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
+                    docase
+                    case flankerIsH% = -1 then
+                        TextForTarget$ += "NoFlankers; ";  'no flankers - note that this does NOT address contrast of flankers, this means square box
+                    case flankerIsH% = 0 then
+                        TextForTarget$ += "VertFlankerCont " + Str$(test1FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";  'vertical flankers
+                    case flankerIsH% = 1 then
+                        TextForTarget$ += "HorizFlankerCont " + Str$(test1FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";  'horizontal flankers
+                    endcase
+
                     docase
                     case validity%[ctTrialOrder%[nTrialsCompleted%]] = -1 then
                         TextForTarget$ += "NoChange,";
@@ -1363,6 +1503,16 @@ func IdleProcessing%()
             endif
             
             docase
+            case Answer%(JSDown%) <> JSDown% and FrameTriggersFound% = ctPFsPerPatch%+2 and ctTrainingOptions% = 3 then  'If lever is released during sample when training=3, this is a response, end trial, go to TrialCompleted
+                LogStatus("MonitorFrameChannel", "Response during sample period");
+                SafeSampleKey("X");  'Drop fixation point
+                leverReleased% := 1;
+                WaitForBlankTo(stateTrialCompleted%, tNow);
+            case Answer%(JSDown%) <> JSDown% and FrameTriggersFound% = ctPFsPerPatch%+4 and ctTrainingOptions% = 4 then  'If lever is released during test when training=4, this is a response, end trial, go to TrialCompleted
+                LogStatus("MonitorFrameChannel", "Response during test period");
+                SafeSampleKey("X");  'Drop fixation point
+                leverReleased% := 1;
+                WaitForBlankTo(stateTrialCompleted%, tNow);
             case Answer%(JSDown%) <> JSDown% then  'If lever is released while stimulus is playing, go to abort penalty
                 LogStatus("MonitorFrameChannel", "Lever released");
                 SafeSampleKey("X");  'Drop fixation point
@@ -1398,7 +1548,7 @@ func IdleProcessing%()
                 case FrameTriggersFound% = ctPFsPerPatch%+3 then 'This pulse indicates sample off; enter hold period for training option 3
                     LogStatus("MonitorFrameChannel", "Sample down at " + Str$(tTrigger));
                     SampleText("Sample Down, trial " + Str$(nTrialsCompleted%+1),tTrigger);
-                    DrawMonitorScreen(0,0,-1,-drawFlankers%);
+                    DrawMonitorScreen(0,0,-1,-1);
                     'Break out after sample for training option 3
                     if ctTrainingOptions% = 3 then 'we need to wait through the delay period (if any) then wait for release
                         ChangeStateTo(stateResponseWindow%,tTrigger);
@@ -1410,7 +1560,7 @@ func IdleProcessing%()
                 case FrameTriggersFound% = ctPFsPerPatch%+5 then 'This pulse indicates target off, enters response window for training option 4
                     LogStatus("MonitorFrameChannel", "Target down at " + Str$(tTrigger));
                     SampleText("Target Down, trial " + Str$(nTrialsCompleted%+1),tTrigger);
-                    DrawMonitorScreen(0,0,-1,-drawFlankers%);  'remove gabors and flankers from monitor screen
+                    DrawMonitorScreen(0,0,-1,-1);  'remove gabors and flankers from monitor screen
                     ChangeStateTo(stateResponseWindow%,tTrigger);
                 endcase
                 tLastFrameTrigger := tFall;                
@@ -1460,6 +1610,7 @@ func IdleProcessing%()
             nTrialsCompleted% += 1;
             LogStatus("TrialComplete", "Trial " + Str$(nTrialsCompleted%) + " complete at about " + Str$(tNow) + "\n");
             
+            DrawMonitorScreen(-1,-1,-1,-1);  'remove everything from monitor screen
             
             'We can only get to this state if we are in ctTrainingOptions% >= 2, in all cases we need to advance
             LogStatus("TrialComplete", "Advancing stimulus at about " + str$(tNow) + "\n");
@@ -1467,12 +1618,34 @@ func IdleProcessing%()
             tITIStart := tNow;  'Set start time of ITI now, "X" has already been called
             
             docase
-            case ctTrainingOptions% < 4 and leverReleased% = 0 then  'Held lever through training, correct
+            case ctTrainingOptions% < 3 and leverReleased% = 0 then  'Held lever through training, correct
                 LogStatus("TrialComplete", "Successful hold of lever (training)");
                 ChangeStateTo(stateReward%,tNow);
                 remainInIdleLoop% := 1;  'start reward immediately 
-            case ctTrainingOptions% < 4 and leverReleased% = 1 then  'Released lever through training, incorrect
+            case ctTrainingOptions% < 3 and leverReleased% = 1 then  'Released lever through training, incorrect
                 LogStatus("TrialComplete", "Unsuccessful trial, released lever (training)");
+                ChangeStateTo(stateCheckAdvance%,tNow);
+            case ctTrainingOptions% = 3 and leverReleased% = 1 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] = 1 then 'Hit
+                LogStatus("TrialComplete", "Hit");
+                SampleText("Trial " + Str$(nTrialsCompleted%) + ": Hit");
+                Hits% += 1;
+                ChangeStateTo(stateReward%,tNow);
+                remainInIdleLoop% := 1;  'start reward immediately 
+            case ctTrainingOptions% = 3 and leverReleased% = 0 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] = 1 then 'Miss
+                LogStatus("TrialComplete", "Miss");
+                SampleText("Trial " + Str$(nTrialsCompleted%) + ": Miss");
+                Misses% += 1;
+                ChangeStateTo(stateCheckAdvance%,tNow);
+            case ctTrainingOptions% = 3 and leverReleased% = 0 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'Correct Rejection
+                LogStatus("TrialComplete", "Correct Rejection");
+                SampleText("Trial " + Str$(nTrialsCompleted%) + ": Correct Rejection");
+                CRs% += 1;
+                ChangeStateTo(stateReward%,tNow);
+                remainInIdleLoop% := 1;  'start reward immediately
+            case ctTrainingOptions% = 3 and leverReleased% = 1 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'False Alarm
+                LogStatus("TrialComplete", "False Alarm");
+                SampleText("Trial " + Str$(nTrialsCompleted%) + ": False Alarm");
+                FAs% += 1;
                 ChangeStateTo(stateCheckAdvance%,tNow);
             case leverReleased% = 1 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] > 0 then 'Hit
                 LogStatus("TrialComplete", "Hit");
@@ -1485,13 +1658,13 @@ func IdleProcessing%()
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Miss");
                 Misses% += 1;
                 ChangeStateTo(stateCheckAdvance%,tNow);
-            case leverReleased% = 0 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'Correct rejection
+            case leverReleased% = 0 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'Correct Rejection
                 LogStatus("TrialComplete", "Correct Rejection");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Correct Rejection");
                 CRs% += 1;
                 ChangeStateTo(stateReward%,tNow);
                 remainInIdleLoop% := 1;  'start reward immediately
-            case leverReleased% = 1 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'FA 
+            case leverReleased% = 1 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'False Alarm 
                 LogStatus("TrialComplete", "False Alarm");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": False Alarm");
                 FAs% += 1;
@@ -1503,7 +1676,7 @@ func IdleProcessing%()
         case iState% = stateReward% then
             'For now being simple - if we get into the reward state, deliver a reward and move on!
             'There's no maintain fixation option, because the animal has to press, I guess I KNOW Henry is going to request "maintain" but it ain't happening to start
-            'Assume that 'X' has already been given
+            'Important to assume that 'X' has already been given; some training steps don't use the VSG so can't 'X' here
             LogStatus("Reward", "Reward delivered at about " + str$(tNow) + "\n");
             DefaultReward();
             tReward := View(DataWindow%).MaxTime();  'use tReward so the reward wait is as precise as possible
@@ -1532,7 +1705,7 @@ func IdleProcessing%()
             
                
         case iState% = stateCheckAdvance% then
-            'Checking that advance has occurred
+            'Checking that previously-requested advance has occurred
             if stateBegin% = 1 then
                 LogStatus("CheckAdvance", "Checking that advance has occured at about " + str$(tNow));
                 stateBegin% := 0;
@@ -1562,7 +1735,7 @@ func IdleProcessing%()
         
             if tNow > tITIStart + ctITI then
                 LogStatus("ITI", "ITI complete at about " + str$(tNow));
-                ChangeStateTo(stateEnsureLeverInOrigin%,tNow);
+                ChangeStateTo(stateEnforceLeverInOrigin%,tNow);
             endif
             
             
@@ -1570,6 +1743,8 @@ func IdleProcessing%()
         case iState% = stateAbort% then  
             'Trial aborted, do not reward or advance          
             LogStatus("Abort", "Abort at about " + str$(tNow)); 
+            
+            DrawMonitorScreen(-1,-1,-1,-1);  'remove everything from monitor screen
             
             nTrialsAborted% += 1;
             
@@ -1869,11 +2044,11 @@ proc InitializeWindows()
         
         'Set the X/Y offsets of the flanker patches
         if ctPanelIsHoriz% = 1 then
-            'Horizontal panels will have X offsets
+            'Horizontal panels will have X flanker offsets
             xOffset := ctGaborWDeg;
             yOffset := 0;
         else
-            'Vertical panels will have Y offsets
+            'Vertical panels will have Y flanker offsets
             xOffset := 0;
             yOffset := ctGaborHDeg;
         endif
@@ -1881,10 +2056,10 @@ proc InitializeWindows()
 
         'Create new channels in the XY view to display the gabor/flanker windows
         'reuse FixationX, FixationY
-        'Gabor 1 stimulus window
+        'Gabor 1 stimulus window, ctGaborXLoc etc. coordinates are now literal
         for index% := 0 to 35 do
-            Gabor1WindowX[index%] := FixationX+ctGaborXLoc + (mainW * Cos(index% * twopi/36.0));
-            Gabor1WindowY[index%] := FixationY+ctGaborYLoc + (mainH * Sin(index% * twopi/36.0));
+            Gabor1WindowX[index%] := ctGaborXLoc + (mainW * Cos(index% * twopi/36.0));
+            Gabor1WindowY[index%] := ctGaborYLoc + (mainH * Sin(index% * twopi/36.0));
         next;
         iDisplayWindowGabor1% := XYSetChan(0);
         XYColour(iDisplayWindowGabor1%,13);  'blue
@@ -1895,8 +2070,8 @@ proc InitializeWindows()
         
         'Gabor 2 stimulus window
         for index% := 0 to 35 do
-            Gabor2WindowX[index%] := FixationX-ctGaborXLoc + (mainW * Cos(index% * twopi/36.0));
-            Gabor2WindowY[index%] := FixationY+ctGaborYLoc + (mainH * Sin(index% * twopi/36.0));
+            Gabor2WindowX[index%] := ctGabor2XLoc + (mainW * Cos(index% * twopi/36.0));
+            Gabor2WindowY[index%] := ctGabor2YLoc + (mainH * Sin(index% * twopi/36.0));
         next;
         iDisplayWindowGabor2% := XYSetChan(0);
         XYColour(iDisplayWindowGabor2%,13);  'blue
@@ -1910,8 +2085,8 @@ proc InitializeWindows()
         'Note that one of xOffset or yOffset will be 0 based on whether panel is horiz/vert, so we can just
         'add/subtract both, the zeroed one won't contribute.  Nice and easy!
         for index% := 0 to 35 do
-            Flanker1WindowX[index%] := FixationX+ctGaborXLoc + xOffset + (mainW * Cos(index% * twopi/36.0));
-            Flanker1WindowY[index%] := FixationY+ctGaborYLoc + yOffset + (mainH * Sin(index% * twopi/36.0));
+            Flanker1WindowX[index%] := ctGaborXLoc + xOffset + (mainW * Cos(index% * twopi/36.0));
+            Flanker1WindowY[index%] := ctGaborYLoc + yOffset + (mainH * Sin(index% * twopi/36.0));
         next;
         iDisplayWindowFlanker1% := XYSetChan(0);
         XYColour(iDisplayWindowFlanker1%,13);  'blue
@@ -1922,8 +2097,8 @@ proc InitializeWindows()
         
         'Flanker 2 stimulus window
         for index% := 0 to 35 do
-            Flanker2WindowX[index%] := FixationX+ctGaborXLoc - xOffset + (mainW * Cos(index% * twopi/36.0));
-            Flanker2WindowY[index%] := FixationY+ctGaborYLoc - yOffset + (mainH * Sin(index% * twopi/36.0));
+            Flanker2WindowX[index%] := ctGaborXLoc - xOffset + (mainW * Cos(index% * twopi/36.0));
+            Flanker2WindowY[index%] := ctGaborYLoc - yOffset + (mainH * Sin(index% * twopi/36.0));
         next;
         iDisplayWindowFlanker2% := XYSetChan(0);
         XYColour(iDisplayWindowFlanker2%,13);  'blue
@@ -1934,8 +2109,8 @@ proc InitializeWindows()
         
         'Flanker 3 stimulus window
         for index% := 0 to 35 do
-            Flanker3WindowX[index%] := FixationX-ctGaborXLoc + xOffset + (mainW * Cos(index% * twopi/36.0));
-            Flanker3WindowY[index%] := FixationY+ctGaborYLoc + yOffset + (mainH * Sin(index% * twopi/36.0));
+            Flanker3WindowX[index%] := ctGabor2XLoc + xOffset + (mainW * Cos(index% * twopi/36.0));
+            Flanker3WindowY[index%] := ctGabor2YLoc + yOffset + (mainH * Sin(index% * twopi/36.0));
         next;
         iDisplayWindowFlanker3% := XYSetChan(0);
         XYColour(iDisplayWindowFlanker3%,13);  'blue
@@ -1946,8 +2121,8 @@ proc InitializeWindows()
         
         'Flanker 4 stimulus window
         for index% := 0 to 35 do
-            Flanker4WindowX[index%] := FixationX-ctGaborXLoc - xOffset + (mainW * Cos(index% * twopi/36.0));
-            Flanker4WindowY[index%] := FixationY+ctGaborYLoc - yOffset + (mainH * Sin(index% * twopi/36.0));
+            Flanker4WindowX[index%] := ctGabor2XLoc - xOffset + (mainW * Cos(index% * twopi/36.0));
+            Flanker4WindowY[index%] := ctGabor2YLoc - yOffset + (mainH * Sin(index% * twopi/36.0));
         next;
         iDisplayWindowFlanker4% := XYSetChan(0);
         XYColour(iDisplayWindowFlanker4%,13);  'blue
@@ -2066,13 +2241,14 @@ func Start%()
     var oriCh[100];
     var valid%[100];
     var dist%[100];
+    var sampleContrast%;
+    var myRand%;
     
     
     
     'It only makes sense to create and write the files if we will be using them, so training options of 2 or higher
     if ctTrainingOptions% > 1 then
-        
-        
+
         'Get filenames of files we need to eventually write
         CSVFileName$ := GetScriptDir$(0)+"..\\..\\ConteCSVFile.csv"; 'This is a comma separated value file which specifies most details of each trial
         dotSupplyFileName$ := GetScriptDir$(0)+"..\\..\\ConteDotsFile.bin";  'This is a binary file which holds dot locations for the cue
@@ -2081,12 +2257,12 @@ func Start%()
         'Start by getting values to use for the counterbalance, based on which training step we are at
         n% := nTrialsPerDataPoint%; 
         
-        'For training step 2 (hold through cue), determine number of cues (always do this)
+        'For ctTrainingOptions = 2 or 3 or 4, determine number of cues
         nCue% := String2FloatArray%(ctDotPctString$,cue[]);
         printlog("Number of cues found is %d\n",nCue%);
         printlog("Cue values found are %f\n",cue[]);
         
-        'For training step 3 (hold through sample), get values to calculate unique trials
+        'For ctTrainingOptions = 3 or 4 (hold through sample/full task), get values to calculate unique trials
         if ctTrainingOptions% > 2 then
             nOri% := String2FloatArray%(ctSampleOriString$,ori[]);
             nDist% := ctNDistractorOn% + ctNDistractorOff%;
@@ -2094,18 +2270,19 @@ func Start%()
                 dist%[i%] := 1;
             next
             for i% := 0 to ctNDistractorOff%-1 do
-                dist%[i%+ctNDistractorOn%] := -1;
+                dist%[i%+ctNDistractorOn%] := 0; 'was -1 when variable was unused, but that makes little sense
             next
-        else
+        else  'ctTrainingOptions = 2, hold through cue
             nOri% := 1;
             nDist% := 1;
+            dist%[0] := 0;
             ctPatchToSampleDelay := ctResponseTime;  'Response time will apply to patch-to-sample delay if there is no sample
             ctSampleDuration := 0;  'Turn off stimulus after patch-to-sample (i.e. response time) delay 
-            ctSampleToTargetDelay := 0;  'Don't think this is necessary but just in case
-            ctTargetDuration := 0;  'Don't think this is necessary, but just in case
+            ctSampleToTargetDelay := 0;  'No sample to target delay
+            ctTargetDuration := 0;  'No target
         endif;
         
-        'For training step 4 (i.e. full task), get values to calculate unique trials
+        'For ctTrainingOptions = 4 (i.e. full task), get values to calculate unique trials
         if ctTrainingOptions% > 3 then
             nCh% := String2FloatArray%(ctOriChangeString$,oriCh[]);
             nValid% := ctCountValid% + ctCountInvalid% + ctCountCatch%;
@@ -2118,10 +2295,18 @@ func Start%()
             for i% := 0 to ctCountCatch%-1 do
                 valid%[i%+ctCountValid%+ctCountInvalid%] := -1;
             next
-        else
+        else  'ctTrainingOptions = 3, hold through sample
             ctSampleToTargetDelay := ctResponseTime;  'Response time will apply to sample-to-target delay if there is no target
             ctTargetDuration := 0;  'Turn off stimulus after sample-to-target (i.e. response time) delay 
         endif;
+        
+        'Set orientation/absence of distractors, note that for now there is no ability to flip distractor orientation within-experiment
+        'In fact, we've changed it from an array to a scalar; ctNDistractorOn% is now the gate
+        if ctNDistractorOn% > 0 then 'distractors are on, use rectangular cue rect
+            flankerIsH% := ctPanelIsHoriz%;
+        else 'distractors are off, use square cue rect (nice oxymoron)
+            flankerIsH% := -1; 
+        endif
         
         
         'Write out the variables that hold the counterbalance
@@ -2161,12 +2346,7 @@ func Start%()
                                     whichOriChange%[count%] := round(rand(1,1));  'value will be a 1 or a 2
                                 endcase
                                 
-                                'Set orientation/absence of distractors, note that for now there is no ability to flip distractor orientation within-experiment
-                                if dist%[p%] = 1 then 'distractors are on
-                                    flankerIsH%[count%] := ctPanelIsHoriz%;
-                                else 'distractors are off
-                                    flankerIsH%[count%] := ctPanelIsHoriz%-2; 
-                                endif
+                                
                                 
                                 'Set orientations of sample and test stimuli, kinda complicated, I hope I don't have to trudge through this later
                                 docase
@@ -2209,6 +2389,96 @@ func Start%()
                                     endif
                                 endcase
                                 
+                                
+                                'Need to set contrast values, which will be based on various values
+                                docase
+                                case ctTrainingOptions% = 2 then
+                                    'Do nothing, here cue patch is the final stimulus, the contrast of 
+                                    'all gabor/flanker/cueRect should be 0, variables are initialized to zero!
+                                case ctTrainingOptions% = 3 then
+                                    'All test contrasts are 0
+                                    'Which cueRect (and gabor and flanker if appropriate) we show is determined
+                                    'by validity/whichOriChange
+                                    docase
+                                        'if cue indicates red, and cue is valid, red has valid contrast and green is off
+                                    case validity%[count%] = 1 and whichOriChange%[count%] = 1 then
+                                        samp1CueRectContrast%[count%] := ctCueRectVC%;
+                                        samp1Contrast%[count%] := ctGaborVC%;
+                                        samp1FlankerContrast%[count%] := ctFlankerVC%;
+                                        'if cue indicates green, and cue is valid, green has valid contrast and red is off
+                                    case validity%[count%] = 1 and whichOriChange%[count%] = 2 then
+                                        samp2CueRectContrast%[count%] := ctCueRectVC%;
+                                        samp2Contrast%[count%] := ctGaborVC%;
+                                        samp2FlankerContrast%[count%] := ctFlankerVC%;
+                                        'if cue indicates red, and cue is invalid, green has invalid contrast and red is off
+                                    case validity%[count%] = 0 and whichOriChange%[count%] = 1 then
+                                        samp2CueRectContrast%[count%] := ctCueRectInvC%;
+                                        samp2Contrast%[count%] := ctGaborInvC%;
+                                        samp2FlankerContrast%[count%] := ctFlankerInvC%;
+                                        'if cue indicates green, and cue is invalid, red has invalid contrast and green is off
+                                    case validity%[count%] = 0 and whichOriChange%[count%] = 2 then 
+                                        samp1CueRectContrast%[count%] := ctCueRectInvC%;
+                                        samp1Contrast%[count%] := ctGaborInvC%;
+                                        samp1FlankerContrast%[count%] := ctFlankerInvC%;
+                                    endcase
+                                    'Force all flanker contrasts to 0 if flankers are off
+                                    if flankerIsH% = -1 or dist%[p%] = 0 then
+                                        samp1FlankerContrast%[count%] := 0;
+                                        samp2FlankerContrast%[count%] := 0;
+                                    endif;
+                                case ctTrainingOptions% = 4 then
+                                    'All test contrasts are equal to the corresponding sample contrasts
+                                    'The location with the orientation change should have the valid
+                                    '(presumably high) contrast regardless of whether it is valid or not
+                                    'The point is, let's imagine the "invalid" contrast is set to 0.  If
+                                    'we have a valid trial, that's cool, the changing side is visible and
+                                    'the other side is off.  But on an invalid trial, the change side cannot
+                                    'be off, because a change trial requires a response and the animal has to
+                                    'be able to see the change.  So the change side always gets the "valid"
+                                    'contrast
+                                    myRand% := 0;  'Reset myRand%
+                                    if whichOriChange%[count%] = 0 then  'on catch trials, randomize contrasts
+                                       myRand% := round(rand(1,1));  'value will be a 1 or a 2
+                                    endif;
+                                    if whichOriChange%[count%] = 1 or myRand% = 1 then
+                                        samp1CueRectContrast%[count%] := ctCueRectVC%;
+                                        samp1Contrast%[count%] := ctGaborVC%;
+                                        samp1FlankerContrast%[count%] := ctFlankerVC%;
+                                        test1CueRectContrast%[count%] := ctCueRectVC%;
+                                        test1Contrast%[count%] := ctGaborVC%;
+                                        test1FlankerContrast%[count%] := ctFlankerVC%;
+                                        samp2CueRectContrast%[count%] := ctCueRectInvC%;
+                                        samp2Contrast%[count%] := ctGaborInvC%;
+                                        samp2FlankerContrast%[count%] := ctFlankerInvC%;
+                                        test2CueRectContrast%[count%] := ctCueRectInvC%;
+                                        test2Contrast%[count%] := ctGaborInvC%;
+                                        test2FlankerContrast%[count%] := ctFlankerInvC%;
+                                    else 'whichOriChange%[count%] = 2 or myRand% = 2
+                                        samp1CueRectContrast%[count%] := ctCueRectInvC%;
+                                        samp1Contrast%[count%] := ctGaborInvC%;
+                                        samp1FlankerContrast%[count%] := ctFlankerInvC%;
+                                        test1CueRectContrast%[count%] := ctCueRectInvC%;
+                                        test1Contrast%[count%] := ctGaborInvC%;
+                                        test1FlankerContrast%[count%] := ctFlankerInvC%;
+                                        samp2CueRectContrast%[count%] := ctCueRectVC%;
+                                        samp2Contrast%[count%] := ctGaborVC%;
+                                        samp2FlankerContrast%[count%] := ctFlankerVC%;
+                                        test2CueRectContrast%[count%] := ctCueRectVC%;
+                                        test2Contrast%[count%] := ctGaborVC%;
+                                        test2FlankerContrast%[count%] := ctFlankerVC%;
+                                    endif
+                                    
+                                    'Force all flanker contrasts to 0 if flankers are off
+                                    if flankerIsH% = -1 or dist%[p%] = 0 then
+                                        samp1FlankerContrast%[count%] := 0;
+                                        samp2FlankerContrast%[count%] := 0;
+                                        test1FlankerContrast%[count%] := 0;
+                                        test2FlankerContrast%[count%] := 0;
+                                    endif;
+                                endcase
+                                
+                                
+                                
                                 count% += 1;  'increment counter
                             next
                         next
@@ -2226,8 +2496,25 @@ func Start%()
         '   test2Ori[];
         '   validity%[];       'Validity on each trial, -1 = no change, 0 = invalid, 1 = valid (if cueDotPct is 50, validity value is not updated, but side 1/2 is randomly selected)
         '   whichOriChange%[]; '0 = no change, 1 = side 1 changes, 2 = side 2 changes
-        '   flankerIsH%[];     '0 = vertical flankers, 1 = horizontal flankers, -1 = no flankers
-                
+        '   flankerIsH%;     '0 = vertical flankers, 1 = horizontal flankers, -1 = no flankers
+        
+        'Also fill the following:
+        '   samp1Contrast%[];
+        '   samp2Contrast%[];
+        '   test1Contrast%[];
+        '   test2Contrast%[];
+        '   samp1FlankerContrast%[];
+        '   samp2FlankerContrast%[];
+        '   test1FlankerContrast%[];
+        '   test2FlankerContrast%[];
+        '   samp1CueRectContrast%[];
+        '   samp2CueRectContrast%[];
+        '   test1CueRectContrast%[];
+        '   test2CueRectContrast%[];
+
+        
+        
+        
         
         'Write binary file holding dot percentages on each patch
         'Spec for binary file is now:
@@ -2295,6 +2582,7 @@ func Start%()
         endif;
         
         s := Seconds();
+        ParseGratingParametersContrast%(GetGratingParameters$("Stimulus"), sampleContrast%);  'get the contrast from "Stimulus", use for sample/test/cuebox
         for i% := 0 to nTrials%-1 do  'loop through every trial
             'Target orientation for left and right gabors has been calculated above in the counterbalance code
             
@@ -2303,20 +2591,30 @@ func Start%()
             'cut the trial off at that point, but will allow us to have the fixation point up during the "delay"
             
             
+            'The latest version of the CSV file (about 2/13/24) consists of the following:
+            '7 values specifying the cue patch (same as before)
+            '5 values specifying some timing parameters (same as before) - for these sections a positive value
+            '  is interpreted as duration in ms; a value of 0 skips the section; a value of -1 ends presentation
+            '  at that section (and of course does not display that section)
+            '14 values each specifying the Sample A/Sample B/Test A/Test B stimuli 
             'Write to file
             Print("%f,%f,%f,%f,%f,%d,%d,",FixationX,FixationY,ctPatchRadiusDeg*2,ctPatchRadiusDeg*2,ctDotRadiusDeg*2,ctRefreshPerPF%,ctPFsPerPatch%);  'cue patch params
             Print("%f,%f,%f,%f,%f,",ctPatchToSampleDelay*1000,ctSampleDuration*1000,ctSampleToTargetDelay*1000,ctTargetDuration*1000,ctResponseTime*1000);  'timing params
-            Print("(%d/%d/%d),(%d/%d/%d),",ctDotColor1R%,ctDotColor1G%,ctDotColor1B%,ctDotColor2R%,ctDotColor2G%,ctDotColor2B%);  'colors - NOTE: colors are placeholders, VSG will use command line colors (but these columns DO have to be legal, though unused, colors)
-            Print("%f,%f,%f,%f,%f,%f,",FixationX-ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,samp1Ori[i%],ctGaborSF);  'Sample A (left = 1), part 1
-            Print("%f,%f,%d,%d,0,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Sample A (left = 1), part 2, color for A is color 0
-            Print("%f,%f,%f,%f,%f,%f,",FixationX+ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,samp2Ori[i%],ctGaborSF);  'Sample B (right = 2), part 1
-            Print("%f,%f,%d,%d,1,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Sample B (right = 2), part 2, color for B is color 1
-            Print("%f,%f,%f,%f,%f,%f,",FixationX-ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,test1Ori[i%],ctGaborSF);  'Test A (left = 1), part 1
-            Print("%f,%f,%d,%d,0,",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);  'Test A (left = 1), part 2, color for A is color 0
-            Print("%f,%f,%f,%f,%f,%f,",FixationX+ctGaborXLoc,FixationY+ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,test2Ori[i%],ctGaborSF);  'Test B (right = 2), part 1
-            Print("%f,%f,%d,%d,1",ctGaborPhase,ctGaborDivisor,flankerIsH%[i%],ctPanelLinePixels%);   'Tset B (right = 2), part 2, color for B is color 1
+            Print("%f,%f,%f,%f,%f,%f,",ctGaborXLoc,ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,samp1Ori[i%],ctGaborSF);  'Sample A (primary), part 1
+            Print("%f,%f,%d,%d,0,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%);  'Sample A (primary), part 2, color for A is color 0
+            Print("%f,%f,%f,",samp1Contrast%[i%],samp1FlankerContrast%[i%],samp1CueRectContrast%[i%]);  'Sample A (primary), part 3, contrasts
+            Print("%f,%f,%f,%f,%f,%f,",ctGabor2XLoc,ctGabor2YLoc,ctGaborHDeg,ctGaborWDeg,samp2Ori[i%],ctGaborSF);  'Sample B (secondary), part 1
+            Print("%f,%f,%d,%d,1,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%);  'Sample B (secondary), part 2, color for B is color 1
+            Print("%f,%f,%f,",samp2Contrast%[i%],samp2FlankerContrast%[i%],samp2CueRectContrast%[i%]);  'Sample B (secondary), part 3, contrasts
+            Print("%f,%f,%f,%f,%f,%f,",ctGaborXLoc,ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,test1Ori[i%],ctGaborSF);  'Test A (primary), part 1
+            Print("%f,%f,%d,%d,0,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%);  'Test A (primary), part 2, color for A is color 0
+            Print("%f,%f,%f,",test1Contrast%[i%],test1FlankerContrast%[i%],test1CueRectContrast%[i%]);  'Test A (primary), part 3, contrasts
+            Print("%f,%f,%f,%f,%f,%f,",ctGabor2XLoc,ctGabor2YLoc,ctGaborHDeg,ctGaborWDeg,test2Ori[i%],ctGaborSF);  'Test B (secondary), part 1
+            Print("%f,%f,%d,%d,1,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%);  'Test B (secondary), part 2, color for B is color 1
+            Print("%f,%f,%f",test2Contrast%[i%],test2FlankerContrast%[i%],test2CueRectContrast%[i%]);   'Test B (secondary), part 3, contrasts
             Print("\n");
             
+
         next
         
         FileClose(CSVHandle%);
@@ -2428,7 +2726,8 @@ func Start%()
         cmdLine$ := cmdLine$ + " -s " + GetGratingParameters$("Stimulus") + " -O 90 ";
     endif 
     
- 
+    
+    
   
     ' Initial text marks
     ' djs Always version 3. NO difference if maintainmode is used or not. 
@@ -2661,6 +2960,8 @@ proc WriteParameterFile()
     Print("Gabor/flanker radius height (deg)        : %f\n", mainH);
     Print("Gabor X location (deg)                   : %f\n", ctGaborXLoc);
     Print("Gabor Y location (deg)                   : %f\n", ctGaborYLoc);
+    Print("Gabor2 X location (deg)                  : %f\n", ctGabor2XLoc);
+    Print("Gabor2 Y location (deg)                  : %f\n", ctGabor2YLoc);
     Print("Panel height (deg)                       : %f\n", ctGaborHDeg);
     Print("Panel width (deg)                        : %f\n", ctGaborWDeg);
     Print("Panel is horizontal?                     : %d\n", ctPanelIsHoriz%);
@@ -2668,7 +2969,14 @@ proc WriteParameterFile()
     Print("Gabor spatial frequency (cyc/deg)        : %f\n", ctGaborSF);
     Print("Gabor phase (deg)                        : %f\n", ctGaborPhase);
     Print("Gabor spatial factor                     : %f\n", ctGaborDivisor);
-
+    Print("Gabor valid contrast (0-100)             : %d\n", ctGaborVC%);
+    Print("Gabor invalid contrast (0-100)           : %d\n", ctGaborInvC%);
+    Print("Flanker valid contrast (0-100)           : %d\n", ctFlankerVC%);
+    Print("Flanker invalid contrast (0-100)         : %d\n", ctFlankerInvC%);
+    Print("Panel valid contrast (0-100)             : %d\n", ctCueRectVC%);
+    Print("Panel invalid contrast (0-100)           : %d\n", ctCueRectInvC%);
+    
+    
 
     Print("\nResults\n");
 	Print("-------------------------\n\n");
@@ -2993,76 +3301,89 @@ proc DrawMonitorScreen(drawFix%,drawCue%,drawGabor%,drawFlanker%)
     'the idle loop every time we call this function; rather, when calling
     'this function, just indicate the items that *would* happen here if they
     'are active, and here we will make sure that they are active
+    '
+    'Moreover, we are going to check the state of each of the four drawn elements to
+    'prevent redundant XYAddData/XYDelete calls
     
     if ctFixationOn% = 1 then
         docase
-        case drawFix% = 1 then
+        case drawFix% = 1 and fixDrawn% = 0 then
             'Draw fixpt in xy window
             View(XYWindow%).XYAddData(iFixptChannel%, FixationX, FixationY);
             'Draw fixpt window in xy window
             if ctRequireFixation% <> 0 then
                 View(XYWindow%).XYAddData(iFixptWindowChannel%, CueWindowX[], CueWindowY[]);  'fixpoint window is identical to cue window  
             endif
-        case drawFix% = -1 then 
+            fixDrawn% := 1;
+        case drawFix% = -1 and fixDrawn% = 1 then 
             'Delete fixpt
             View(XYWindow%).XYDelete(iFixptChannel%);
             'Delete fixpt window
             if ctRequireFixation% <> 0 then
                 View(XYWindow%).XYDelete(iFixptWindowChannel%);  
             endif
+            fixDrawn% := 0;
         endcase
     endif
     
     if ctTrainingOptions% > 1 then
         docase
-        case drawCue% = 1 then
+        case drawCue% = 1 and cueDrawn% = 0 then
             'Draw cue window in xy window
             View(XYWindow%).XYAddData(iCueWindowChannel%, CueWindowX[], CueWindowY[]);
-        case drawCue% = -1 then 
+            cueDrawn% := 1;
+        case drawCue% = -1 and cueDrawn% = 1 then 
             'Delete cue window
             View(XYWindow%).XYDelete(iCueWindowChannel%);
+            cueDrawn% := 0;
         endcase
     endif
     
     if ctTrainingOptions% > 2 then
         docase
-        case drawGabor% = 1 then
+        case drawGabor% = 1 and gaborDrawn% <> 1 then
             'Draw gabor windows in xy window
             XYColour(iDisplayWindowGabor1%,13);  'blue
             XYColour(iDisplayWindowGabor2%,13);  'blue
             View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
             View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
-        case drawGabor% = 2 then
+            gaborDrawn% := 1;
+        case drawGabor% = 2 and gaborDrawn% <> 2 then
             'Draw gabor windows in xy window
             XYColour(iDisplayWindowGabor1%,16);  'red
             XYColour(iDisplayWindowGabor2%,13);  'blue
             View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
             View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
-        case drawGabor% = 3 then
+            gaborDrawn% := 2;
+        case drawGabor% = 3 and gaborDrawn% <> 3 then
             'Draw gabor windows in xy window
             XYColour(iDisplayWindowGabor1%,13);  'blue
             XYColour(iDisplayWindowGabor2%,16);  'red
             View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
             View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
-        case drawGabor% = -1 then 
+            gaborDrawn% := 3;
+        case drawGabor% = -1  and gaborDrawn% > 0 then 
             'Delete gabor windows
             View(XYWindow%).XYDelete(iDisplayWindowGabor1%);
             View(XYWindow%).XYDelete(iDisplayWindowGabor2%);
+            gaborDrawn% := 0;
         endcase
         
         docase
-        case drawFlanker% = 1 then
+        case drawFlanker% = 1 and flankerDrawn% = 0 then
             'Draw flanker windows in xy window
             View(XYWindow%).XYAddData(iDisplayWindowFlanker1%, Flanker1WindowX[], Flanker1WindowY[]);
             View(XYWindow%).XYAddData(iDisplayWindowFlanker2%, Flanker2WindowX[], Flanker2WindowY[]);
             View(XYWindow%).XYAddData(iDisplayWindowFlanker3%, Flanker3WindowX[], Flanker3WindowY[]);
             View(XYWindow%).XYAddData(iDisplayWindowFlanker4%, Flanker4WindowX[], Flanker4WindowY[]);
-        case drawFlanker% = -1 then 
+            flankerDrawn% := 1;
+        case drawFlanker% = -1 and flankerDrawn% = 1 then 
             'Delete flanker windows
             View(XYWindow%).XYDelete(iDisplayWindowFlanker1%);
             View(XYWindow%).XYDelete(iDisplayWindowFlanker2%);
             View(XYWindow%).XYDelete(iDisplayWindowFlanker3%);
             View(XYWindow%).XYDelete(iDisplayWindowFlanker4%);
+            flankerDrawn% := 0;
         endcase
     endif
     
