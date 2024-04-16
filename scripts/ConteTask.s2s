@@ -1654,9 +1654,10 @@ func IdleProcessing%()
             case View(DataWindow%).FindPulseUp%(FrameChannel%, tLastFrameTrigger+tic, tTrigger, tFall) = 1 then
                 'Found a trigger, let's figure out what it is, by counting
                 FrameTriggersFound% += 1;
+                'printlog("Frame trigger #" + Str$(FrameTriggersFound%) + " found\n");
                 docase
                 case FrameTriggersFound% <= ctPFsPerPatch% then 'This pulse indicates a cue patch-frame up
-                    LogStatus("MonitorFrameChannel", "Cue Frame #" + Str$(FrameTriggersFound%) + " found at " + Str$(tTrigger));
+                    LogStatus("MonitorFrameChannel", "Cue Frame #" + Str$(FrameTriggersFound%) + " of " + Str$(ctPFsPerPatch%) + " found at " + Str$(tTrigger));
                     if FrameTriggersFound% = 1 then
                         SampleText("Cue Frame #1, trial " + Str$(nTrialsCompleted%+1) + ", percent color 1 is " + Str$(cueDotPct[ctTrialOrder%[nTrialsCompleted%]]),tTrigger);  'on the first patch-frame, indicate dot percentage
                         DrawMonitorScreen(0,1,0,0);  'Draw cue on monitor screen
@@ -1703,9 +1704,10 @@ func IdleProcessing%()
                     ChangeStateTo(stateResponseWindow%,tTrigger);
                 endcase
                 tLastFrameTrigger := tFall;                    
-            case tNow > tStateStart + ctPatchDur + ctPatchToSampleDelay + ctSampleDuration + ctSampleToTargetDelay + ctTargetDuration[ctTrialOrder%[nTrialsCompleted%]] + ctResponseTime + 1 then 
+            case tNow > tStateStart + ctPatchDur + ctPatchToSampleDelay + abs(ctSampleDuration) + ctSampleToTargetDelay + ctTargetDuration[ctTrialOrder%[nTrialsCompleted%]] + ctResponseTime + 1 then 
                 'just in case things go all wrong, we should bail after one second too long
                 'note that we should expect to NOT wait through the response window, so there's actually extra time, can't hurt
+                'double note that ctSampleDuration is now -1 for training step 2, this causes addition problems so we ABS() it
                 message("Waited for one second beyond end of stimuli, but did not find all expected triggers!  Quitting!");
                 Stop%();
             endcase
@@ -2499,7 +2501,7 @@ func Start%()
         'printlog("nOriChange = %d, nDistractor = %d, nValid = %d, total trials = %d\n",nCh%,nDist%,nCueType%,nTrials%);
         printlog("Performing counterbalance: nRepeats = %d, nCueDotPct = %d, nCont = %d, ",n%,nCueDotPct%,nCont%);
         printlog("nContChange = %d, nDistractor = %d, nCueType = %d, total trials = %d\n",nCh%,nDist%,nCueType%,nTrials%);
-        halt;
+
         'loop through n, CuePct, Cont, ContCh, Dist, Valid
         for i% := 1 to n% do  'i% is not used as an index, just for getting correct count of trials
             for j% := 0 to nCueDotPct%-1 do
@@ -3623,22 +3625,22 @@ proc DrawMonitorScreen(drawFix%,drawCue%,drawGabor%,drawFlanker%)
         docase
         case drawGabor% = 1 and gaborDrawn% <> 1 then
             'Draw gabor windows in xy window
-            XYColour(iDisplayWindowGabor1%,13);  'blue
-            XYColour(iDisplayWindowGabor2%,13);  'blue
+            View(XYWindow%).XYColour(iDisplayWindowGabor1%,13);  'blue
+            View(XYWindow%).XYColour(iDisplayWindowGabor2%,13);  'blue
             View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
             View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
             gaborDrawn% := 1;
         case drawGabor% = 2 and gaborDrawn% <> 2 then
             'Draw gabor windows in xy window
-            XYColour(iDisplayWindowGabor1%,16);  'red
-            XYColour(iDisplayWindowGabor2%,13);  'blue
+            View(XYWindow%).XYColour(iDisplayWindowGabor1%,16);  'red
+            View(XYWindow%).XYColour(iDisplayWindowGabor2%,13);  'blue
             View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
             View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
             gaborDrawn% := 2;
         case drawGabor% = 3 and gaborDrawn% <> 3 then
             'Draw gabor windows in xy window
-            XYColour(iDisplayWindowGabor1%,13);  'blue
-            XYColour(iDisplayWindowGabor2%,16);  'red
+            View(XYWindow%).XYColour(iDisplayWindowGabor1%,13);  'blue
+            View(XYWindow%).XYColour(iDisplayWindowGabor2%,16);  'red
             View(XYWindow%).XYAddData(iDisplayWindowGabor1%, Gabor1WindowX[], Gabor1WindowY[]);
             View(XYWindow%).XYAddData(iDisplayWindowGabor2%, Gabor2WindowX[], Gabor2WindowY[]);
             gaborDrawn% := 3;
