@@ -1686,7 +1686,7 @@ func String2FloatArray%(instr$,&array[])
     var tempNum;
     
     while ind% <= Len(instr$) do
-        if Mid$(instr$,ind%+1,1) = " " or ind% = Len(instr$) then 'if we are looking at a separator, check to see if tempStr$ is a number, if so, place into array[]
+        if Mid$(instr$,ind%+1,1) = " " or ind% = Len(instr$) then 'when we find a separator, check to see if tempStr$ is a number, if so, place into array[]
             if Len(tempStr$) > 0 then  
                 tempNum := Val(tempStr$,nCh%);
                 if nCh% = Len(tempStr$) then  'make sure entire string was converted to number, if fewer characters converted, string is corrupt
@@ -1698,6 +1698,7 @@ func String2FloatArray%(instr$,&array[])
                     count% += 1;
                 else 'if there's an error, bail out claiming read of 0 values
                     Message("Non-numeric character found in input string at: " + tempStr$);
+                    ArrConst(array[],0);
                     count% := 0;
                     return count%;
                 endif
@@ -1707,6 +1708,65 @@ func String2FloatArray%(instr$,&array[])
             tempStr$ := "";  'reset tempStr$ after finding separator
         else 'if we are not looking at a separator, build tempStr$  
             tempStr$ += Mid$(instr$,ind%+1,1);
+        endif
+        ind% += 1;
+    wend
+    return count%;
+end
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' String2IntArray%(instr$,&array%[])
+'
+' This function reads ints from a space-separated string of ints, and places  
+' read ints in array%[].  The function returns the number of ints found.  If
+' more ints are found than the length of array%[], a modal message box will 
+' inform the user of the error and array%[] will be filled to the maximum extent
+' possible.  Only numeric characters and negative signs (no decimal points)
+' and spaces are allowed in instr$.  Any other characters will result in an error
+' and a read of 0 values.
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func String2IntArray%(instr$,&array%[])
+    var count%;
+    var ind%;
+    var tempStr$ := "";
+    var nCh%;
+    var tempNum%;
+    
+    while ind% <= Len(instr$) do
+        if Mid$(instr$,ind%+1,1) = " " or ind% = Len(instr$) then 'when we find a separator, check to see if tempStr$ is a number, if so, place into array[]
+            if Len(tempStr$) > 0 then  
+                tempNum% := Val(tempStr$,nCh%);
+                if nCh% = Len(tempStr$) then  'make sure entire string was converted to number, if fewer characters converted, string is corrupt
+                    if count% >= Len(array%[]) then  'make sure there are not too many floats in the input string
+                        Message("There were more int values in the input string than elements in the container\narray (" + Str$(Len(array%[])) + ")!  Returning first " + Str$(Len(array%[])) + " values!");
+                        return count%;  'but return the number that were actually read
+                    endif
+                    array%[count%] := tempNum%;
+                    count% += 1;
+                else 'if there's an error, bail out claiming read of 0 values
+                    Message("Non-numeric character found in input string at: " + tempStr$);
+                    ArrConst(array%[],0);
+                    count% := 0;
+                    return count%;
+                endif
+            else
+                'tempStr$ will be empty if there is a double-separator, just noting the explicit skip here
+            endif
+            tempStr$ := "";  'reset tempStr$ after finding separator
+        else 'if we are not looking at a separator, build tempStr$ 
+            'But check for illegal decimal
+            if Mid$(instr$,ind%+1,1) <> "." then
+                tempStr$ += Mid$(instr$,ind%+1,1);
+            else
+                Message("Illegal decimal character found in input string at position " + Str$(ind%+1));
+                ArrConst(array%[],0);
+                count% := 0;
+                return count%;
+            endif
         endif
         ind% += 1;
     wend
