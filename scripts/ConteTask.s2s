@@ -914,12 +914,12 @@ func ConteTaskDialog%()
         ctFixCrossWidthPixels% := ctFixCrossWidthPixels;
         
         'Get "secondary" gabor location based on requested orientation
-        if ctPanelIsHoriz% = 1 then
-            ctGabor2XLoc := -ctGaborXLoc;  'opposite side of fixation, coordinates relative to fixation
-            ctGabor2YLoc := ctGaborYLoc;  'If panel is horizontal, Y is same for both
+        if ctPanelIsHoriz% = 0 then
+            ctGabor2XLoc := -ctGaborXLoc;  'place vertical panels on opposite L/R side of fixation, coordinates relative to fixation
+            ctGabor2YLoc := ctGaborYLoc;  'If panel is vertical, Y is same for both
         else
-            ctGabor2XLoc := ctGaborXLoc;  'If panel is vertical, X is same for both
-            ctGabor2YLoc := -ctGaborYLoc;  'opposite side of fixation, coordinates relative to fixation
+            ctGabor2XLoc := ctGaborXLoc;  'If panel is horizontal, X is same for both
+            ctGabor2YLoc := -ctGaborYLoc;  'place horizontal panels on opposite U/D side of fixation, coordinates relative to fixation
         endif
         'Convert gabor locations back to literal coordinates
         ctGaborXLoc := ctGaborXLoc + FixationX;  
@@ -1285,12 +1285,14 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(0,ctDlgGaborPhase%,ctTxtGaborPhase%);
     case DlgValue(ctDlgTrainingOptions%) > 2 then
         'Enable so values can be changed
-        DlgEnable(1,ctDlgGaborXLoc%,ctTxtGaborXLoc%);
+        DlgEnable(1,ctDlgGaborXLoc%,ctTxtGaborXLoc%);  'Location will change location of gabor/cue rect
         DlgEnable(1,ctDlgGaborYLoc%,ctTxtGaborYLoc%);
-        DlgEnable(1,ctDlgGaborHDeg%,ctTxtGaborHDeg%);
+        DlgEnable(1,ctDlgGaborHDeg%,ctTxtGaborHDeg%);  'Size will change size of gabor/cue rect
         DlgEnable(1,ctDlgGaborWDeg%,ctTxtGaborWDeg%);
-        DlgEnable(1,ctDlgGaborSF%,ctTxtGaborSF%);
-        DlgEnable(1,ctDlgGaborPhase%,ctTxtGaborPhase%);
+        if DlgValue(ctDlgTrainingOptions%) > 3 then
+            DlgEnable(1,ctDlgGaborSF%,ctTxtGaborSF%);  'Spatial frequency only makes sense if there is a gabor
+            DlgEnable(1,ctDlgGaborPhase%,ctTxtGaborPhase%);  'Phase only makes sense if there is a gabor
+        endif
     endcase
 
     return status%;
@@ -2761,7 +2763,7 @@ func Start%()
         '   test2CueRectContrast%[];
 
         
-        halt;  'testing
+        'halt;  'testing
         
         
         'Write binary file holding dot percentages on each patch
