@@ -105,7 +105,7 @@ var cueDrawn%;
 var gaborDrawn%;
 var flankerDrawn%;
 var TextForSample$;  'ummmm, gotta go with the funky name here
-var TextForTarget$;  'and match it I guess
+var TextForTest$;  'and match it I guess
 var SequencerPeriodMS;
 var HBCycle% := 1;
 var ctRewardDurSec;
@@ -158,8 +158,7 @@ var cueDotPct[ctMaxTrials%];       'Percentage of cue dots on each trial
 'var test1Ori[ctMaxTrials%];
 'var test2Ori[ctMaxTrials%];
 var validity%[ctMaxTrials%];       'Validity on each trial, -1 = no change, 0 = invalid, 1 = valid (what if cueDotPct is 50?)
-'var whichOriChange%[ctMaxTrials%]; '0 = no change, 1 = side 1 changes, 2 = side 2 changes
-var whichContChange%[ctMaxTrials%]; '0 = no change, 1 = side 1 changes, 2 = side 2 changes
+var whichLocChange%[ctMaxTrials%]; '0 = no change, 1 = location 1 changes, 2 = location 2 changes
 var flankerIsH%;                   '-2 = no flanker, vertical box; -1 = no flanker, horizontal box; 0 = flanker vertical; 1 = flanker horizontal; cue box shrinks if flankers are off
 
 var samp1Contrast%[ctMaxTrials%];
@@ -1569,8 +1568,8 @@ func IdleProcessing%()
                     'Same for both below
                     TextForSample$ += "CueRectCont " + Str$(samp1CueRectContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(samp2CueRectContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
                     docase
-                    case flankerIsH% = -1 then
-                        TextForSample$ += "NoFlankers";  'no flankers - note that this does NOT address contrast of flankers, this means square box
+                    'case flankerIsH% = -1 then
+                    '    TextForSample$ += "NoFlankers";  'no flankers - note that this does NOT address contrast of flankers, this means square box (currently there is NO square box)
                     case flankerIsH% = 0 then
                         TextForSample$ += "VertFlankerCont " + Str$(samp1FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(samp2FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]);  'vertical flankers
                     case flankerIsH% = 1 then
@@ -1582,48 +1581,50 @@ func IdleProcessing%()
                     else
                         drawFlankers% := 1;
                     endif                
-                    'drawGabors% := whichOriChange%[ctTrialOrder%[nTrialsCompleted%]]+1;  'drawGabors% value designed to be whichOriChange% + 1
-                    drawGabors% := whichContChange%[ctTrialOrder%[nTrialsCompleted%]]+1;  'drawGabors% value designed to be whichContChange% + 1
-                endif
-                
-                'Create string for "target" sampletext
-                if ctTrainingOptions% = 4 then 'don't bother to make this if the target epoch is not meaningful
-                    'TextForTarget$ := "Target; GaborOri " + Str$(test1Ori[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2Ori[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
-                    TextForTarget$ := "Target; GaborCont " + Str$(test1Contrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2Contrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
+                    drawGabors% := whichLocChange%[ctTrialOrder%[nTrialsCompleted%]]+1;  'drawGabors% value designed to be whichLocChange% + 1
+                    
+                    'Note that under previous conceptions of the task, we were NOT using a test period during
+                    'Training Step 3.  This required two separate IF statements here, one to make the "Sample"
+                    'sampletext for Steps 3+, and a second to make the "Test" sampletext for Steps 4+.
+                    'With the move to using an "identical" sample AND test period in Step 3, this can now be
+                    'accomplished with a single IF (Steps 3+)...so the end of the first IF and the opening of
+                    'the second IF can simply be removed.  They are below, for easy re-insertion.
+                '
+                'endif
+                '
+                'Create string for "test" sampletext
+                'if ctTrainingOptions% >= 4 then 'don't bother to make this if the test epoch is not meaningful...even if it does happen (as in Step 3)
+                    
+                    
+                    'TextForTest$ := "Test; GaborOri " + Str$(test1Ori[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2Ori[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
+                    TextForTest$ := "Target; GaborCont " + Str$(test1Contrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2Contrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
                     'Same for both below
-                    TextForTarget$ += "CueRectCont " + Str$(test1CueRectContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2CueRectContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
+                    TextForTest$ += "CueRectCont " + Str$(test1CueRectContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2CueRectContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
                     docase
                     case flankerIsH% = -1 then
-                        TextForTarget$ += "NoFlankers; ";  'no flankers - note that this does NOT address contrast of flankers, this means square box
+                        TextForTest$ += "NoFlankers; ";  'no flankers - note that this does NOT address contrast of flankers, this means square box
                     case flankerIsH% = 0 then
-                        TextForTarget$ += "VertFlankerCont " + Str$(test1FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";  'vertical flankers
+                        TextForTest$ += "VertFlankerCont " + Str$(test1FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";  'vertical flankers
                     case flankerIsH% = 1 then
-                        TextForTarget$ += "HorizFlankerCont " + Str$(test1FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";  'horizontal flankers
+                        TextForTest$ += "HorizFlankerCont " + Str$(test1FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";  'horizontal flankers
                     endcase
 
                     docase
                     case validity%[ctTrialOrder%[nTrialsCompleted%]] = -1 then
-                        TextForTarget$ += "NoChange,";
+                        TextForTest$ += "NoChange,";
                     case validity%[ctTrialOrder%[nTrialsCompleted%]] = 0 then
-                        TextForTarget$ += "Invalid,";
+                        TextForTest$ += "Invalid,";
                     case validity%[ctTrialOrder%[nTrialsCompleted%]] = 1 then
-                        TextForTarget$ += "Valid,";
+                        TextForTest$ += "Valid,";
                     endcase
-'                    docase
-'                    case whichOriChange%[ctTrialOrder%[nTrialsCompleted%]] = 0 then
-'                        TextForTarget$ += "NoChange";
-'                    case whichOriChange%[ctTrialOrder%[nTrialsCompleted%]] = 1 then
-'                        TextForTarget$ += "Side1Change";
-'                    case whichOriChange%[ctTrialOrder%[nTrialsCompleted%]] = 2 then
-'                        TextForTarget$ += "Side2Change";
-'                    endcase
+
                     docase
-                    case whichContChange%[ctTrialOrder%[nTrialsCompleted%]] = 0 then
-                        TextForTarget$ += "NoChange";
-                    case whichContChange%[ctTrialOrder%[nTrialsCompleted%]] = 1 then
-                        TextForTarget$ += "Side1Change";
-                    case whichContChange%[ctTrialOrder%[nTrialsCompleted%]] = 2 then
-                        TextForTarget$ += "Side2Change";
+                    case whichLocChange%[ctTrialOrder%[nTrialsCompleted%]] = 0 then
+                        TextForTest$ += "NoChange";
+                    case whichLocChange%[ctTrialOrder%[nTrialsCompleted%]] = 1 then
+                        TextForTest$ += "Loc1Change";
+                    case whichLocChange%[ctTrialOrder%[nTrialsCompleted%]] = 2 then
+                        TextForTest$ += "Loc2Change";
                     endcase
                 endif
                 
@@ -1665,41 +1666,42 @@ func IdleProcessing%()
                         SampleText("Cue Frame #" + Str$(FrameTriggersFound%) + ", trial " + Str$(nTrialsCompleted%+1),tTrigger);  'let's sampletext every patch-frame in the cue
                     endif
                 case FrameTriggersFound% = ctPFsPerPatch%+1 and ctPatchToSampleDelay = 0 and ctTrainingOptions% > 2 then  'This pulse indicates cue down AND sample up (if step 2, this is just the end of stimulus)
-                    LogStatus("MonitorFrameChannel", "Cue down and sample up at " + Str$(tTrigger));
+                    FrameTriggersFound% += 1;  'Increment frame triggers since there are not separate cue off and sample on
+                    LogStatus("MonitorFrameChannel", "Cue off and sample on at " + Str$(tTrigger));
                     SampleText(TextForSample$,tTrigger);
                     DrawMonitorScreen(0,-1,1,drawFlankers%);  'Remove cue on monitor screen, draw others
                 case FrameTriggersFound% = ctPFsPerPatch%+1 then 'This pulse indicates cue down; enter hold period for training option 2
-                    LogStatus("MonitorFrameChannel", "Cue down at " + Str$(tTrigger));
-                    SampleText("Cue Down, trial " + Str$(nTrialsCompleted%+1),tTrigger);
+                    LogStatus("MonitorFrameChannel", "Cue off at " + Str$(tTrigger));
+                    SampleText("Cue Off, trial " + Str$(nTrialsCompleted%+1),tTrigger);
                     DrawMonitorScreen(0,-1,0,0);  'Remove cue on monitor screen
                     'Break out after cues for training option 2
                     if ctTrainingOptions% = 2 then 'we need to wait through the delay period (if any) then wait for release
                         ChangeStateTo(stateResponseWindow%,tTrigger);
                     endif        
                 case FrameTriggersFound% = ctPFsPerPatch%+2 then 'This pulse indicates sample on
-                    LogStatus("MonitorFrameChannel", "Sample up at " + Str$(tTrigger));
+                    LogStatus("MonitorFrameChannel", "Sample on at " + Str$(tTrigger));
                     SampleText(TextForSample$,tTrigger);
                     DrawMonitorScreen(0,0,1,drawFlankers%);
                 case FrameTriggersFound% = ctPFsPerPatch%+3 and ctSampleToTargetDelay = 0 then  'This pulse indicates sample off AND target on
                     FrameTriggersFound% += 1;  'Increment frame triggers since there are not separate sample off and target on
-                    LogStatus("MonitorFrameChannel", "Sample down and target up at " + Str$(tTrigger));
-                    SampleText(TextForTarget$,tTrigger);
+                    LogStatus("MonitorFrameChannel", "Sample off and target on at " + Str$(tTrigger));
+                    SampleText(TextForTest$,tTrigger);
                     DrawMonitorScreen(0,0,drawGabors%,drawFlankers%);
                 case FrameTriggersFound% = ctPFsPerPatch%+3 then 'This pulse indicates sample off; enter hold period for training option 3
-                    LogStatus("MonitorFrameChannel", "Sample down at " + Str$(tTrigger));
-                    SampleText("Sample Down, trial " + Str$(nTrialsCompleted%+1),tTrigger);
+                    LogStatus("MonitorFrameChannel", "Sample off at " + Str$(tTrigger));
+                    SampleText("Sample Off, trial " + Str$(nTrialsCompleted%+1),tTrigger);
                     DrawMonitorScreen(0,0,-1,-1);
                     'Break out after sample for training option 3 - no, we actually need to wait through the target as well as the design has changed
                     'if ctTrainingOptions% = 3 then 'we need to wait through the delay period (if any) then wait for release
                     '    ChangeStateTo(stateResponseWindow%,tTrigger);
                     'endif 
-                case FrameTriggersFound% = ctPFsPerPatch%+4 then 'This pulse indicates target on
-                    LogStatus("MonitorFrameChannel", "Target up at " + Str$(tTrigger));
-                    SampleText(TextForTarget$,tTrigger);
+                case FrameTriggersFound% = ctPFsPerPatch%+4 then 'This pulse indicates test on
+                    LogStatus("MonitorFrameChannel", "Test on at " + Str$(tTrigger));
+                    SampleText(TextForTest$,tTrigger);
                     DrawMonitorScreen(0,0,drawGabors%,drawFlankers%);
-                case FrameTriggersFound% = ctPFsPerPatch%+5 then 'This pulse indicates target off, enters response window for training option 4
-                    LogStatus("MonitorFrameChannel", "Target down at " + Str$(tTrigger));
-                    SampleText("Target Down, trial " + Str$(nTrialsCompleted%+1),tTrigger);
+                case FrameTriggersFound% = ctPFsPerPatch%+5 then 'This pulse indicates test off, enters response window for training option 4
+                    LogStatus("MonitorFrameChannel", "Test off at " + Str$(tTrigger));
+                    SampleText("Test Off, trial " + Str$(nTrialsCompleted%+1),tTrigger);
                     DrawMonitorScreen(0,0,-1,-1);  'remove gabors and flankers from monitor screen
                     ChangeStateTo(stateResponseWindow%,tTrigger);
                 endcase
@@ -1766,50 +1768,47 @@ func IdleProcessing%()
             case ctTrainingOptions% < 3 and leverReleased% = 1 then  'Released lever during cue training, incorrect
                 LogStatus("TrialComplete", "Unsuccessful trial, released lever (training)");
                 ChangeStateTo(stateCheckAdvance%,tNow);
-            case ctTrainingOptions% = 3 and leverReleased% = 1 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] = 1 then 'Hit
+            'Since Training Step 3 has a different reward structure (hold for "cue-matched" color)
+            case ctTrainingOptions% = 3 and leverReleased% = 0 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] >= 0 then 'Hit - any non-negative validity requires a response
                 LogStatus("TrialComplete", "Hit");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Hit");
                 Hits% += 1;
                 ChangeStateTo(stateReward%,tNow);
                 remainInIdleLoop% := 1;  'start reward immediately 
-            case ctTrainingOptions% = 3 and leverReleased% = 0 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] = 1 then 'Miss
+            case ctTrainingOptions% = 3 and leverReleased% = 1 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] >= 0 then 'Miss
                 LogStatus("TrialComplete", "Miss");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Miss");
                 Misses% += 1;
                 ChangeStateTo(stateCheckAdvance%,tNow);
-            case ctTrainingOptions% = 3 and leverReleased% = 0 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'Correct Rejection
+            case ctTrainingOptions% = 3 and leverReleased% = 1 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] = -1 then 'Correct Rejection
                 LogStatus("TrialComplete", "Correct Rejection");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Correct Rejection");
                 CRs% += 1;
                 ChangeStateTo(stateReward%,tNow);
                 remainInIdleLoop% := 1;  'start reward immediately
-            case ctTrainingOptions% = 3 and leverReleased% = 1 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'False Alarm
+            case ctTrainingOptions% = 3 and leverReleased% = 0 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] = -1 then 'False Alarm
                 LogStatus("TrialComplete", "False Alarm");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": False Alarm");
                 FAs% += 1;
                 ChangeStateTo(stateCheckAdvance%,tNow);
-            'case leverReleased% = 1 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] > 0 then 'Hit
-            case leverReleased% = 1 and whichContChange%[ctTrialOrder%[nTrialsCompleted%-1]] > 0 then 'Hit
+            case leverReleased% = 1 and whichLocChange%[ctTrialOrder%[nTrialsCompleted%-1]] > 0 then 'Hit
                 LogStatus("TrialComplete", "Hit");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Hit");
                 Hits% += 1;
                 ChangeStateTo(stateReward%,tNow);
                 remainInIdleLoop% := 1;  'start reward immediately 
-            'case leverReleased% = 0 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] > 0 then 'Miss
-            case leverReleased% = 0 and whichContChange%[ctTrialOrder%[nTrialsCompleted%-1]] > 0 then 'Miss
+            case leverReleased% = 0 and whichLocChange%[ctTrialOrder%[nTrialsCompleted%-1]] > 0 then 'Miss
                 LogStatus("TrialComplete", "Miss");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Miss");
                 Misses% += 1;
                 ChangeStateTo(stateCheckAdvance%,tNow);
-            'case leverReleased% = 0 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'Correct Rejection
-            case leverReleased% = 0 and whichContChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'Correct Rejection
+            case leverReleased% = 0 and whichLocChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'Correct Rejection
                 LogStatus("TrialComplete", "Correct Rejection");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Correct Rejection");
                 CRs% += 1;
                 ChangeStateTo(stateReward%,tNow);
                 remainInIdleLoop% := 1;  'start reward immediately
-            'case leverReleased% = 1 and whichOriChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'False Alarm 
-            case leverReleased% = 1 and whichContChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'False Alarm 
+            case leverReleased% = 1 and whichLocChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'False Alarm 
                 LogStatus("TrialComplete", "False Alarm");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": False Alarm");
                 FAs% += 1;
@@ -2441,7 +2440,7 @@ func Start%()
                 dist%[i%] := 1;
             next
             for i% := 0 to ctNDistractorOff%-1 do
-                dist%[i%+ctNDistractorOn%] := 0; 'was -1 when variable was unused, but that makes little sense
+                dist%[i%+ctNDistractorOn%] := 0;
             next;  
         endif;
         
@@ -2467,7 +2466,6 @@ func Start%()
         endif
         
         
-        
         'Adjust some timing variables based on experimental options
         docase
         case ctTrainingOptions% = 2 then 'hold through cue only
@@ -2481,13 +2479,20 @@ func Start%()
         
         
         
-        'Set orientation/absence of distractors, note that for now there is no ability to flip distractor orientation within-experiment
-        'In fact, we've changed it from an array to a scalar; ctNDistractorOn% is now the gate
-        if ctNDistractorOn% > 0 then 'distractors are on, use rectangular cue rect
-            flankerIsH% := ctPanelIsHoriz%;
-        else 'distractors are off, use square cue rect (nice oxymoron)
-            flankerIsH% := -1; 
-        endif
+        'Set orientation/absence of distractors
+        'The square rect condition is not currently used, all cue rectangles will be 3x1 or 1x3, 
+        'there may exist no syntax to create a square cue rect on VSG 
+        'if ctNDistractorOn% > 0 then 'if any distractors are on, use rectangular cue rect
+        '    flankerIsH% := ctPanelIsHoriz%;  
+        'else 'if all distractors are off, use square cue rect (nice oxymoron)
+        '    flankerIsH% := -1; 'Note that value of -1 is NOT CURRENTLY SUPPORTED for a square box on VSG
+        'endif
+        
+        'This is a much-simplified version to set orientation of distractors; absent distractors
+        'still result in a 3x1 or 1x3 cue rectangle
+        flankerIsH% := ctPanelIsHoriz%;
+        'Note that although VSG will allow us to flip distractor orientation within-experiment,
+        'this is not currently supported by the ConteTask.s2s code; FlankerIsH% would need to be an array.
         
         
         'Write out the variables that hold the counterbalance
@@ -2510,7 +2515,7 @@ func Start%()
                     for m% := 0 to nCh%-1 do
                         for p% := 0 to nDist%-1 do
                             for q% := 0 to nCueType%-1 do
-                                'Setting cue dot pct and validity is easy
+                                'Setting cue dot pct and validity is easy, set these at top and then use below for minor clarity
                                 cueDotPct[count%] := cueDotPctLocal[j%];
                                 validity%[count%] := cueType%[q%];  '-1 = no change ("catch"); 0 = uncued location changes ("invalid"); 1 = cued location changes ("valid")
                                                           
@@ -2522,23 +2527,23 @@ func Start%()
                                 'This is contrast version
                                 'Set which contrast changes
                                 docase      
-                                case cueType%[q%] = -1 then 'This is a no change trial (will also catch if cue == 50)
-                                    whichContChange%[count%] := 0;  'no location changes
-                                case cueDotPctLocal[j%] > 50 and cueType%[q%] = 1 then 'cue indicates color 1, valid
-                                    whichContChange%[count%] := 1;  'cued location changes
-                                case cueDotPctLocal[j%] > 50 and cueType%[q%] = 0 then 'cue indicates color 1, invalid
-                                    whichContChange%[count%] := 2;  'uncued location changes
-                                case cueDotPctLocal[j%] < 50 and cueType%[q%] = 1 then 'cue indicates color 2, valid
-                                    whichContChange%[count%] := 2;  'cued location changes
-                                case cueDotPctLocal[j%] < 50 and cueType%[q%] = 0 then 'cue indicates color 2, invalid
-                                    whichContChange%[count%] := 1;  'uncued location changes
-                                case cueDotPctLocal[j%] = 50 then  'valid/invalid is meaningless
-                                    'roll a die, that's fine, we ignore "valid/invalid"
-                                    whichContChange%[count%] := round(rand(1,1));  'value will be a 1 or a 2
+                                case validity%[count%] = -1 then 'This is a no change trial (will also catch if cue == 50)
+                                    whichLocChange%[count%] := 0;  'no location changes
+                                case cueDotPct[count%] > 50 and validity%[count%] = 1 then 'cue indicates location 1, valid
+                                    whichLocChange%[count%] := 1;  'cued location changes
+                                case cueDotPct[count%] > 50 and validity%[count%] = 0 then 'cue indicates location 1, invalid
+                                    whichLocChange%[count%] := 2;  'uncued location changes
+                                case cueDotPct[count%] < 50 and validity%[count%] = 1 then 'cue indicates location 2, valid
+                                    whichLocChange%[count%] := 2;  'cued location changes
+                                case cueDotPct[count%] < 50 and validity%[count%] = 0 then 'cue indicates location 2, invalid
+                                    whichLocChange%[count%] := 1;  'uncued location changes
+                                case cueDotPct[count%] = 50 then  'valid/invalid is meaningless (user should probably avoid this)
+                                    'roll a die, that's fine, we ignore "valid/invalid", but SOMETHING changes (counterbalanced no-changes will be taken care of by validity=-1)
+                                    whichLocChange%[count%] := round(rand(1,1));  'value will indicate location 1 or location 2 changes
                                 endcase
                                 
                                 'Set contrast factors, takes into account which side is the cued/uncued side
-                                if cueDotPctLocal[j%] > 50 then  'if cue indicates side 1
+                                if cueDotPct[count%] > 50 then  'if cue indicates side 1
                                     contFact1% := ctGaborCuedCont%;
                                     contFact2% := ctGaborUncuedCont%;
                                 else  'if cue indicates side 2
@@ -2549,7 +2554,7 @@ func Start%()
                                 'Set ctTargetDuration[], which is different on go and no-go trials, but only for training options 3+
                                 'For training option 2 ctTargetDuration is set to 0 (above)
                                 docase
-                                case cueType%[q%] = -1 and ctTrainingOptions% >= 3 then 'This is a no change trial
+                                case validity%[count%] = -1 and ctTrainingOptions% >= 3 then 'This is a no change trial
                                     ctTargetDuration[count%] := ctTargetDurationNoGo;
                                 case ctTrainingOptions% >= 3 then
                                     ctTargetDuration[count%] := ctTargetDurationGo;
@@ -2565,32 +2570,32 @@ func Start%()
                                     test2Contrast%[count%] := 0;    
                                 case ctTrainingOptions% = 4 then  'for this stage, there can be only 0-->Sample (cued) or Sample-->Sample (no-change, at uncued)
                                     docase
-                                    case cueDotPctLocal[j%] > 50 and cueType%[q%] = 1 then 'cue indicates side 1, valid, side 1 is present, changes
+                                    case cueDotPct[count%] > 50 and validity%[count%] = 1 then 'cue indicates side 1, valid, side 1 is present, changes
                                         samp1Contrast%[count%] := 0;
                                         test1Contrast%[count%] := cont%[k%]*ctGaborCuedCont%/100;  'sample contrast value
                                         samp2Contrast%[count%] := 0;
                                         test2Contrast%[count%] := 0;
-                                    case cueDotPctLocal[j%] < 50 and cueType%[q%] = 1 then 'cue indicates side 2, valid, side 2 is present, changes
+                                    case cueDotPct[count%] < 50 and validity%[count%] = 1 then 'cue indicates side 2, valid, side 2 is present, changes
                                         samp1Contrast%[count%] := 0;
                                         test1Contrast%[count%] := 0;
                                         samp2Contrast%[count%] := 0;
                                         test2Contrast%[count%] := cont%[k%]*ctGaborCuedCont%/100;  'sample contrast value
-                                    case cueDotPctLocal[j%] > 50 and cueType%[q%] = -1 then 'cue indicates side 1, no change, side 2 is present, no change
+                                    case cueDotPct[count%] > 50 and validity%[count%] = -1 then 'cue indicates side 1, no change, side 2 is present, no change
                                         samp1Contrast%[count%] := 0;
                                         test1Contrast%[count%] := 0;
                                         samp2Contrast%[count%] := cont%[k%]*ctGaborUncuedCont%/100;  'sample contrast value scaled by uncued gabor contrast
                                         test2Contrast%[count%] := cont%[k%]*ctGaborUncuedCont%/100;  'sample contrast value scaled by uncued gabor contrast
-                                    case cueDotPctLocal[j%] < 50 and cueType%[q%] = -1 then 'cue indicates side 2, no change, side 1 is present, no change
+                                    case cueDotPct[count%] < 50 and validity%[count%] = -1 then 'cue indicates side 2, no change, side 1 is present, no change
                                         samp1Contrast%[count%] := cont%[k%]*ctGaborUncuedCont%/100;  'sample contrast value scaled by uncued gabor contrast
                                         test1Contrast%[count%] := cont%[k%]*ctGaborUncuedCont%/100;  'sample contrast value scaled by uncued gabor contrast
                                         samp2Contrast%[count%] := 0;
                                         test2Contrast%[count%] := 0;
-                                    case cueDotPctLocal[j%] = 50 and whichContChange%[count%] = 1 then 'cue makes no indication, choose side 1, arbitrarily say valid 
+                                    case cueDotPct[count%] = 50 and whichLocChange%[count%] = 1 then 'cue makes no indication, choose side 1, arbitrarily say valid 
                                         samp1Contrast%[count%] := 0;
                                         test1Contrast%[count%] := cont%[k%]*ctGaborCuedCont%/100;  'sample contrast value
                                         samp2Contrast%[count%] := 0;
                                         test2Contrast%[count%] := 0;
-                                    case cueDotPctLocal[j%] = 50 and whichContChange%[count%] = 2 then 'cue makes no indication, choose side 2, arbitrarily say valid    
+                                    case cueDotPct[count%] = 50 and whichLocChange%[count%] = 2 then 'cue makes no indication, choose side 2, arbitrarily say valid    
                                         samp1Contrast%[count%] := 0;
                                         test1Contrast%[count%] := 0;
                                         samp2Contrast%[count%] := 0;
@@ -2599,7 +2604,7 @@ func Start%()
                                 case ctTrainingOptions% >= 5 then 'for these stages, the contrasts are sample-->sample and sample-->test (if not no-go)
                                 'Next do step 5 (is 6 same?)  Should be, but invalid and no-change are now different
                                     docase
-                                    case whichContChange%[count%] = 1 then 'if stimulus 1 changes, stimulus 1 gets the chosen contrast
+                                    case whichLocChange%[count%] = 1 then 'if stimulus 1 changes, stimulus 1 gets the chosen contrast
                                         samp1Contrast%[count%] := cont%[k%]*contFact1%/100;
                                         test1Contrast%[count%] := (cont%[k%]+contCh%[m%])*contFact1%/100;
                                         if test1Contrast%[count%] < 0 then  'do not allow negative contrasts
@@ -2613,7 +2618,7 @@ func Start%()
                                             samp2Contrast%[count%] := cont%[floor(rand(nCont%,0))]*contFact2%/100;  'Selects a random contrast
                                             test2Contrast%[count%] := samp2Contrast%[count%];  'and match
                                         endif
-                                    case whichContChange%[count%] = 2 then 'if stimulus 2 changes, stimulus 2 gets the chosen contrast
+                                    case whichLocChange%[count%] = 2 then 'if stimulus 2 changes, stimulus 2 gets the chosen contrast
                                         samp2Contrast%[count%] := cont%[k%]*contFact2%/100;
                                         test2Contrast%[count%] := (cont%[k%]+contCh%[m%])*contFact2%/100;
                                         if test2Contrast%[count%] < 0 then  'do not allow negative contrasts
@@ -2627,7 +2632,7 @@ func Start%()
                                             samp1Contrast%[count%] := cont%[floor(rand(nCont%,0))]*contFact1%/100;  'Selects a random contrast
                                             test1Contrast%[count%] := samp1Contrast%[count%];  'and match
                                         endif
-                                    else 'whichContChange%[count%] = 0, randomize which side gets the designated contrast
+                                    else 'whichLocChange%[count%] = 0, randomize which side gets the designated contrast
                                         if ctContrastMatches% = 1 then 'unless the sides match, then Oprah is passing out the designated contrast
                                             samp1Contrast%[count%] := cont%[k%]*contFact1%/100;
                                             test1Contrast%[count%] := cont%[k%]*contFact1%/100;
@@ -2654,32 +2659,32 @@ func Start%()
                                 'Need to set cue rect and flanker contrast values, which will be based on various values
                                 if ctTrainingOptions% >= 3 then
                                     docase
-                                    case cueDotPctLocal[j%] > 50 and cueType%[q%] = 1 then 'cue indicates side 1, valid, side 1 is present at cued value
+                                    case cueDotPct[count%] > 50 and validity%[count%] = 1 then 'cue indicates side 1, valid, side 1 is present at cued value
                                         samp1CueRectContrast%[count%] := ctCueRectCuedCont%;
                                         samp1FlankerContrast%[count%] := ctFlankerCuedCont%;
                                         test1CueRectContrast%[count%] := ctCueRectCuedCont%;
                                         test1FlankerContrast%[count%] := ctFlankerCuedCont%;
-                                    case cueDotPctLocal[j%] < 50 and cueType%[q%] = 1 then 'cue indicates side 2, valid, side 2 is present at cued value
+                                    case cueDotPct[count%] < 50 and validity%[count%] = 1 then 'cue indicates side 2, valid, side 2 is present at cued value
                                         samp2CueRectContrast%[count%] := ctCueRectCuedCont%;
                                         samp2FlankerContrast%[count%] := ctFlankerCuedCont%;
                                         test2CueRectContrast%[count%] := ctCueRectCuedCont%;
                                         test2FlankerContrast%[count%] := ctFlankerCuedCont%;
-                                    case cueDotPctLocal[j%] > 50 and cueType%[q%] = -1 then 'cue indicates side 1, no-change trial, side 2 is present at uncued value
+                                    case cueDotPct[count%] > 50 and validity%[count%] = -1 then 'cue indicates side 1, no-change trial, side 2 is present at uncued value
                                         samp2CueRectContrast%[count%] := ctCueRectUncuedCont%;
                                         samp2FlankerContrast%[count%] := ctFlankerUncuedCont%;
                                         test2CueRectContrast%[count%] := ctCueRectUncuedCont%;
                                         test2FlankerContrast%[count%] := ctFlankerUncuedCont%;
-                                    case cueDotPctLocal[j%] < 50 and cueType%[q%] = -1 then 'cue indicates side 2, no-change trial, side 1 is present at uncued values
+                                    case cueDotPct[count%] < 50 and validity%[count%] = -1 then 'cue indicates side 2, no-change trial, side 1 is present at uncued values
                                         samp1CueRectContrast%[count%] := ctCueRectUncuedCont%;
                                         samp1FlankerContrast%[count%] := ctFlankerUncuedCont%;
                                         test1CueRectContrast%[count%] := ctCueRectUncuedCont%;
                                         test1FlankerContrast%[count%] := ctFlankerUncuedCont%;
-                                    case cueDotPctLocal[j%] = 50 and whichContChange%[count%] = 1 then 'cue makes no indication, choose side 1, arbitrarily say valid 
+                                    case cueDotPct[count%] = 50 and whichLocChange%[count%] = 1 then 'cue makes no indication, choose side 1, arbitrarily say valid 
                                         samp1CueRectContrast%[count%] := ctCueRectCuedCont%;
                                         samp1FlankerContrast%[count%] := ctFlankerCuedCont%;
                                         test1CueRectContrast%[count%] := ctCueRectCuedCont%;
                                         test1FlankerContrast%[count%] := ctFlankerCuedCont%;
-                                    case cueDotPctLocal[j%] = 50 and whichContChange%[count%] = 2 then 'cue makes no indication, choose side 2, arbitrarily say valid
+                                    case cueDotPct[count%] = 50 and whichLocChange%[count%] = 2 then 'cue makes no indication, choose side 2, arbitrarily say valid
                                         samp2CueRectContrast%[count%] := ctCueRectCuedCont%;
                                         samp2FlankerContrast%[count%] := ctFlankerCuedCont%;
                                         test2CueRectContrast%[count%] := ctCueRectCuedCont%;
@@ -2688,7 +2693,7 @@ func Start%()
                                 endif
                                 
                                 if ctTrainingOptions% >= 5 then
-                                    if (cueDotPctLocal[j%] > 50 and cueType%[q%] = 1) or (cueDotPctLocal[j%] <= 50 and cueType%[q%] = -1) then
+                                    if (cueDotPct[count%] > 50 and validity%[count%] = 1) or (cueDotPct[count%] <= 50 and validity%[count%] = -1) then
                                         samp1CueRectContrast%[count%] := ctCueRectCuedCont%;
                                         samp1FlankerContrast%[count%] := ctFlankerCuedCont%;
                                         test1CueRectContrast%[count%] := ctCueRectCuedCont%;
@@ -2711,6 +2716,7 @@ func Start%()
                                 
                                 
                                 'After setting above, force all flanker contrasts to 0 if flankers are off
+                                'Currently flankerIsH% will never be -1, but dist%[p%] should cover it
                                 if flankerIsH% = -1 or dist%[p%] = 0 then
                                     samp1FlankerContrast%[count%] := 0;
                                     samp2FlankerContrast%[count%] := 0;
@@ -2755,7 +2761,7 @@ func Start%()
         '   test2CueRectContrast%[];
 
         
-        
+        halt;  'testing
         
         
         'Write binary file holding dot percentages on each patch
@@ -2863,19 +2869,19 @@ func Start%()
             'Contrast version
             'Write to file  
             Print("%f,%f,%f,%f,%f,%d,%d,",FixationX,FixationY,ctPatchRadiusDeg*2,ctPatchRadiusDeg*2,ctDotRadiusDeg*2,ctRefreshPerPF%,ctPFsPerPatch%);  'cue patch params
-            Print("%f,%f,%f,%f,%f,",ctPatchToSampleDelay*1000,ctSampleDuration*1000,ctSampleToTargetDelay*1000,ctTargetDuration[i%]*1000,ctResponseTime*1000);  'timing params
+            Print("%f,%f,%f,%f,%f,",ctPatchToSampleDelay*1000,ctSampleDuration*1000,ctSampleToTargetDelay*1000,ctTargetDuration[ctTrialOrder%[i%]]*1000,ctResponseTime*1000);  'timing params
             Print("%f,%f,%f,%f,%f,%f,",ctGaborXLoc,ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,sampleOri,ctGaborSF);  'Sample A (primary), part 1
             Print("%f,%f,%d,%d,0,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%);  'Sample A (primary), part 2, color for A is color 0
-            Print("%f,%f,%f,",samp1Contrast%[i%],samp1FlankerContrast%[i%],samp1CueRectContrast%[i%]);  'Sample A (primary), part 3, contrasts
+            Print("%f,%f,%f,",samp1Contrast%[ctTrialOrder%[i%]],samp1FlankerContrast%[ctTrialOrder%[i%]],samp1CueRectContrast%[ctTrialOrder%[i%]]);  'Sample A (primary), part 3, contrasts
             Print("%f,%f,%f,%f,%f,%f,",ctGabor2XLoc,ctGabor2YLoc,ctGaborHDeg,ctGaborWDeg,sampleOri,ctGaborSF);  'Sample B (secondary), part 1
             Print("%f,%f,%d,%d,1,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%);  'Sample B (secondary), part 2, color for B is color 1
-            Print("%f,%f,%f,",samp2Contrast%[i%],samp2FlankerContrast%[i%],samp2CueRectContrast%[i%]);  'Sample B (secondary), part 3, contrasts
+            Print("%f,%f,%f,",samp2Contrast%[ctTrialOrder%[i%]],samp2FlankerContrast%[ctTrialOrder%[i%]],samp2CueRectContrast%[ctTrialOrder%[i%]]);  'Sample B (secondary), part 3, contrasts
             Print("%f,%f,%f,%f,%f,%f,",ctGaborXLoc,ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,sampleOri,ctGaborSF);  'Test A (primary), part 1
             Print("%f,%f,%d,%d,0,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%);  'Test A (primary), part 2, color for A is color 0
-            Print("%f,%f,%f,",test1Contrast%[i%],test1FlankerContrast%[i%],test1CueRectContrast%[i%]);  'Test A (primary), part 3, contrasts
+            Print("%f,%f,%f,",test1Contrast%[ctTrialOrder%[i%]],test1FlankerContrast%[ctTrialOrder%[i%]],test1CueRectContrast%[ctTrialOrder%[i%]]);  'Test A (primary), part 3, contrasts
             Print("%f,%f,%f,%f,%f,%f,",ctGabor2XLoc,ctGabor2YLoc,ctGaborHDeg,ctGaborWDeg,sampleOri,ctGaborSF);  'Test B (secondary), part 1
             Print("%f,%f,%d,%d,1,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%);  'Test B (secondary), part 2, color for B is color 1
-            Print("%f,%f,%f",test2Contrast%[i%],test2FlankerContrast%[i%],test2CueRectContrast%[i%]);   'Test B (secondary), part 3, contrasts
+            Print("%f,%f,%f",test2Contrast%[ctTrialOrder%[i%]],test2FlankerContrast%[ctTrialOrder%[i%]],test2CueRectContrast%[ctTrialOrder%[i%]]);   'Test B (secondary), part 3, contrasts
             Print("\n");
             
             
