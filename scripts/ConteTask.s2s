@@ -913,6 +913,11 @@ func ConteTaskDialog%()
             ctFlankerUncuedCont% := 0;
         endif
         
+        'Disable showing cue rect during training mode < 3 regardless of checkbox
+        if ctTrainingOptions% < 3 then
+            ctShowCueRectDuringCue% := 0;
+        endif
+        
         
         'Convert float pixel width to integer (due to "eightFloats[]", was too difficult to convert to integer for dialog)
         ctFixCrossWidthPixels% := ctFixCrossWidthPixels;
@@ -1114,7 +1119,6 @@ func ConteTaskDialogChanged%(item%)
     
     'For Step 2 and greater, values related to the cue patch come on
     if DlgValue(ctDlgTrainingOptions%) >= 2 then
-        DlgEnable(1,ctDlgCueRectWithCue%);  
         DlgEnable(1,ctDlgPatchOnsetDelay%,ctTxtPatchOnsetDelay%);
         DlgEnable(1,ctDlgDotRadiusDeg%,ctTxtDotRadiusDeg%);
         DlgEnable(1,ctDlgDotColor1R%);
@@ -1133,7 +1137,6 @@ func ConteTaskDialogChanged%(item%)
         DlgValue$(ctTxtPatchRadiusDeg%,ctPatchRadiusText$);
     'if we are on step 1 or below, disable values related to the cue patch   
     else
-        DlgEnable(0,ctDlgCueRectWithCue%); 
         DlgEnable(0,ctDlgPatchOnsetDelay%,ctTxtPatchOnsetDelay%);
         DlgEnable(0,ctDlgDotRadiusDeg%,ctTxtDotRadiusDeg%);
         DlgEnable(0,ctDlgDotColor1R%);
@@ -1156,6 +1159,7 @@ func ConteTaskDialogChanged%(item%)
     'For Step 3 and greater, remaining timing values come on, cued trial count and no-change trial count come on,
     'cue panel orientation and cue rect border come on, cue rect contrasts come on
     if DlgValue(ctDlgTrainingOptions%) >= 3 then
+        DlgEnable(1,ctDlgCueRectWithCue%); 
         DlgEnable(1,ctDlgCountNoChange%,ctTxtCountNoChange%);
         DlgEnable(1,ctDlgCountCued%,ctTxtCountCued%);
         DlgEnable(1,ctDlgCueRectCuedCont%,ctTxtCueRectCuedCont%);
@@ -1170,6 +1174,7 @@ func ConteTaskDialogChanged%(item%)
         DlgValue$(ctTxtResponseTime%,ctResponseTimeText$);
     'if we are on Step 2 or below, values changed above remain disabled
     else
+        DlgEnable(0,ctDlgCueRectWithCue%); 
         DlgEnable(0,ctDlgCountNoChange%,ctTxtCountNoChange%);
         DlgEnable(0,ctDlgCountCued%,ctTxtCountCued%);
         DlgEnable(0,ctDlgCueRectCuedCont%,ctTxtCueRectCuedCont%);
@@ -3237,7 +3242,7 @@ proc WriteParameterFile()
     'Print("Orientation changes                      : %s\n", ctOriChangeString$);
     Print("Sample contrasts                         : %s\n", ctSampleContString$);
     Print("Contrast changes                         : %s\n", ctContChangeString$);
-    
+    Print("Show Cue Rect During Cue Patch?          : %d\n", ctShowCueRectDuringCue%);
     
     Print("\nStimulus parameters\n");
 	Print("-------------------------\n\n");
