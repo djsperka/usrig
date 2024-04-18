@@ -251,6 +251,7 @@ var ctFlankerCuedCont%;
 var ctFlankerUncuedCont%;
 var ctCueRectCuedCont%;
 var ctCueRectUncuedCont%;
+var ctShowCueRectDuringCue%;
 
 'Variables that allow us to build the allowed tunable values from strings
 var ctDotPct[100];  '100 possible values is way too many
@@ -324,7 +325,7 @@ var ctDlgFlankerCuedCont% := 50;
 var ctDlgFlankerUncuedCont% := 51;
 var ctDlgCueRectCuedCont% := 52;
 var ctDlgCueRectUncuedCont% := 53;
-
+var ctDlgCueRectWithCue% := 54;
 
 
 var ctDlgTotalTrials%;  'This just holds a pointer to the total trials text so we can update the text value
@@ -549,6 +550,7 @@ proc GetConteTaskParameters()
     ctFlankerUncuedCont% := GetIntRegistryValue%(key$, "FlankerInvC", ctFlankerUncuedCont%);  'changed variable name, keeping old key value
     ctCueRectCuedCont% := GetIntRegistryValue%(key$, "CueRectVC", ctCueRectCuedCont%);  'changed variable name, keeping old key value
     ctCueRectUncuedCont% := GetIntRegistryValue%(key$, "CueRectInvC", ctCueRectUncuedCont%);  'changed variable name, keeping old key value
+    ctShowCueRectDuringCue% := GetIntRegistryValue%(key$, "ShowCueRectDuringCue", ctShowCueRectDuringCue%);
     
 
     
@@ -609,6 +611,7 @@ proc SaveConteTaskParameters()
     SetIntRegistryValue(key$, "FlankerInvC", ctFlankerUncuedCont%);  'changed variable name, keeping old key value
     SetIntRegistryValue(key$, "CueRectVC", ctCueRectCuedCont%);  'changed variable name, keeping old key value
     SetIntRegistryValue(key$, "CueRectInvC", ctCueRectUncuedCont%);  'changed variable name, keeping old key value
+    SetIntRegistryValue(key$, "ShowCueRectDuringCue", ctShowCueRectDuringCue%);
     
 end;
 
@@ -631,7 +634,7 @@ func ConteTaskDialog%()
     var sixPlusOneInts%[7];  'This was nicer when it was just the RGB variables, but alas!
     var sevenInts%[7];  'OK, fine, this isn't exactly the greatest organization!  The dialog has evolved so much!
     var threeStrings$[3];
-    var sixInts%[6];
+    var sixInts%[7];  'LOL sixInts%[] has 7 because we already have "sevenInts%[]"  Eep
 
 
     trainingOptionsList$[0] := "0 - Reward for lever";    '"Press Lever - Instant Reward - Release - Wait ITI"
@@ -718,13 +721,13 @@ func ConteTaskDialog%()
     threeStrings$[1] := ctSampleContString$;
     threeStrings$[2] := ctContChangeString$;
     
-    sixInts%[0] := ctGaborCuedCont%;
+    sixInts%[0] :=  ctGaborCuedCont%;  'sixInts%[] has seven!
     sixInts%[1] :=  ctGaborUncuedCont%;
     sixInts%[2] :=  ctFlankerCuedCont%;
     sixInts%[3] :=  ctFlankerUncuedCont%;
     sixInts%[4] :=  ctCueRectCuedCont%;
     sixInts%[5] :=  ctCueRectUncuedCont%;
-    
+    sixInts%[6] :=  ctShowCueRectDuringCue%;
     
     'Create variables for dialog layout
     var wDlg% := 111;  '108+3
@@ -752,7 +755,7 @@ func ConteTaskDialog%()
 	DlgCreate("Conte Task Parameters",0,0,wDlg%,hDlg%);
     DlgGroup("Training/Full Experiment Options",1,1,wDlg%-2,hTrExpOpt%);
     DlgList(ctDlgTrainingOptions%,50,trainingOptionsList$[],nTOpts%,c1%+1,2);
-    
+    DlgCheck(ctDlgCueRectWithCue%,"Cue rect on with cue",c33%,2);
     
     
     DlgGroup("Trial Specification",1,sTrSpec%,wDlg%-2,hTrSpec%);
@@ -890,12 +893,13 @@ func ConteTaskDialog%()
         ctSampleContString$ := threeStrings$[1];
         ctContChangeString$ := threeStrings$[2];
         
-        ctGaborCuedCont% := sixInts%[0];
+        ctGaborCuedCont% := sixInts%[0];  'sixInts%[] has seven!
         ctGaborUncuedCont% := sixInts%[1];
         ctFlankerCuedCont% := sixInts%[2];
         ctFlankerUncuedCont% := sixInts%[3];
         ctCueRectCuedCont% := sixInts%[4];
         ctCueRectUncuedCont% := sixInts%[5];
+        ctShowCueRectDuringCue% := sixInts%[6];
         
         'Once everything is unpacked, save parameters, we will manipulate some of them below
         SaveConteTaskParameters();
@@ -1110,6 +1114,7 @@ func ConteTaskDialogChanged%(item%)
     
     'For Step 2 and greater, values related to the cue patch come on
     if DlgValue(ctDlgTrainingOptions%) >= 2 then
+        DlgEnable(1,ctDlgCueRectWithCue%);  
         DlgEnable(1,ctDlgPatchOnsetDelay%,ctTxtPatchOnsetDelay%);
         DlgEnable(1,ctDlgDotRadiusDeg%,ctTxtDotRadiusDeg%);
         DlgEnable(1,ctDlgDotColor1R%);
@@ -1128,6 +1133,7 @@ func ConteTaskDialogChanged%(item%)
         DlgValue$(ctTxtPatchRadiusDeg%,ctPatchRadiusText$);
     'if we are on step 1 or below, disable values related to the cue patch   
     else
+        DlgEnable(0,ctDlgCueRectWithCue%); 
         DlgEnable(0,ctDlgPatchOnsetDelay%,ctTxtPatchOnsetDelay%);
         DlgEnable(0,ctDlgDotRadiusDeg%,ctTxtDotRadiusDeg%);
         DlgEnable(0,ctDlgDotColor1R%);
@@ -2358,6 +2364,7 @@ func Start%()
     var TriggerPort$;
     var FixationCrossArg$;
     var CueColorArg$;
+    var CueRectArg$;
     var Verbose$ := " -v ";  'For now, verbose is always on 
     var i%, j%, k%, m%, n%, p%, q%;
     var startSecs := 5;
@@ -2821,8 +2828,6 @@ func Start%()
         FileClose(dotSupplyHandle%);
         printlog("A total of %d patches required %f seconds to create and write to binary file!\n",ctPFsPerPatch%*nTrials%,Seconds()-s);
         
-        
-        
         'Write CSV file
         
         CSVHandle% := FileOpen(CSVFileName$,8,1);
@@ -2981,6 +2986,13 @@ func Start%()
     'Turn on verbose
     Verbose$ := " -v ";
     
+    'Set Cue Rect Arg
+    if ctShowCueRectDuringCue% = 1 then
+        CueRectArg$ := " --show-cue-rects ";
+    else
+        CueRectArg$ := "";
+    endif
+    
     'Update fixation cross argument
     FixationCrossArg$ := Mid$(FixationArg$,5);  'Start with 5th character (remove " -f ") so we can insert the "+"
     FixationCrossArg$ := " -f +," + FixationCrossArg$ + "," + Str$(ctFixCrossWidthPixels%);  'Can also place a cross "orientation" argument at end to rotate it, but leaving that out here for default 0
@@ -2993,7 +3005,7 @@ func Start%()
     
     'If doing partial/full Conte task, point to spec file
     if ctTrainingOptions% >= 2 then
-        cmdLine$ := cmdLine$ + CueColorArg$ + "--dot-supply " + GetScriptDir$(0) + "..\\..\\ConteDotsFile.bin" + " --trials " + GetScriptDir$(0) + "..\\..\\ConteCSVFile.csv";
+        cmdLine$ := cmdLine$ + CueRectArg$ + CueColorArg$ + "--dot-supply " + GetScriptDir$(0) + "..\\..\\ConteDotsFile.bin" + " --trials " + GetScriptDir$(0) + "..\\..\\ConteCSVFile.csv";
     else  'Otherwise, just put in a fake grating/tuning curve to make it happy
         cmdLine$ := cmdLine$ + " -s " + GetGratingParameters$("Stimulus") + " -O 90 ";
     endif 
@@ -3446,15 +3458,18 @@ func GenerateConteCuePatchColors(nDots%,nFrames%,redProp,&color%[],&numColor%[][
     case redProp < 0 then  'Should not be a common error, but may as well check
         message("Percentage of red dots (" + Str$(redProp) + ") is negative!  Quitting!");
         halt;
-    case redProp <= 1 then  'This is clearly proportion as required by the function, keep it
+    case redProp < 1 then  'This is clearly proportion as required by the function, keep it (1 is tricky)
         redPropAdj := redProp;
     else  'This is clearly percentage, make it a proportion
         redPropAdj := redProp/100;
     endcase
     
     count% := round(nDots%*nFrames%*redPropAdj);  'Total number of red dots in all frames, must explicitly round or will floor
+    printlog("nDots is %d and nFrames is %d and redPropAdj is %f and count is %d and color is %d long\n",nDots%,nFrames%,redPropAdj,count%,Len(color%[]));
     ArrConst(color%[0:count%],1);  'Put in ones for "red"
-    ArrConst(color%[count%:],2);  'Put in twos for "green"
+    if count% < Len(color%[]) then
+        ArrConst(color%[count%:],2);  'Put in twos for "green", if there are no green, would result in indexing error
+    endif;
     ArrSort(color%[],-1);  'Shuffle them
     for ii% := 0 to nFrames%-1 do
         for jj% := 0 to nDots%-1 do
