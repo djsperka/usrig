@@ -108,6 +108,7 @@ var TextForSample$;  'ummmm, gotta go with the funky name here
 var TextForTest$;  'and match it I guess
 var SequencerPeriodMS;
 var HBCycle% := 1;
+var allowGoDuringCuePatch% := 0;  'We will only allow a go during a cue patch if it is training step 3 and the cue rect is up during the cue patch
 var ctRewardDurSec;
 ctRewardDurSec := (GetJuiceRewardMS%()+20)/1000;  'Set reward duration up top.  Nowhere in the script can change this.
                                                   'I am paranoid and I'm adding another 20 ms following the reward.
@@ -914,9 +915,12 @@ func ConteTaskDialog%()
         endif
         
         'Disable showing cue rect during training mode < 3 regardless of checkbox
-        if ctTrainingOptions% < 3 then
+        docase
+        case ctTrainingOptions% < 3 then
             ctShowCueRectDuringCue% := 0;
-        endif
+        case ctShowCueRectDuringCue% = 1 and ctTrainingOptions% = 3 then
+            allowGoDuringCuePatch% := 1;
+        endcase
         
         
         'Convert float pixel width to integer (due to "eightFloats[]", was too difficult to convert to integer for dialog)
@@ -1647,6 +1651,11 @@ func IdleProcessing%()
             
             
             docase
+            case Answer%(JSDown%) <> JSDown% and FrameTriggersFound% <= ctPFsPerPatch%+1 and allowGoDuringCuePatch% = 1 then
+                LogStatus("MonitorFrameChannel", "Response during cue patch while cue rect is up, training step 3 only");
+                SafeSampleKey("X");  'Drop fixation point
+                leverReleased% := 1;
+                WaitForBlankTo(stateTrialCompleted%, tNow);
             case Answer%(JSDown%) <> JSDown% and FrameTriggersFound% >= ctPFsPerPatch%+2 and ctTrainingOptions% = 3 then  'If lever is released during sample or later when training=3, this is a response, end trial, go to TrialCompleted
                 LogStatus("MonitorFrameChannel", "Response during sample period");
                 SafeSampleKey("X");  'Drop fixation point
@@ -1774,6 +1783,7 @@ func IdleProcessing%()
             tITIStart := tNow;  'Set start time of ITI now, "X" has already been called
             
             docase
+            'Training Step 2 is a simple hold through cue patches
             case ctTrainingOptions% < 3 and leverReleased% = 0 then  'Held lever through cue training, correct
                 LogStatus("TrialComplete", "Successful hold of lever (training)");
                 ChangeStateTo(stateReward%,tNow);
@@ -1781,7 +1791,7 @@ func IdleProcessing%()
             case ctTrainingOptions% < 3 and leverReleased% = 1 then  'Released lever during cue training, incorrect
                 LogStatus("TrialComplete", "Unsuccessful trial, released lever (training)");
                 ChangeStateTo(stateCheckAdvance%,tNow);
-            'Since Training Step 3 has a different reward structure (hold for "cue-matched" color)
+            'Training Step 3 has a different reward structure (hold for "cue-matched" color), early response during cue patch, when allowed, will be dealt with seamlessly here
             case ctTrainingOptions% = 3 and leverReleased% = 0 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] >= 0 then 'Hit - any non-negative validity requires a response
                 LogStatus("TrialComplete", "Hit");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Hit");
@@ -1804,6 +1814,7 @@ func IdleProcessing%()
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": False Alarm");
                 FAs% += 1;
                 ChangeStateTo(stateCheckAdvance%,tNow);
+            'Training Step 4 and beyond are go-on-any-change, hold-on-no-change
             case leverReleased% = 1 and whichLocChange%[ctTrialOrder%[nTrialsCompleted%-1]] > 0 then 'Hit
                 LogStatus("TrialComplete", "Hit");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Hit");
