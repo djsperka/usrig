@@ -209,6 +209,9 @@ var ctSampleDuration;
 var ctTargetDurationGo;
 var ctTargetDurationNoGo;
 var ctITI;
+var ctThisITI;  'Allows us to change ITI for miss/FA penalties (abort penalty done differently)
+var ctFAPenalty;
+var ctMissPenalty;
 var ctDotRadiusDeg;
 var ctDotColor1R%;     'I think it may not be easy to put vectors in the registry, so use scalars?
 var ctDotColor1G%;
@@ -320,13 +323,15 @@ var ctDlgSampleContString% := 44;
 var ctDlgContChangeString% := 45;
 var ctDlgAbort% := 46;
 var ctDlgFixAcqTime% := 47;
-var ctDlgGaborCuedCont% := 48;
-var ctDlgGaborUncuedCont% := 49;
-var ctDlgFlankerCuedCont% := 50;
-var ctDlgFlankerUncuedCont% := 51;
-var ctDlgCueRectCuedCont% := 52;
-var ctDlgCueRectUncuedCont% := 53;
-var ctDlgCueRectWithCue% := 54;
+var ctDlgFAPenalty% := 48;
+var ctDlgMissPenalty% := 49;
+var ctDlgGaborCuedCont% := 50;
+var ctDlgGaborUncuedCont% := 51;
+var ctDlgFlankerCuedCont% := 52;
+var ctDlgFlankerUncuedCont% := 53;
+var ctDlgCueRectCuedCont% := 54;
+var ctDlgCueRectUncuedCont% := 55;
+var ctDlgCueRectWithCue% := 56;
 
 
 var ctDlgTotalTrials%;  'This just holds a pointer to the total trials text so we can update the text value
@@ -379,6 +384,8 @@ var ctTxtSampleContString%;
 var ctTxtContChangeString%;
 var ctTxtPatchDur%;
 var ctTxtAbort%;
+var ctTxtFAPenalty%;
+var ctTxtMissPenalty%;
 var ctTxtFixAcqTime%;
 var ctTxtGaborCuedCont%;
 var ctTxtGaborUncuedCont%;
@@ -517,6 +524,8 @@ proc GetConteTaskParameters()
     ctTargetDurationGo := GetFloatRegistryValue(key$, "TargetDuration", ctTargetDurationGo);  'changed variable name, keeping old key value
     ctTargetDurationNoGo := GetFloatRegistryValue(key$, "TargetDurationNoGo", ctTargetDurationNoGo);
     ctITI := GetFloatRegistryValue(key$, "ITI", ctITI);
+    ctFAPenalty := GetFloatRegistryValue(key$, "FAPenalty", ctFAPenalty);
+    ctMissPenalty := GetFloatRegistryValue(key$, "MissPenalty", ctMissPenalty);
     ctDotRadiusDeg := GetFloatRegistryValue(key$, "DotRadiusDeg", ctDotRadiusDeg);
     ctDotColor1R% := GetIntRegistryValue%(key$, "DotColor1R", ctDotColor1R%);
     ctDotColor1G% := GetIntRegistryValue%(key$, "DotColor1G", ctDotColor1G%);
@@ -578,6 +587,8 @@ proc SaveConteTaskParameters()
     SetFloatRegistryValue(key$, "TargetDuration", ctTargetDurationGo);  'changed variable name, keeping old key value
     SetFloatRegistryValue(key$, "TargetDurationNoGo", ctTargetDurationNoGo);
     SetFloatRegistryValue(key$, "ITI", ctITI);
+    SetFloatRegistryValue(key$, "FAPenalty", ctFAPenalty);
+    SetFloatRegistryValue(key$, "MissPenalty", ctMissPenalty);
     SetFloatRegistryValue(key$, "DotRadiusDeg", ctDotRadiusDeg);
     SetIntRegistryValue(key$, "DotColor1R", ctDotColor1R%);
     SetIntRegistryValue(key$, "DotColor1G", ctDotColor1G%);
@@ -635,8 +646,8 @@ func ConteTaskDialog%()
     var sixPlusOneInts%[7];  'This was nicer when it was just the RGB variables, but alas!
     var sevenInts%[7];  'OK, fine, this isn't exactly the greatest organization!  The dialog has evolved so much!
     var threeStrings$[3];
+    var fourFloats[4];
     var sixInts%[7];  'LOL sixInts%[] has 7 because we already have "sevenInts%[]"  Eep
-
 
     trainingOptionsList$[0] := "0 - Reward for lever";    '"Press Lever - Instant Reward - Release - Wait ITI"
     trainingOptionsList$[1] := "1 - Reward for hold & release lever";   '"Hold Lever - Release (when fixpt down) - Reward - Wait ITI"
@@ -722,6 +733,11 @@ func ConteTaskDialog%()
     threeStrings$[1] := ctSampleContString$;
     threeStrings$[2] := ctContChangeString$;
     
+    fourFloats[0] := ctAbortPenalty;
+    fourFloats[1] := ctFixAcqTime;
+    fourFloats[2] := ctFAPenalty;
+    fourFloats[3] := ctMissPenalty;
+    
     sixInts%[0] :=  ctGaborCuedCont%;  'sixInts%[] has seven!
     sixInts%[1] :=  ctGaborUncuedCont%;
     sixInts%[2] :=  ctFlankerCuedCont%;
@@ -739,7 +755,7 @@ func ConteTaskDialog%()
     var hTrExpOpt% := 2; 'height of training/experimental options group
     var hTrSpec% := 7;   'height of trial specification group
     var hFix% := 3;      'height of fixation options group
-    var hTime% := 4;     'height of timing options group
+    var hTime% := 5;     'height of timing options group
     var hCue% := 4;      'height of cue patch/cue dots options group
     var hStim% := 5;     'height of stimulus options group
     var hStimCont% := 3; 'height of stimulus contrast options group
@@ -801,7 +817,11 @@ func ConteTaskDialog%()
     DlgReal(ctDlgTargetDurationGo%,wNum%,0.01,100,c33%+1,sTime%+2);  ctTxtTargetDurationGo% := DlgText("Test duration, Go (s)",c33%+wNum%+2,sTime%+2);
     DlgReal(ctDlgTargetDurationNoGo%,wNum%,0.01,100,c1%+1,sTime%+3);  ctTxtTargetDurationNoGo% := DlgText("Test duration No-go (s)",c1%+wNum%+2,sTime%+3);
     DlgReal(ctDlgResponseTime%,wNum%,0.01,100,c23%+1,sTime%+3);  ctTxtResponseTime% := DlgText(ctResponseTimeText$,c23%+wNum%+2,sTime%+3);
-    DlgReal(ctDlgAbort%,wNum%,0,100,c33%+1,sTime%+3);  ctTxtAbort% := DlgText("Add'l abort penalty (s)",c33%+wNum%+2,sTime%+3);
+    'DlgReal(ctDlgAbort%,wNum%,0,100,c33%+1,sTime%+3);  ctTxtAbort% := DlgText("Add'l abort penalty (s)",c33%+wNum%+2,sTime%+3);
+    DlgReal(ctDlgAbort%,wNum%,0,100,c1%+1,sTime%+4);  ctTxtAbort% := DlgText("Abort penalty (s)",c1%+wNum%+2,sTime%+4);
+    DlgReal(ctDlgFAPenalty%,wNum%,0,100,c23%+1,sTime%+4);  ctTxtFAPenalty% := DlgText("False Alarm penalty (s)",c23%+wNum%+2,sTime%+4);
+    DlgReal(ctDlgMissPenalty%,wNum%,0,100,c33%+1,sTime%+4);  ctTxtMissPenalty% := DlgText("Miss penalty (s)",c33%+wNum%+2,sTime%+4);
+
     
     
     DlgGroup("Cue Dot And Cue Patch Options",1,sCue%,wDlg%-2,hCue%);
@@ -847,7 +867,7 @@ func ConteTaskDialog%()
     i% := DlgShow(nTrialsPerDataPoint%,ctTrainingOptions%,ctCountUncued%,ctCountNoChange%,ctCountCued%,ctRequireFixation%,
                   ctFixationOn%,ctAdditionalWindowRadius,nineFloats[],sixPlusOneInts%[],ctPatchRadiusDeg,
                   ctRefreshPerPF%,ctPFsPerPatch%,ctResponseTime,sevenFloats[],sevenInts%[],threeStrings$[],
-                  ctAbortPenalty,ctFixAcqTime,sixInts%[]);  'Now at 20!
+                  fourFloats[],sixInts%[]);  'Now at 20!
     
     
     if i% = 1 then        
@@ -893,6 +913,11 @@ func ConteTaskDialog%()
         'ctOriChangeString$ := threeStrings$[2];
         ctSampleContString$ := threeStrings$[1];
         ctContChangeString$ := threeStrings$[2];
+        
+        ctAbortPenalty := fourFloats[0];
+        ctFixAcqTime := fourFloats[1];
+        ctFAPenalty := fourFloats[2];
+        ctMissPenalty := fourFloats[3];
         
         ctGaborCuedCont% := sixInts%[0];  'sixInts%[] has seven!
         ctGaborUncuedCont% := sixInts%[1];
@@ -1175,6 +1200,8 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(1,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
         DlgEnable(1,ctDlgTargetDurationGo%,ctTxtTargetDurationGo%);
         DlgEnable(1,ctDlgTargetDurationNoGo%,ctTxtTargetDurationNoGo%);
+        DlgEnable(1,ctDlgFAPenalty%,ctTxtFAPenalty%);
+        DlgEnable(1,ctDlgMissPenalty%,ctTxtMissPenalty%);
         DlgValue$(ctTxtResponseTime%,ctResponseTimeText$);
     'if we are on Step 2 or below, values changed above remain disabled
     else
@@ -1190,6 +1217,8 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(0,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
         DlgEnable(0,ctDlgTargetDurationGo%,ctTxtTargetDurationGo%);
         DlgEnable(0,ctDlgTargetDurationNoGo%,ctTxtTargetDurationNoGo%);
+        DlgEnable(0,ctDlgFAPenalty%,ctTxtFAPenalty%);
+        DlgEnable(0,ctDlgMissPenalty%,ctTxtMissPenalty%);
         DlgValue$(ctTxtResponseTime%,ctHoldTimeText$);
     endif
     
@@ -1803,6 +1832,7 @@ func IdleProcessing%()
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Miss");
                 Misses% += 1;
                 ChangeStateTo(stateCheckAdvance%,tNow);
+                ctThisITI := ctITI + ctMissPenalty;
             case ctTrainingOptions% = 3 and leverReleased% = 1 and validity%[ctTrialOrder%[nTrialsCompleted%-1]] = -1 then 'Correct Rejection
                 LogStatus("TrialComplete", "Correct Rejection");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Correct Rejection");
@@ -1814,6 +1844,7 @@ func IdleProcessing%()
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": False Alarm");
                 FAs% += 1;
                 ChangeStateTo(stateCheckAdvance%,tNow);
+                ctThisITI := ctITI + ctFAPenalty;
             'Training Step 4 and beyond are go-on-any-change, hold-on-no-change
             case leverReleased% = 1 and whichLocChange%[ctTrialOrder%[nTrialsCompleted%-1]] > 0 then 'Hit
                 LogStatus("TrialComplete", "Hit");
@@ -1826,6 +1857,7 @@ func IdleProcessing%()
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Miss");
                 Misses% += 1;
                 ChangeStateTo(stateCheckAdvance%,tNow);
+                ctThisITI := ctITI + ctMissPenalty;
             case leverReleased% = 0 and whichLocChange%[ctTrialOrder%[nTrialsCompleted%-1]] = 0 then 'Correct Rejection
                 LogStatus("TrialComplete", "Correct Rejection");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Correct Rejection");
@@ -1837,6 +1869,7 @@ func IdleProcessing%()
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": False Alarm");
                 FAs% += 1;
                 ChangeStateTo(stateCheckAdvance%,tNow);
+                ctThisITI := ctITI + ctFAPenalty;
             endcase         
             
             
@@ -1901,9 +1934,10 @@ func IdleProcessing%()
                 Stop%();
             endif
         
-            if tNow > tITIStart + ctITI then
+            if tNow > tITIStart + ctThisITI then
                 LogStatus("ITI", "ITI complete at about " + str$(tNow));
                 ChangeStateTo(stateEnforceLeverInOrigin%,tNow);
+                ctThisITI := ctITI;  'Reset ITI to standard
             endif
             
             
