@@ -1441,10 +1441,12 @@ func IdleProcessing%()
             if stateBegin% = 1 then
                 LogStatus("WaitForLever", "Begin waiting for lever press from animal at about " + str$(tNow));
                 stateBegin% := 0;
+                jsUseExclusion% := 0;  'when we begin waiting for the lever, do not use the exclusion zone (if activated)
             endif
             
             if Answer%(JSDown%) = JSDown% then  'If lever is down (unlike above this is a single-poll, no need for tempAnswer%)
                 LogStatus("WaitForLever", "Found lever press at about " + str$(tNow));
+                jsUseExclusion% := 1;  'Once lever is down, now use the exclusion zone (if activated)
                 if ctTrainingOptions% = 0 then
                     'If delivering reward for lever press only, go straight to reward
                     ChangeStateTo(stateReward%, tNow);
@@ -1571,6 +1573,7 @@ func IdleProcessing%()
             case ctTrainingOptions% = 1 and tNow >= tStateStart + ctResponseTime then 'For training option 1, success, reward
                 LogStatus("WaitStimOnsetDelay", "Successful hold through delay");
                 nTrialsCompleted% += 1;
+                jsUseExclusion% := 0;  'remove exclusion zone (if activated)
                 if ctFixationOn% = 1 then
                     SafeSampleKey("X");  'Drop fixation point
                     WaitForBlankTo(stateReward%, tNow);
@@ -1721,23 +1724,31 @@ func IdleProcessing%()
                     LogStatus("MonitorFrameChannel", "Cue off and sample on at " + Str$(tTrigger));
                     SampleText(TextForSample$,tTrigger);
                     DrawMonitorScreen(0,-1,1,drawFlankers%);  'Remove cue on monitor screen, draw others
+                    if ctTrainingOptions% = 3 then 'cue is down, allow release on training option 3
+                        jsUseExclusion% := 0;  'remove exclusion zone, response is allowed (if activated)
+                    endif
                 case FrameTriggersFound% = ctPFsPerPatch%+1 then 'This pulse indicates cue down; enter hold period for training option 2
                     LogStatus("MonitorFrameChannel", "Cue off at " + Str$(tTrigger));
                     SampleText("Cue Off, trial " + Str$(nTrialsCompleted%+1),tTrigger);
                     DrawMonitorScreen(0,-1,0,0);  'Remove cue on monitor screen
                     'Break out after cues for training option 2
-                    if ctTrainingOptions% = 2 then 'we need to wait through the delay period (if any) then wait for release
+                    if ctTrainingOptions% = 2 then 'cue is down, allow release on training option 2
                         ChangeStateTo(stateResponseWindow%,tTrigger);
+                        jsUseExclusion% := 0;  'remove exclusion zone, response is allowed (if activated)
                     endif        
                 case FrameTriggersFound% = ctPFsPerPatch%+2 then 'This pulse indicates sample on
                     LogStatus("MonitorFrameChannel", "Sample on at " + Str$(tTrigger));
                     SampleText(TextForSample$,tTrigger);
                     DrawMonitorScreen(0,0,1,drawFlankers%);
+                    if ctTrainingOptions% = 3 then 'cue is down, allow release on training option 3
+                        jsUseExclusion% := 0;  'remove exclusion zone, response is allowed (if activated)
+                    endif
                 case FrameTriggersFound% = ctPFsPerPatch%+3 and ctSampleToTargetDelay = 0 then  'This pulse indicates sample off AND target on
                     FrameTriggersFound% += 1;  'Increment frame triggers since there are not separate sample off and target on
                     LogStatus("MonitorFrameChannel", "Sample off and target on at " + Str$(tTrigger));
                     SampleText(TextForTest$,tTrigger);
                     DrawMonitorScreen(0,0,drawGabors%,drawFlankers%);
+                    jsUseExclusion% := 0;  'remove exclusion zone, response is allowed (if activated)
                 case FrameTriggersFound% = ctPFsPerPatch%+3 then 'This pulse indicates sample off; enter hold period for training option 3
                     LogStatus("MonitorFrameChannel", "Sample off at " + Str$(tTrigger));
                     SampleText("Sample Off, trial " + Str$(nTrialsCompleted%+1),tTrigger);
@@ -1750,6 +1761,7 @@ func IdleProcessing%()
                     LogStatus("MonitorFrameChannel", "Test on at " + Str$(tTrigger));
                     SampleText(TextForTest$,tTrigger);
                     DrawMonitorScreen(0,0,drawGabors%,drawFlankers%);
+                    jsUseExclusion% := 0;  'remove exclusion zone, response is allowed (if activated)
                 case FrameTriggersFound% = ctPFsPerPatch%+5 then 'This pulse indicates test off, enters response window for training option 4
                     LogStatus("MonitorFrameChannel", "Test off at " + Str$(tTrigger));
                     SampleText("Test Off, trial " + Str$(nTrialsCompleted%+1),tTrigger);
@@ -1778,6 +1790,10 @@ func IdleProcessing%()
                 LogStatus("ResponseWindow", "Entered response window at about " + str$(tNow));
                 stateBegin% := 0;
                 leverReleased% := 0;  'reset
+                if jsUseExclusion% = 1 then
+                    message("jsUseExclusion% is 1, should always be 0 in stateResponseWindow!  Tell Jeff!");
+                    jsUseExclusion% := 0;   'what with the message, I don't think this would matter, but...obviously could just printlog the message but we'd never see it. Once all is tested this will be unnecessary.
+                endif
             endif
             
             docase
