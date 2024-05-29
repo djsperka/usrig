@@ -256,6 +256,7 @@ var ctFlankerUncuedCont%;
 var ctCueRectCuedCont%;
 var ctCueRectUncuedCont%;
 var ctShowCueRectDuringCue%;
+var ctShowBorder%;
 
 'Variables that allow us to build the allowed tunable values from strings
 var ctDotPct[100];  '100 possible values is way too many
@@ -332,6 +333,7 @@ var ctDlgFlankerUncuedCont% := 53;
 var ctDlgCueRectCuedCont% := 54;
 var ctDlgCueRectUncuedCont% := 55;
 var ctDlgCueRectWithCue% := 56;
+var ctDlgBorder% := 57;
 
 
 var ctDlgTotalTrials%;  'This just holds a pointer to the total trials text so we can update the text value
@@ -561,7 +563,7 @@ proc GetConteTaskParameters()
     ctCueRectCuedCont% := GetIntRegistryValue%(key$, "CueRectVC", ctCueRectCuedCont%);  'changed variable name, keeping old key value
     ctCueRectUncuedCont% := GetIntRegistryValue%(key$, "CueRectInvC", ctCueRectUncuedCont%);  'changed variable name, keeping old key value
     ctShowCueRectDuringCue% := GetIntRegistryValue%(key$, "ShowCueRectDuringCue", ctShowCueRectDuringCue%);
-    
+    ctShowBorder% := GetIntRegistryValue%(key$, "ShowBorder", ctShowBorder%);
 
     
 end;
@@ -624,6 +626,7 @@ proc SaveConteTaskParameters()
     SetIntRegistryValue(key$, "CueRectVC", ctCueRectCuedCont%);  'changed variable name, keeping old key value
     SetIntRegistryValue(key$, "CueRectInvC", ctCueRectUncuedCont%);  'changed variable name, keeping old key value
     SetIntRegistryValue(key$, "ShowCueRectDuringCue", ctShowCueRectDuringCue%);
+    SetIntRegistryValue(key$, "ShowBorder", ctShowBorder%);
     
 end;
 
@@ -647,7 +650,7 @@ func ConteTaskDialog%()
     var sevenInts%[7];  'OK, fine, this isn't exactly the greatest organization!  The dialog has evolved so much!
     var threeStrings$[3];
     var fourFloats[4];
-    var sixInts%[7];  'LOL sixInts%[] has 7 because we already have "sevenInts%[]"  Eep
+    var eightInts%[8]; 'sixInts%[] eventually had seven, but now eightInts%[] has eight!
 
     trainingOptionsList$[0] := "0 - Reward for lever";    '"Press Lever - Instant Reward - Release - Wait ITI"
     trainingOptionsList$[1] := "1 - Reward for hold & release lever";   '"Hold Lever - Release (when fixpt down) - Reward - Wait ITI"
@@ -691,7 +694,7 @@ func ConteTaskDialog%()
     ctPatchDurText$ := "Patch duration (s) = " + Str$(ctRefreshPerPF%*ctPFsPerPatch%/dataScreenHz,4,-3);  'in seconds, three decimal places
     
     
-    'Pack sixFloats[], sixPlusOneInts%[], sevenFloats[], sevenInts%[], threeStrings$[], sixInts%[]
+    'Pack sixFloats[], sixPlusOneInts%[], sevenFloats[], sevenInts%[], threeStrings$[], eightInts%[]
     nineFloats[0] := ctFixCrossWidthPixels;
     nineFloats[1] := ctPatchOnsetDelay;
     nineFloats[2] := ctPatchToSampleDelay;
@@ -738,13 +741,14 @@ func ConteTaskDialog%()
     fourFloats[2] := ctFAPenalty;
     fourFloats[3] := ctMissPenalty;
     
-    sixInts%[0] :=  ctGaborCuedCont%;  'sixInts%[] has seven!
-    sixInts%[1] :=  ctGaborUncuedCont%;
-    sixInts%[2] :=  ctFlankerCuedCont%;
-    sixInts%[3] :=  ctFlankerUncuedCont%;
-    sixInts%[4] :=  ctCueRectCuedCont%;
-    sixInts%[5] :=  ctCueRectUncuedCont%;
-    sixInts%[6] :=  ctShowCueRectDuringCue%;
+    eightInts%[0] :=  ctGaborCuedCont%;
+    eightInts%[1] :=  ctGaborUncuedCont%;
+    eightInts%[2] :=  ctFlankerCuedCont%;
+    eightInts%[3] :=  ctFlankerUncuedCont%;
+    eightInts%[4] :=  ctCueRectCuedCont%;
+    eightInts%[5] :=  ctCueRectUncuedCont%;
+    eightInts%[6] :=  ctShowCueRectDuringCue%;
+    eightInts%[7] :=  ctShowBorder%;
     
     'Create variables for dialog layout
     var wDlg% := 111;  '108+3
@@ -859,6 +863,7 @@ func ConteTaskDialog%()
     
     
     DlgCheck(ctDlgAlwaysPressing%,"Always Pressing?",c1%,hDlg%-2);
+    DlgCheck(ctDlgBorder%,"Border On",c33%,hDlg%-2);
     
     DlgButton(51, "Joystick Dialog", CallJoystickConfigDialogUD%,2,hDlg%-1);
 
@@ -867,12 +872,12 @@ func ConteTaskDialog%()
     i% := DlgShow(nTrialsPerDataPoint%,ctTrainingOptions%,ctCountUncued%,ctCountNoChange%,ctCountCued%,ctRequireFixation%,
                   ctFixationOn%,ctAdditionalWindowRadius,nineFloats[],sixPlusOneInts%[],ctPatchRadiusDeg,
                   ctRefreshPerPF%,ctPFsPerPatch%,ctResponseTime,sevenFloats[],sevenInts%[],threeStrings$[],
-                  fourFloats[],sixInts%[]);  'Now at 20!
+                  fourFloats[],eightInts%[]);  'Now at 20!
     
     
     if i% = 1 then        
         
-        'Unpack eightFloats[], sevenFloats[], sixPlusOneInts%[], sevenInts%[], threeStrings$[], sixInts%[]
+        'Unpack eightFloats[], sevenFloats[], sixPlusOneInts%[], sevenInts%[], threeStrings$[], eightInts%[]
         ctFixCrossWidthPixels := nineFloats[0];
         ctPatchOnsetDelay := nineFloats[1];
         ctPatchToSampleDelay := nineFloats[2];
@@ -919,13 +924,14 @@ func ConteTaskDialog%()
         ctFAPenalty := fourFloats[2];
         ctMissPenalty := fourFloats[3];
         
-        ctGaborCuedCont% := sixInts%[0];  'sixInts%[] has seven!
-        ctGaborUncuedCont% := sixInts%[1];
-        ctFlankerCuedCont% := sixInts%[2];
-        ctFlankerUncuedCont% := sixInts%[3];
-        ctCueRectCuedCont% := sixInts%[4];
-        ctCueRectUncuedCont% := sixInts%[5];
-        ctShowCueRectDuringCue% := sixInts%[6];
+        ctGaborCuedCont% := eightInts%[0];
+        ctGaborUncuedCont% := eightInts%[1];
+        ctFlankerCuedCont% := eightInts%[2];
+        ctFlankerUncuedCont% := eightInts%[3];
+        ctCueRectCuedCont% := eightInts%[4];
+        ctCueRectUncuedCont% := eightInts%[5];
+        ctShowCueRectDuringCue% := eightInts%[6];
+        ctShowBorder% := eightInts%[7];
         
         'Once everything is unpacked, save parameters, we will manipulate some of them below
         SaveConteTaskParameters();
@@ -1426,6 +1432,10 @@ func IdleProcessing%()
             case tempAnswer% = JSCenter% or tempAnswer% = JSUp%  then  'If lever in origin (or up)
                 LogStatus("EnforceLeverInOrigin", "Found lever in origin at about " + str$(tNow));
                 ChangeStateTo(stateWaitForLever%, tNow);
+                if ctShowBorder% = 1 then  'Once we are moving to WaitForLever, we put the border up if requested in the dialog
+                    LogStatus("EnforceLeverInOrigin", "Putting up border");
+                    SafeSampleKey("U");  'Put up border
+                endif
             case tempAnswer% < 0 then  'If error indicated; only errors should be coding errors
                 message("There has been a problem reading the lever device! Check log file! Quitting!");
                 Stop%();  'Stop%() should do a clean quit
@@ -2431,6 +2441,7 @@ func Start%()
     var FixationCrossArg$;
     var CueColorArg$;
     var CueRectArg$;
+    var BorderArg$;
     var Verbose$ := " -v ";  'For now, verbose is always on 
     var i%, j%, k%, m%, n%, p%, q%;
     var startSecs := 5;
@@ -3059,6 +3070,15 @@ func Start%()
         CueRectArg$ := "";
     endif
     
+    'Set Border Arg
+    if ctShowBorder% = 1 then
+        BorderArg$ := " --border (255/140/0),10";  'Here we are hard coding the color to an orange and the pixel width to 10
+    else
+        BorderArg$ := "";
+    endif
+    
+    
+    
     'Update fixation cross argument
     FixationCrossArg$ := Mid$(FixationArg$,5);  'Start with 5th character (remove " -f ") so we can insert the "+"
     FixationCrossArg$ := " -f +," + FixationCrossArg$ + "," + Str$(ctFixCrossWidthPixels%);  'Can also place a cross "orientation" argument at end to rotate it, but leaving that out here for default 0
@@ -3071,7 +3091,7 @@ func Start%()
     
     'If doing partial/full Conte task, point to spec file
     if ctTrainingOptions% >= 2 then
-        cmdLine$ := cmdLine$ + CueRectArg$ + CueColorArg$ + "--dot-supply " + GetScriptDir$(0) + "..\\..\\ConteDotsFile.bin" + " --trials " + GetScriptDir$(0) + "..\\..\\ConteCSVFile.csv";
+        cmdLine$ := cmdLine$ + CueRectArg$ + borderArg$ + CueColorArg$ + "--dot-supply " + GetScriptDir$(0) + "..\\..\\ConteDotsFile.bin" + " --trials " + GetScriptDir$(0) + "..\\..\\ConteCSVFile.csv";
     else  'Otherwise, just put in a fake grating/tuning curve to make it happy
         cmdLine$ := cmdLine$ + " -s " + GetGratingParameters$("Stimulus") + " -O 90 ";
     endif 

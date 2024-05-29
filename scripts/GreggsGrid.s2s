@@ -18,6 +18,52 @@ const ggCVSID$ := "$Id$";
 '
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
+message("This function has been deprecated, please check code comments starting at line 24!");
+halt;
+
+'This function has been deprecated on 5/29/2024.  Prior to its deprecation it had not been
+'used in 13 months, and we suspect that it may never come back into use.
+'
+'The function was deprecated in order to cannibalize one of the Tuning.pls commands - the 
+'"U" trigger command (and also DIGOUT 5).  With this "U" command no longer doing what it 
+'ought to, this function could not survive.  To resurrect this function, if necessary, the
+'best option would probably be to write a NEW .pls file.  Most of the trigger commands in
+'the Tuning.pls file are probably OK to carry over, but two of those trigger commands will
+'have to be changed - the "U" and the "S".  These commands should be changed in the new
+'.pls file to read:
+'
+'0016 STIMON: 'S MOVI   V2,1            ;Log that sequencer is in use
+'0017            DIGOUT [..0..1..]      ;Signals the stimuli on
+'0018            BEQ    V5,1,VWAIT
+'0019            MOVI   V2,0            ;Log that sequencer is not in use
+'0020            HALT                   ;End of this sequence section
+'
+'0042 ALTSTIM: 'U MOVI  V2,1            ;Log that sequencer is in use
+'0043            DIGOUT [..1..0..]      ;Signals the tuned parameter to advance
+'0044            MOVI   V2,0            ;Log that sequencer is not in use
+'0045            HALT                   ;End of this sequence section
+'
+'Note that the initial numeric values are arbitrary and ignored by the compiler.
+'The main idea here is that we are using two digital lines, DIGOUT 2 ("S") and DIGOUT 5 ("U"),
+'and that we are toggling between them.  (DIGOUTS are numbered [76543210])
+'
+'Ignore this sentence:
+'This "toggling" capability is going to be removed from Tuning.pls and presumably cannot be
+'re-established without breaking other, active, code.  
+'
+'Replace with this paragraph:
+'Further update (like came across the desk as I was writing the comments...):
+'GreggsGrid runs through the FIXSTIM program, but the code that needed to cannibalize the 
+'"U" trigger command runs through the CONTE program.  This means that Dan was able to set
+'up the CONTE program to ignore the alternating bit toggling done by "S" and "U", which
+'ultimately means that no changes to the pre-Conte Tuning.pls file have been made.  This
+'means that GreggsGrid should, in practice, work out of the box using FIXSTIM, for now.
+'
+'I have deprecated the GreggsGrid function anyway, because it is entirely possible that future, 
+'less-carefully-monitored changes could kill it regardless.  If you have encountered this
+'commentary because you are trying to use GreggsGrid, get rid of the above MESSAGE and HALT
+'and caveat emptor!
+'-jj 5/29/2024
 
 ' Overall script control vars
 var Pause% := 0;
