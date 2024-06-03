@@ -1726,7 +1726,7 @@ func IdleProcessing%()
                     if FrameTriggersFound% = 1 then
                         SampleText("Cue Frame #1, trial " + Str$(nTrialsCompleted%+1) + ", percent color 1 is " + Str$(cueDotPct[ctTrialOrder%[nTrialsCompleted%]]),tTrigger);  'on the first patch-frame, indicate dot percentage
                         DrawMonitorScreen(0,1,0,0);  'Draw cue on monitor screen
-                        if allowGoDuringCuePatch% = 1 and validity%[ctTrialOrder%[nTrialsCompleted%]] >= 0 then
+                        if allowGoDuringCuePatch% = 1 and validity%[ctTrialOrder%[nTrialsCompleted%]] = -1 then
                             jsUseExclusion% := 0;  'remove exclusion zone, response has been allowed during cue patch and is appropriate (if activated)
                         endif
                     else
@@ -1737,7 +1737,7 @@ func IdleProcessing%()
                     LogStatus("MonitorFrameChannel", "Cue off and sample on at " + Str$(tTrigger));
                     SampleText(TextForSample$,tTrigger);
                     DrawMonitorScreen(0,-1,1,drawFlankers%);  'Remove cue on monitor screen, draw others
-                    if ctTrainingOptions% = 3 and validity%[ctTrialOrder%[nTrialsCompleted%]] >= 0 then 'cue is down, allow release on training option 3
+                    if ctTrainingOptions% = 3 and validity%[ctTrialOrder%[nTrialsCompleted%]] = -1 then 'cue is down, allow release on training option 3
                         jsUseExclusion% := 0;  'remove exclusion zone, response is allowed and appropriate (if activated)
                     endif
                 case FrameTriggersFound% = ctPFsPerPatch%+1 then 'This pulse indicates cue down; enter hold period for training option 2
@@ -1753,7 +1753,7 @@ func IdleProcessing%()
                     LogStatus("MonitorFrameChannel", "Sample on at " + Str$(tTrigger));
                     SampleText(TextForSample$,tTrigger);
                     DrawMonitorScreen(0,0,1,drawFlankers%);
-                    if ctTrainingOptions% = 3 and validity%[ctTrialOrder%[nTrialsCompleted%]] >= 0 then 'cue is down, allow release on training option 3
+                    if ctTrainingOptions% = 3 and validity%[ctTrialOrder%[nTrialsCompleted%]] = -1 then 'cue is down, allow release on training option 3
                         jsUseExclusion% := 0;  'remove exclusion zone, response is allowed and appropriate (if activated)
                     endif
                 case FrameTriggersFound% = ctPFsPerPatch%+3 and ctSampleToTargetDelay = 0 then  'This pulse indicates sample off AND target on
