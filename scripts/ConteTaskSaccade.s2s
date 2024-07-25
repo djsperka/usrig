@@ -1519,15 +1519,15 @@ func IdleProcessing%()
                 WaitForBlankTo(stateTrialCompleted%, tNow);    
                 
             'Check for a break of fixation if response is not yet allowed, if so abort
-            case thisStim$ = "train-cue-rect" and FrameTriggersFound% <= SampleUpTrigger% and LookingFixation%(xEye,yEye) = 0 then
+            case thisStim$ = "train-cue-rect" and FrameTriggersFound% < SampleUpTrigger% and LookingFixation%(xEye,yEye) = 0 then
                 LogStatus("MonitorFrameChannel", "Fixation broken, train-cue-rect trial");
                 SafeSampleKey("X");  'Drop fixation point
                 WaitForBlankTo(stateAbort%, tNow); 
-            case thisStim$ = "train-grating" and FrameTriggersFound% <= TargetUpTrigger% and LookingFixation%(xEye,yEye) = 0 then
+            case thisStim$ = "train-grating" and FrameTriggersFound% < TargetUpTrigger% and LookingFixation%(xEye,yEye) = 0 then
                 LogStatus("MonitorFrameChannel", "Fixation broken, train-grating trial");
                 SafeSampleKey("X");  'Drop fixation point
                 WaitForBlankTo(stateAbort%, tNow); 
-            case thisStim$ = "full" and FrameTriggersFound% <= TargetUpTrigger% and LookingFixation%(xEye,yEye) = 0 then
+            case thisStim$ = "full" and FrameTriggersFound% < TargetUpTrigger% and LookingFixation%(xEye,yEye) = 0 then
                 LogStatus("MonitorFrameChannel", "Fixation broken, full trial");
                 SafeSampleKey("X");  'Drop fixation point
                 WaitForBlankTo(stateAbort%, tNow); 
@@ -2806,7 +2806,8 @@ func Start%()
     Verbose$ := " -v ";
     
     'Set Cue Rect Arg
-    CueRectArg$ := " --show-cue-rects ";
+    'CueRectArg$ := " --show-cue-rects ";  'This shows cue rects during patch and should be disabled
+    CueRectArg$ := "";
     
     'Set Border Arg
     'BorderArg$ := " --border (255/140/0),50";  'Here we are hard coding the color to an orange and the pixel width to 10
