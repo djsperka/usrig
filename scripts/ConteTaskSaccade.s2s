@@ -1501,6 +1501,10 @@ func IdleProcessing%()
                 LogStatus("MonitorFrameChannel", "Response away from RF, train-cue-rect trial");
                 SafeSampleKey("X");  'Drop stimulus
                 WaitForBlankTo(stateTrialCompleted%, tNow);                
+            case thisStim$ = "train-cue-rect" and  IsLookingTarget% = 3 and FrameTriggersFound% >= SampleUpTrigger% then
+                LogStatus("MonitorFrameChannel", "Response to overlapping rects, train-cue-rect trial");
+                SafeSampleKey("X");  'Drop stimulus
+                WaitForBlankTo(stateTrialCompleted%, tNow);
             case thisStim$ = "train-grating" and IsLookingTarget% = 1 and FrameTriggersFound% >= TargetUpTrigger% then
                 LogStatus("MonitorFrameChannel", "Response to RF, train-grating trial");
                 SafeSampleKey("X");  'Drop stimulus
@@ -1625,7 +1629,7 @@ func IdleProcessing%()
                 ChangeStateTo(stateCheckAdvance%,tNow);
                 Misses% += 1;
                 ctThisITI := ctITI + ctMissPenalty;
-            case IsLookingTarget% = whichLocChange%[ctTrialOrder%[nTrialsCompleted%-1]] then
+            case IsLookingTarget% = whichLocChange%[ctTrialOrder%[nTrialsCompleted%-1]] or IsLookingTarget% = 3 then
                 LogStatus("TrialComplete", "Hit");
                 SampleText("Trial " + Str$(nTrialsCompleted%) + ": Hit");
                 Hits% += 1;
@@ -3392,12 +3396,15 @@ func LookingTarget%(EyePosX,EyePosY,useRect%)
     'and 0 for neither target window.
     'useRect% determines whether we are using the circular window around the grating
     'or the rectangular window around the cue rectangles.
+    'Updated to explicitly set retVal% so that a value of 3 means "both" - if there is overlap (training only!)
     
     var extentW;
     var extentH;
     var c;
     c := ctAdditionalTargetRadius;  'getting unwieldy
-    
+
+    var retVal%;
+
     'ctAlwaysLooking% is the true test mode.
     'return target 1 in cases where we are not monitoring fixation for whatever reason
     if ctAlwaysLooking% = 1 then 
@@ -3423,23 +3430,38 @@ func LookingTarget%(EyePosX,EyePosY,useRect%)
         'ctGabor2YLoc   
     
     if useRect% = 0 then
-        docase  'Here we are just going to use mainW as the radius of a circular window
-        case (Pow(EyePosX-ctGaborXLoc,2) + Pow(EyePosY-ctGaborYLoc,2)) <= Pow(mainW+c,2) then 
-            return 1;
-        case (Pow(EyePosX-ctGabor2XLoc,2) + Pow(EyePosY-ctGabor2YLoc,2)) <= Pow(mainW+c,2) then
-            return 2;
-        else 
-            return 0; 
-        endcase
+'        docase  'Here we are just going to use mainW as the radius of a circular window
+'        case (Pow(EyePosX-ctGaborXLoc,2) + Pow(EyePosY-ctGaborYLoc,2)) <= Pow(mainW+c,2) then 
+'            return 1;
+'        case (Pow(EyePosX-ctGabor2XLoc,2) + Pow(EyePosY-ctGabor2YLoc,2)) <= Pow(mainW+c,2) then
+'            return 2;
+'        else 
+'            return 0; 
+'        endcase
+        if (Pow(EyePosX-ctGaborXLoc,2) + Pow(EyePosY-ctGaborYLoc,2)) <= Pow(mainW+c,2) then 
+            retVal% += 1;
+        endif
+        if (Pow(EyePosX-ctGabor2XLoc,2) + Pow(EyePosY-ctGabor2YLoc,2)) <= Pow(mainW+c,2) then
+            retVal% += 2;
+        endif
+    
     else
-        docase
-        case EyePosX > (ctGaborXLoc-extentW-c) and EyePosX < (ctGaborXLoc+extentW+c) and EyePosY > (ctGaborYLoc-extentH-c) and EyePosY < (ctGaborYLoc+extentH+c) then
-            return 1;
-        case EyePosX > (ctGabor2XLoc-extentW-c) and EyePosX < (ctGabor2XLoc+extentW+c) and EyePosY > (ctGabor2YLoc-extentH-c) and EyePosY < (ctGabor2YLoc+extentH+c) then
-            return 2;
-        else
-            return 0;
-        endcase
+'        docase
+'        case EyePosX > (ctGaborXLoc-extentW-c) and EyePosX < (ctGaborXLoc+extentW+c) and EyePosY > (ctGaborYLoc-extentH-c) and EyePosY < (ctGaborYLoc+extentH+c) then
+'            return 1;
+'        case EyePosX > (ctGabor2XLoc-extentW-c) and EyePosX < (ctGabor2XLoc+extentW+c) and EyePosY > (ctGabor2YLoc-extentH-c) and EyePosY < (ctGabor2YLoc+extentH+c) then
+'            return 2;
+'        else
+'            return 0;
+'        endcase
+        if EyePosX > (ctGaborXLoc-extentW-c) and EyePosX < (ctGaborXLoc+extentW+c) and EyePosY > (ctGaborYLoc-extentH-c) and EyePosY < (ctGaborYLoc+extentH+c) then
+            retVal% += 1;
+        endif
+        if EyePosX > (ctGabor2XLoc-extentW-c) and EyePosX < (ctGabor2XLoc+extentW+c) and EyePosY > (ctGabor2YLoc-extentH-c) and EyePosY < (ctGabor2YLoc+extentH+c) then
+            retVal% += 2;
+        endif
     endif
+
+    return retVal%;
     
 end;
