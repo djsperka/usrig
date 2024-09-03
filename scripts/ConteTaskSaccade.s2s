@@ -168,7 +168,7 @@ const ctMaxTrials% := 5000;
 
 var ctTrialOrder%[ctMaxTrials%];   'Will be shuffled indices, to randomize trial order 
 var cueDotPct[ctMaxTrials%];       'Percentage of cue dots on each trial
-var colorIndexRF%[ctMaxTrials%];   'Color index (0,1) of the primary location (i.e. the receptive field)
+var colorIndexAtRF%[ctMaxTrials%];   'Color index (0,1) of the primary location (i.e. the receptive field)
 var validity%[ctMaxTrials%];       'Validity on each trial, -1 = no change, 0 = invalid, 1 = valid (what if cueDotPct is 50?)
 var whichLocChange%[ctMaxTrials%]; '0 = no change, 1 = location 1 changes, 2 = location 2 changes
 var flankerIsH%;                   '-1 = no flanker; 0 = flanker vertical; 1 = flanker horizontal; cue box shrinks if flankers are off
@@ -2329,9 +2329,9 @@ func Start%()
     
     'Set orientation/absence of distractors
     'absent distractors still result in a 3x1 or 1x3 cue rectangle
-    flankerIsH% := ctPanelIsHoriz%;  'In updated logic, there is no difference, but leave old code. Note that value of -1 is NOT CURRENTLY SUPPORTED for a square box on VSG
+    flankerIsH% := ctPanelIsHoriz%;  'In updated logic, there is no difference, but leave old code. Note that value of -1 for a square box is NOT CURRENTLY SUPPORTED on the VSG
     'Note that although VSG will allow us to flip distractor orientation within-experiment,
-    'this is not currently supported by the ConteTask.s2s code; FlankerIsH% would need to be an array.
+    'this is not currently supported by the ConteTaskSaccade.s2s code; FlankerIsH% would need to be an array.
     
     
     'Write out the variables that hold the counterbalance
@@ -2351,24 +2351,29 @@ func Start%()
 
                 'Setting cue dot pct, color index, training type is easy
                 cueDotPct[count%] := cueDotPctLocal[j%];
-                colorIndexRF%[count%] := q%;  'If 0, first color listed is at RF
+                colorIndexAtRF%[count%] := q%;  'If 0, first color listed (index 0) is at RF
                 stimTrainType%[count%] := 1;  '1 = train-cue-rect trials
                 validity%[count%] := 1;  'Train-cue-rect trials are always valid
                 
-                'Set contrast of cue rects and which location is rewarded
+                'Set contrast of cue rects and which location is rewarded - these trials are always valid
                 if (cueDotPct[count%] > 50) or ((cueDotPct[count%] = 50) and (round(rand()) = 1)) then  'Dot pct should never be == 50% by convention, but just in case
-                    'Location 1 is cued (or 50% prob on ambiguous cue)
+                    'Color 1 is cued (or 50% prob on ambiguous cue)
+                    'Location holding color 1 is rewarded response
+                    whichLocChange%[count%] :=  colorIndexAtRF%[count%]+1;  'is same as q%+1
+                else
+                    'Color 2 is cued (or other 50% prob on ambiguous cue)
+                    'Location holding color 2 is rewarded response
+                    whichLocChange%[count%] :=  2-colorIndexAtRF%[count%];  'is same as 2-q%
+                endif                
+                
+                'Set cue rectangle contrasts based on which SIDE is cued
+                if whichLocChange%[count%] = 1 then  'if cued color is on side 1
                     samp1CueRectContrast%[count%] := ctCueRectCuedCont%;
                     samp2CueRectContrast%[count%] := ctCueRectUncuedCont%;
-                    'Location holding color 1 is rewarded response
-                    whichLocChange%[count%] :=  colorIndexRF%[count%]+1;
-                else
-                    'Location 2 is cued (or other 50% prob on ambiguous cue)
-                    samp1CueRectContrast%[count%] := ctCueRectUncuedCont%;
+                else  'if cued color is on side 2
                     samp2CueRectContrast%[count%] := ctCueRectCuedCont%;
-                    'Location holding color 2 is rewarded response
-                    whichLocChange%[count%] :=  2-colorIndexRF%[count%];
-                endif                
+                    samp1CueRectContrast%[count%] := ctCueRectUncuedCont%;
+                endif;
                 
                 'Set contrast of all gabors, all flankers to 0
                 samp1Contrast%[count%] := 0;
@@ -2400,23 +2405,23 @@ func Start%()
         for k% := 0 to nCont%-1 do
             for m% := 0 to nCh%-1 do
                 for p% := 0 to nDist%-1 do
-                    for q% := 0 to 1 do  'Here q% can be the side that changes 
+                    for q% := 0 to 1 do  'Here q% is the side that changes 
                         
                         stimTrainType%[count%] := 2;  '2 = train-grating trials
                         
                         'We will not show cue dots, so percentage can be arbitrarily set to 0
                         cueDotPct[count%] := 0;
-                        colorIndexRF%[count%] := 0;  'Also unused
+                        colorIndexAtRF%[count%] := 0;  'Also unused
                         
                         'There is no cue, so technically there cannot be an invalid trial, the changing gabor will ALWAYS be the rewarded location
                         validity%[count%] := 1; 
                         
-                        'Determine the base contrasts at the cued and uncued locations, they may or may not be requested to match 
-                        contCued% := cont%[k%];
+                        'Determine the base contrasts at the cued and uncued (OK, here, "change" and "no change") locations, they may or may not be requested to match 
+                        contCued% := cont%[k%];  'Note that here "cued" is actually the "change" side, there is no cue
                         if ctContrastMatches% = 1 then
-                            contUncued% := cont%[k%];  'uncued contrast matches!
+                            contUncued% := cont%[k%];  'uncued (technically "no change") contrast matches!
                         else
-                            contUncued% := cont%[floor(rand(nCont%,0))];  'uncued contrast is random!
+                            contUncued% := cont%[floor(rand(nCont%,0))];  'uncued (technically "no change") contrast is random!
                         endif
                         
                         'Set contrast of gabors and flankers and which location is changed/rewarded
@@ -2483,7 +2488,7 @@ func Start%()
 
                             'Setting cue dot pct and validity is easy, set these at top and then use below for minor clarity
                             cueDotPct[count%] := cueDotPctLocal[j%];                            
-                            colorIndexRF%[count%] := q%;  'If 0, first color listed is at RF
+                            colorIndexAtRF%[count%] := q%;  'If 0, first color listed is at RF
                             stimTrainType%[count%] := 3;  '3 = full trials
                             
                             
@@ -2607,7 +2612,7 @@ func Start%()
     '   validity%[];       'Validity on each trial, -1 = no change, 0 = invalid, 1 = valid (if cueDotPct is 50, validity value is not updated, but side 1/2 is randomly selected)
     '   whichOriChange%[]; '0 = no change, 1 = side 1 changes, 2 = side 2 changes
     '   flankerIsH%;       '0 = vertical flankers, 1 = horizontal flankers, -1 = no flankers
-    '   colorIndexRF%[];   '0/1, index of color at RF (RF = location 1)
+    '   colorIndexAtRF%[];   '0/1, index of color at RF (RF = location 1)
     '   stimTrainType%[];  '1 = train-cue-rect, 2 = train-grating, 3 = full  
     '   samp1Contrast%[];
     '   samp2Contrast%[];
@@ -2717,16 +2722,16 @@ func Start%()
         Print("%f,%f,%f,%f,%f,%d,%d,",FixationX,FixationY,ctPatchRadiusDeg*2,ctPatchRadiusDeg*2,ctDotRadiusDeg*2,ctRefreshPerPF%,ctPFsPerPatch%);  'cue patch params, will skip cue if final value is zero
         Print("%f,%f,%f,%f,%f,",patchToSampleDelay[ctTrialOrder%[i%]],sampleDuration[ctTrialOrder%[i%]],sampleToTargetDelay[ctTrialOrder%[i%]],targetDuration[ctTrialOrder%[i%]],0);  'timing params, set response time at end to 0, no response allowed after final stage down
         Print("%f,%f,%f,%f,%f,%f,",ctGaborXLoc,ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,sampleOri,ctGaborSF);  'Sample A (primary), part 1
-        Print("%f,%f,%d,%d,%d,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%,colorIndexRF%[ctTrialOrder%[i%]]);  'Sample A (primary), part 2, color for A is colorIndexRF%[ctTrialOrder%[i%]]
+        Print("%f,%f,%d,%d,%d,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%,colorIndexAtRF%[ctTrialOrder%[i%]]);  'Sample A (primary), part 2, color for A is colorIndexAtRF%[ctTrialOrder%[i%]]
         Print("%f,%f,%f,",samp1Contrast%[ctTrialOrder%[i%]],samp1FlankerContrast%[ctTrialOrder%[i%]],samp1CueRectContrast%[ctTrialOrder%[i%]]);  'Sample A (primary), part 3, contrasts
         Print("%f,%f,%f,%f,%f,%f,",ctGabor2XLoc,ctGabor2YLoc,ctGaborHDeg,ctGaborWDeg,sampleOri,ctGaborSF);  'Sample B (secondary), part 1
-        Print("%f,%f,%d,%d,%d,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%,1-colorIndexRF%[ctTrialOrder%[i%]]);  'Sample B (secondary), part 2, color for B is 1-colorIndexRF%[ctTrialOrder%[i%]]
+        Print("%f,%f,%d,%d,%d,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%,1-colorIndexAtRF%[ctTrialOrder%[i%]]);  'Sample B (secondary), part 2, color for B is 1-colorIndexAtRF%[ctTrialOrder%[i%]]
         Print("%f,%f,%f,",samp2Contrast%[ctTrialOrder%[i%]],samp2FlankerContrast%[ctTrialOrder%[i%]],samp2CueRectContrast%[ctTrialOrder%[i%]]);  'Sample B (secondary), part 3, contrasts
         Print("%f,%f,%f,%f,%f,%f,",ctGaborXLoc,ctGaborYLoc,ctGaborHDeg,ctGaborWDeg,sampleOri,ctGaborSF);  'Test A (primary), part 1
-        Print("%f,%f,%d,%d,%d,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%,colorIndexRF%[ctTrialOrder%[i%]]);  'Test A (primary), part 2, color for A is colorIndexRF%[ctTrialOrder%[i%]] 
+        Print("%f,%f,%d,%d,%d,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%,colorIndexAtRF%[ctTrialOrder%[i%]]);  'Test A (primary), part 2, color for A is colorIndexAtRF%[ctTrialOrder%[i%]] 
         Print("%f,%f,%f,",test1Contrast%[ctTrialOrder%[i%]],test1FlankerContrast%[ctTrialOrder%[i%]],test1CueRectContrast%[ctTrialOrder%[i%]]);  'Test A (primary), part 3, contrasts
         Print("%f,%f,%f,%f,%f,%f,",ctGabor2XLoc,ctGabor2YLoc,ctGaborHDeg,ctGaborWDeg,sampleOri,ctGaborSF);  'Test B (secondary), part 1
-        Print("%f,%f,%d,%d,%d,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%,1-colorIndexRF%[ctTrialOrder%[i%]]);  'Test B (secondary), part 2, color for B is 1-colorIndexRF%[ctTrialOrder%[i%]]
+        Print("%f,%f,%d,%d,%d,",ctGaborPhase,ctGaborDivisor,flankerIsH%,ctPanelLinePixels%,1-colorIndexAtRF%[ctTrialOrder%[i%]]);  'Test B (secondary), part 2, color for B is 1-colorIndexAtRF%[ctTrialOrder%[i%]]
         Print("%f,%f,%f",test2Contrast%[ctTrialOrder%[i%]],test2FlankerContrast%[ctTrialOrder%[i%]],test2CueRectContrast%[ctTrialOrder%[i%]]);   'Test B (secondary), part 3, contrasts
         Print("\n");
         
