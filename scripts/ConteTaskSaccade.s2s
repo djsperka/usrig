@@ -111,6 +111,7 @@ var TargetUpTrigger%;
 var TargetDownTrigger%;
 var IsLookingFixation%;
 var IsLookingTarget%;
+var IsLookingTarget2%;
 var drawFlankers%;        'for use with DrawMonitorScreen, uses plural to not step on local variable in DrawMonitorScreen
 var drawGaborsSample%;    'for use with DrawMonitorScreen, for draw during sample
 var drawGaborsTest%;      'for use with DrawMonitorScreen, for draw during test
@@ -140,13 +141,14 @@ const stateWaitForAcquisition%:=3;         'Wait for acquisition of fixaiton poi
 const stateWaitStimOnsetDelay%:=4;         'Wait through any stimulus onset delay
 const stateRequestStimulus%:=5;            'Request stimulus
 const stateMonitorFrameChannel%:=6;        'Ensure each cue/sample/target frame appears
-const stateTrialCompleted%:=7;             'Trial is done
-const stateReward%:=8;                     'Deliver reward
-const stateRewardWait%:=9;                'Wait through reward delivery
-const stateCheckAdvance%:=10;              'Make sure advance has happened (has been requested prior to reward delivery, if any)
-const stateITI%:=11;                       'Wait through ITI
-const stateAbort%:=12;                     'Wait through abort
-const stateWaitForBlank%:=13;              'Wait through blank - this state should only be approached via WaitForBlankTo()
+const stateHoldResponse%:=7;               'Hold response until reward assigned
+const stateTrialCompleted%:=8;             'Trial is done
+const stateReward%:=9;                     'Deliver reward
+const stateRewardWait%:=10;                'Wait through reward delivery
+const stateCheckAdvance%:=11;              'Make sure advance has happened (has been requested prior to reward delivery, if any)
+const stateITI%:=12;                       'Wait through ITI
+const stateAbort%:=13;                     'Wait through abort
+const stateWaitForBlank%:=14;              'Wait through blank - this state should only be approached via WaitForBlankTo()
 
 
 var iState% := stateVSGWait%;	'Always start in stateVSGWait%
@@ -265,6 +267,8 @@ var ctFlankerUncuedCont%;
 var ctCueRectCuedCont%;
 var ctCueRectUncuedCont%;
 var ctMinInvalidRate;
+var ctDropFixpt%;
+var ctTargetAcqTime;
 
 'Variables that allow us to build the allowed tunable values from strings
 var ctDotPct[100];  '100 possible values is way too many
@@ -334,6 +338,8 @@ var ctDlgCueRectCuedCont% := 48;
 var ctDlgCueRectUncuedCont% := 49;
 var ctDlgAdditionalTargetRadius% := 50;
 var ctDlgMinInvalidRate% := 51;
+var ctDlgDropFixpt% := 52;
+var ctDlgTargetAcqTime% := 53;
 
 var ctDlgTotalTrials%;  'This just holds a pointer to the total trials text so we can update the text value
 var ctTotalTrialsText$;
@@ -389,6 +395,7 @@ var ctTxtFlankerCuedCont%;
 var ctTxtFlankerUncuedCont%;
 var ctTxtCueRectCuedCont%;
 var ctTxtCueRectUncuedCont%;
+var ctTxtTargetAcqTime%;
 
 
 var screenXDeg := 12.5;  'Manually setting screen degrees - we might want to calculate this based on manual screen cm or have degrees/cm in main dialog, but for now...
@@ -549,6 +556,8 @@ proc GetConteTaskParameters()
     ctCueRectCuedCont% := GetIntRegistryValue%(key$, "CueRectVC", ctCueRectCuedCont%);  'changed variable name, keeping old key value
     ctCueRectUncuedCont% := GetIntRegistryValue%(key$, "CueRectInvC", ctCueRectUncuedCont%);  'changed variable name, keeping old key value
     ctMinInvalidRate := GetFloatRegistryValue(key$, "MinInvalidRate", ctMinInvalidRate);
+    ctDropFixpt% := GetIntRegistryValue%(key$, "DropFixpt", ctDropFixpt%);
+    ctTargetAcqTime := GetFloatRegistryValue(key$, "TargetAcqTime", ctTargetAcqTime);
     
     
 end;
@@ -604,6 +613,9 @@ proc SaveConteTaskParameters()
     SetIntRegistryValue(key$, "CueRectVC", ctCueRectCuedCont%);  'changed variable name, keeping old key value
     SetIntRegistryValue(key$, "CueRectInvC", ctCueRectUncuedCont%);  'changed variable name, keeping old key value
     SetFloatRegistryValue(key$, "MinInvalidRate", ctMinInvalidRate);
+    SetIntRegistryValue(key$, "DropFixpt", ctDropFixpt%);
+    SetFloatRegistryValue(key$, "TargetAcqTime", ctTargetAcqTime);
+    
     
 end;
 
@@ -711,7 +723,7 @@ func ConteTaskDialog%()
 '    var hTrExpOpt% := 2; 'height of training/experimental options group
     var hTrSpec% := 7;   'height of trial specification group
     var hFix% := 3;      'height of fixation options group
-    var hTime% := 4;     'height of timing options group
+    var hTime% := 5;     'height of timing options group
     var hCue% := 4;      'height of cue patch/cue dots options group
     var hStim% := 5;     'height of stimulus options group
     var hStimCont% := 3; 'height of stimulus contrast options group
@@ -748,7 +760,8 @@ func ConteTaskDialog%()
     DlgCheck(ctDlgAlwaysLooking%,"Always Looking?",c1%,sFix%+1);
     DlgReal(ctDlgFixAcqTime%,wNum%,0.1,100,c23%+1,sFix%+1);  ctTxtFixAcqTime% := DlgText("Fixation acquisition time (s)",c23%+wNum%+2,sFix%+1);
     DlgReal(ctDlgFixCrossWidthPixels%,wNum%,1,50,c33%+1,sFix%+1);  ctTxtFixCrossWidthPixels% := DlgText("Fixation cross width (pixels)",c33%+wNum%+2,sFix%+1);
-    DlgReal(ctDlgAdditionalWindowRadius%,wNum%,-5,10,c1%+1,sFix%+2);  ctTxtAdditionalWindowRadius% := DlgText("Add'l fix window radius (deg, relative to cue patch)",c1%+wNum%+2,sFix%+2);
+    DlgCheck(ctDlgDropFixpt%,"Drop Fixpt at Test?",c1%,sFix%+2);
+    DlgReal(ctDlgAdditionalWindowRadius%,wNum%,-5,10,c23%+1,sFix%+2);  ctTxtAdditionalWindowRadius% := DlgText("Add'l fix window rad (deg, rel cue)",c23%+wNum%+2,sFix%+2);  'ctTxtAdditionalWindowRadius% := DlgText("Add'l fix window radius (deg, relative to cue patch)",c1%+wNum%+2,sFix%+2);
     DlgReal(ctDlgAdditionalTargetRadius%,wNum%,0,10,c33%+1,sFix%+2);  ctTxtAdditionalTargetRadius% := DlgText("Add'l target window radius (deg)",c33%+wNum%+2,sFix%+2);
 
     
@@ -762,7 +775,7 @@ func ConteTaskDialog%()
     DlgReal(ctDlgAbort%,wNum%,0,100,c1%+1,sTime%+3);  ctTxtAbort% := DlgText("Abort penalty (s)",c1%+wNum%+2,sTime%+3);
     DlgReal(ctDlgFAPenalty%,wNum%,0,100,c23%+1,sTime%+3);  ctTxtFAPenalty% := DlgText("False Alarm penalty (s)",c23%+wNum%+2,sTime%+3);
     DlgReal(ctDlgMissPenalty%,wNum%,0,100,c33%+1,sTime%+3);  ctTxtMissPenalty% := DlgText("Miss penalty (s)",c33%+wNum%+2,sTime%+3);
-
+    DlgReal(ctDlgTargetAcqTime%,wNum%,0,10,c1%+1,sTime%+4);  ctTxtTargetAcqTime% := DlgText("Target Acq Time (s)",c1%+wNum%+2,sTime%+4);
     
     
     DlgGroup("Cue Dot And Cue Patch Options",1,sCue%,wDlg%-2,hCue%);
@@ -803,10 +816,10 @@ func ConteTaskDialog%()
 
     DlgAllow(0, 0, ConteTaskDialogChanged%);
     
-    i% := DlgShow(nTrialsPerDataPoint%,ctCountTrainCueRect%,ctCountTrainGrating%,
-                  ctCountFull%,ctAdditionalWindowRadius,eightFloats[],sixPlusOneInts%[],ctPatchRadiusDeg,
-                  ctRefreshPerPF%,ctPFsPerPatch%,sixFloats[],sevenInts%[],threeStrings$[],
-                  fourFloats[],sixInts%[],ctAdditionalTargetRadius,ctMinInvalidRate);  'Now at 18!
+    i% := DlgShow(nTrialsPerDataPoint%,ctCountTrainCueRect%,ctCountTrainGrating%,ctCountFull%,
+                  ctAdditionalWindowRadius,eightFloats[],sixPlusOneInts%[],ctPatchRadiusDeg,
+                  ctRefreshPerPF%,ctPFsPerPatch%,sixFloats[],sevenInts%[],threeStrings$[],fourFloats[],
+                  sixInts%[],ctAdditionalTargetRadius,ctMinInvalidRate,ctDropFixpt%,ctTargetAcqTime);  'Now at 19!
     
 
     if i% = 1 then        
@@ -1492,35 +1505,63 @@ func IdleProcessing%()
             endif;
             
             docase
-            'Check for a response once a response is allowed
+            'Check for a response once a response is allowed, will catch all cases where it is time for a response and there is a response
             case thisStim$ = "train-cue-rect" and IsLookingTarget% = 1 and FrameTriggersFound% >= SampleUpTrigger% then
-                LogStatus("MonitorFrameChannel", "Response to RF, train-cue-rect trial");
-                SafeSampleKey("X");  'Drop stimulus
-                WaitForBlankTo(stateTrialCompleted%, tNow);
+                if ctTargetAcqTime > 0 then  'Require hold of target
+                    ChangeStateTo(stateHoldResponse%,tNow);
+                else  'No hold of target required, trial complete
+                    LogStatus("MonitorFrameChannel", "Response to RF, train-cue-rect trial");
+                    SafeSampleKey("X");  'Drop stimulus
+                    WaitForBlankTo(stateTrialCompleted%, tNow);
+                endif
             case thisStim$ = "train-cue-rect" and  IsLookingTarget% = 2 and FrameTriggersFound% >= SampleUpTrigger% then
-                LogStatus("MonitorFrameChannel", "Response away from RF, train-cue-rect trial");
-                SafeSampleKey("X");  'Drop stimulus
-                WaitForBlankTo(stateTrialCompleted%, tNow);                
+                if ctTargetAcqTime > 0 then  'Require hold of target
+                    ChangeStateTo(stateHoldResponse%,tNow);
+                else  'No hold of target required, trial complete
+                    LogStatus("MonitorFrameChannel", "Response away from RF, train-cue-rect trial");
+                    SafeSampleKey("X");  'Drop stimulus
+                    WaitForBlankTo(stateTrialCompleted%, tNow); 
+                endif                
             case thisStim$ = "train-cue-rect" and  IsLookingTarget% = 3 and FrameTriggersFound% >= SampleUpTrigger% then
-                LogStatus("MonitorFrameChannel", "Response to overlapping rects, train-cue-rect trial");
-                SafeSampleKey("X");  'Drop stimulus
-                WaitForBlankTo(stateTrialCompleted%, tNow);
+                if ctTargetAcqTime > 0 then  'Require hold of target
+                    ChangeStateTo(stateHoldResponse%,tNow);
+                else  'No hold of target required, trial complete
+                    LogStatus("MonitorFrameChannel", "Response to overlapping rects, train-cue-rect trial");
+                    SafeSampleKey("X");  'Drop stimulus
+                    WaitForBlankTo(stateTrialCompleted%, tNow);
+                endif
             case thisStim$ = "train-grating" and IsLookingTarget% = 1 and FrameTriggersFound% >= TargetUpTrigger% then
-                LogStatus("MonitorFrameChannel", "Response to RF, train-grating trial");
-                SafeSampleKey("X");  'Drop stimulus
-                WaitForBlankTo(stateTrialCompleted%, tNow);
+                if ctTargetAcqTime > 0 then  'Require hold of target
+                    ChangeStateTo(stateHoldResponse%,tNow);
+                else  'No hold of target required, trial complete
+                    LogStatus("MonitorFrameChannel", "Response to RF, train-grating trial");
+                    SafeSampleKey("X");  'Drop stimulus
+                    WaitForBlankTo(stateTrialCompleted%, tNow);
+                endif
             case thisStim$ = "train-grating" and  IsLookingTarget% = 2 and FrameTriggersFound% >= TargetUpTrigger% then
-                LogStatus("MonitorFrameChannel", "Response away from RF, train-grating trial");
-                SafeSampleKey("X");  'Drop stimulus
-                WaitForBlankTo(stateTrialCompleted%, tNow);  
+                if ctTargetAcqTime > 0 then  'Require hold of target
+                    ChangeStateTo(stateHoldResponse%,tNow);
+                else  'No hold of target required, trial complete
+                    LogStatus("MonitorFrameChannel", "Response away from RF, train-grating trial");
+                    SafeSampleKey("X");  'Drop stimulus
+                    WaitForBlankTo(stateTrialCompleted%, tNow); 
+                endif                
             case thisStim$ = "full" and IsLookingTarget% = 1 and FrameTriggersFound% >= TargetUpTrigger% then
-                LogStatus("MonitorFrameChannel", "Response to RF, full trial");
-                SafeSampleKey("X");  'Drop stimulus
-                WaitForBlankTo(stateTrialCompleted%, tNow);
+                if ctTargetAcqTime > 0 then  'Require hold of target
+                    ChangeStateTo(stateHoldResponse%,tNow);
+                else  'No hold of target required, trial complete
+                    LogStatus("MonitorFrameChannel", "Response to RF, full trial");
+                    SafeSampleKey("X");  'Drop stimulus
+                    WaitForBlankTo(stateTrialCompleted%, tNow);
+                endif
             case thisStim$ = "full" and  IsLookingTarget% = 2 and FrameTriggersFound% >= TargetUpTrigger% then
-                LogStatus("MonitorFrameChannel", "Response away from RF, full trial");
-                SafeSampleKey("X");  'Drop stimulus
-                WaitForBlankTo(stateTrialCompleted%, tNow);    
+                if ctTargetAcqTime > 0 then  'Require hold of target
+                    ChangeStateTo(stateHoldResponse%,tNow);
+                else  'No hold of target required, trial complete
+                    LogStatus("MonitorFrameChannel", "Response away from RF, full trial");
+                    SafeSampleKey("X");  'Drop stimulus
+                    WaitForBlankTo(stateTrialCompleted%, tNow); 
+                endif                
                 
             'Check for a break of fixation if response is not yet allowed, if so abort
             case thisStim$ = "train-cue-rect" and FrameTriggersFound% < SampleUpTrigger% and LookingFixation%(xEye,yEye) = 0 then
@@ -1605,6 +1646,64 @@ func IdleProcessing%()
                 Stop%();
             endcase
 
+            
+            
+            
+        case iState% = stateHoldResponse% then            
+            'Waiting through the target hold, once a response has been initially registered
+            if stateBegin% = 1 then
+                LogStatus("HoldResponse", "Begin waiting through target hold at about " + str$(tNow));
+                stateBegin% := 0;
+            endif
+            
+            'Get new LookingTarget2 value once per idle loop, we will hold the original value, don't let the monkey swap targets
+            if thisStim$ = "train-grating" then
+                IsLookingTarget2% := LookingTarget%(xEye,yEye,0);  'Use size of grating if cue rect is not on screen
+            else
+                IsLookingTarget2% := LookingTarget%(xEye,yEye,1);  'Use size of cue rect if it is on screen
+            endif;
+            
+            'Make sure animal is still looking at the same target it started looking at (complications for "overlap" dealt with)
+            docase
+            case IsLookingTarget2% = 0 then 'break of target hold, do not reward
+                LogStatus("HoldResponse", "Response hold broken, " + thisStim$ + " trial");
+                SafeSampleKey("X");  'Drop fixation point
+                WaitForBlankTo(stateAbort%, tNow);
+            case IsLookingTarget% = 3 and IsLookingTarget2% = 1 then 'if original acquisition was "overlap" and animal has now "chosen" non-overlapping target, lock in that target
+                IsLookingTarget% := 1;
+            case IsLookingTarget% = 3 and IsLookingTarget2% = 2 then 'if original acquisition was "overlap" and animal has now "chosen" non-overlapping target, lock in that target
+                IsLookingTarget% := 2;
+            case IsLookingTarget% = 1 and IsLookingTarget2% = 2 then  'change of target, do not reward
+                LogStatus("HoldResponse", "Response hold broken, " + thisStim$ + " trial");
+                SafeSampleKey("X");  'Drop fixation point
+                WaitForBlankTo(stateAbort%, tNow);
+            case IsLookingTarget% = 2 and IsLookingTarget2% = 1 then  'change of target, do not reward
+                LogStatus("HoldResponse", "Response hold broken, " + thisStim$ + " trial");
+                SafeSampleKey("X");  'Drop fixation point
+                WaitForBlankTo(stateAbort%, tNow);
+            endcase
+            
+            'Check for completion of hold, but do not honor completion if target hold break has been detected above
+            if tNow >= (tStateStart + ctTargetAcqTime) and iState% = stateHoldResponse% then
+                docase
+                case IsLookingTarget2% = 1 then
+                    IsLookingTarget% := 1;
+                    LogStatus("HoldResponse", "Response to RF, " + thisStim$ + " trial");
+                    SafeSampleKey("X");  'Drop stimulus
+                    WaitForBlankTo(stateTrialCompleted%, tNow);
+                case IsLookingTarget2% = 2 then
+                    IsLookingTarget% := 2;
+                    LogStatus("HoldResponse", "Response away from RF, " + thisStim$ + " trial");
+                    SafeSampleKey("X");  'Drop stimulus
+                    WaitForBlankTo(stateTrialCompleted%, tNow);
+                case IsLookingTarget2% = 3 then  
+                    IsLookingTarget% := 3; 
+                    LogStatus("HoldResponse", "Response to overlapping rects, " + thisStim$ + " trial");
+                    SafeSampleKey("X");  'Drop stimulus
+                    WaitForBlankTo(stateTrialCompleted%, tNow);
+                endcase
+            endif
+            
             
          
             
@@ -2232,6 +2331,7 @@ func Start%()
     var Opener$;
     var ProgName$;
     var RemoteArg$ := "";     'Extra arg needed if vsg is not on local machine...
+    var FixptDropArg$ := "";
     var BGColor$;
     var Dist2Screen$;
     var TriggerPort$;
@@ -2800,6 +2900,11 @@ func Start%()
         ProgName$ := "\\conte.exe "; 'set program name for one VSG
     endif;
 
+    if ctDropFixpt% = 1 then
+        FixptDropArg$ := " --fixpt-cutoff ";
+    endif
+    
+    
     
     
     'Set background color
@@ -2832,7 +2937,7 @@ func Start%()
     CueColorArg$ := " -c (" + Str$(ctDotColor1R%) + "/" + Str$(ctDotColor1G%) + "/" + Str$(ctDotColor1B%) + ") -c (" + Str$(ctDotColor2R%) + "/" + Str$(ctDotColor2G%) + "/" + Str$(ctDotColor2B%) + ") ";
 
     'Build opener to command line
-    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + TriggerPort$ + BGColor$ + Dist2Screen$ + FixationCrossArg$;
+    cmdLine$ := Opener$ + ProgName$ + RemoteArg$ + Verbose$ + TriggerPort$ + BGColor$ + Dist2Screen$ + FixationCrossArg$ + FixptDropArg$;
     
     'Point to spec file
     cmdLine$ := cmdLine$ + CueRectArg$ + borderArg$ + CueColorArg$ + "--dot-supply " + GetScriptDir$(0) + "..\\..\\ConteDotsFile.bin" + " --trials " + GetScriptDir$(0) + "..\\..\\ConteCSVFile.csv";
@@ -3015,6 +3120,7 @@ proc WriteParameterFile()
 '    'Print("Reward Delay (s)                         : %f\n", mainRewardDelay);  'never enabled
 	Print("Inter-trial interval                     : %f\n", ctITI);
     Print("Fixation cross width (pixels)            : %f\n", ctFixCrossWidthPixels%);
+    Print("Drop fixation point when stim on         : %d\n", ctDropFixpt%);
     Print("Acquisition time (s)                     : %f\n", ctFixAcqTime);
     Print("Patch onset delay (s)                    : %f\n", ctPatchOnsetDelay);
     Print("Patch duration (s)                       : %f\n", ctPatchDur);
@@ -3030,7 +3136,8 @@ proc WriteParameterFile()
     Print("Patch to sample delay (s)                : %f\n", ctPatchToSampleDelay);
     Print("Sample duration (s)                      : %f\n", ctSampleDuration);
     Print("Sample to target delay (s)               : %f\n", ctSampleToTargetDelay);
-    Print("Target duration (s)                      : %f\n", ctTargetDuration);   
+    Print("Target duration (s)                      : %f\n", ctTargetDuration);  
+    Print("Target hold time (s)                     : %f\n", ctTargetAcqTime); 
     Print("Abort penalty (s)                        : %f\n", ctAbortPenalty);
     Print("False Alarm penalty (s)                  : %f\n", ctFAPenalty);
     Print("Miss penalty (s)                         : %f\n", ctMissPenalty);   
