@@ -509,21 +509,22 @@ proc InitializeWindows()
 	Window(0, 50, 100, 100);
     XRange(0, 30);
 	View(DataWindow%).WindowVisible(1);
-    
-	' Channel 1 is eye pos. Set size of this channel's data to 0 - expands as needed. Join points, too. 
-	XYSize(iEyePosChannel%, 0);
-	XYJoin(iEyePosChannel%, 1);
-	XYDrawMode(1, 2, 1);	' dot size is 1
-    
-    
-	'Open an XY view to display eye position
+
+
+    'Open an XY view to display eye position
 	XYWindow% := FileNew(12);
 	XRange(-15,15);
 	YRange(-2,-15,15);
 	XYDrawMode(0,5,0);
 	WindowVisible(1);
 	Window(0, 0, 50, 50);
+
+    ' Channel 1 is eye pos. Set size of this channel's data to 0 - expands as needed. Join points, too. 
+    'Create a new channel in the XY view to display the fixation window
+	iEyePosChannel% := XYSetChan(0);
 	XYSize(iEyePosChannel%, -1);
+	XYJoin(iEyePosChannel%, 1);
+	XYDrawMode(1, 2, 1);	' dot size is 1
 	XYColour(iEyePosChannel%, 16);
     
 
