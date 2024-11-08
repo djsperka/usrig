@@ -1,0 +1,2083 @@
+' $Id$
+' BakersSac created 11/4/24 jsj, adapted from StarSac2
+
+const bakSacCVSID$ := "$Id$";
+
+#include "../util/UsreyUtil.s2s"
+#include "../util/MiscUtilities.s2s"
+#include "../util/TrialBlockGen.s2s"
+#include "../util/ChannelUtilities.s2s"
+#include "../util/Directories.s2s"
+#include "UsreyGratings.s2s"
+#include "UsreyFixationPoint.s2s"
+#include "UsreyDAQ.s2s"
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+'	BakersSac script parameters START
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+var bakSacAlwaysLooking% := 0;    ' Leave = 0 for normal use, set to 1 for testing only!!!
+
+var bakSacFixationDuration;			' Time required to maintain fixation, seconds
+var bakSacFixationDurationMin;		' Time required to maintain fixation, seconds (min of range)
+var bakSacFixationDurationMax;		' Time required to maintain fixation, seconds (max of range)
+var bakSacAcquisitionTime;			' Time allowed to acquire target before fail trial, seconds
+var bakSacInterTrialTime;				' Blank time following a trial (both successful and failed), seconds
+var bakSacAnswerTime;					' time to move to answer window, seconds
+var bakSacHoldAnswer;                 ' required time to hold answer, seconds
+var bakSacMSPerSmallReward% := 25;
+var UtilityChannel%;
+var bakSacMaxTrials% := 5000;
+
+var nTrialsStarted%:=0;
+var thisTrialInd%:=0;  
+var nTrialsSuccess%:=0;
+var nTrialsFail%:=0;
+var nTrialsAbort% := 0;
+
+var tempNTC%;
+
+' keep fixpt on stuff
+var bakSacKeepFixptOn% := 1;
+var bakSacMinSmallRewardDelta := 0.4;
+var bakSacMaxSmallRewardDelta := 0.8;
+var bakSacJuicePerSmallReward% := 1;
+
+var bakSacNWavemarks% := 0;
+var bakSacNContinuous% := 0;
+var bakSacWavemarkPorts%[63];
+var bakSacContinuousPorts%[64];
+
+var bakSacTargetPositionThisTrial[bakSacMaxTrials%][2];
+
+var bakSacTrialCounter% := 0;
+var bakSacAnswerWindowRadius := 2;
+
+
+' Optogenetics variables - since we will only be using wraparound and not pulsed (at least, that's my understanding) much of this might be unnecessary
+var bakSacPreStimOptoTime;
+var bakSacPostStimOptoTime;
+var bakSacMaxOptoTime;
+var bakSacOptoVoltageOut;
+var bakSacDoOpto%;  ' 1 if doing optogenetics, will force use of "opto-condition" file
+var voltageInteger%;
+var bakSacDoOptoThisTrial%:=0;  'will keep track of trial-by-trial opto
+var optoIsOn%;  'Keeps track of if the laser is actually on
+var bakSacOptoOffMidStimTime;  'used to turn off the opto laser mid-stimulus, if required by the timing
+
+
+var HBCycle% := 1;
+
+
+'Baker's Dozen tuning file read variables
+var bakSacNumBDCurvesAllowed% := 22;  'include paired curves as two curves
+'Index order of BD curves:
+'0 = ORIentation; 1 = Temporal Freq; 2 = Spatial Freq; 3 = CONtrast
+'4 = FIXpoint COLor; 5 = AREA; 6 = PHASE; 7,8 = XYPOSition (paired)
+'9 = XPOSition; 10,11 = Width/Height (paired); 12 = DonutHole
+'13,14 = FIXXY position (paired); 15 = stimDELay; 16 = stimDURation
+'17,18,19 = SWEEP, 20 = COLorVECtor, 21 = IMAGE??
+var bakSacTunCurveLabel$[bakSacNumBDCurvesAllowed%];
+bakSacTunCurveLabel$[0]  := "ORI";
+bakSacTunCurveLabel$[1]  := "TF";
+bakSacTunCurveLabel$[2]  := "SF";
+bakSacTunCurveLabel$[3]  := "CON";
+bakSacTunCurveLabel$[4]  := "FIXCOL";
+bakSacTunCurveLabel$[5]  := "AREA";
+bakSacTunCurveLabel$[6]  := "PHASE";
+bakSacTunCurveLabel$[7]  := "XYPOS";  'This is X position
+bakSacTunCurveLabel$[8]  := "";  'Reserved for Y position
+bakSacTunCurveLabel$[9]  := "XPOS";
+bakSacTunCurveLabel$[10] := "WH";  'This is width
+bakSacTunCurveLabel$[11] := "";  'Reserved for height
+bakSacTunCurveLabel$[12] := "DH";
+bakSacTunCurveLabel$[13] := "FIXXY";  'This is fixation X
+bakSacTunCurveLabel$[14] := "";  'Reserved for fixation Y
+bakSacTunCurveLabel$[15] := "DEL";
+bakSacTunCurveLabel$[16] := "DUR";
+bakSacTunCurveLabel$[17] := "SWEEP";  'This is Sweep Duration
+bakSacTunCurveLabel$[18] := "";  'Reserved for Sweep Direction
+bakSacTunCurveLabel$[19] := "";  'Reserved for Sweep DegPerSec
+bakSacTunCurveLabel$[20] := "COLVEC"; 
+'bakSacTunCurveLabel$[20] := "IMAGE"; 
+var bakSacWhichTunCurve[bakSacNumBDCurvesAllowed%];    'Will be 1 for each tuning curve that is specified in the BD file and 0 if not
+var bakSacTuningValues$[bakSacMaxTrials%][bakSacNumBDCurvesAllowed%];  'Will fill up to 5000 values, as STRINGS, column index is as above
+var bakSacConditionLabel$[bakSacMaxTrials%];
+var bakSacTBTOpto%[bakSacMaxTrials%];  'this is only available in Baker's Dozen for now
+var bakSacPauseOnConditionChange%;
+var bakSacTuningFile$;
+var bakSacCmdLineFile$;
+var BDFullText$;
+var BDNumStim%;
+var bakSacOCFile$;
+
+
+
+proc GetBakSacScriptParameters()
+	var key$;
+    key$ := GetRegistryKey$(1) + "\\Scripts\\BakSac";
+	bakSacFixationDurationMin := GetFloatRegistryValue(key$, "FixationDurationMin", bakSacFixationDurationMin);
+	bakSacFixationDurationMax := GetFloatRegistryValue(key$, "FixationDurationMax", bakSacFixationDurationMax);
+	bakSacAcquisitionTime := GetFloatRegistryValue(key$, "AcquisitionTime", bakSacAcquisitionTime);
+	bakSacInterTrialTime := GetFloatRegistryValue(key$, "InterTrialTime", bakSacInterTrialTime);
+    bakSacAnswerTime := GetFloatRegistryValue(key$, "AnswerTime", bakSacAnswerTime);
+    bakSacHoldAnswer := GetFloatRegistryValue(key$, "HoldAnswer", bakSacHoldAnswer);
+    bakSacKeepFixptOn% := GetIntRegistryValue%(key$, "KeepFixptOn", bakSacKeepFixptOn%);
+    bakSacJuicePerSmallReward% := GetIntRegistryValue%(key$, "JuicePerSmallReward", bakSacJuicePerSmallReward%);
+    bakSacMinSmallRewardDelta := GetFloatRegistryValue(key$, "MinSmallRewardDelta", bakSacMinSmallRewardDelta);
+    bakSacMaxSmallRewardDelta := GetFloatRegistryValue(key$, "MaxSmallRewardDelta", bakSacMaxSmallRewardDelta);
+    bakSacDoOpto% := GetIntRegistryValue%(key$, "DoOpto", bakSacDoOpto%);
+    bakSacMSPerSmallReward% := GetIntRegistryValue%(key$, "SmallRewardSize", bakSacMSPerSmallReward%);
+    bakSacAnswerWindowRadius := GetFloatRegistryValue(key$, "AnswerWindowRadius", bakSacAnswerWindowRadius);
+    bakSacTuningFile$ := GetStringRegistryValue$(key$, "TuningFile", bakSacTuningFile$);
+    bakSacOCFile$ := GetStringRegistryValue$(key$, "OCFile", bakSacOCFile$);
+    bakSacPauseOnConditionChange% := GetIntRegistryValue%(key$, "PauseOnConditionChange", bakSacPauseOnConditionChange%);       
+end;
+ 	
+proc SaveBakSacScriptParameters()
+	var key$;
+    key$ := GetRegistryKey$(1) + "\\Scripts\\BakSac";
+	SetFloatRegistryValue(key$, "FixationDurationMin", bakSacFixationDurationMin);
+	SetFloatRegistryValue(key$, "FixationDurationMax", bakSacFixationDurationMax);
+	SetFloatRegistryValue(key$, "AcquisitionTime", bakSacAcquisitionTime);
+	SetFloatRegistryValue(key$, "InterTrialTime", bakSacInterTrialTime);
+    SetFloatRegistryValue(key$, "AnswerTime", bakSacAnswerTime);
+    SetFloatRegistryValue(key$, "HoldAnswer", bakSacHoldAnswer);
+    SetIntRegistryValue(key$, "KeepFixptOn", bakSacKeepFixptOn%);
+    SetIntRegistryValue(key$, "JuicePerSmallReward", bakSacJuicePerSmallReward%);
+    SetFloatRegistryValue(key$, "MinSmallRewardDelta", bakSacMinSmallRewardDelta);
+    SetFloatRegistryValue(key$, "MaxSmallRewardDelta", bakSacMaxSmallRewardDelta);
+    SetIntRegistryValue(key$, "DoOpto", bakSacDoOpto%);
+    SetIntRegistryValue(key$, "SmallRewardSize", bakSacMSPerSmallReward%);
+    SetFloatRegistryValue(key$, "AnswerWindowRadius", bakSacAnswerWindowRadius);
+    SetStringRegistryValue(key$, "TuningFile", bakSacTuningFile$);
+    SetStringRegistryValue(key$, "OCFile", bakSacOCFile$);
+    SetIntRegistryValue(key$, "PauseOnConditionChange", bakSacPauseOnConditionChange%);
+end;
+
+
+
+func BakSacScriptDialog%()
+	var i%;
+    var sixFloats[6];
+   
+    
+    'Get various parameters, in case we don't click on these buttons but still use the function
+	GetBakSacScriptParameters();
+    GetBakSacOptoParameters();
+    
+    'We don't need to six-floats this anymore because of the removal of a lot of dialog fluff
+    'relative to "ancestor" function StarSac2, but it doesn't really hurt anything, so keeping it
+    sixFloats[0] := bakSacFixationDurationMin;
+    sixFloats[1] := bakSacFixationDurationMax;
+    sixFloats[2] := bakSacAcquisitionTime;
+    sixFloats[3] := bakSacInterTrialTime;
+    sixFloats[4] := bakSacAnswerTime;
+    sixFloats[5] := bakSacHoldAnswer;
+    
+	DlgCreate("BakersSac Script Parameters");
+	DlgReal(1, "Fixation duration min(s):", .01, 10);
+	DlgReal(2, "Fixation duration max(s):", .01, 10);
+	DlgReal(3, "Acquisition time(s):", .01, 10);
+	DlgReal(4, "Intertrial time(s):", .01, 10);
+	DlgReal(5, "Answer time(s):", .01, 10);
+    DlgReal(6, "Answer hold time(s):", .01, 10);
+    DlgReal(7, "Answer window radius", 0.1, 100);
+    
+    DlgString(8, 40, 255, "", 3, 9);  'for visual confirmation of selected trials file
+    DlgButton(101, " Select Baker's Dozen File ", SelectBakersDozenFile%, 2, 10);
+    
+    
+    DlgCheck(9, "Keep fixpt on?", 0, 12);
+    DlgReal(10, "Min small reward wait time", 0, 10, 0, 13);
+    DlgReal(11, "Max small reward wait time", 0, 10, 0, 14);
+    DlgInteger(12, "Juice hits per small reward", 0, 10, 0, 15, 1);
+    DlgInteger(13, "Small reward hit size (ms)", 1, 200, 0, 16);
+    
+    
+    DlgCheck(14, "Use opto?", 2, 18);
+    DlgString(15, 40, 255, "", 3, 19);  'for visual confirmation of selected opto/condition file
+    DlgButton(102, " Select Opto/Condition File ", SelectBakersDozenOCFile%, 2, 20);
+    DlgButton(103, "Opto Parameters", BakSacOptoDialog%, 30, 20);
+    DlgCheck(16,"Pause on Condition Change",2,21);
+    
+    DlgAllow(0xffff, 0, BakSacScriptDialogChanged%); 
+
+    
+    i%:=DlgShow(sixFloats[], bakSacAnswerWindowRadius, bakSacTuningFile$, bakSacKeepFixptOn%, 
+    bakSacMinSmallRewardDelta, bakSacMaxSmallRewardDelta, bakSacJuicePerSmallReward%, 
+    bakSacMSPerSmallReward%, bakSacDoOpto%, bakSacOCFile$, bakSacPauseOnConditionChange%);
+	
+    if i% = 1 then
+        
+        'extract six floats
+        bakSacFixationDurationMin := sixFloats[0]; 
+        bakSacFixationDurationMax := sixFloats[1]; 
+        bakSacAcquisitionTime := sixFloats[2];
+        bakSacInterTrialTime := sixFloats[3];
+        bakSacAnswerTime := sixFloats[4];
+        bakSacHoldAnswer  := sixFloats[5];
+        
+		SaveBakSacScriptParameters();
+        
+        'Adjust bakSacPostStimOptoTime, which must not allow the opto time to go past the max time
+        if (bakSacPreStimOptoTime + bakSacPostStimOptoTime + bakSacAnswerTime) > bakSacMaxOptoTime then
+            bakSacPostStimOptoTime := bakSacMaxOptoTime - bakSacAnswerTime - bakSacPreStimOptoTime;
+        endif;
+        
+        'Set bakSacOptoOffMidStimTime, which will allow us to cut the opto off mid-trial if required
+        if (bakSacMaxOptoTime - bakSacPreStimOptoTime) < bakSacAnswerTime then
+            bakSacOptoOffMidStimTime := bakSacMaxOptoTime - bakSacPreStimOptoTime;
+        else
+            bakSacOptoOffMidStimTime := bakSacAnswerTime + .1;  'this will simply prevent bakSacOptoOffMidStimTime from having any effect if the requested time is true wraparound
+        endif;
+        
+        'Make sure that the pre-opto time is shorter than the min fixation time (if doing opto)
+        '(otherwise the request to turn on the opto might come before the fixation point)
+        if bakSacDoOpto% = 1 and bakSacFixationDurationMin <= bakSacPreStimOptoTime then
+            message("The minimum fixation duration must be longer than the pre-stim opto time!  Quitting!");
+            halt;
+        endif;
+        
+	endif;
+	return i%;
+end;
+
+func BakSacScriptDialogChanged%(item%)    
+    
+    'The logic here:  Small reward is entirely disabled if the fixation point doen not stay on.
+    'If the fixation point DOES stay on, we also require NJuicePerSmallReward to be greater than 0
+    'for small reward to do anything, so if we set that to zero we should also gray out the rest.
+    DlgEnable(DlgValue(9), 12);  'so enable the NJuicePerSmallReward based on fix point staying up
+    DlgEnable(DlgValue(9) and DlgValue(12)>0, 10, 11, 13);  'OK, it's cool that this double condition actually works
+    
+    'If no opto, don't allow condition pause; if fixpt stays up, don't allow condition pause
+    if DlgValue(14)=1 and DlgValue(9)=0 then
+        DlgEnable(1, 16); 
+    else
+        DlgEnable(0, 16);
+        DlgValue(16,0);
+    endif
+    
+    return 1;
+end
+
+
+
+
+
+proc GetBakSacOptoParameters()
+	var stmp$;
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\BakSac\\Opto";
+    
+    bakSacPreStimOptoTime := GetFloatRegistryValue(key$, "PreStimOptoTime", bakSacPreStimOptoTime);
+    bakSacPostStimOptoTime := GetFloatRegistryValue(key$, "PostStimOptoTime", bakSacPostStimOptoTime);
+    bakSacOptoVoltageOut := GetFloatRegistryValue(key$, "OptoVoltageOut", bakSacOptoVoltageOut);
+    bakSacMaxOptoTime := GetFloatRegistryValue(key$, "MaxOptoTime", bakSacMaxOptoTime);  
+
+end;
+
+proc SaveBakSacOptoParameters()
+	var key$;
+	key$:= GetRigName$() + GetCurrentConfiguration$() + "\\Scripts\\BakSac\\Opto";
+    SetFloatRegistryValue(key$, "PreStimOptoTime", bakSacPreStimOptoTime);
+    SetFloatRegistryValue(key$, "PostStimOptoTime", bakSacPostStimOptoTime);
+    SetFloatRegistryValue(key$, "OptoVoltageOut", bakSacOptoVoltageOut);
+    SetFloatRegistryValue(key$, "MaxOptoTime", bakSacMaxOptoTime);
+    
+end;
+
+
+func BakSacOptoDialog%()
+	var iReturn% := 1;
+	var i%;
+    var labels$[4];
+    var stimdur;
+    var tempNPulses%;
+    var tempCount%;
+    stimdur := dlgvalue(4);  'get stimulus duration value from calling (main) dialog, limit opto period based on this
+    
+    labels$[0] := "Opto Off First";
+    labels$[1] := "Opto On First";
+    labels$[2] := "Random First";
+    labels$[3] := "Opto On All Blocks";
+	GetBakSacOptoParameters();
+	DlgCreate("Optogenetics Parameters");
+    DlgReal(1, "Opto Voltage Out (V)",0.0002,5,50,1); '.0002 is the minimum value that will give any change at all (to 1 in a 15-bit range) on the DAC
+    DlgReal(2, "PreStimulus Opto On (s)",0,10,50,2);
+    DlgReal(3, "PostStimulus Opto On (s)",0,10,50,3);
+    DlgText("If max opto dur is less than post opto on, opto will turn off during stimulus",2,4);
+    DlgReal(4, "Maximum Opto Duration (s)",0,10,50,5);
+    
+    i% := DlgShow(bakSacOptoVoltageOut,bakSacPreStimOptoTime,bakSacPostStimOptoTime,bakSacMaxOptoTime);
+    ' If i% is 1 the user hit "OK". If its 0, user hit "Cancel". 
+    
+	if i% = 1 then
+		SaveBakSacOptoParameters();    
+	endif;
+    
+	return iReturn%;
+end;
+
+
+
+' Window handles and channel numbers
+var XChannel%,YChannel%;		' Channel number assigned to eye x and y
+var FixationChannel%;
+var StimChannel%;
+var ChangeChannel%;
+var ReadyChannel%;			' channel number for VSG ready pulse signal
+var TimingChannel%;
+var DataWindow%;	' time view
+var XYWindow%;		' window with eye pos shown -- this is for eye pos and fixpt only
+var iTargetChannel%;	' channel number for target in xy window
+var iTargetWindowChannel%;' channel number for target window in xy window
+var iFixChannel%;	' channel number for fixpt in xy window
+var iFixWindowChannel%;' channel number for fixpt window in xy window
+var iMonitorChannel%;	' channel number for monitor position display in xy window
+var iEyePosChannel% := 1;   ' channel 1 is always used as eye position channel in xy windows
+var StimHandle%;	' handle for stimulus application
+' Experimental control
+var Pause%:=0;		' When 1, expt is paused - no idle processing done
+
+' Display stuff
+var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
+var AnswerWindowX[36],AnswerWindowY[36];
+var windowX[36], windowY[36];
+
+
+LogInit(1);
+
+' Check if always looking flag is set. If so, issue a warning. 
+if bakSacAlwaysLooking% = 1 then
+    if Query("Always looking is SET. Unset?") = 1 then
+        bakSacAlwaysLooking% := 0;
+    endif
+endif
+
+UseTwo1401s% := DoWeUseTwo1401s%();
+GetPortsAndNumWMsWFs%(bakSacNWavemarks%,bakSacNContinuous%,bakSacWavemarkPorts%[],bakSacContinuousPorts%[]);
+
+' Fetch electrode config - this is less flexible than the Plexon-capable version above
+'bakSacNWavemarks% := GetWavemarkPorts%(bakSacWavemarkPorts%[]);
+'bakSacNContinuous% := GetContinuousPorts%(bakSacContinuousPorts%[]);
+
+
+' Run dialog
+if BakSacScriptDialog%() = 0 then
+    halt;
+endif
+
+
+
+' Assign channel numbers for eye X,Y and trigger. 
+XChannel% := 21;
+YChannel% := 22;
+ReadyChannel% := 23;
+FixationChannel% := 24;
+StimChannel% := 25;
+ChangeChannel% := 26;
+UtilityChannel% := 27;
+TimingChannel% := 28;
+
+ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 32;  'Digmark (default) is highest non-electrode channel used by this function
+
+
+if UseTwo1401s% = 0 then
+    CreateSampleConfiguration();
+    
+    ' Get display windows ready
+    InitializeWindows();
+    
+    ' Prepare the toolbar buttons
+    InitializeToolbar();
+else
+    InitializeToolbar();
+endif;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc CreateSampleConfiguration()
+	var i%;
+    var key$;
+    var primaryTxt$;
+    var secondaryTxt$;
+    key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
+    SetPrimarySecondaryTxt(primaryTxt$,secondaryTxt$);
+	SampleClear(); 'Set standard sampling state
+    SampleChannels(64);  '32 does not work, we need more!
+'	SampleAutoFile(0); 'Enable automatic file naming
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    
+	' Set path for new data files
+	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3, 1);
+	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1, 1);
+	DoSampleAutoName(key$,"baksac","bks",primaryTxt$,secondaryTxt$);
+	SampleAutoFile(1);
+    
+    ' Text marks make extraction easier
+    SampleTextMark(200);
+    
+	'----Event Channel recording definitions----
+	SampleEvent(FixationChannel%, 2, 2, 3600);
+	SampleComment$(FixationChannel%, "FixPt");
+	SampleTitle$(FixationChannel%, "FixPt");
+
+	SampleEvent(StimChannel%, 3, 2, 3600);
+	SampleComment$(StimChannel%, "Stim");
+	SampleTitle$(StimChannel%, "Stim");
+
+	SampleEvent(ChangeChannel%, 4, 2, 3600); 'Trigger channel, level
+	SampleComment$(ChangeChannel%, "Advance");
+	SampleTitle$(ChangeChannel%, "Advance");
+
+
+	' channel to look for ready signal from vsg
+	SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+	SampleComment$(ReadyChannel%,"Ready");
+	SampleTitle$(ReadyChannel%,"Ready");
+    
+    
+    'Digmark channel for eyetracker timing pulses
+    if RecordEyeTrackerOutputFile% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"EyeFilePulse");  'Digital marker is by definition channel 32
+    endif
+    
+    
+    '----Analog, non-spiking electrode recording conditions
+    'Eye position channels Last # is sampling freq in Hz. 
+	SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+	SampleTitle$(XChannel%,EyeXPortLabel$);
+	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+	SampleTitle$(YChannel%,EyeYPortLabel$);
+    
+    if UtilityPort% > -1 then
+        SampleWaveform(UtilityChannel%,UtilityPort%,30000);         
+        SampleTitle$(UtilityChannel%,UtilityPortLabel$);
+    endif;
+    
+    if UseTwo1401s% = 1 then
+        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+        SampleTitle$(32,"Timing");  'Digital marker is by definition channel 32
+        
+        SampleEvent(TimingChannel%, 6, 2, 3600); 'Trigger channel, level
+        SampleComment$(TimingChannel%,"Handshake");
+        SampleTitle$(TimingChannel%,"Hndshk");
+    endif
+    
+    
+    
+    
+    '----Set up "spiking" Electrode Channels----
+    SetUpElectrodeConfiguration(bakSacNWavemarks%,ExcludedChans%[]);
+
+
+	
+
+	if UseTwo1401s% = 0 then
+        SampleSequencer(script$ + "Tuning.pls");
+    else
+        SampleSequencer(script$ + "TuningSendTrigger.pls");
+    endif;
+
+	DoSampleOptimise();
+	SampleMode(1); 'Continuous sampling
+    
+    
+'    'Add a digital marker channel for pulsing optogenetics
+'    'Do it for every opto, easy enough to add this into the wraparound calls in the PLS
+'    'Will record a '1' for laser on and a '0' for laser off
+'    if bakSacDoOpto% = 1 then
+'        SampleDigMark(20);  '20 Hz should be plenty high for an expected sustained rate
+'        SampleTitle$(DigitalLaserChannel%,"Laser On");
+'    endif
+    
+    
+end;
+
+
+
+proc InitializeWindows()
+
+	'Open the data sampling window
+	DataWindow% := FileNew(0,4);
+	Window(0, 50, 100, 100);
+    XRange(0, 30);
+	View(DataWindow%).WindowVisible(1);
+    
+	' Channel 1 is eye pos. Set size of this channel's data to 0 - expands as needed. Join points, too. 
+	XYSize(iEyePosChannel%, 0);
+	XYJoin(iEyePosChannel%, 1);
+	XYDrawMode(1, 2, 1);	' dot size is 1
+    
+    
+	'Open an XY view to display eye position
+	XYWindow% := FileNew(12);
+	XRange(-15,15);
+	YRange(-2,-15,15);
+	XYDrawMode(0,5,0);
+	WindowVisible(1);
+	Window(0, 0, 50, 50);
+	XYSize(iEyePosChannel%, -1);
+	XYColour(iEyePosChannel%, 16);
+    
+
+	'Calcuate the fixation window
+	var index%;
+	var twopi;
+	twopi := 2.0*4.0*ATan(1.0);
+	
+	for index% := 0 to 35 do
+		FixWindowX[index%] := WindowRadius * Cos(index% * twopi/36.0);
+		FixWindowY[index%] := WindowRadius * Sin(index% * twopi/36.0);
+	next;
+    
+    for index% := 0 to 35 do
+		AnswerWindowX[index%] := bakSacAnswerWindowRadius * Cos(index% * twopi/36.0);
+		AnswerWindowY[index%] := bakSacAnswerWindowRadius * Sin(index% * twopi/36.0);
+	next;
+    
+    
+    
+	'Create a new channel in the XY view to display the fixation window
+	iFixWindowChannel% := XYSetChan(0);
+	XYColour(iFixWindowChannel%, 13);
+	XYDrawMode(iFixWindowChannel%, 2, 1);
+	XYJoin(iFixWindowChannel%, 1);
+
+	'Create a new channel in the XY view to display the fixation point
+	iFixChannel% := XYSetChan(0);
+
+	'Create a new channel in the XY view to display the target window
+	iTargetWindowChannel% := XYSetChan(0);
+	XYColour(iTargetWindowChannel%, 13);
+	XYDrawMode(iTargetWindowChannel%, 2, 1);
+	XYJoin(iTargetWindowChannel%, 1);
+
+	'Create a new channel in the XY view to display the target point
+	iTargetChannel% := XYSetChan(0);
+
+
+
+	'Create a new channel in the XY view to show the monitor's location
+	iMonitorChannel% := XYSetChan(0);
+	XYColour(iMonitorChannel%, 13);
+	XYDrawMode(iMonitorChannel%, 3, 1);
+	XYJoin(iMonitorChannel%, 2);
+	XYAddData(iMonitorChannel%, -9, -7);
+	XYAddData(iMonitorChannel%, 9, -7);
+	XYAddData(iMonitorChannel%, 9, 7);
+	XYAddData(iMonitorChannel%, -9, 7);
+
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitializeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+
+	View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+    if UseTwo1401s% = 1 then
+        ToolbarSet(1,"StartPlexon",StartPlexon%);
+    else
+        ToolbarSet(1,"Sample start",Start%);
+    endif;
+	ToolbarSet(2,"Sample stop", Stop%);
+	ToolbarSet(3,"Juice", Juice%);
+	ToolbarSet(4,"Quit", Quit%);
+	ToolbarEnable(2,0);
+	Toolbar("Go", 0x3ff);
+
+end;
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+	var CommandLine$;
+	var FixationPoint$;
+	var Extras$;
+	var tmp$;
+	var TargetArg$;
+    var progName$;
+    var count% := 0;
+    var fpx, fpy, fpd, fpr;     ' fixpt parameters
+    var i%;
+    var startSecs := 5;
+    var pulseFound%;
+    var tRise;
+    var tFall;
+    var tempstr$, tempchar$;
+    
+    
+    GetFixationPointParameterValues(fpx, fpy, fpd, fpr);
+    
+    if UseTwo1401s% = 1 then
+        SampleStart(0);  'Set sampling to start immediately
+        Yield(0.5);  'Wait half a second
+        'Look for handshake, unless disabled
+        while pulseFound% < 1 and startSecs > 0 and Dual1401IgnoreHandshake% = 0 do
+            pulseFound% := View(DataWindow%).FindPulseUp%(TimingChannel%, 0, tRise, tFall);
+            yield(0.1);
+            startSecs := startSecs - 0.1;
+        wend
+        'Send timing pulse
+        SampleSeqVar(11,20);  'set for 20 ms pulse (Was not specified!  Two 1401s has been inactive for years and "T" may have been accidentally co-opted?)
+        SafeSampleKey("T");
+    else
+        SampleStart(0); 'Start sampling now
+    endif;
+    
+    if startSecs <= 0 then
+        message("Handshake not found in 5 seconds!  Quitting!");
+        halt
+    endif
+
+    
+    
+    ' Assign program name
+    progName$ := " starstim ";  'use STARSTIM
+
+    
+    
+    ' Randomize target order
+    ' Per Henry we will NOT be randomizing in-script, any randomization will be done by him and we will play
+    ' it out in sequence.  As such we will NOT be giving the optional -o argument
+    
+    
+    'Create name of command-line file - for a Starstim experiment, the standard Baker's Dozen tuning file cannot
+    'be passed as-is to the program, we have to explicitly write out the grating specs for each grating.
+    'Add "_bakersSac_ctrl" to end of tuning file name, if extension is 3 chars, will slide in before extension
+    'otherwise (no extension, or 2/4/etc. char extension) will just tack on to end
+    tempstr$ := Right$(bakSacTuningFile$,4);  'Get putative extension (probably .txt), assume . + 3 chars
+    tempchar$ := Left$(tempstr$,1);  'Get first char of putative extension
+    if tempchar$ = "." then
+        bakSacCmdLineFile$ := Left$(bakSacTuningFile$,Len(bakSacTuningFile$)-4) + "_bakersSac_ctrl" + tempstr$;
+    else
+        bakSacCmdLineFile$ := bakSacTuningFile$ + "_bakersSac_ctrl";
+    endif;
+ 
+    'Read in the tuning file selected by the user, fill necessary variables, create command-line file version, write to disk
+    BDNumStim% := ReadBakersDozenFile%(bakSacTuningFile$,bakSacCmdLineFile$,BDFullText$,bakSacTuningValues$[][],bakSacWhichTunCurve[],bakSacTargetPositionThisTrial[][]);
+    
+    'Read in the opto/condition file and fill necessary variables, if appropriate
+    if bakSacDoOpto% = 1 then
+        ReadOptoConditionFile(bakSacOCFile$,bakSacTBTOpto%[],bakSacConditionLabel$[],BDNumStim%);
+    endif
+    
+    ' Remaining command line args
+	Extras$ += GetFixationArg$() + " -p 2 -b gray -d " + GetDistanceToScreenMM$();
+
+	
+	SampleStart(0); 'Start sampling
+    ' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
+    ' Clear any trigger bits on digout lines.
+    SafeSampleKey("0");      
+    
+    'Write out command line, placing Baker's Dozen info (Starstim style) at the end
+	CommandLine$ := "cmd /k " + GetBinDir$(1) + "remote " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() +  progName$ + Extras$ + " -F " + bakSacCmdLineFile$;
+    
+    
+    
+    if bakSacDoOpto% = 1 then
+        'set sequencer variable 4 for opto voltage
+        'Please note that the input for this has to be a 32-bit variable. Use vdac32% to get the right value.
+        voltageInteger% := vdac32%(bakSacOptoVoltageOut, 1, 0);
+        SampleSeqVar(4,voltageInteger%);
+        printlog("Voltage integer is %d\n",voltageInteger%);
+    endif;
+        
+    
+    
+    ' Record initial text marks
+    SampleText("BakSac,1");
+    SampleText(bakSacCVSID$);
+    SampleText(CommandLine$);
+    tmp$ := Print$("Fixpt loc is %f,%f", fpx, fpy);
+    SampleText(tmp$);
+    
+	'Begin the stimulus program. It will take a few seconds for the VSG to initialize.
+	PrintLog(CommandLine$+"\n");
+	StimHandle% := ProgRun(CommandLine$,1);
+	if StimHandle% <0 then Message("Could not start stimulus."); halt; endif
+    '	Yield(5);	'Wait a few seconds to make sure the VSG has time to initialize.
+    
+    
+   'If we are asking the eyetracker to record an output file, open the file and start recording
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("I");  'Open the file (this is done by setting a DIGLOW bit), file name will be saved in a sampletext
+        yield(0.5);
+        SafeSampleKey("W");  'Begin recording the file
+        yield(0.5);
+    endif
+    
+
+	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);
+	ToolbarEnable(1,0);
+    ToolbarEnable(4,0);
+	View(DataWindow%);
+	Yield(.1);
+	return 1;
+end;
+
+
+
+func StartPlexon%()
+    
+    var fp$;  'to hold current file path
+    fp$ := SetPathToScriptDirectory$();
+    CreateSampleConfiguration();    
+    
+    StartSecondInstanceOfSpike2();
+    
+    FilePathSet(fp$);  'change the file path back to what it was
+    fp$ := FilePath$();  'read out to allow verification
+    printlog("%s\n",fp$); 'and tell the world to verify
+    
+    ToolbarSet(1,"Start SECOND",Start%);  'change button 1 on the toolbar, this may not work
+    
+    ' Get display windows ready
+    InitializeWindows();    
+    
+    return 1; 'stay in toolbar    
+    
+end
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+
+	' Disable idle process func
+	ToolbarSet(0,"");
+    
+    'turn off opto just in case it might be on (it shouldn't, but...)
+    if bakSacDoOpto% = 1 then
+        SafeSampleKey("o");
+    endif;
+    
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
+    endif
+
+	' Tell stim app to shut down
+	SafeSampleKey("Q");
+	Yield(.1);
+	SampleStop();
+	ProgKill(StimHandle%);
+	while ProgStatus(StimHandle%) > 0 do
+		Yield();
+	wend
+    
+    
+
+	WriteParameterFile();
+
+	' Increment daily totals and save then
+	TotalTrials% += nTrialsStarted%;
+	TotalRewards% += nTrialsSuccess%;
+	SaveDailyTotals();
+
+end;
+
+
+
+
+' Used to hard-quit from toolbar. This will close data files without saving!!! 
+' This function is disabled once sampling has started, must use STOP instead
+func Quit%()
+    'If the eyetracker is recording an output file, stop recording and close the file
+    if RecordEyeTrackerOutputFile% = 1 then
+        SafeSampleKey("w");  'Stop recording
+        yield(0.1);
+        SafeSampleKey("i");  'Close the file
+        SafeSampleKey("Z");  'zero the DIGLOWs
+    endif
+    
+	FileClose(-1,-1);
+	return 0;
+end;
+
+
+
+
+const stateStartTrial%				:= 0;
+const stateWaitForFixPtOn%			:= 1;
+const stateWaitForAcquisition%	    := 2;
+const stateHoldFixation%			:= 3;
+const stateShowStim%				:= 4;
+const stateWaitForStimOn%			:= 5;
+const stateWaitForAnswer%			:= 6;
+const stateSuccess%					:= 7;
+const stateWaitForFixPtOff%		    := 8;
+const stateAbort%			        := 9;
+const stateWaitForStimOff%			:= 10;
+const stateFailure%					:= 11;
+const stateAbortTime%				:= 12;
+const stateInterTrial%		 		:= 13;
+
+const stateVSGWait%					:= 14;		' wait for vsg to send ready signal #1
+const stateVSGWaitConfirm%			:= 15;		' wait for vsg to send ready signal #2
+const stateWaitThroughPreOpto%      := 16;      ' wait for pre-opto to finish, if opto trial
+const stateWaitForPostOpto%         := 17;      ' wait for post-opto to finish, and turn off laser
+const stateHoldAnswer%              := 18;
+const stateCheckConditionChange%    := 19;
+
+var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
+var tPause;         ' last time we completed a pause, or checked for a pause, only used to assign tStateStart for stateInterTrial%
+var tLast:=-1;		' last time we ran the idle loop (top of previous idle loop time) 
+var xEye, yEye;		' eye positions
+var tLastUpdate:=-1;	' last time eye position trace was updated
+var iState%:=stateVSGWait%;		' present state
+var vTrigger;		' set by NextTime to indicate trigger transition
+var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
+var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
+var tTrigger:=-1;	' temp var for newly discovered trigger times
+var TargetX, TargetY;		' location of stimulus grating - this is target position "0"
+var tPostStimStart;  'will be useful for turning off "wraparound" opto after reward
+var SampleTextStr$;
+
+' for variable small reward
+const constNEVER := 99999e99;   ' time will never be greater than this time
+var tNextSmallReward := constNEVER;  'start with "never"
+var fixBrokenThisTrial% := 0;  
+
+
+
+' Run real time analysis here. 
+func IdleProcessing%()
+	var iStatus% := 1;	' this is return value. value of 1 (0) continues (stops) processing
+    var tOpt;
+    var tStimOn;  'tLast does not work to find stim off if we have intervening steps in the state logic, which we do.
+	var i%;
+    
+    tNow := View(DataWindow%).MaxTime();
+
+	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+	yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+
+	' Don't update display every time.  
+	if tNow-tLastUpdate > .005 then
+		View(XYWindow%).XYAddData(iEyePosChannel%, xEye, yEye);
+		tLastUpdate := tNow;
+	endif
+
+	' State logic loop
+	docase 
+
+    case iState% = stateVSGWait% then
+        
+        if View(DataWindow%).FindPulseUp%(ReadyChannel%, -1, tTrigger, tLastTrigger) = 1 then
+            LogStatus("VSGWait", "Got ready pulse at " + str$(tTrigger));
+            ChangeStateTo(stateStartTrial%, tNow);
+            if RecordEyeTrackerOutputFile% = 1 then
+                'Give pattern of four pulses - this is the initializing pattern for both the NIC EEG file and the eyetracker file
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+                SafeSampleKey("1");
+                yield(0.2);
+            endif;
+            'Sampletext the default grating parameters, just for fun
+            SampleText("Default Grating Params are: " + GetGratingParameters$("Stimulus"));
+        endif
+        
+        
+        
+    case iState% = stateStartTrial% then
+        
+        'put timing marker in both eyetracker file, smr file
+        if RecordEyeTrackerOutputFile% = 1 then
+            docase
+            case HBCycle% = 1 then
+                SafeSampleKey("1");
+            case HBCycle% = 2 then
+                SafeSampleKey("2");
+            case HBCycle% = 3 then
+                SafeSampleKey("3");
+            case HBCycle% = 4 then
+                SafeSampleKey("4");
+            case HBCycle% = 5 then
+                SafeSampleKey("5");
+            case HBCycle% = 6 then
+                SafeSampleKey("6");
+            case HBCycle% = 7 then
+                SafeSampleKey("7");
+            endcase
+            HBCycle% += 1;  'increment HBCycle%
+            if HBCycle% = 8 then  'and cycle when necessary
+                HBCycle% := 1;
+            endif
+            yield(0.01);  'this will likely be positioned very close to the "F" below, so give a tiny bit of time, 10 ms should be enough
+        endif;
+        
+        nTrialsStarted% += 1;  'we will count aborted trials as "started" trials
+        'If we have cycled through to the end of the stimuli, cycle index back to the beginning
+        if thisTrialInd% >= BDNumStim% then
+            thisTrialInd% := 0;
+        endif
+        bakSacFixationDuration := Rand(bakSacFixationDurationMax-bakSacFixationDurationMin, bakSacFixationDurationMin);
+        LogStatus("StartTrial", "Start trial " + str$(nTrialsStarted%) + " Fix time " + str$(bakSacFixationDuration));
+        SafeSampleKey("F"); 'request fixation point
+        
+        'determine if we are doing opto on this trial
+        if bakSacDoOpto% = 1 then
+            if bakSacTBTOpto%[thisTrialInd%] = 1 then
+                bakSacDoOptoThisTrial% := 1;
+                SampleText("Opto This Trial",tNow)
+            else
+                bakSacDoOptoThisTrial% := 0;
+                SampleText("No Opto This Trial",tNow)
+            endif;
+        endif;
+        
+        ChangeStateTo(stateWaitForFixPtOn%, tNow);
+        
+        
+        
+    case iState% = stateWaitForFixPtOn% then
+        
+        if View(DataWindow%).FindRisingEdge%(FixationChannel%, tLast, tTrigger) = 0 then
+            'Fixpt is up
+            DrawFix(1);
+            ChangeStateTo(stateWaitForAcquisition%, tNow);
+        endif
+        
+        
+        
+    case iState% = stateWaitForAcquisition% then
+
+        if tNow-tStateStart < bakSacAcquisitionTime then
+            ' Acquisition happens when the eye falls within the fixation window.
+            if InFixationWindow%(xEye, yEye) > 0 then                
+                ChangeStateTo(stateHoldFixation%, tNow);
+                
+                ' Small reward handling.  This is the only place where the initial time of the small reward
+                ' (~infinity) can be set to a time that can be reached; further updates occur when each
+                ' small reward is given, but cannot occur if the first small reward is never given.
+                if bakSacKeepFixptOn% = 1 and bakSacJuicePerSmallReward% > 0 then
+                    tNextSmallReward := tNow + GetSmallRewardDelta();
+                else
+                    tNextSmallReward := constNEVER;
+                endif
+                fixBrokenThisTrial% := 0;
+            endif
+        else
+            ' Acquisition failed. Turn off stim and try again.
+            LogStatus("WaitForAcquisition", "Time out.");
+            ChangeStateTo(stateAbort%, tNow);
+        endif
+        
+        
+        
+    case iState% = stateAbort% then
+        
+        nTrialsAbort% += 1;
+        DrawFix(0);
+        DrawTarget(0);
+        SafeSampleKey("X");
+        
+        'There are multiple places that can lead to an abort with opto laser still on
+        if optoIsOn% = 1 then
+            'turn off opto
+            SafeSampleKey("o");  'turn it off
+            tOpt := View(DataWindow%).MaxTime();
+            'printlog("OptoOff at %f\n",tOpt);
+            SampleText("OptoOff",tOpt);
+            optoIsOn% := 0;
+        endif;
+                
+        ChangeStateTo(stateWaitForFixPtOff%, tNow);
+        
+        
+        
+    case iState% = stateWaitForFixPtOff% then
+        
+        if View(DataWindow%).FindFallingEdge%(FixationChannel%, tLast, tTrigger) = 1 then
+            ChangeStateTo(stateInterTrial%, tNow);
+        endif
+        
+        
+        
+    case iState% = stateHoldFixation% then
+
+        if InFixationWindow%(xEye, yEye) <= 0 then
+            LogStatus("HoldFixation", "Broken fixation at " + str$(tNow));
+            ChangeStateTo(stateAbort%, tNow);
+            fixBrokenThisTrial% := 1;
+        else
+            if tNow > tNextSmallReward then
+                RewardSmall%();
+                tNextSmallReward := tNow + GetSmallRewardDelta();
+            endif
+            if tNow - tStateStart >= bakSacFixationDuration then
+                if bakSacDoOptoThisTrial% = 0 then
+                    LogStatus("HoldFixation", "Request target at " + str$(tNow));
+                    ChangeStateTo(stateShowStim%, tNow);
+                else
+                    LogStatus("HoldFixation", "Request opto on at " + str$(tNow));
+                    ChangeStateTo(stateWaitThroughPreOpto%, tNow);
+                    SafeSampleKey("O");  'turn on opto
+                    tOpt := View(DataWindow%).MaxTime();
+                    'printlog("OptoOn at %f\n",tOpt);
+                    SampleText("OptoOn",tOpt);
+                    optoIsOn% := 1; 
+                endif;
+            endif
+        endif
+        
+        
+        
+    case iState% = stateWaitThroughPreOpto% then
+        
+        if InFixationWindow%(xEye, yEye) <= 0 then
+            LogStatus("HoldFixation", "Broken fixation at " + str$(tNow));
+            ChangeStateTo(stateAbort%, tNow);
+            fixBrokenThisTrial% := 1;
+        else
+            if tNow - tStateStart >= bakSacPreStimOptoTime then
+                LogStatus("HoldFixation", "Request target at " + str$(tNow));
+                ChangeStateTo(stateShowStim%, tNow);
+            endif;
+        endif;
+        
+        
+        
+    case iState% = stateShowStim% then
+        
+        'SampleText(str$(bakSacTargetOrder%[iTargetPoint%]));
+        'Creates the sampletext string for all values that are changed
+        SampleTextStr$ := "";
+
+        for i% := 0 to bakSacNumBDCurvesAllowed%-1 do
+            if bakSacWhichTunCurve[i%] = 1 then
+                SampleTextStr$ := SampleTextStr$ + bakSacTunCurveLabel$[i%] + "," + bakSacTuningValues$[thisTrialInd%][i%] + ",";
+                if i% = 7 or i% = 10 or i% = 13 or i% = 17 then
+                    SampleTextStr$ := SampleTextStr$ + bakSacTuningValues$[thisTrialInd%][i%+1] + ",";
+                endif
+                if i% = 17 then
+                    SampleTextStr$ := SampleTextStr$ + bakSacTuningValues$[thisTrialInd%][i%+2] + ",";
+                endif
+            endif
+        next
+        SampleTextStr$ := Left$(SampleTextStr$,Len(SampleTextStr$)-1);
+
+        if bakSacDoOpto% = 1 then  'add condition label if we are doing opto
+            SampleText("T," + str$(thisTrialInd%+1) + "," + SampleTextStr$ + ",Condition: " + bakSacConditionLabel$[thisTrialInd%]);
+        else 'no condition label specified
+            SampleText("T," + str$(thisTrialInd%+1) + "," + SampleTextStr$); 
+        endif 
+        
+        
+        
+        ' Request stimulus, yield short time, then turn off fix pt (unless we don't want to).
+        SafeSampleKey("S");
+        DrawTarget(1);
+        'Yield(0.05);  'Why??  This only complicates timing below.
+        Yield(0.001);  'Fine, one millisecond to gap the "S" and "f"
+        if bakSacKeepFixptOn% = 0 then
+            SafeSampleKey("f");
+            DrawFix(0);
+        endif
+        ChangeStateTo(stateWaitForStimOn%, tNow);
+        
+        
+        
+    case iState% = stateWaitForStimOn% then
+        
+        ' Fixation may be broken while waiting for stim to come on. 
+        ' Reaction times should be much slower than finding stim up
+        ' so no fixation break should be a response
+
+        if InFixationWindow%(xEye, yEye) <= 0 then
+            LogStatus("WaitForStimOn", "Broken fixation at " + str$(tNow));
+            ChangeStateTo(stateAbort%, tNow);
+            fixBrokenThisTrial% := 1;
+        else
+            ' We can have a small reward here
+            if bakSacKeepFixptOn% = 1 and tNow > tNextSmallReward then
+                RewardSmall%();
+                tNextSmallReward := tNow + GetSmallRewardDelta();
+            endif
+            ' Check if stim target has come on finally.
+            if View(DataWindow%).FindRisingEdge%(StimChannel%, tLast, tTrigger) = 0 then
+                ChangeStateTo(stateWaitForAnswer%, tNow);
+                tStimOn := tTrigger;
+            endif
+        endif
+        
+        
+        
+    case iState% = stateWaitForAnswer% then
+        
+        ' If fixation is broken here, that's expected, because animal is supposed to saccade
+        ' don't do anything, but note it -- if bakSacKeepFixptOn is set, 
+        ' we need to know if the subject broke fixation if we get to stateFailure.
+        ' If fixation has not been broken, then check if a small reward is in order.
+        if fixBrokenThisTrial% = 0 and InFixationWindow%(xEye, yEye) <= 0 then
+            LogStatus("WaitForAnswer", "Broken fixation at " + str$(tNow));
+            fixBrokenThisTrial% := 1;
+        else
+            if bakSacKeepFixptOn% = 1 and fixBrokenThisTrial% = 0 and tNow > tNextSmallReward then
+                RewardSmall%();
+                tNextSmallReward := tNow + GetSmallRewardDelta();
+            endif
+        endif
+        
+        if InTargetWindow%(xEye, yEye) = 1 then
+            LogStatus("WaitForAnswer", "Entered answer window at " + str$(tNow));
+            ChangeStateTo(stateHoldAnswer%, tNow);
+            fixBrokenThisTrial% := 1;
+        else
+            'Turn off opto mid stream, if required
+            if tNow - tStateStart >= bakSacOptoOffMidStimTime and optoIsOn% = 1 then
+                LogStatus("WaitForAnswer", "Turning off laser at " + str$(tNow));
+                'do not change state
+                'turn off opto
+                SafeSampleKey("o");  'turn it off
+                tOpt := View(DataWindow%).MaxTime();
+                'printlog("OptoOff at %f\n",tOpt);
+                SampleText("OptoOff",tOpt);
+                optoIsOn% := 0;
+            endif;
+            if tNow - tStateStart >= bakSacAnswerTime then
+                LogStatus("WaitForAnswer", "Timeout at " + str$(tNow));
+                ChangeStateTo(stateFailure%, tNow);
+                tPostStimStart := tNow;
+            endif
+        endif
+        
+        
+    case iState% = stateHoldAnswer% then
+        
+        docase
+        case InTargetWindow%(xEye, yEye) = 1 and tNow > tStateStart+bakSacHoldAnswer then
+            LogStatus("HoldAnswer", "Answer fully held at " + str$(tNow));
+            ChangeStateTo(stateSuccess%, tNow);
+            tPostStimStart := tNow;
+        case InTargetWindow%(xEye, yEye) = 0 then
+            LogStatus("Hold Answer", "Answer broken at " + str$(tNow));
+            ChangeStateTo(stateFailure%, tNow);
+            tPostStimStart := tNow;
+            fixBrokenThisTrial% := 1;
+        endcase
+        
+        
+        
+    case iState% = stateSuccess% then
+
+        nTrialsSuccess% += 1;
+        SampleText("+");
+        SafeSampleKey("X");
+        Yield();
+        Reward%();
+        if optoIsOn% = 1 then
+            ChangeStateTo(stateWaitForPostOpto%, tNow);
+        else
+            ChangeStateTo(stateWaitForStimOff%, tNow);
+            'Yield(0.05);  'Not sure why we are yielding, turn off for now?
+        endif;
+        
+        
+    case iState% = stateFailure% then
+
+        nTrialsFail% += 1;
+        SampleText("-");
+        if bakSacKeepFixptOn% = 1 and fixBrokenThisTrial% = 0 then
+            SafeSampleKey("s");  'If fixpt stays on and animal never broke fixation, just take down the stimulus
+        else
+            SafeSampleKey("X");  'Otherwise, take it all down
+            fixBrokenThisTrial% := 1;  'If fixation is down, that has to be a fixation break
+        endif
+        if optoIsOn% = 1 then
+            ChangeStateTo(stateWaitForPostOpto%, tNow);
+        else
+            ChangeStateTo(stateWaitForStimOff%, tNow);
+            'Yield(0.05);  'Not sure why we are yielding, turn off for now?
+        endif;
+        
+        
+    case iState% = stateWaitForPostOpto% then
+        if tNow - tPostStimStart > bakSacPostStimOptoTime then
+            'turn off opto
+            SafeSampleKey("o");  'turn it off
+            tOpt := View(DataWindow%).MaxTime();
+            'printlog("OptoOff at %f\n",tOpt);
+            SampleText("OptoOff",tOpt);
+            optoIsOn% := 0;
+            'Yield(0.05);  'Not sure why we are yielding, turn off for now?
+            ChangeStateTo(stateWaitForStimOff%, tNow);
+        endif;
+        
+        
+
+    case iState% = stateWaitForStimOff% then
+
+        ' We can have a small reward here - this is basically no-detect state with fixpt staying on
+        if fixBrokenThisTrial% = 0 and tNow > tNextSmallReward then
+            RewardSmall%();
+            tNextSmallReward := tNow + GetSmallRewardDelta();
+        endif
+        ' Wait for stim to be off
+        if View(DataWindow%).FindFallingEdge%(StimChannel%, tStimOn, tTrigger) = 1 then
+            thisTrialInd% += 1;  'Increment trial here
+            SafeSampleKey("a");  'Advance here on success or failure
+           
+            if bakSacKeepFixptOn% = 1 and fixBrokenThisTrial% = 0 then
+                DrawTarget(0);
+                ChangeStateTo(stateShowStim%, tNow);  'Note that KeepFixptOn and PauseOnConditionChange are (currently) incompatible
+            else
+                DrawTarget(0);
+                DrawFix(0);
+                if bakSacPauseOnConditionChange% = 1 then
+                    ChangeStateTo(stateCheckConditionChange%,tNow);
+                else
+                    ChangeStateTo(stateInterTrial%, tNow);
+                endif
+            endif
+            ' Stimulus has been turned off by vsg.
+
+        endif
+        
+        
+        
+    case iState% = stateCheckConditionChange% then
+        
+        'Check for change in condition if we are pausing on condition change
+        if thisTrialInd% = BDNumStim% then  'thisTrialInd% has been incremented
+            tempNTC% := 0;  'if we are on the final stimulus before wrapping, check against the first trial
+        else
+            tempNTC% := thisTrialInd%;  'normally, check against the next trial
+        endif;
+        if bakSacConditionLabel$[thisTrialInd%-1] <> bakSacConditionLabel$[tempNTC%] then
+            message("Condition is changing from " + bakSacConditionLabel$[thisTrialInd%-1] + " to " + bakSacConditionLabel$[tempNTC%] + ", press 'OK' to continue");
+            'Get tNow again after pause
+            tPause := View(DataWindow%).MaxTime();
+        else
+            'there was no pause
+            tPause := tNow;
+        endif
+        
+        ChangeStateTo(stateInterTrial%, tPause);
+        
+        
+        
+    case iState% = stateInterTrial% then
+        
+        UpdateToolbarText();
+        if (tNow - tStateStart >= bakSacInterTrialTime) then
+            ChangeStateTo(stateStartTrial%, tNow);
+        endif;
+        
+        
+    else 
+        ' Unknown state!
+        Message("Unknown state=" + str$(iState%));
+        
+        'If the eyetracker is recording an output file, stop recording and close the file
+        if RecordEyeTrackerOutputFile% = 1 then
+            SafeSampleKey("w");  'Stop recording
+            yield(0.1);
+            SafeSampleKey("i");  'Close the file
+            SafeSampleKey("Z");  'zero the DIGLOWs
+        endif
+        
+        halt;
+
+	endcase;
+
+	tLast := tNow;
+	
+	return iStatus%;
+
+end;
+
+
+
+func GetSmallRewardDelta()
+    return Rand(bakSacMaxSmallRewardDelta - bakSacMinSmallRewardDelta, bakSacMinSmallRewardDelta);
+end
+
+
+proc ChangeStateTo(stateTo%, tStart)
+	iState% := stateTo%;
+	if tStart > 0 then tStateStart := tStart; endif;
+end;
+
+proc UpdateToolbarText()
+    var s$;
+    
+    s$ := Print$("Ntrials/Success/Fail/Abort %d/%d/%d/%d", nTrialsStarted%, nTrialsSuccess%, nTrialsFail%, nTrialsAbort%);
+    ToolbarText(s$);
+    return;
+end
+
+
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawTarget
+' 
+' Draws target in xy window (iDraw%==1) or blanks it (0). 
+proc DrawTarget(iDraw%)
+
+
+	if iDraw% > 0 then
+		var xstim, ystim;        
+        xstim := bakSacTargetPositionThisTrial[thisTrialInd%][0];
+		ystim := bakSacTargetPositionThisTrial[thisTrialInd%][1];
+        
+		' Draw stimulus in xy window
+		View(XYWindow%).XYAddData(iTargetChannel%, xstim, ystim);
+	
+		' draw answer window 
+		ArrConst(windowX[], AnswerWindowX[]);
+		ArrAdd(windowX[], xstim);
+		ArrConst(windowY[], AnswerWindowY[]);
+		ArrAdd(windowY[], ystim);
+
+		View(XYWindow%).XYAddData(iTargetWindowChannel%, windowX[], windowY[]);		
+	else 
+		' erase the stim and the window from xy view
+		View(XYWindow%).XYDelete(iTargetChannel%);
+		View(XYWindow%).XYDelete(iTargetWindowChannel%);
+	endif
+
+end;
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawFix
+' 
+' Draws fixpt in xy window (iDraw%==1) or blanks it (0). 
+proc DrawFix(iDraw%)
+
+	if iDraw% > 0 then
+
+		' Draw stimulus in xy window
+		View(XYWindow%).XYAddData(iFixChannel%, FixationX, FixationY);
+	
+		' draw fixation window
+		ArrConst(windowX[], FixWindowX[]);
+		ArrAdd(windowX[], FixationX);
+		ArrConst(windowY[], FixWindowY[]);
+		ArrAdd(windowY[], FixationY);
+
+		View(XYWindow%).XYAddData(iFixWindowChannel%, windowX[], windowY[]);		
+	else 
+		' erase the stim and the window from xy view
+		View(XYWindow%).XYDelete(iFixChannel%);
+		View(XYWindow%).XYDelete(iFixWindowChannel%);
+	endif
+
+end;
+
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func PauseStimuli%();
+    Pause% :=1;
+    ToolbarEnable(2,0);
+    'ToolbarEnable(5,1);  'refers to a toolbar button that no longer exists
+    return 1;
+end
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func ResumeStimuli%();
+    Pause% :=0;
+    ToolbarEnable(2,1);
+    'ToolbarEnable(5,0);  'refers to a toolbar button that no longer exists
+    return 1;
+end
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func InFixationWindow%(EyePosX,EyePosY)
+	var i% := 0;
+	'Determine if the eye position is within the fixation window
+	if bakSacAlwaysLooking% = 1 or (Pow(EyePosX-FixationX, 2) + Pow(EyePosY-FixationY, 2)) <= Pow(WindowRadius,2) then 
+		i% := 1;
+	endif
+	return i%;
+end;
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func InTargetWindow%(EyePosX,EyePosY)
+	var i% := 0;
+	var x, y;
+    x := bakSacTargetPositionThisTrial[thisTrialInd%][0];
+	y := bakSacTargetPositionThisTrial[thisTrialInd%][1];
+    
+    
+    
+	'Determine if the eye position is within the answer window
+	if bakSacAlwaysLooking% = 1 or (Pow(EyePosX-x, 2) + Pow(EyePosY-y, 2)) <= Pow(bakSacAnswerWindowRadius,2) then 
+		i% := 1;
+	endif
+	return i%;
+end;
+
+
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' With new ability for multiple juicers, there is no ability to specify the juice per reward
+'    because it would be a pain in the butt to code and would take up a lot of space on the
+'    dialog boxes.  Instead I have arbitrarily decided that for each hit, the
+'    "timed" juicer will deliver 200 ms of reward.  That value can be changed right here.
+
+func Juice%()
+    Reward%();
+	return 1;
+end;
+
+func Reward%()
+    'Check juicer type and deliver reward
+    if JuicerType% = 1 then  'open-high juicer, dispense based on ms
+        DeliverRewardMS(GetJuicePerReward%()*GetJuiceRewardMS%());
+    else
+        if JuicerType% = 2 then  'open-low juicer, dispense based on number of hits
+            DeliverRewardNumber();
+        endif;
+    endif;
+	return 1;
+end;
+
+func RewardSmall%()
+    'Check juicer type and deliver reward
+    if JuicerType% = 1 then  'open-high juicer, dispense based on ms
+        DeliverRewardMS(bakSacJuicePerSmallReward%*bakSacMSPerSmallReward%);
+    else
+        if JuicerType% = 2 then  'open-low juicer, dispense based on number of hits
+            DeliverRewardNum%(bakSacJuicePerSmallReward%);
+        endif;
+    endif;	
+	return 1;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc WriteParameterFile()
+	var parFileName$;
+	var parFileBase$;
+	var parHandle%;
+
+	' get filename for parfile (data file + "par" extension) and open it
+	View(DataWindow%);
+	parFileBase$ := FileName$(1) + FileName$(2) + FileName$(3) + FileName$(4);
+	parFileName$ := parFileBase$ + ".par";
+	PrintLog("par filename is " + parFileName$ + "\n");
+	parHandle% := FileOpen(parFileName$, 8, 1);
+
+	' write general info - eye coil gains, dist to screen
+	Print("Stim parameters for %s\n\n", parFileBase$);
+
+	Print("General information\n");
+	Print("-------------------\n\n");
+	Print("Distance to screen (MM)    : %s\n", GetDistanceToScreenMM$());
+	Print("Eye coil software gain (X) : %f\n", DegreesPerVoltX);
+	Print("Eye coil software gain (Y) : %f\n", DegreesPerVoltY);
+    Print("Eye coil offset, V (X)     : %f\n", XVoltOffset);
+    Print("Eye coil offset, V (Y)     : %f\n", YVoltOffset);
+	Print("Eye coil sampling freq (Hz): %d\n", EyeCoilSamplingFrequency%);
+'	Print("Number of electrodes       : %d\n", NumberOfElectrodes%);
+'	Print("Reward size (ms)           : %d\n", GetJuiceRewardMS%());
+
+	' write fixpoint parameters
+	Print("\nFixation point\n");
+	Print("-------------------\n\n");
+	Print("Window radius              : %f\n", WindowRadius);
+	Print("Position (x, degrees)      : %f\n", FixationX);
+	Print("Position (y, degrees)      : %f\n", FixationY);
+	Print("Diameter (degrees)         : %f\n", FixationDiameter);
+	Print("Color                      : %s\n", FixationColor$);
+    Print("Fixpt Stays Up             : %d\n", bakSacKeepFixptOn%);
+    
+	' write stimulus parameters
+	Print("\nTargets\n");
+	Print("-------------------\n\n");
+	Print("Number of Stimuli          : %d\n", BDNumStim%);
+    Print("Answer window radius       : %f\n", bakSacAnswerWindowRadius);
+    Print("Type                       : BakersDozen\n");
+    Print("File                       : " + bakSacTuningFile$ + "\n");
+    Print("Values are                 : " + BDFullText$ + "\n");
+    
+
+	Print("\nExperimental parameters\n");
+	Print("-------------------------\n\n");
+	Print("Acquisition time (s)   : %f\n", bakSacAcquisitionTime);
+	Print("Fixation time min (s)  : %f\n", bakSacFixationDurationMin);
+    Print("Fixation time max (s)  : %f\n", bakSacFixationDurationMax);
+	Print("Answer time (s)        : %f\n", bakSacAnswerTime);
+    Print("Answer hold time (s)   : %f\n", bakSacHoldAnswer);
+	Print("Inter trial time (s)   : %f\n", bakSacInterTrialTime);
+    
+    
+    Print("\nSmall Reward parameters\n");
+	Print("-------------------------\n\n");
+    Print("Small reward num hits       : %d\n", bakSacJuicePerSmallReward%);
+	Print("Small reward dur (ms)       : %f\n", bakSacMSPerSmallReward%);
+    Print("Small reward min wait (s)   : %f\n", bakSacMinSmallRewardDelta);
+	Print("Small reward max wait (s)   : %f\n", bakSacMaxSmallRewardDelta);
+	
+     
+    if bakSacDoOpto% = 1 then
+        Print("\nOptogenetics parameters\n");
+        Print("-------------------------\n\n");
+'        if tunLaserDiode% = 1 then
+'            Print("Laser Diode recorded\n");
+'        endif;
+        Print("File                        : " + bakSacOCFile$ + "\n");
+        Print("Opto Voltage Out            : %f\n", bakSacOptoVoltageOut);
+        Print("Pre Stim Opto Time          : %f\n", bakSacPreStimOptoTime);
+        Print("Post Stim Opto Time         : %f\n", bakSacPostStimOptoTime);
+        Print("Max Opto Time               : %f\n", bakSacMaxOptoTime);
+        Print("Pause on condition change?  : %d\n", bakSacPauseOnConditionChange%);
+
+    endif;    
+
+	' close parfile
+	FileClose(0);
+
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' The vdac32% function converts a value in user DAC units into an integer value
+'  (the result of the function) suitable for passing into a sequencer variable
+'  for use in the DAC, ADDAC, RAMP and OFFSET sequencer instructions. It mimics
+'  the vdac32() expression in the text sequence compiler.
+'
+' out     is the output value that you want to generate, in user DAC units.
+' scale   is the user DAC units corresponding to one volt on the actual DAC
+'         (or two volts for a ten-volt system). This is exactly the same as
+'         the DACscale field used with the SET or SDAC directives.
+' offset  is the user DAC units corresponding to zero volts output. This is
+'         exactly the same as the DACOffset field in SET or SDAC.
+'
+' If you want to use this function to calculate the slope for a ramp, use
+'  vdac32%(volts/sticks%(time)) for maximum accuracy.
+'
+func vdac32%(out, scale, offset)
+    var v32;                                ' Real variable for the calculation
+    out := out - offset;                    ' First compensate for offset
+    v32 := ((out * (6553.6 / scale)) * 65536.0);   ' Floating point result
+    var v32%;                               ' Integer value for the result
+    if v32 > 2147483647.0 then              ' 2147483647 is the largest positive
+        v32% := 2147483647;                 '  integer value
+    else
+        if v32 < -2147483647.0 then         ' -2147483648 is the lowest negative value
+            v32% := -2147483647;            '  but we have to stay one above that
+        else
+            v32% := round(v32);             ' We can be sure this will not overflow
+        endif;
+    endif;
+    return v32%;
+end
+
+
+
+func SelectBakersDozenFile%()
+    'This generic function ought to work for any of the dialogs where we allow the selection of a tuning file
+
+    var status% := 1;
+    var direc$;
+    var fh0%;
+    
+    direc$ := FilePath$();  'get current directory
+    fh0%:=FileOpen(direc$+"*.txt",1,0,"Please select a tuning file");  'Find a tuning file
+    direc$ := FileName$(0);  'Get full path of selected file
+    FileClose(fh0%);  'Just close the file, we're not using it
+    DlgValue$(8,direc$);  'Place filename into dialog item 8 of calling dialog
+
+	return status%;  'return 1 so calling dialog doesn't close
+    
+end;
+
+
+func SelectBakersDozenOCFile%()
+    'This generic function ought to work for any of the dialogs where we allow the selection of a tuning file
+
+    var status% := 1;
+    var direc$;
+    var fh0%;
+    
+    direc$ := FilePath$();  'get current directory
+    fh0%:=FileOpen(direc$+"*.txt",1,0,"Please select an opto/condition file");  'Find an opto/condition file
+    direc$ := FileName$(0);  'Get full path of selected file
+    FileClose(fh0%);  'Just close the file, we're not using it
+    DlgValue$(15,direc$);  'Place filename into dialog item 15 of calling dialog
+
+	return status%;  'return 1 so calling dialog doesn't close
+    
+end;
+
+
+
+func ReadBakersDozenFile%(bakSacTuningFile$,bakSacCmdLineFile$,&FullText$,&TuningValues$[][],WhichTunCurve[],TargetPos[][])
+    
+    'The syntax for the file will be " -Flag1 arg1,arg2,...,argN -Flag2 arg1,arg2,...,argN ... -FlagN arg1,arg2,...,argN " <-- Note that the closing space following the final argument is OBLIGATORY and will result in a syntax error if omitted
+    'Be sure that the text is printed on one line (no new lines/carriage returns) and to enclose the entire text with a single pair of double quotes as shown
+    'Type           Flag    [min max] of argument, units
+    'Orientation    -O      [0 360], degrees
+    'Temporal Freq  -T      [0 100], Hz
+    'Spatial Freq   -S      [0.01 100], cyc/deg
+    'Contrast       -C      [0.1 100], percent contrast
+    'Fixpt Color    -U      argument is a color vector of 0-255 in parens as (255/128/128) or 0-1 in square brackets as [0.5/0.5/1]
+    'Area           -A      [0.1 100], degrees diameter
+    'Phase          -P      [0 360], degrees phase 
+    'XYPosition     -Z      [-14 14], degrees from center. For XYPos args are paired and comma separated: x1,y1,x2,y2,...xN,yN
+    'XPosition      -X      [-14 14], degrees from center
+    'Width/Height   --wh    [0.01 100], degrees width/height.  For W/H args are paired and comma separated: w1,h1,w2,h2,...wN,hN
+    'DonutHole      -M      [0 100], degrees diameter of center hole
+    'ColorVector    --colorvector    [b,l,m,s,[.2/.2/.8]-[.8/.8/.2],(220/15/220)-(15/220/15)], (b)lack/white,(l)-cone-iso,(m)-cone-iso,(s)-cone-iso, or color vector endpoints (two ways!)
+    '---Non-Grating values---
+    'FixPtPosition  -y      [-14 14], degrees from center. For FixPtPos args are paired and comma separated: x1,y1,x2,y2,...xN,yN
+    'StimDelay      -E      [0 100], seconds of stimulus onset delay
+    'StimDuration   -t      [0 100], seconds of stimulus duration
+    'Sweep          --sweep [?? ??]. For --sweep arguments come in triplets and are comma separated: dur1,dir1,deg/s1...durN,dirN,deg/sN
+    'BMPImages      --bmp-image-order   [-1 N], is index of image in image input file, -1 indicates to present the grating, any other value presents an image
+    
+    'BakersDozen is NOT currently implemented for rivalry, dual-VSG, distractor gratings, or other nonsense like that!  Just one damn grating!
+    
+    'Read BakersDozen file from disk, write corresponding control file
+    var tempstr$;
+    var tempchar$;
+    var numRead%;
+    var spaceLoc%;
+    var commaLoc%;
+    var valsPerSpec%;
+    var curveIndex%;
+    var fh%;
+    var i%;
+    var imageCount%;
+    var ImagesArg$;
+    var numStim%;
+    var numStimOut% := 0;  'we will pass this value out - use this to ensure that the number of stims for each spec is the same
+    var FullTextForFile$;
+    'To hold values from ParseGratingParameters
+    var x, y, w, h, iw, ih, sf, tf, ori, phase, ctf;
+    var contrast%;
+    var cv$, pattern$, aperture$;
+    
+    
+    'Get default stimulus values
+    ParseGratingParameters%(GetGratingParameters$("Stimulus"), x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
+    
+    
+    'Confirm presence of BakersDozen file
+    ReadSetup(Chr$(7),Chr$(7));  'Setting hard/soft separators to nonsense "bell" character so no sepaarator will be found, empty 3/4 arg defaults to string delimited by double quotes
+    fh% := FileOpen(bakSacTuningFile$,8,0);  'Open user-generated file, is NOT command-line ready
+    if fh% < 0 then
+        message("File open of %s returned error code %d, error is: %s\n",bakSacTuningFile$,fh%,Error$(fh%));
+        printlog("File open of %s returned error code %d, error is: %s\n",bakSacTuningFile$,fh%,Error$(fh%));
+        halt;
+    endif;
+    'Ensure user-generated Baker's Dozen file has a single string
+    numRead% := Read(FullText$);  'place file contents into FullText$
+    FileClose();  'Close file once it's read, we have a copy
+    if numRead% <> 1 then
+        message("Expected one string in Bakers Dozen file, got " + Str$(numRead%) + "!!  Quitting!!");
+        halt;
+    endif;
+    
+    '***
+    '
+    'Parse FullText$, necessary to SampleText the actual specs of each trial
+    'Place values into TuningValues$[trial][whichTuningProperty], can remain as string, because in most cases we will be
+    'SampleTexting, so it never has to be numeric; we will have to change the fixation to a numeric.
+    tempstr$ := FullText$;  'Make copy of the Baker's Dozen string
+    
+    'First space should be in location 1 of the string
+    spaceLoc% := InStr(tempstr$," ");
+    if spaceLoc% = 1 then
+        tempstr$ := DelStr$(tempstr$,1,spaceLoc%);  'remove leading space
+    else
+        printlog("Problem with Baker's Dozen file syntax, did not find expected leading space!  Quitting!\n");
+        halt
+    endif
+    
+    'Now, alternately find grating specs and fill TuningValues$[][] until we run out of grating specs
+    spaceLoc% := InStr(tempstr$," ");  'Find next space
+    while spaceLoc% < Len(tempstr$) do
+        if spaceLoc% > 0 then
+            tempchar$ := Left$(tempstr$,spaceLoc%-1);  'Get leading character(s) corresponding to tuning type
+            tempstr$ := DelStr$(tempstr$,1,spaceLoc%);  'Decrement string
+            'printlog("Grating spec is %s\n",tempchar$);
+            'printlog("Spec remainder is %s\n",tempstr$);
+        else
+            printlog("Problem with Baker's Dozen file syntax, did not find expected grating spec!  Quitting!\n");
+            halt
+        endif
+        
+        'Determine the type of tuning curve and number of values per grating spec
+        docase
+        case tempchar$ = "-O" then
+            curveIndex% := 0;   'Curve index for orientation
+            valsPerSpec% := 1;  'These grating specs have a single value per spec
+        case tempchar$ = "-T" then 
+            curveIndex% := 1;   'Curve index for temporal frequency
+            valsPerSpec% := 1;  'These grating specs have a single value per spec
+        case tempchar$ = "-S" then 
+            curveIndex% := 2;   'Curve index for spatial frequency
+            valsPerSpec% := 1;  'These grating specs have a single value per spec
+        case tempchar$ = "-C" then
+            curveIndex% := 3;   'Curve index for contrast
+            valsPerSpec% := 1;  'These grating specs have a single value per spec
+        case tempchar$ = "-U" then 
+            'curveIndex% := 4;   'Curve index for fixpt color
+            'valsPerSpec% := 1;  'These grating specs have a single value per spec
+            message("Changing fixation point color (-U) is not currently implemented for BakersSac!  Quitting!");
+            halt;
+        case tempchar$ = "-A" then
+            'curveIndex% := 5;   'Curve index for area
+            'valsPerSpec% := 1;  'These grating specs have a single value per spec
+            message("Changing area (-A) is not currently implemented for BakersSac!  Quitting!");
+            halt;
+        case tempchar$ = "-P" then
+            curveIndex% := 6;   'Curve index for phase
+            valsPerSpec% := 1;  'These grating specs also have a single value per spec
+        case tempchar$ = "-X" then
+            curveIndex% := 9;   'Curve index for x position
+            valsPerSpec% := 1;  'These grating specs also have a single value per spec
+        case tempchar$ = "-M" then
+            'curveIndex% := 12;  'Curve index for donut hole
+            'valsPerSpec% := 1;  'These grating specs also have a single value per spec
+            message("Changing donut hole (-M) is not currently implemented for BakersSac!  Quitting!");
+            halt;
+        case tempchar$ = "-E" then 
+            'curveIndex% := 15;  'Curve index for stimulus delay
+            'valsPerSpec% := 1;  'These grating specs also have a single value per spec
+            message("Changing stimulus delay (-E) is not currently implemented for BakersSac!  Quitting!");
+            halt;
+        case tempchar$ = "-t" then
+            'curveIndex% := 16;  'Curve index for stimulus duration
+            'valsPerSpec% := 1;  'These grating specs also have a single value per spec
+            message("Changing stimulus duration (-t) is not currently implemented for BakersSac!  Quitting!");
+            halt;
+        case tempchar$ = "-Z" then 
+            curveIndex% := 7;   'Curve index for XY Position (7 is X, 8 is Y)
+            valsPerSpec% := 2;  'These grating specs have a pair of values per spec
+        case tempchar$ = "--wh" then
+            curveIndex% := 10;  'Curve index for width/height (10 is width, 11 is height)
+            valsPerSpec% := 2;  'These grating specs have a pair of values per spec
+        case tempchar$ = "-y" then
+            'curveIndex% := 13;  'Curve index for Fixpt position (13 is X, 14 is Y)
+            'valsPerSpec% := 2;  'These grating specs have a pair of values per spec
+            'tbtFix% := 1;       'And set trial-by-trial fixation location to ON
+            'if bakSacKeepFixptOn% > 0 then
+            '    bakSacKeepFixptOn% := 0;
+            '    message("Keep Fixpt On is incompatible with moving fixation points, it has been turned OFF!");
+            'endif
+            message("Changing fixation point location (-y) is not currently implemented for BakersSac!  Quitting!");
+            halt;
+        case tempchar$ = "--sweep" then
+            'curveIndex% := 17;  'Curve index for duration/direction/degPerSec (17 is duration, 18 is direction, 19 is degPerSec)
+            'valsPerSpec% := 3;  'These grating specs have a trio of values per spec
+            message("Changing sweep (--sweep) is not currently implemented for BakersSac!  Quitting!");
+            halt;
+        case tempchar$ = "--colorvector" then
+            curveIndex% := 20;  'Curve index for colorvector
+            valsPerSpec% := 1;  'These grating specs have a single value per spec
+        case tempchar$ = "--bmp-image-order" then
+            'curveIndex% := 21;  'Curve index for BMP image
+            'valsPerSpec% := 1;  'These grating specs have a single value per spec  
+            message("Images (--bmp-image-order) are not currently implemented for BakersSac!  Quitting!");
+            halt;            
+        else
+            printlog("Grating spec " + tempchar$ + " unknown!  Quitting!\n");
+            halt
+        endcase
+        WhichTunCurve[curveIndex%] := 1;
+        
+        'Count number of values in spec list
+        numStim% := 0;  'Is currently a zero-based index, reset every time through, last time through will persist, if lengths are not the same VSG will crash anyway
+        'Find next space, there should always be one
+        spaceLoc% := InStr(tempstr$," ");
+        'Find next comma, there should always be one
+        commaLoc% := InStr(tempstr$,",");
+        while commaLoc% > 0 and commaLoc% < spaceLoc% do
+            tempchar$ := Left$(tempstr$,commaLoc%-1);  'Get leading character(s) corresponding to tuning value
+            tempstr$ := DelStr$(tempstr$,1,commaLoc%);  'Decrement string
+            'printlog("Tuning value is %s\n",tempchar$);
+            'printlog("Spec remainder is %s\n",tempstr$);
+            TuningValues$[numStim%][curveIndex%] := tempchar$;
+            
+'Image file is not expected to be implemented for this script, but this particular skeleton will stay just in case           
+'            'If we are reading the image file specs, we need to know what kind of image we are looking at
+'            'Since we can have series, we need to know where the end is
+'            if curveIndex% = 21 then
+'                tunBDImageIndex%[numStim%] := Val(tempchar$);  'just keep the index
+'                if Val(tempchar$) < 0 then  'not an image
+'                    tunBDImGrType%[numStim%] := 0; '0 for not an image
+'                    imageCount% := 0;  'reset image count, in case?
+'                else 
+'                    imageCount% += 1;  'it's an image, increment image count
+'                    if imageCount% < tunNImagesInSeries% then
+'                        tunBDImGrType%[numStim%] := 1; '1 for primary/intermediate image
+'                    else
+'                        tunBDImGrType%[numStim%] := 2; '2 for final image
+'                        imageCount% := 0;  'reset image count
+'                    endif
+'                endif
+'            endif;
+            
+            if valsPerSpec% > 1 then  'if there are two values in this spec, read the second
+                'Find next comma, if we are at the last one in the entire sequence the value will be 0
+                commaLoc% := InStr(tempstr$,",");  
+                'Find next space, there should always be one
+                spaceLoc% := InStr(tempstr$," ");
+                if commaLoc% > 0 and commaLoc% < spaceLoc% then
+                    tempchar$ := Left$(tempstr$,commaLoc%-1);  'Get leading character(s) corresponding to tuning value
+                    tempstr$ := DelStr$(tempstr$,1,commaLoc%);  'Decrement string
+                    TuningValues$[numStim%][curveIndex%+1] := tempchar$;
+                endif
+            endif
+            
+            if valsPerSpec% > 2 then  'if there are three values in this spec, read the third
+                'Find next comma, if we are at the last one in the entire sequence the value will be 0
+                commaLoc% := InStr(tempstr$,",");  
+                'Find next space, there should always be one
+                spaceLoc% := InStr(tempstr$," ");
+                if commaLoc% > 0 and commaLoc% < spaceLoc% then
+                    tempchar$ := Left$(tempstr$,commaLoc%-1);  'Get leading character(s) corresponding to tuning value
+                    tempstr$ := DelStr$(tempstr$,1,commaLoc%);  'Decrement string
+                    TuningValues$[numStim%][curveIndex%+2] := tempchar$;
+                endif
+            endif
+            
+            'Increment number of stims, increment once for either single-value or multiple-value specs, is now actual value
+            numStim% += 1;
+            'Find next comma, if we are at the last one in the entire sequence the value will be 0
+            commaLoc% := InStr(tempstr$,",");
+            'Find next space, there should always be one
+            spaceLoc% := InStr(tempstr$," ");
+        wend
+        'The FINAL value didn't get read, because either commaLoc% > spaceLoc% (more specs coming) or commaLoc% = 0 (final spec)
+        'So read it!  SpaceLoc% finds the end for us
+        tempchar$ := Left$(tempstr$,spaceLoc%-1);  'Get leading character(s) corresponding to tuning value
+        tempstr$ := DelStr$(tempstr$,1,spaceLoc%);  'Decrement string
+        'printlog("Final tuning value is %s\n",tempchar$);
+        'printlog("Final spec remainder is %s\n",tempstr$);
+        
+        docase
+        case valsPerSpec% = 1 then
+            TuningValues$[numStim%][curveIndex%] := tempchar$;  'numStim% has been incremented, but not used for the final trial; it is the correct index for the final trial
+            numStim% += 1;  'Change numStim% to the actual number of stimuli
+        case valsPerSpec% = 2 then
+            'printlog("numStim-1 is %d and curveIndex+1 is %d\n",numStim%-1,curveIndex%+1);
+            TuningValues$[numStim%-1][curveIndex%+1] := tempchar$;  'CurveIndex% adjusted for final value in spec; 
+            'numStim% has been updated and used for previous value in spec, then updated again, so it is the actual # of stimuli, must adjust indexing   
+            'numStim% is already actual number of stimuli
+        case valsPerSpec% = 3 then 
+            TuningValues$[numStim%-1][curveIndex%+2] := tempchar$;  'CurveIndex% adjusted for final value in spec; 
+            'numStim% has been updated and used for previous value in spec, then updated again, so it is the actual # of stimuli, must adjust indexing 
+            'numStim% is already actual number of stimuli
+        endcase
+        
+        
+        'printlog("Number of stims is %d\n",numStim%);
+        
+        'Check the number of stimuli on this tuning value against the number of stims on previous tuning values, must be identical
+        if numStimOut% = 0 then  'on first pass, fill numStimOut% with the number of stimuli on the first tuning value
+            numStimOut% := numStim%;
+        else
+            if numStim% <> numStimOut% then  'on subsequent tuning values, compare
+                printlog("Grating spec " + tempchar$ + " has " + Str$(numStim%) + " values, but previous grating specs had " + Str$(numStimOut%) + " values! Quitting!\n");
+                halt
+            endif
+        endif
+        
+        'Find next space, if there is one
+        spaceLoc% := InStr(tempstr$," ");
+    wend
+    'Done parsing FullText$
+    '
+    '***    
+    
+    
+    'Create file for use with Starstim command line -F flag
+    'For each stimulus, create full grating spec from TuningValues$[][]
+    for i% := 0 to numStimOut%-1 do
+        FullTextForFile$ += " -g ";  'open with -g for each grating, leading space will separate each stim
+        'Now build the grating spec from the tuning values
+        docase
+        case WhichTunCurve[7] = 1 then  'if X,Y position is tuned
+            FullTextForFile$ += TuningValues$[7][i%] + "," + TuningValues$[8][i%] + ",";
+            TargetPos[i%][0] := Val(TuningValues$[7][i%]);  'also fill target position, used for Looking%() function
+            TargetPos[i%][1] := Val(TuningValues$[8][i%]);
+        case WhichTunCurve[9] = 1 then  'if X position only is tuned, mutually exclusive, seems unlikely to happen
+            FullTextForFile$ += TuningValues$[7][i%] + "," + Str$(y) + ",";
+            TargetPos[i%][0] := Val(TuningValues$[7][i%]);
+            TargetPos[i%][1] := y;
+        else 'if X,Y or X position is not tuned
+            FullTextForFile$ += Str$(x) + "," + Str$(y) + ",";
+            TargetPos[i%][0] := x;
+            TargetPos[i%][1] := y;
+        endcase
+        
+        if WhichTunCurve[10] = 1 then  'if W,H is tuned
+            FullTextForFile$ += TuningValues$[10][i%] + "," + TuningValues$[11][i%] + ",";
+        else
+            FullTextForFile$ += Str$(w) + "," + Str$(h) + ",";
+        endif
+        
+        FullTextForFile$ += Str$(iw) + "," + Str$(ih) + ",";  'tuning on IW,IH is not implemented
+        
+        if WhichTunCurve[3] = 1 then  'if contrast is tuned
+            FullTextForFile$ += TuningValues$[3][i%] + ",";
+        else
+            FullTextForFile$ += Str$(contrast%) + ",";
+        endif
+        
+        if WhichTunCurve[2] = 1 then  'if spatial frequency is tuned
+            FullTextForFile$ += TuningValues$[2][i%] + ",";
+        else
+            FullTextForFile$ += Str$(sf) + ",";
+        endif
+        
+        if WhichTunCurve[1] = 1 then  'if temporal frequency is tuned
+            FullTextForFile$ += TuningValues$[1][i%] + ",";
+        else
+            FullTextForFile$ += Str$(tf) + ",";
+        endif
+        
+        if WhichTunCurve[0] = 1 then  'if orientation is tuned
+            FullTextForFile$ += TuningValues$[0][i%] + ",";
+        else
+            FullTextForFile$ += Str$(ori) + ",";
+        endif
+        
+        if WhichTunCurve[6] = 1 then  'if phase is tuned
+            FullTextForFile$ += TuningValues$[6][i%] + ",";
+        else
+            FullTextForFile$ += Str$(phase) + ",";
+        endif
+        
+        if WhichTunCurve[20] = 1 then  'if color vector is tuned
+            FullTextForFile$ += TuningValues$[20][i%] + ",";
+        else
+            FullTextForFile$ += cv$ + ",";
+        endif
+        
+        'Final three values are not currently tunable
+        FullTextForFile$ += pattern$ + "," + aperture$ + "," + Str$(ctf);
+        
+    next
+    'The final FullTextForFile$ string will NOT end in a space, but as there will be nothing after it this is fine
+    'Note that the -o argument to change stimulus order is NOT implemented here (but would come AFTER the list of
+    'grating arguments if it were to be)
+    
+    
+    'Open new file for writing, rather than overwrite user-generated file, user-generated file can be reused.
+    FileOpen(bakSacCmdLineFile$,8,1);
+    
+    'Print to the new file, this file is passed to FIXSTIM
+    print("%s",FullTextForFile$);
+    FileClose();        
+    
+    
+    
+    printlog("Number of stimuli is %d\n",numStimOut%);
+    
+    return numStimOut%;
+    
+    
+end
+
+
+
+
+
+func ReadOptoConditionFile(OCFile$,&TBTOpto%[],&ConditionLabel$[],numStim%)
+    
+    '***
+    '
+    'Open OCFile$        
+    'File format is:
+    '
+    '1 String1
+    '0 String2
+    '...
+    '1 StringN
+    '
+    'Where the first column should be 0/1 only (indicates absence/presence of opto this trial) and the second
+    'column is a string condition label.  Columns are separated by ANY combination of white space (single space
+    'or tab is probably preferred, but Read() will deal with anything.  The ReadSetup() settings used here will
+    'also accept spaces within StringN, but not tabs.  Anything following a tab delimiter in the StringN portion
+    'will be ignored, but is not an error.  There are various ways of making this go wrong, like putting the
+    'StringN portion first or putting something that is not a 0/1 in the first column, etc.  Just...don't?
+    readsetup(""," ","","","	");
+    var bailout%;
+    var readCount%;
+    var numRead%;
+    var fh%;
+
+        
+    fh% := FileOpen(OCFile$,8,0);  'Open user-generated opto/condition file
+    if fh% < 0 then
+        printlog("File open of %s returned error code %d, error is: %s\n",OCFile$,fh%,Error$(fh%));
+        return 0;
+    endif;
+    
+    'Loop through file line by line
+    while numRead% >= 0 and bailout% < 10000 do 'numRead% will be a negative error once EOF is reached
+        numRead% := Read(TBTOpto%[readCount%],ConditionLabel$[readCount%]);  'place file contents into TBTopto%[] and ConditionLabel$[]
+        bailout% += 1;  'don't get stuck in WHILE if something weird happens
+        'Make sure we read the right number of fields.  Note that if there are too many fields, we will ignore.
+        'If there are zero fields (blank line), we will gracefully skip.  So really, make sure that if there are
+        'ANY fields at all on this line, there aren't too few.
+        docase
+        case numRead% = 2 then
+            readCount% += 1;
+        case numRead% > 0 then
+            message("Read " + Str$(numRead%) + " fields from Opto/Condition file, this is wrong!  Quitting!");
+            halt;
+        endcase
+    wend
+    FileClose();  'Close file once it's read, we have a copy
+    if bailout% >= 10000 then
+        message("Bailed out of WHILE loop while reading Opto/Condition file, either something went wrong or there were over 10000 lines!");
+        halt;
+    endif;
+    if readCount% <> numStim% then
+        message("Read " + Str$(readCount%) + " stimuli from Opto/Condition file, expected " +  Str$(numStim%) + ", this is wrong!  Quitting!");
+        halt;
+    endif;
+
+    'Done reading OCFile$
+    '
+    '***    
+    
+    return 1;
+    
+end
+
+
+
+
