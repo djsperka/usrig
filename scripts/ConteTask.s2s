@@ -200,8 +200,8 @@ var ctCountUncued%;    'per data point
 var ctCountNoChange%;  'per data point 
 var ctCountCued%;    'per data point
 var ctFixationOn%;
-var ctFixCrossWidthPixels := 1;   'Note that this is NOT an integer, due to the way that the dialog is created, would be too much trouble to convert to integer
-var ctFixCrossWidthPixels%;  'So here's the integer version, we'll just convert directly
+var ctFixCrossWidthDeg := 1;   'Note that this is NOT an integer, due to the way that the dialog is created, would be too much trouble to convert to integer
+var ctFixCrossWidthDeg%;  'So here's the integer version, we'll just convert directly
 var ctPatchOnsetDelay;
 var ctPatchToSampleDelay;
 var ctSampleToTargetDelay;  'Target is the "orientation change" if any
@@ -282,7 +282,7 @@ var ctDlgCountCued% := 5;
 var ctDlgRequireFixation% := 6; 
 var ctDlgFixationOn% := 7;
 var ctDlgAdditionalWindowRadius% := 8;
-var ctDlgFixCrossWidthPixels% := 9; 
+var ctDlgFixCrossWidthDeg% := 9; 
 var ctDlgPatchOnsetDelay% := 10;
 var ctDlgPatchToSampleDelay% := 11;
 var ctDlgSampleToTargetDelay% := 12; 
@@ -518,7 +518,7 @@ proc GetConteTaskParameters()
     ctCountNoChange% := GetIntRegistryValue%(key$, "CountCatch", ctCountNoChange%);  'changed variable name, keeping old key value
     ctCountCued% := GetIntRegistryValue%(key$, "CountValid", ctCountCued%);  'changed variable name, keeping old key value
     ctFixationOn% := GetIntRegistryValue%(key$, "FixationOn", ctFixationOn%);
-    ctFixCrossWidthPixels := GetFloatRegistryValue(key$, "FixCrossWidthPixels", ctFixCrossWidthPixels);
+    ctFixCrossWidthDeg := GetFloatRegistryValue(key$, "FixCrossWidthPixels", ctFixCrossWidthDeg);
     ctPatchOnsetDelay := GetFloatRegistryValue(key$, "PatchOnsetDelay", ctPatchOnsetDelay);
     ctPatchToSampleDelay := GetFloatRegistryValue(key$, "PatchToSampleDelay", ctPatchToSampleDelay);
     ctSampleToTargetDelay := GetFloatRegistryValue(key$, "SampleToTargetDelay", ctSampleToTargetDelay);
@@ -581,7 +581,7 @@ proc SaveConteTaskParameters()
     SetIntRegistryValue(key$, "CountCatch", ctCountNoChange%);  'changed variable name, keeping old key value
     SetIntRegistryValue(key$, "CountValid", ctCountCued%);  'changed variable name, keeping old key value
     SetIntRegistryValue(key$, "FixationOn", ctFixationOn%);
-    SetFloatRegistryValue(key$, "FixCrossWidthPixels", ctFixCrossWidthPixels);
+    SetFloatRegistryValue(key$, "FixCrossWidthPixels", ctFixCrossWidthDeg);
     SetFloatRegistryValue(key$, "PatchOnsetDelay", ctPatchOnsetDelay);
     SetFloatRegistryValue(key$, "PatchToSampleDelay", ctPatchToSampleDelay);
     SetFloatRegistryValue(key$, "SampleToTargetDelay", ctSampleToTargetDelay);
@@ -695,7 +695,7 @@ func ConteTaskDialog%()
     
     
     'Pack sixFloats[], sixPlusOneInts%[], sevenFloats[], sevenInts%[], threeStrings$[], eightInts%[]
-    nineFloats[0] := ctFixCrossWidthPixels;
+    nineFloats[0] := ctFixCrossWidthDeg;
     nineFloats[1] := ctPatchOnsetDelay;
     nineFloats[2] := ctPatchToSampleDelay;
     nineFloats[3] := ctSampleToTargetDelay;
@@ -807,7 +807,7 @@ func ConteTaskDialog%()
     DlgList(ctDlgRequireFixation%, 50, fixationOptionsList$[],nFOpts%,c1%+1,sFix%+1);
     DlgReal(ctDlgFixAcqTime%,wNum%,0.1,100,c33%+1,sFix%+1);  ctTxtFixAcqTime% := DlgText("Fixation acquisition time (s)",c33%+wNum%+2,sFix%+1);
     DlgCheck(ctDlgFixationOn%, "Fixation cross On",c1%,sFix%+2);
-    DlgReal(ctDlgFixCrossWidthPixels%,wNum%,1,50,c23%+1,sFix%+2);  ctTxtFixCrossWidthPixels% := DlgText("Fixation cross width (pixels)",c23%+wNum%+2,sFix%+2);
+    DlgReal(ctDlgFixCrossWidthDeg%,wNum%,0.001,50,c23%+1,sFix%+2);  ctTxtFixCrossWidthPixels% := DlgText("Fixation cross width (deg)",c23%+wNum%+2,sFix%+2);
     DlgReal(ctDlgAdditionalWindowRadius%,wNum%,-5,10,c33%+1,sFix%+2);  ctTxtAdditionalWindowRadius% := DlgText("Add'l fix window radius (deg)",c33%+wNum%+2,sFix%+2);
     
 
@@ -878,7 +878,7 @@ func ConteTaskDialog%()
     if i% = 1 then        
         
         'Unpack eightFloats[], sevenFloats[], sixPlusOneInts%[], sevenInts%[], threeStrings$[], eightInts%[]
-        ctFixCrossWidthPixels := nineFloats[0];
+        ctFixCrossWidthDeg := nineFloats[0];
         ctPatchOnsetDelay := nineFloats[1];
         ctPatchToSampleDelay := nineFloats[2];
         ctSampleToTargetDelay := nineFloats[3];
@@ -955,7 +955,7 @@ func ConteTaskDialog%()
         
         
         'Convert float pixel width to integer (due to "eightFloats[]", was too difficult to convert to integer for dialog)
-        ctFixCrossWidthPixels% := ctFixCrossWidthPixels;
+        ctFixCrossWidthDeg% := ctFixCrossWidthDeg;
         
         'Get "secondary" gabor location based on requested orientation
         if ctPanelIsHoriz% = 0 then
@@ -1134,9 +1134,9 @@ func ConteTaskDialogChanged%(item%)
         
         'Disable Fixation Cross size if fixation is not being displayed
         if DlgValue(ctDlgFixationOn%) = 0 then
-            DlgEnable(0,ctDlgFixCrossWidthPixels%,ctTxtFixCrossWidthPixels%);
+            DlgEnable(0,ctDlgFixCrossWidthDeg%,ctTxtFixCrossWidthPixels%);
         else
-            DlgEnable(1,ctDlgFixCrossWidthPixels%,ctTxtFixCrossWidthPixels%);
+            DlgEnable(1,ctDlgFixCrossWidthDeg%,ctTxtFixCrossWidthPixels%);
         endif
         
     else 'if we are on step 0, disable the following
@@ -1147,7 +1147,7 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(0,ctDlgFixationOn%);  'and disable fixation checkbox
         DlgValue(ctDlgRequireFixation%,0);  'and set fixation options value to 0
         DlgEnable(0,ctDlgRequireFixation%);  'and disable fixation options
-        DlgEnable(0,ctDlgFixCrossWidthPixels%,ctTxtFixCrossWidthPixels%);  'disable fixation cross width
+        DlgEnable(0,ctDlgFixCrossWidthDeg%,ctTxtFixCrossWidthPixels%);  'disable fixation cross width
         DlgEnable(0,ctDlgAdditionalWindowRadius%,ctTxtAdditionalWindowRadius%);  'disable additional window radius
         DlgEnable(0,ctDlgPatchRadiusDeg%,ctTxtPatchRadiusDeg%);
     endif
@@ -3089,7 +3089,7 @@ func Start%()
     
     'Update fixation cross argument
     FixationCrossArg$ := Mid$(FixationArg$,5);  'Start with 5th character (remove " -f ") so we can insert the "+"
-    FixationCrossArg$ := " -f +," + FixationCrossArg$ + "," + Str$(ctFixCrossWidthPixels%);  'Can also place a cross "orientation" argument at end to rotate it, but leaving that out here for default 0
+    FixationCrossArg$ := " -f +," + FixationCrossArg$ + "," + Str$(ctFixCrossWidthDeg%);  'Can also place a cross "orientation" argument at end to rotate it, but leaving that out here for default 0
     
     'Build cue color argument
     CueColorArg$ := " -c (" + Str$(ctDotColor1R%) + "/" + Str$(ctDotColor1G%) + "/" + Str$(ctDotColor1B%) + ") -c (" + Str$(ctDotColor2R%) + "/" + Str$(ctDotColor2G%) + "/" + Str$(ctDotColor2B%) + ") ";
@@ -3298,7 +3298,7 @@ proc WriteParameterFile()
 '    'Print("Reward Delay (s)                         : %f\n", mainRewardDelay);  'never enabled
 	Print("Inter-trial interval                     : %f\n", ctITI);
     Print("Fixation cross on?                       : %d\n", ctFixationOn%);
-    Print("Fixation cross width (pixels)            : %f\n", ctFixCrossWidthPixels%);
+    Print("Fixation cross width (pixels)            : %f\n", ctFixCrossWidthDeg%);
     Print("Require fixation?                        : %d\n", ctRequireFixation%);
     Print("Acquisition time (s)                     : %f\n", ctFixAcqTime);
     Print("Patch onset delay (s)                    : %f\n", ctPatchOnsetDelay);
