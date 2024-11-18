@@ -215,8 +215,8 @@ var nTrialsPerDataPoint%;
 var ctCountTrainCueRect%;  'per data point
 var ctCountTrainGrating%;  'per data point
 var ctCountFull%;  'per data point
-var ctFixCrossWidthDeg := 1;   'Note that this is NOT an integer, due to the way that the dialog is created, would be too much trouble to convert to integer
-var ctFixCrossWidthDeg%;  'So here's the integer version, we'll just convert directly
+var ctFixCrossWidthPixels := 1;   'Note that this is NOT an integer, due to the way that the dialog is created, would be too much trouble to convert to integer
+var ctFixCrossWidthPixels%;  'So here's the integer version, we'll just convert directly
 var ctPatchOnsetDelay;
 var ctGratingOnsetDelay;     'This variablewill hold the identical value as ctPatchOnsetDelay (comes from same dialog entry) but will be renamed to avoid confusion for grating training
 var ctPatchToSampleDelay;
@@ -292,7 +292,7 @@ var ctDlgCountTrainCueRect% := 2;
 var ctDlgCountTrainGrating% := 3;  
 var ctDlgCountFull% := 4; 
 var ctDlgAdditionalWindowRadius% := 5;
-var ctDlgFixCrossWidthDeg% := 6; 
+var ctDlgFixCrossWidthPixels% := 6; 
 var ctDlgPatchOnsetDelay% := 7;
 var ctDlgPatchToSampleDelay% := 8;
 var ctDlgSampleToTargetDelay% := 9; 
@@ -516,7 +516,7 @@ proc GetConteTaskParameters()
     ctCountTrainCueRect% := GetIntRegistryValue%(key$, "CountTrainCueRect", ctCountTrainCueRect%);
     ctCountTrainGrating% := GetIntRegistryValue%(key$, "CountTrainGrating", ctCountTrainGrating% );
     ctCountFull% := GetIntRegistryValue%(key$, "CountFull", ctCountFull%);
-    ctFixCrossWidthDeg := GetFloatRegistryValue(key$, "FixCrossWidthPixels", ctFixCrossWidthDeg);
+    ctFixCrossWidthPixels := GetFloatRegistryValue(key$, "FixCrossWidthPixels", ctFixCrossWidthPixels);
     ctPatchOnsetDelay := GetFloatRegistryValue(key$, "PatchOnsetDelay", ctPatchOnsetDelay);
     ctPatchToSampleDelay := GetFloatRegistryValue(key$, "PatchToSampleDelay", ctPatchToSampleDelay);
     ctSampleToTargetDelay := GetFloatRegistryValue(key$, "SampleToTargetDelay", ctSampleToTargetDelay);
@@ -573,7 +573,7 @@ proc SaveConteTaskParameters()
     SetIntRegistryValue(key$, "CountTrainCueRect", ctCountTrainCueRect%);
     SetIntRegistryValue(key$, "CountTrainGrating", ctCountTrainGrating% );
     SetIntRegistryValue(key$, "CountFull", ctCountFull%);
-    SetFloatRegistryValue(key$, "FixCrossWidthPixels", ctFixCrossWidthDeg);
+    SetFloatRegistryValue(key$, "FixCrossWidthPixels", ctFixCrossWidthPixels);
     SetFloatRegistryValue(key$, "PatchOnsetDelay", ctPatchOnsetDelay);
     SetFloatRegistryValue(key$, "PatchToSampleDelay", ctPatchToSampleDelay);
     SetFloatRegistryValue(key$, "SampleToTargetDelay", ctSampleToTargetDelay);
@@ -666,7 +666,7 @@ func ConteTaskDialog%()
     
     
     'Pack sixFloats[], sixPlusOneInts%[], sevenFloats[], sevenInts%[], threeStrings$[], eightInts%[]
-    eightFloats[0] := ctFixCrossWidthDeg;
+    eightFloats[0] := ctFixCrossWidthPixels;
     eightFloats[1] := ctPatchOnsetDelay;
     eightFloats[2] := ctPatchToSampleDelay;
     eightFloats[3] := ctSampleToTargetDelay;
@@ -759,7 +759,7 @@ func ConteTaskDialog%()
     DlgGroup("Fixation Options",1,sFix%,wDlg%-2,hFix%);
     DlgCheck(ctDlgAlwaysLooking%,"Always Looking?",c1%,sFix%+1);
     DlgReal(ctDlgFixAcqTime%,wNum%,0.1,100,c23%+1,sFix%+1);  ctTxtFixAcqTime% := DlgText("Fixation acquisition time (s)",c23%+wNum%+2,sFix%+1);
-    DlgReal(ctDlgFixCrossWidthDeg%,wNum%,0.001,50,c33%+1,sFix%+1);  ctTxtFixCrossWidthPixels% := DlgText("Fixation cross width (deg)",c33%+wNum%+2,sFix%+1);
+    DlgReal(ctDlgFixCrossWidthPixels%,wNum%,0,5,c33%+1,sFix%+1);  ctTxtFixCrossWidthPixels% := DlgText("Fixation cross width (pixels)",c33%+wNum%+2,sFix%+1);
     DlgCheck(ctDlgDropFixpt%,"Drop Fixpt at Test?",c1%,sFix%+2);
     DlgReal(ctDlgAdditionalWindowRadius%,wNum%,-5,10,c23%+1,sFix%+2);  ctTxtAdditionalWindowRadius% := DlgText("Add'l fix window rad (deg, rel cue)",c23%+wNum%+2,sFix%+2);  'ctTxtAdditionalWindowRadius% := DlgText("Add'l fix window radius (deg, relative to cue patch)",c1%+wNum%+2,sFix%+2);
     DlgReal(ctDlgAdditionalTargetRadius%,wNum%,0,10,c33%+1,sFix%+2);  ctTxtAdditionalTargetRadius% := DlgText("Add'l target window radius (deg)",c33%+wNum%+2,sFix%+2);
@@ -825,7 +825,7 @@ func ConteTaskDialog%()
     if i% = 1 then        
         
         'Unpack variables
-        ctFixCrossWidthDeg := eightFloats[0];
+        ctFixCrossWidthPixels := eightFloats[0];
         ctPatchOnsetDelay := eightFloats[1];
         ctPatchToSampleDelay := eightFloats[2];
         ctSampleToTargetDelay := eightFloats[3];
@@ -879,7 +879,7 @@ func ConteTaskDialog%()
         ctGratingOnsetDelay := ctPatchOnsetDelay;  'Just keep this in two differently-named variables, same value, but let's not confuse ourselves            
         
         'Convert float pixel width to integer (due to "eightFloats[]", was too difficult to convert to integer for dialog)
-        ctFixCrossWidthDeg% := ctFixCrossWidthDeg;
+        ctFixCrossWidthPixels% := ctFixCrossWidthPixels;
         
         'Get "secondary" gabor location based on requested orientation, in fixation-based coordinates
         if ctPanelIsHoriz% = 0 then
@@ -2931,7 +2931,7 @@ func Start%()
     
     'Update fixation cross argument
     FixationCrossArg$ := Mid$(FixationArg$,5);  'Start with 5th character (remove " -f ") so we can insert the "+"
-    FixationCrossArg$ := " -f +," + FixationCrossArg$ + "," + Str$(ctFixCrossWidthDeg%);  'Can also place a cross "orientation" argument at end to rotate it, but leaving that out here for default 0
+    FixationCrossArg$ := " -f +," + FixationCrossArg$ + "," + Str$(ctFixCrossWidthPixels%);  'Can also place a cross "orientation" argument at end to rotate it, but leaving that out here for default 0
     
     'Build cue color argument
     CueColorArg$ := " -c (" + Str$(ctDotColor1R%) + "/" + Str$(ctDotColor1G%) + "/" + Str$(ctDotColor1B%) + ") -c (" + Str$(ctDotColor2R%) + "/" + Str$(ctDotColor2G%) + "/" + Str$(ctDotColor2B%) + ") ";
@@ -3119,7 +3119,7 @@ proc WriteParameterFile()
     Print("Number of trials                         : %d\n", nTrials%);
 '    'Print("Reward Delay (s)                         : %f\n", mainRewardDelay);  'never enabled
 	Print("Inter-trial interval                     : %f\n", ctITI);
-    Print("Fixation cross width (pixels)            : %f\n", ctFixCrossWidthDeg%);
+    Print("Fixation cross width (pixels)            : %f\n", ctFixCrossWidthPixels%);
     Print("Drop fixation point when stim on         : %d\n", ctDropFixpt%);
     Print("Acquisition time (s)                     : %f\n", ctFixAcqTime);
     Print("Patch onset delay (s)                    : %f\n", ctPatchOnsetDelay);
