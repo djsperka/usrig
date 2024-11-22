@@ -1656,7 +1656,7 @@ func IdleProcessing%()
                 stateBegin% := 0;
             endif
             
-            'Get new LookingTarget2 value once per idle loop, we will hold the original value, don't let the monkey swap targets
+            'Get new isLookingTarget2% value once per idle loop, we will hold the original value, don't let the monkey swap targets
             if thisStim$ = "train-grating" then
                 IsLookingTarget2% := LookingTarget%(xEye,yEye,0);  'Use size of grating if cue rect is not on screen
             else
@@ -1812,7 +1812,9 @@ func IdleProcessing%()
             'Trial aborted, do not reward or advance 
             if stateBegin% = 1 then     
                 LogStatus("Abort", "Abort at about " + str$(tNow)); 
-            
+                
+                SampleText("Trial " + Str$(nTrialsCompleted%) + ": Abort");
+                
                 DrawMonitorScreen(-1,-1,-1,-1,-1);  'remove everything from monitor screen
                 anyScreenUp% := 0;  'Reset anyScreenUp%
             

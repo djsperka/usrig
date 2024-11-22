@@ -326,6 +326,7 @@ end;
 ' Window handles and channel numbers
 var XChannel%,YChannel%;		' Channel number assigned to eye x and y
 var FixationChannel%;
+var FrameChannel%;
 var StimChannel%;
 var ChangeChannel%;
 var ReadyChannel%;			' channel number for VSG ready pulse signal
@@ -381,6 +382,7 @@ StimChannel% := 25;
 ChangeChannel% := 26;
 UtilityChannel% := 27;
 TimingChannel% := 28;
+FrameChannel% := 29;
 
 ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 32;  'Digmark (default) is highest non-electrode channel used by this function
@@ -423,7 +425,11 @@ proc CreateSampleConfiguration()
     SampleTextMark(200);
     
 	'----Event Channel recording definitions----
-	SampleEvent(FixationChannel%, 2, 2, 3600);
+	SampleEvent(FrameChannel%, 0, 2, 3600);
+    SampleComment$(FrameChannel%,"Frame");
+    SampleTitle$(FrameChannel%,"Frame");
+    
+    SampleEvent(FixationChannel%, 2, 2, 3600);
 	SampleComment$(FixationChannel%, "FixPt");
 	SampleTitle$(FixationChannel%, "FixPt");
 
@@ -1545,6 +1551,15 @@ proc WriteParameterFile()
 	var parFileName$;
 	var parFileBase$;
 	var parHandle%;
+    'To hold values from ParseGratingParameters
+    var x, y, w, h, iw, ih, sf, tf, ori, phase, ctf;
+    var contrast%;
+    var cv$, pattern$, aperture$;
+    
+    
+    'Get default stimulus values
+    ParseGratingParameters%(GetGratingParameters$("Stimulus"), x, y, w, h, iw, ih, contrast%, sf, tf, ori, phase, cv$, pattern$, aperture$, ctf);
+    
 
 	' get filename for parfile (data file + "par" extension) and open it
 	View(DataWindow%);
@@ -1566,7 +1581,28 @@ proc WriteParameterFile()
 	Print("Eye coil sampling freq (Hz): %d\n", EyeCoilSamplingFrequency%);
 '	Print("Number of electrodes       : %d\n", NumberOfElectrodes%);
 '	Print("Reward size (ms)           : %d\n", GetJuiceRewardMS%());
-
+    
+    ' write default grating parameters
+	Print("Default Grating Parameters\n");
+	Print("-------------------\n\n");    
+    Print("X position (deg)               : %f\n", x);
+    Print("Y position (deg)               : %f\n", y);
+    Print("Width (deg)                    : %f\n", w);
+    Print("Height (deg)                   : %f\n", h);
+    Print("Inner Width (deg)              : %f\n", iw);
+    Print("Inner Height (deg)             : %f\n", ih);
+    Print("Contrast                       : %d\n", contrast%);
+    Print("Spatial Frequency (cyc/deg)    : %f\n", sf);
+    Print("Temporal Frequency (cyc/s)     : %f\n", tf);
+    Print("Orientation (deg)              : %f\n", ori);
+    Print("Phase (deg)                    : %f\n", phase);
+    Print("Color Vector                   : %s\n", cv$);
+    Print("Pattern                        : %s\n", pattern$);
+    Print("Aperture                       : %s\n", aperture$);
+    Print("Counterphase Trans. Freq. (Hz) : %f\n", ctf);   
+    
+    
+    
 	' write fixpoint parameters
 	Print("\nFixation point\n");
 	Print("-------------------\n\n");
