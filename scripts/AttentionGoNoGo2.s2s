@@ -1843,9 +1843,72 @@ func IdleProcessing%()
             PrintLog("stateCheckForAnswerThroughAnimation: joystick up before contrast change.\n");
             ChangeStateTo(stateAbort%, tNow);
         
-        'we are doing the exogenoud cue paradigm and there is a saccade response to the correct window
-        case attRequireJoystickResponse% = 0 and attExogenousCueParadigm% = 1 and iAnswer% > 0 iAnswer% = expectedAnswer% then
-        
+        'we are doing the exogenous cue paradigm and there is a saccade response to the correct window
+        case attExogenousCueParadigm% = 1 and iAnswer% > 0 and iAnswer% = expectedAnswer% then
+            docase
+            'if cued window has not yet opened, this is a false alarm    
+            case CCHappened% = 0 or CCHappened% = 20 or CCHappened% = 40 then  
+                queueReward% := -1;                   
+                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+                SampleText("Incorrect - False Alarm",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+                
+            'if cued window has opened and not yet closed, it's a hit, set up reward    
+            case tNow <= tStateStart+cuedResponseWindowCloseTime or tNow <= tStateStart+uncuedResponseWindowCloseTime then 
+                queueReward% := 1;                   
+                attCountAllTrialsCorrect% += 1;
+                attInterTrialTimeThisTrial := attInterTrialTime;
+                if trialAttendLoc% = expectedAnswer% then
+                    SampleText("Correct - Response To Cued Location",tNow);
+                else
+                    SampleText("Correct - Response To Uncued Location",tNow);
+                endif
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+                
+            'if window has closed
+            else
+                queueReward% := -1;                    
+                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+                SampleText("Incorrect - Miss, No Response",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over    
+            endcase
+            
+            
+        'we are doing the exogenous cue paradigm and there is a saccade response to an incorrect window
+        case attExogenousCueParadigm% = 1 and iAnswer% > 0 and iAnswer% <> expectedAnswer% then
+            docase
+            'if cued window has not yet opened, this is a false alarm    
+            case CCHappened% = 0 or CCHappened% = 20 or CCHappened% = 40 then  
+                queueReward% := -1;                   
+                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+                SampleText("Incorrect - False Alarm",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+                
+            'if cued window has opened and not yet closed, it's a miss, set up reward    
+            case tNow <= tStateStart+cuedResponseWindowCloseTime or tNow <= tStateStart+uncuedResponseWindowCloseTime then 
+                queueReward% := -1;                   
+                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+                if trialAttendLoc% = iAnswer% then
+                    SampleText("Incorrect - Response To Cued Location",tNow);
+                else
+                    SampleText("Incorrect - Response To Uncued Location",tNow);
+                endif
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+                
+            'if window has closed
+            else
+                queueReward% := -1;                    
+                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+                SampleText("Incorrect - Miss, No Response",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over    
+            endcase
+            
         'there is a saccade response, answer is to cued window, and cued window is a legal answer (expected answer is 0 if cued location does not change)    
         case attRequireJoystickResponse% = 0 and iAnswer% > 0 and iAnswer% = expectedAnswer% then 
             docase
@@ -1933,7 +1996,7 @@ func IdleProcessing%()
             if trialIsTarget% = 1 then  'this is a miss, we would have caught the answer on the last check if not
                 queueReward% := -1;                    
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-                SampleText("Incorrect",tNow);
+                SampleText("Incorrect - Miss, No Response",tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over
             else  'this is a CR, we would have caught fixation break on last check if not
@@ -1942,7 +2005,7 @@ func IdleProcessing%()
                 trialIsCRForDelayBasedReward% := 1;
                 attCountAllTrialsCorrect% += 1;
                 attInterTrialTimeThisTrial := attInterTrialTime;
-                SampleText("Correct",tNow);
+                SampleText("Correct - Correct Rejection",tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over 
             endif;   
@@ -3174,10 +3237,13 @@ func AttentionScriptDialogChanged%(item%)
         DlgValue$(attCuedLocationChangePctTxt%,"Cued Loc Chg% (0-100)");
         DlgValue$(attUncuedLocationChangePctTxt%,"Uncued Loc Chg% (0-100)");
         DlgValue$(attNoCuesMatchFixptTxt%,"No Cues Match Fix% (0-100)");
+        DlgEnable(1,27);  'Allow joystick response
     else
         DlgValue$(attCuedLocationChangePctTxt%,"Percent Valid (0-100)");
         DlgValue$(attUncuedLocationChangePctTxt%,"Percent Invalid (0-100)");
         DlgValue$(attNoCuesMatchFixptTxt%,"Percent Catch (0-100)");
+        DlgEnable(0,27);  'Do not allow joystick response
+        DlgValue(27,0);  'And set value to 0
     endif
     
     return status%;
