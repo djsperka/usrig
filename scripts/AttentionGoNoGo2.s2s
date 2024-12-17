@@ -81,6 +81,10 @@ var attCuedLocationChangePct%;
 var attUncuedLocationChangePct%;
 var attLockUncuedToCued%;
 var attNoCuesMatchFixpt%;
+var attExogenousCueParadigm%;
+var attPercentValid%;
+var attPercentInvalid%;
+var attPercentCatch%;
 
 'Variables for colors dialog
 var attendRGB%[3];
@@ -112,6 +116,12 @@ var attFlasherMaxDist;
 var attFlasherHazardValue;
 var attFlasherWidth;
 var attFlasherHeight;
+
+
+var attCuedLocationChangePctTxt%;
+var attUncuedLocationChangePctTxt%;
+var attNoCuesMatchFixptTxt%;
+
 
 
 var attCustomGratingColorCheck%;  'I totally don't think this is being used, but whatever
@@ -1592,8 +1602,13 @@ func IdleProcessing%()
                 tLastTrigger := tTrigger;
                 ChangeStateTo(stateCheckForAnswerThroughAnimation%, tTrigger);
                 'In below sampletext, can change hazard time (currently relative to grating onset) to relative to animation onset with simple uncomment in PrepareTrial()
-                SampleText("Animation on, Fixation color " + fixColor$ + ", Base contrast " + Str$(attContrastBase%) + ", hazard dur " + Str$(trialHazardFunctionTimeCued) + ", hazard dur2 " + Str$(trialHazardFunctionTimeUncued)
-                + ", attend location " + Str$(trialAttendLoc%) + ", change location " + Str$(expectedAnswer%) + ", change contrast " + Str$(thisContrastCued%) + ", is Cue-All trial: " + Str$(trialIsCueAll%),tTrigger);
+                if attExogenousCueParadigm% = 1 then
+                    SampleText("Animation on, Fixation color " + fixColor$ + ", Base contrast " + Str$(attContrastBase%) + ", hazard dur " + Str$(trialHazardFunctionTimeCued) + ", hazard dur2 " + Str$(trialHazardFunctionTimeUncued)
+                    + ", attend location " + Str$(trialAttendLoc%) + ", change location " + Str$(expectedAnswer%) + ", cued contrast " + Str$(thisContrastCued%) + ", uncued contrast " + Str$(thisContrastUncued%),tTrigger);
+                else
+                    SampleText("Animation on, Fixation color " + fixColor$ + ", Base contrast " + Str$(attContrastBase%) + ", hazard dur " + Str$(trialHazardFunctionTimeCued) + ", hazard dur2 " + Str$(trialHazardFunctionTimeUncued)
+                    + ", attend location " + Str$(trialAttendLoc%) + ", change location " + Str$(expectedAnswer%) + ", change contrast " + Str$(thisContrastCued%) + ", is Cue-All trial: " + Str$(trialIsCueAll%),tTrigger);
+                endif
                 
                 'If there should be no response, change fixation window now?
                 if trialIsTarget% = 0 then
@@ -2334,6 +2349,11 @@ proc PrepareTrial()
     'Determine if contrast is changing (target) or not (nontarget)
     'Under the new scheme, if any contrast changes, it is a target, otherwise it is a nontarget
     docase
+    case attExogenousCueParadigm% = 1 then
+        trialIsTarget% := attCuedLocChangesList%[attCurrTrialIndex%] or attUncuedLocChangesList%[attCurrTrialIndex%];  'This logical operation works in a simple test
+        if trialIsTarget% = 1 then
+            trialAttendLoc% := attCuedLocList%[attCurrTrialIndex%];   'this is the cued location
+        endif
     case trialIsCueAll% = -1 then
         trialIsTarget% := 0;  'for no-cue-matches trials, the correct response is ALWAYS no-go, regardless of whether there is a contrast change
         'We do not need to set trialAttendLoc as the CASE where it is used cannot be entered when trialIsTarget% is 0
@@ -2356,7 +2376,13 @@ proc PrepareTrial()
     case trialIsTarget% = 0 then
         expectedAnswer% := 0;  'cued grating does not change (or, if cue-all, no grating changes, or no cue matches)
         expectedAnswerUncued% := 0;  'even if uncued grating changes, it's not a target
-    'For remainder of cases, trialIsTarget% must be 1    
+    'For remainder of cases, trialIsTarget% must be 1  
+    case attExogenousCueParadigm% = 1 then    
+        if attCuedLocChangesList%[attCurrTrialIndex%] = 1 then
+            expectedAnswer% := attCuedLocList%[attCurrTrialIndex%];   'this is the change location
+        else
+            expectedAnswer% := attUncuedLocList%[attCurrTrialIndex%];   'this is the change location
+        endif
     case trialAttendLoc% < 100 then 'this is single cue
         expectedAnswer% := trialAttendLoc%;  'expected answer is cued location
         expectedAnswerUncued% := 0;  'even if uncued grating changes, it's not a target
@@ -2468,7 +2494,8 @@ proc GetAttentionScriptParameters()
     attUncuedLocationChangePct% := GetIntRegistryValue%(key$, "UncuedLocationChangePct", 1); ''
     attRequireJoystickResponse% := GetIntRegistryValue%(key$, "RequireJoystickResponse", 0);
     attNoCuesMatchFixpt% := GetIntRegistryValue%(key$, "NoCuesMatchFixpt", 0);
-   
+    attExogenousCueParadigm% := GetIntRegistryValue%(key$, "attExogenousCueParadigm", 0);
+    
 end;
 
 proc SaveAttentionScriptParameters()
@@ -2507,6 +2534,7 @@ proc SaveAttentionScriptParameters()
     SetIntRegistryValue(key$, "UncuedLocationChangePct", attUncuedLocationChangePct%);
     SetIntRegistryValue(key$, "RequireJoystickResponse", attRequireJoystickResponse%);
     SetIntRegistryValue(key$, "NoCuesMatchFixpt", attNoCuesMatchFixpt%);
+    SetIntRegistryValue(key$, "attExogenousCueParadigm", attExogenousCueParadigm%);
     
 end;
 
@@ -2744,11 +2772,12 @@ func AttentionScriptDialog%()
 	DlgInteger(2, 7, 1, 1000, 27, 3);  DlgText("Regular Trials per block:",2,3);
     DlgInteger(3, 7, 0, 1000, 27, 4);  DlgText("Easy Trials per block:",2,4);
     DlgCheck(4, "Distracter Off for Easy Trials", 2, 5);
-    DlgInteger(5, 7, 0, 100, 27, 6); DlgText("Cued Loc Chg% (0-100)",2,6);
-    DlgInteger(6, 7, 0, 100, 27, 7); DlgText("Uncued Loc Chg% (0-100)",2,7);
-    DlgInteger(28, 7, 0, 100, 27, 8); DlgText("No Cues Match Fix% (0-100)",2,8);
+    DlgInteger(5, 7, 0, 100, 27, 6); attCuedLocationChangePctTxt% := DlgText("Cued Loc Chg% (0-100)",2,6);
+    DlgInteger(6, 7, 0, 100, 27, 7); attUncuedLocationChangePctTxt% := DlgText("Uncued Loc Chg% (0-100)",2,7); 
+    DlgInteger(28, 7, 0, 100, 27, 8); attNoCuesMatchFixptTxt% := DlgText("No Cues Match Fix% (0-100)",2,8);
     DlgButton(2, "Block Cues To Use", AttCuesToUseDialog%, 2, 9);  
     
+  
     
     'Moving this group to the right, so we have to use DlgText because otherwise CED justifies the text all the way left
     DlgGroup("Contrast",36,1,34,9);
@@ -2771,33 +2800,33 @@ func AttentionScriptDialog%()
     DlgCheck(18, "Get distracter params from main stim", 37, 12);
     DlgCheck(19, "Use Flashers", 37, 13);
     
-    DlgGroup("Cue Circles", 1, 13, 34, 5);
+    DlgGroup("Cue Circles", 1, 13, 34, 6);
     DlgList(20, 30, cueCircleList$[], 4, 4, 14);
     DlgCheck(21, "Swap Cue Circles (if used)", 2, 15);
 	DlgReal(22, "Cue extra radius (deg)", 0, 5, 21, 16);
     DlgInteger(23, 4, 0, 20, 30, 17); DlgText("Cue Circle Stroke Width(integer)",2,17);
-    
+    DlgCheck(29, "Do exogenous cue paradigm", 2, 18);
     
     DlgGroup("Reward", 36, 14, 34, 3);
     DlgCheck(24, "Use Low Reward For No-Change Trls", 37, 15);
     DlgInteger(25, 10, 1, 1000, 58, 16); DlgText("Low Reward (ms)",37,16);
     
-    DlgGroup("Optogenetics", 1, 18, 68, 2);
-    DlgCheck(26,"Opto On",2,19);
-    DlgButton(3, "Optogenetics Parameters", AttOptoDialog%, 36, 19);
+    DlgGroup("Optogenetics", 1, 19, 68, 2);
+    DlgCheck(26,"Opto On",2,20);
+    DlgButton(3, "Optogenetics Parameters", AttOptoDialog%, 36, 20);
     
-    DlgCheck(27,"Use Joystick",2,20);
-    DlgButton(4, "Joystick Dialog", CallJoystickConfigDialog%,36-14,20);
-    DlgButton(5, "Colors", ColorsDialog%, 2+36, 20);
-    DlgButton(6, "Timing", TimingDialog%, 11+36, 20);  
-    DlgButton(7, "Flashers", CallDlgGratingFlashers%, 21+36, 20);  
+    DlgCheck(27,"Use Joystick",2,21);
+    DlgButton(4, "Joystick Dialog", CallJoystickConfigDialog%,36-14,21);
+    DlgButton(5, "Colors", ColorsDialog%, 2+36, 21);
+    DlgButton(6, "Timing", TimingDialog%, 11+36, 21);  
+    DlgButton(7, "Flashers", CallDlgGratingFlashers%, 21+36, 21);  
 
     DlgAllow(0, 0, AttentionScriptDialogChanged%);
     
-	i%:=DlgShow(attNumberOfSetsOfBlocks%, attTrialsPerBlock%, attEasyTrialsPerBlock%, distracterOffForEasy%, attCuedLocationChangePct%, attUncuedLocationChangePct%,
-    attContrastBase%, attMaxContChange, attMinContChange, attNContLevels%, attAnswerPointWindowRadius, tenints%[], 
-    attCueCircleExtraRadius, attCueCircleStrokeWidth%, attUseLowReward%, attLowReward%, attDoOpto%, attRequireJoystickResponse%, attNoCuesMatchFixpt%);
-    
+	i%:=DlgShow(attNumberOfSetsOfBlocks%, attTrialsPerBlock%, attEasyTrialsPerBlock%, distracterOffForEasy%, 
+    attCuedLocationChangePct%, attUncuedLocationChangePct%,attContrastBase%, attMaxContChange, attMinContChange, 
+    attNContLevels%, attAnswerPointWindowRadius, tenints%[], attCueCircleExtraRadius, attCueCircleStrokeWidth%, 
+    attUseLowReward%, attLowReward%, attDoOpto%, attRequireJoystickResponse%, attNoCuesMatchFixpt%, attExogenousCueParadigm%);
     
 	if i% = 1 then
         
@@ -2812,6 +2841,24 @@ func AttentionScriptDialog%()
         attUseFlashers% := tenints%[7];
         attUseCueCircles% := tenints%[8];
         attSwapCueCircle% := tenints%[9];
+        
+        'Validate valid/invalid/catch percentages if we are doing the exogenous cuing paradigm and set start block to random, no cue-all
+        if attExogenousCueParadigm% = 1 then
+            'Assign to new variables so the name makes sense
+            attPercentValid% := attCuedLocationChangePct%;
+            attPercentInvalid% := attUncuedLocationChangePct%;
+            attPercentCatch% := attNoCuesMatchFixpt%;
+            if (attPercentValid% + attPercentInvalid% + attPercentCatch%) <> 100 then
+                message("For the exogenous cuing paradigm, valid+invalid+catch must be 100!  Quitting!");
+                halt;
+            endif
+            'explicitly set start block to "main"
+            attStartBlock% := 1;
+        endif
+        
+        
+        
+        
         
         'Make sure the user doesn't break things by having illegal values in the blocks dialog
         '(OK, technically, the blocks dialog doesn't allow illegal values, but those values can later turn out illegal
@@ -3120,6 +3167,16 @@ func AttentionScriptDialogChanged%(item%)
     
     DlgEnable(0,11);  'Disabling answer point radius, using grating size instead
     
+    if DlgValue(29) = 0 then
+        DlgValue$(attCuedLocationChangePctTxt%,"Cued Loc Chg% (0-100)");
+        DlgValue$(attUncuedLocationChangePctTxt%,"Uncued Loc Chg% (0-100)");
+        DlgValue$(attNoCuesMatchFixptTxt%,"No Cues Match Fix% (0-100)");
+    else
+        DlgValue$(attCuedLocationChangePctTxt%,"Percent Valid (0-100)");
+        DlgValue$(attUncuedLocationChangePctTxt%,"Percent Invalid (0-100)");
+        DlgValue$(attNoCuesMatchFixptTxt%,"Percent Catch (0-100)");
+    endif
+    
     return status%;
 end
 
@@ -3252,6 +3309,8 @@ func ColorsDialog%()
 	var ibcl%:=0;
     var fiveints%[5];
     var twentyoneints%[21];
+    
+    cuesToUseNGratings% := DlgValue(17);  'get number of gratings
     
     GetColorsDialogParameters();
     
@@ -3524,6 +3583,21 @@ func ColorsDialogChanged%(item%)
         DlgEnable(DlgValue(attcolorsdlgCustomGratingColorCheck%), attCustomGratingDialogLabel%[5]);
     endif
     
+    if cuesToUseNGratings% < 5 then
+        DlgEnable(0,attcolorsdlgCueContrastIgnore4%);  'Disable ability to change contrast of distracter 4 if distracter 4 not shown
+    endif;
+    if cuesToUseNGratings% < 4 then
+        DlgEnable(0,attcolorsdlgCueContrastIgnore3%);  'Disable ability to change contrast of distracter 3 if distracter 3 not shown
+    endif;
+    if cuesToUseNGratings% < 3 then
+        DlgEnable(0,attcolorsdlgCueContrastIgnore2%);  'Disable ability to change contrast of distracter 2 if distracter 2 not shown
+    endif;
+    if cuesToUseNGratings% < 2 then
+        DlgEnable(0,attcolorsdlgCueContrastIgnore1%);  'Disable ability to change contrast of distracter 1 if distracter 1 not shown
+    endif;
+    
+    
+    
     'If we decide to make the different invalid cue circles have different contrasts, get rid of this
     'if statement altogether and uncomment three commented lines above.  
     'if item% = 0 or item% = attcolorsdlgCueContrastIgnore1% then
@@ -3704,6 +3778,7 @@ func AttCuesToUseDialog%()
     
     
     cuesToUseNGratings% := DlgValue(17);  'get number of gratings
+    attExogenousCueParadigm% := DlgValue(29);  'set this early because we need to know what it is for DialogChanged
     
     blockStartList$[0] := "Randomize Start Block";
     blockStartList$[1] := "Start Block: Main Stimulus";
@@ -3828,6 +3903,29 @@ func AttCuesToUseDialogChanged%(item%)
         DlgEnable(1,7);
         DlgEnable(1,8);
     endif;
+    
+    if attExogenousCueParadigm% = 1 then
+        
+        DlgEnable(0,2);  'disable all values but 1 (main stimulus)
+        DlgEnable(0,3);
+        DlgEnable(0,4);
+        DlgEnable(0,5);
+        DlgEnable(0,6);
+        DlgEnable(0,7);
+        DlgEnable(0,8);
+        DlgValue(2,0);  'And set all the unused block values to 0
+        DlgValue(3,0);
+        DlgValue(4,0);
+        DlgValue(5,0);
+        DlgValue(6,0);
+        DlgValue(7,0);
+        DlgValue(8,0);
+        DlgValue(9,1);  'Set spinner to 1
+    endif;
+    
+    
+    
+    
     return 1;
 end
 
@@ -4112,6 +4210,9 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 
                 ''' Determine cued location (Fill cuedLoc%[], isCueAll%[])
                 docase
+                case attExogenousCueParadigm% = 1 then  'under the ECP only one cue circle appears, define THAT as the "cued location"
+                    cuedLoc%[ind%] := floor(rand(attNumPatches%,1));  'Pick a random location to be "cued location", 1-N
+                    isCueAll%[ind%] := 0;
                 case blockOrder%[j%] <= 5 then  'blocks 1-5 are various cue locations
                     cuedLoc%[ind%] := blockOrder%[j%];
                     isCueAll%[ind%] := 0;
@@ -4146,29 +4247,46 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 
                 
                 ''' Determine which locations change contrast (Fill cuedLocChanges%[], uncuedLocChanges%[])
-                'Cued
-                docase
-                case easyList%[ind%] = 1 then  'on easy trials, cued location always changes
-                    cuedLocChanges%[ind%] := 1;
-                case floor(rand(100,0)) < attCuedLocationChangePct% then 'these are currently designed as 0-100 integers, could change that if necessary
-                    cuedLocChanges%[ind%] := 1;
-                else
-                    cuedLocChanges%[ind%] := 0;
-                endcase
-                'Uncued
-                docase
-                case uncuedLoc%[ind%] = 0  then   'if there's no uncued location, it can't change
-                    uncuedLocChanges%[ind%] := 0;
-                case easyList%[ind%] = 1 then  'there are no distracters to change on easy trials
-                    uncuedLocChanges%[ind%] := 0;
-                    uncuedLoc%[ind%] := 0;  'no location is changing
-                case floor(rand(100,0)) < attUncuedLocationChangePct% then
-                    uncuedLocChanges%[ind%] := 1;
-                else
-                    uncuedLocChanges%[ind%] := 0;
-                    uncuedLoc%[ind%] := 0;  'no location is changing
-                endcase
-                
+                if attExogenousCueParadigm% = 1 then  'under the ECP, only ONE location can change (or none on catch)
+                    docase
+                    case easyList%[ind%] = 1 then  'under the ECP, easy trials are always valid
+                        cuedLocChanges%[ind%] := 1;
+                        uncuedLocChanges%[ind%] := 0;
+                    case floor(rand(100,0)) < attPercentValid% then 'Valid, these are currently designed as 0-100 integers, could change that if necessary
+                        cuedLocChanges%[ind%] := 1;
+                        uncuedLocChanges%[ind%] := 0;
+                    case floor(rand(100,0)) < (attPercentValid% + attPercentInvalid%) then 'Invalid
+                        cuedLocChanges%[ind%] := 0;
+                        uncuedLocChanges%[ind%] := 1;
+                    else 'catch
+                        cuedLocChanges%[ind%] := 0;
+                        uncuedLocChanges%[ind%] := 0;
+                        isCueAll%[ind%] := -1;  'This is used in PrepareTrial%() to indicate a no-reponse
+                    endcase
+                else  'under the standard attention paradigm, it is possible for both locations to change
+                    'Cued
+                    docase
+                    case easyList%[ind%] = 1 then  'on easy trials, cued location always changes
+                        cuedLocChanges%[ind%] := 1;
+                    case floor(rand(100,0)) < attCuedLocationChangePct% then 'these are currently designed as 0-100 integers, could change that if necessary
+                        cuedLocChanges%[ind%] := 1;
+                    else
+                        cuedLocChanges%[ind%] := 0;
+                    endcase
+                    'Uncued
+                    docase
+                    case uncuedLoc%[ind%] = 0  then   'if there's no uncued location, it can't change
+                        uncuedLocChanges%[ind%] := 0;
+                    case easyList%[ind%] = 1 then  'there are no distracters to change on easy trials
+                        uncuedLocChanges%[ind%] := 0;
+                        uncuedLoc%[ind%] := 0;  'no location is changing
+                    case floor(rand(100,0)) < attUncuedLocationChangePct% then
+                        uncuedLocChanges%[ind%] := 1;
+                    else
+                        uncuedLocChanges%[ind%] := 0;
+                        uncuedLoc%[ind%] := 0;  'no location is changing
+                    endcase
+                endif
                 
                 ''' Determine cued contrast change and times
                 'Cued (Fill cuedLocContrast%[], cuedLocCCTime[], cuedLocReturnTime[])
@@ -4226,15 +4344,15 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 case attLockUncuedToCued% = 1 then
                     'Do nothing, contrast changes WILL overlap, there will be exactly one trigger, this is fixed in TagTrigger...
                 'if both onsets are within 50 ms of each other, set the uncued onset to 50 ms AFTER cued onset, update return time as well
-                case cuedLocChanges%[ind%] = 1 and abs(cuedLocCCTime[ind%]-uncuedLocCCTime[ind%]) < 0.050 then
+                case cuedLocChanges%[ind%] = 1 and uncuedLocChanges%[ind%] = 1 and abs(cuedLocCCTime[ind%]-uncuedLocCCTime[ind%]) < 0.050 then
                     uncuedLocCCTime[ind%] := cuedLocCCTime[ind%] + 0.050;
                     uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
                 'if cued offset and uncued onset are within 50 ms of each other, set uncued onset to 50 ms AFTER cued offset, update return time as well 
-                case cuedLocChanges%[ind%] = 1 and abs(cuedLocReturnTime[ind%]-uncuedLocCCTime[ind%]) < 0.050 then
+                case cuedLocChanges%[ind%] = 1 and uncuedLocChanges%[ind%] = 1 and abs(cuedLocReturnTime[ind%]-uncuedLocCCTime[ind%]) < 0.050 then
                     uncuedLocCCTime[ind%] := cuedLocReturnTime[ind%] + 0.050;
                     uncuedLocReturnTime[ind%] := uncuedLocCCTime[ind%] + attContrastChangeDuration;
                 'if cued onset and uncued offset are within 50 ms of each other, set the cued onset to 50 ms AFTER uncued offset
-                case cuedLocChanges%[ind%] = 1 and abs(cuedLocCCTime[ind%]-uncuedLocReturnTime[ind%]) < 0.050 then    
+                case cuedLocChanges%[ind%] = 1 and uncuedLocChanges%[ind%] = 1 and abs(cuedLocCCTime[ind%]-uncuedLocReturnTime[ind%]) < 0.050 then    
                     cuedLocCCTime[ind%] := uncuedLocReturnTime[ind%] + 0.050;
                     cuedLocReturnTime[ind%] := cuedLocCCTime[ind%] + attContrastChangeDuration;
                 endcase;
@@ -4285,9 +4403,9 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 
                 
                 
-                'Determine if this trial should be a no-cues-match trial
+                'Determine if this trial should be a no-cues-match trial, don't do this for ECP, it has been done above
                 'If so, update isCueAll%[] to -1, this will be useful during the experiment as well
-                if floor(rand(100,0)) < attNoCuesMatchFixpt% then 'these are currently designed as 0-100 integers, could change that if necessary
+                if attExogenousCueParadigm% = 0 and floor(rand(100,0)) < attNoCuesMatchFixpt% then 'these are currently designed as 0-100 integers, could change that if necessary
                     isCueAll%[ind%] := -1;
                 endif
                 
@@ -4322,7 +4440,10 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
 '                endif
                 
                 ''' Set offList, assuming that offList determines which CUES appear
-                if easyList%[ind%] = 1 then
+                docase
+                case attExogenousCueParadigm% = 1 then
+                    offList%[ind%] := alloff% - Pow(2,cuedLoc%[ind%]-1);  'under ECP, turn off all cues but the intended one, regardless of "easy"/not
+                case easyList%[ind%] = 1 then
                     offList%[ind%] := alloff% - Pow(2,cuedLoc%[ind%]-1);  'turn off all cues but the intended one
                 else
                     if attCueCirclesMatchCueAllFixpt% and isCueAll%[ind%] = 1 then
@@ -4330,7 +4451,7 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                     else
                         offList%[ind%] := 0;  'all cues on, use first set of cue circle colors
                     endif;
-                endif
+                endcase
                 
                 
                 
@@ -4857,6 +4978,7 @@ proc WriteParameterFile()
     Print("Abort/miss/FA penalty time (s)   : %f\n", attAbortPenaltyTime);
     Print("Uncued CC locked to Cued?: %d\n", attLockUncuedToCued%);
     Print("Use Joystick for response?: %d\n", attRequireJoystickResponse%);
+    Print("Use Exogenous Cue Paradigm?: %d\n", attExogenousCueParadigm%);
     
     
     if attUseFlashers% = 1 then
@@ -4878,9 +5000,16 @@ proc WriteParameterFile()
     Print("Trials per block   : %d\n", attTrialsPerBlock%);
     Print("Easy trials per block   : %d\n", attEasyTrialsPerBlock%);
     Print("Distracter off for easy trials?   : %d\n", distracterOffForEasy%);
-    Print("Cued Location Change Percentage   : %d\n", attCuedLocationChangePct%);
-    Print("Uncued Location Change Percentage   : %d\n", attUncuedLocationChangePct%);
-    Print("No Cues Match Fixpt Percentage   : %d\n", attNoCuesMatchFixpt%);
+    if attExogenousCueParadigm% = 0 then
+        Print("Cued Location Change Percentage   : %d\n", attCuedLocationChangePct%);
+        Print("Uncued Location Change Percentage   : %d\n", attUncuedLocationChangePct%);
+        Print("No Cues Match Fixpt Percentage   : %d\n", attNoCuesMatchFixpt%);
+    else
+        Print("Valid Percentage   : %d\n", attPercentValid%);
+        Print("Invalid Percentage   : %d\n", attPercentInvalid%);
+        Print("Catch Percentage   : %d\n", attPercentCatch%);
+    endif
+    
     
     
     Print("Select Random Contrast Each Trial   : %d\n", attSelectRandomContrastEachTrial%);
@@ -5367,7 +5496,7 @@ end
 '
 '======= CreateCueCircleColorSetsLite =======
 'This function skips the aspects of Cue Circle Swapping and simply makes a single set of
-'cuec circles in CueCircLocal$ for inclusion in the long spec file.
+'cue circles in CueCircLocal$ for inclusion in the long spec file.
 func CreateCueCircleColorSetsLite$()
     var CueCircLocal$;
     var RadAndWid$;  'these are all the same for every cue circle
