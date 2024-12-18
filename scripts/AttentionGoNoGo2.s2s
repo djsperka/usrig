@@ -1828,10 +1828,10 @@ func IdleProcessing%()
         endif;
         
         docase  
-        'if fixation is broken and no contrast change has happened, begin abort procedure            
-        case Looking%(xEye, yEye) = 0 and CCHappened% = 0 then  
-            PrintLog("stateCheckForAnswerThroughAnimation: fixation lost before contrast change.\n");
-            ChangeStateTo(stateAbort%, tNow);
+        'if fixation is broken and no contrast change has happened, begin abort procedure  -- if we do this we can't register FAs          
+        'case Looking%(xEye, yEye) = 0 and CCHappened% = 0 then  
+            'PrintLog("stateCheckForAnswerThroughAnimation: fixation lost before contrast change.\n");
+            'ChangeStateTo(stateAbort%, tNow);
             
         'if we want a joystick response and fixation is broken, begin abort procedure            
         case Looking%(xEye, yEye) = 0 and attRequireJoystickResponse% = 1 then  
@@ -1847,7 +1847,7 @@ func IdleProcessing%()
         case attExogenousCueParadigm% = 1 and iAnswer% > 0 and iAnswer% = expectedAnswer% then
             docase
             'if cued window has not yet opened, this is a false alarm    
-            case CCHappened% = 0 or CCHappened% = 20 or CCHappened% = 40 then  
+            case CCHappened% = 0 then  
                 queueReward% := -1;                   
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
                 SampleText("Incorrect - False Alarm",tNow);
@@ -1881,7 +1881,7 @@ func IdleProcessing%()
         case attExogenousCueParadigm% = 1 and iAnswer% > 0 and iAnswer% <> expectedAnswer% then
             docase
             'if cued window has not yet opened, this is a false alarm    
-            case CCHappened% = 0 or CCHappened% = 20 or CCHappened% = 40 then  
+            case CCHappened% = 0 then  
                 queueReward% := -1;                   
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
                 SampleText("Incorrect - False Alarm",tNow);
@@ -5993,6 +5993,9 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
         endif
     case minLoc% = 6 then 'this is a contrast change in the uncued location
         docase
+        case attExogenousCueParadigm% = 1 then
+            cc% += 10;  'Increment cc% by 10
+            SampleText("Uncued Location CC, window open",triggerTime);
         case isCueAll% = -1 then
             cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location CC, window open, no cues match",triggerTime);
@@ -6020,6 +6023,9 @@ proc TagTriggerWithSampletext(triggerTime,tAnimationOn,trialCount%,&flasherCount
         endif
     case minLoc% = 8 then 'this is a contrast return in the uncued location
         docase
+        case attExogenousCueParadigm% = 1 then
+            cc% += 10;  'Increment cc% by 10
+            SampleText("Uncued Location return to baseline, window closed",triggerTime);
         case isCueAll% = -1 then
             cc% += 10;  'Increment cc% by 10
             SampleText("Uncued Location return to baseline, window closed, no cues match",triggerTime);
