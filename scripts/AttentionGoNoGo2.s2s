@@ -1846,7 +1846,7 @@ func IdleProcessing%()
         'we are doing the exogenous cue paradigm and there is a saccade response to the correct window
         case attExogenousCueParadigm% = 1 and iAnswer% > 0 and iAnswer% = expectedAnswer% then
             docase
-            'if cued window has not yet opened, this is a false alarm    
+            'if no CC has happened, this is a false alarm    
             case CCHappened% = 0 then  
                 queueReward% := -1;                   
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
@@ -1854,18 +1854,23 @@ func IdleProcessing%()
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
                 
-            'if cued window has opened and not yet closed, it's a hit, set up reward    
-            case tNow <= tStateStart+cuedResponseWindowCloseTime or tNow <= tStateStart+uncuedResponseWindowCloseTime then 
+            'if CC is cued and cued window has opened and not yet closed, it's a hit, set up reward    
+            case trialAttendLoc% = expectedAnswer% and tNow <= tStateStart+cuedResponseWindowCloseTime then 
                 queueReward% := 1;                   
                 attCountAllTrialsCorrect% += 1;
                 attInterTrialTimeThisTrial := attInterTrialTime;
-                if trialAttendLoc% = expectedAnswer% then
-                    SampleText("Correct - Response To Cued Location",tNow);
-                else
-                    SampleText("Correct - Response To Uncued Location",tNow);
-                endif
+                SampleText("Correct - Response To Cued Location",tNow);
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+                
+            'if CC is uncued and uncued window has opened and not yet closed, it's a hit, set up reward    
+            case trialAttendLoc% <> expectedAnswer% and tNow <= tStateStart+uncuedResponseWindowCloseTime then 
+                queueReward% := 1;                   
+                attCountAllTrialsCorrect% += 1;
+                attInterTrialTimeThisTrial := attInterTrialTime;
+                SampleText("Correct - Response To Uncued Location",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);    
                 
             'if window has closed
             else
@@ -1888,25 +1893,37 @@ func IdleProcessing%()
                 CCHappened% := 0;
                 ChangeStateTo(stateCheckTurnOffOpto%, tNow);
                 
-            'if cued window has opened and not yet closed, it's a miss, set up reward    
-            case tNow <= tStateStart+cuedResponseWindowCloseTime or tNow <= tStateStart+uncuedResponseWindowCloseTime then 
-                queueReward% := -1;                   
-                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
-                if trialAttendLoc% = iAnswer% then
-                    SampleText("Incorrect - Response To Cued Location",tNow);
-                else
-                    SampleText("Incorrect - Response To Uncued Location",tNow);
-                endif
-                CCHappened% := 0;
-                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
-                
-            'if window has closed
-            else
+            'if window has closed (have to move this up)
+            case tNow > tStateStart+cuedResponseWindowCloseTime and tNow > tStateStart+uncuedResponseWindowCloseTime then
                 queueReward% := -1;                    
                 attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
                 SampleText("Incorrect - Miss, No Response",tNow);
                 CCHappened% := 0;
-                ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over    
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);  'we can skip waitForAnswer, response window (i.e. trial) is over 
+                
+            'if CC is uncued, it's a miss, set up reward    
+            case trialAttendLoc% = iAnswer% then 
+                queueReward% := -1;                   
+                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+                SampleText("Incorrect - Response To Cued Location",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+                
+            'if CC is cued, it's a miss, set up reward    
+            case trialAttendLoc% <> iAnswer% then 
+                queueReward% := -1;                   
+                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+                SampleText("Incorrect - Response To Uncued Location",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+                
+            else 'this should not happen
+                queueReward% := -1;                   
+                attInterTrialTimeThisTrial := attInterTrialTime + attMissPenaltyTime;
+                SampleText("Incorrect - Unknown response, something has gone wrong",tNow);
+                CCHappened% := 0;
+                ChangeStateTo(stateCheckTurnOffOpto%, tNow);
+                
             endcase
             
         'there is a saccade response, answer is to cued window, and cued window is a legal answer (expected answer is 0 if cued location does not change)    
@@ -2417,9 +2434,9 @@ proc PrepareTrial()
     docase
     case attExogenousCueParadigm% = 1 then
         trialIsTarget% := attCuedLocChangesList%[attCurrTrialIndex%] or attUncuedLocChangesList%[attCurrTrialIndex%];  'This logical operation works in a simple test
-        if trialIsTarget% = 1 then
+        'if trialIsTarget% = 1 then  '''The trialAttendLoc% should be the cued loc no matter what, even catch trials are cued
             trialAttendLoc% := attCuedLocList%[attCurrTrialIndex%];   'this is the cued location
-        endif
+        'endif
     case trialIsCueAll% = -1 then
         trialIsTarget% := 0;  'for no-cue-matches trials, the correct response is ALWAYS no-go, regardless of whether there is a contrast change
         'We do not need to set trialAttendLoc as the CASE where it is used cannot be entered when trialIsTarget% is 0
