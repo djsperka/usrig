@@ -2937,6 +2937,8 @@ func AttentionScriptDialog%()
             endif
             'explicitly set start block to "main"
             attStartBlock% := 1;
+            'do not allow locking cued/uncued, it makes no sense in ECP
+            attLockUncuedToCued% := 0;
         endif
         
         
@@ -4192,6 +4194,7 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
     var blockOrder%[800];  'can't have more than 800 blocks per set, by block dialog (we won't have this many, of course)
     var alloff%;
     var initPhase%[5];
+    var randDontReRoll%;
 '    var firstRun := 1;  'for some housekeeping on UpdateFlasherSpecString
 '    var tempFlashTimes[attMaxFlashers%];  'For now we are not going to be matching block timing, so these do not need to be matrices
 '    var tempFlashX[attMaxFlashers%];
@@ -4334,14 +4337,15 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 
                 ''' Determine which locations change contrast (Fill cuedLocChanges%[], uncuedLocChanges%[])
                 if attExogenousCueParadigm% = 1 then  'under the ECP, only ONE location can change (or none on catch)
+                    randDontReRoll% := floor(rand(100,1));  'attPercent(In)Valid% currently designed as 0-100 integers, could change that if necessary
                     docase
                     case easyList%[ind%] = 1 then  'under the ECP, easy trials are always valid
                         cuedLocChanges%[ind%] := 1;
                         uncuedLocChanges%[ind%] := 0;
-                    case floor(rand(100,0)) < attPercentValid% then 'Valid, these are currently designed as 0-100 integers, could change that if necessary
+                    case randDontReRoll% <= attPercentValid% then 'Valid 
                         cuedLocChanges%[ind%] := 1;
                         uncuedLocChanges%[ind%] := 0;
-                    case floor(rand(100,0)) < (attPercentValid% + attPercentInvalid%) then 'Invalid
+                    case randDontReRoll% <= (attPercentValid% + attPercentInvalid%) then 'Invalid
                         cuedLocChanges%[ind%] := 0;
                         uncuedLocChanges%[ind%] := 1;
                     else 'catch
@@ -4505,7 +4509,7 @@ Proc CreateContrastList(&c$,&f$,&isCueAll%[],&cuedLoc%[],&cuedLocChanges%[],&cue
                 docase
                 case isCueAll%[ind%] = 1 then
                     fixColor%[ind%] := 6;  'hardcode, 5 is the correct index for cue-all, but all subsequent calls will subtract 1
-                case isCueAll%[ind%] = -1 then
+                case isCueAll%[ind%] = -1 and attExogenousCueParadigm% = 0 then  'don't choose "7" for ECP
                     fixColor%[ind%] := 7;  'hardcode, 6 is the correct index for no-cues-match, but all subsequent calls will subtract 1
                 else
                     fixColor%[ind%] := cuedLoc%[ind%];
