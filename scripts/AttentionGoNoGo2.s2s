@@ -415,7 +415,7 @@ const stateStartBlock%:=13;
 const stateTrialCompletedWaitForBlank% := 14;
 const stateTrialCompletedPause% := 15;
 const stateFalseAlarmPenalty% := 16;
-const stateMiss% := 17;
+'const stateMiss% := 17;  'Disabling stateMiss%, miss penalty now done in stateTrialCompletedPause%
 const stateCheckTurnOnOpto% := 18;
 const stateRequestStimulus% := 19;
 const stateStartOpto% := 20;
@@ -2123,12 +2123,8 @@ func IdleProcessing%()
         'attCurrTrialIndex% += 1;
         docase
         case attDoOpto% = 0 or attOptoStarted% = 0 then 'if this is not an opto trial, trial is complete
-            if queueReward% = -1 then 'on a miss, go to miss penalty, otherwise we are done
-                ChangeStateTo(stateMiss%, tStateStart);
-                queueReward% := 0;  'reset value, will not reward
-            else
-                ChangeStateTo(stateTrialCompletedWaitForBlank%, tStateStart);
-            endif;
+            'No longer going to stateMiss%, we need to make sure the screen blanks first
+            ChangeStateTo(stateTrialCompletedWaitForBlank%, tStateStart);
             SafeSampleKey("X");  'do this in stateCheckTurnOffOpto
             printlog("Trial complete, Not an opto trial, doOpto = %d, optoState = %d, time = %f\n",attDoOpto%,attOptoState%,tStateStart);
             'give out reward, if necessary, in THIS state if opto is off
@@ -2156,12 +2152,8 @@ func IdleProcessing%()
                 SampleSeqVar(6,attOptoNPulses%);  'reset number of pulses, otherwise bad stuff happens
                 attOptoStarted% := 0;  'opto is now off
             endif;
-            if queueReward% = -1 then 'on a miss, go to miss penalty, otherwise we are done
-                ChangeStateTo(stateMiss%, tStateStart);
-                queueReward% := 0;  'reset value, will not reward
-            else
-                ChangeStateTo(stateTrialCompletedWaitForBlank%, tStateStart);
-            endif;
+            'No longer going to stateMiss%, we need to make sure the screen blanks first
+            ChangeStateTo(stateTrialCompletedWaitForBlank%, tStateStart);
             SafeSampleKey("X");  'do this in stateCheckTurnOffOpto
             'give out reward, if necessary, in THIS state if opto is off
             if queueReward% = 1 then
@@ -2234,22 +2226,29 @@ func IdleProcessing%()
               
         
     case iState% = stateTrialCompletedPause% then
-        
-        if tNow - tStateStart > attInterTrialTimeThisTrial then
-            
-            PrintLog("stateTrialCompletedPause: inter-trial time is done.\n");
-            ChangeStateTo(stateTrialCompleted%, tNow);
-            
+        'In this state, we will apply either the miss penalty or the standard pause, depending on queueReward%
+        if queueReward% = -1 then
+            if tNow - tStateStart > attMissPenaltyTime then
+                PrintLog("stateTrialCompletedPause: penalty time is done.\n");
+                ChangeStateTo(stateTrialCompleted%, tNow);
+                queueReward% := 0;  'reset value, will not reward
+            endif
+        else
+            if tNow - tStateStart > attInterTrialTimeThisTrial then
+                PrintLog("stateTrialCompletedPause: inter-trial time is done.\n");
+                ChangeStateTo(stateTrialCompleted%, tNow);
+            endif
         endif
         
-    case iState% = stateMiss% then
         
-        if tNow - tStateStart > attMissPenaltyTime then
-            
-            PrintLog("stateMiss: penalty time is done.\n");
-            ChangeStateTo(stateTrialCompleted%, tNow);
-            
-        endif
+    'case iState% = stateMiss% then
+    '    
+    '    if tNow - tStateStart > attMissPenaltyTime then
+    '        
+    '        PrintLog("stateMiss: penalty time is done.\n");
+    '        ChangeStateTo(stateTrialCompleted%, tNow);
+    '        
+    '    endif
         
         
     case iState% = stateTrialCompleted% then
