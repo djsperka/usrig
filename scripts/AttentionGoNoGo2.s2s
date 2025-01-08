@@ -396,6 +396,8 @@ var tStateStart:=-1;	' time that present state started. Used to measure Penalty 
 var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
 var tTrigger:=-1;	' temp var for newly discovered trigger times
 var tAnimationOn:=-1;	' time that stim was turned on. Used to measure spike rates 
+var tLastAdvance:=-1;   ' keep a separate set of variables for the stimChangeChannel
+var tTriggerAdvance:=-1;
 
 ' Constants for states
 const stateStartTrial%:=0;		                        ' Start trial state
@@ -423,6 +425,7 @@ const statePulsedOpto% := 21;
 const stateWaitOptoPrestim% := 22;
 const stateCheckTurnOffOpto% := 23;
 const stateTurnOffOpto% := 24;
+const stateVerifyAdvance% := 25;
 var iState% := stateVSGWait%;	' present state
 
 'const trialtypeAttendToward% := 100;
@@ -2275,17 +2278,23 @@ func IdleProcessing%()
         attCurrTrialIndex% += 1;
         'Advance
         SafeSampleKey("a");
-        yield(0.020);
-        docase
-        case nTrialsThisBlockCompleted% = nTrialsThisBlock% then
-            ChangeStateTo(stateBlockCompleted%, tNow);
-        case nTrialsThisBlockCompleted% > nTrialsThisBlock% then 'This shouldn't happen, but I just can't be sure
-            Printlog("Error - trials this block = " + str$(nTrialsThisBlock%) + " but trials completed = " + str$(nTrialsThisBlockCompleted%) + "\n");
-            Printlog("Error - we appear to have skipped over final trial of a block!  This should not happen!  Attempting to push forward...\n");
-            Message("Possible missed end of block!  Info in log, trying to continue experiment.  Tell Jeff when done!");
-        else
-            ChangeStateTo(stateStartTrial%, tNow);
-        endcase
+        'yield(0.020);  'don't do this, verify the advance instead
+        ChangeStateTo(stateVerifyAdvance%, tNow);
+        
+    case iState% = stateVerifyAdvance% then
+        tTriggerAdvance := View(DataWindow%).NextTime(StimChangeChannel%, tLastAdvance);
+        if tTriggerAdvance > tLastAdvance then
+            docase
+            case nTrialsThisBlockCompleted% = nTrialsThisBlock% then
+                ChangeStateTo(stateBlockCompleted%, tNow);
+            case nTrialsThisBlockCompleted% > nTrialsThisBlock% then 'This shouldn't happen, but I just can't be sure
+                Printlog("Error - trials this block = " + str$(nTrialsThisBlock%) + " but trials completed = " + str$(nTrialsThisBlockCompleted%) + "\n");
+                Printlog("Error - we appear to have skipped over final trial of a block!  This should not happen!  Attempting to push forward...\n");
+                Message("Possible missed end of block!  Info in log, trying to continue experiment.  Tell Jeff when done!");
+            else
+                ChangeStateTo(stateStartTrial%, tNow);
+            endcase
+        endif
         
     case iState% = stateBlockCompleted% then
         
