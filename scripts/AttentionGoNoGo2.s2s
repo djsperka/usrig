@@ -365,7 +365,7 @@ var FrameTriggerChannel%;
 var SynchChannel%;  '**disabled**
 var FixationPointChannel%;
 var StimChannel%;
-var StimChangeChannel%;
+var AdvanceChannel%;
 var ReadyChannel%;
 
 ' XY window stuff
@@ -491,7 +491,7 @@ YChannel% := 24;
 FrameTriggerChannel% := 25;
 FixationPointChannel% := 26;
 StimChannel% := 27;
-StimChangeChannel% := 28;
+AdvanceChannel% := 28;
 ReadyChannel% := 29;
 SynchChannel% := 36;
 PhotodiodeChannel% := 33;
@@ -792,9 +792,9 @@ proc CreateSampleConfiguration()
 	SampleComment$(StimChannel%,"Stim");
 	SampleTitle$(StimChannel%,"Stim");
 	
-	SampleEvent(StimChangeChannel%,4,2,3600); 'Trigger channel, level
-	SampleComment$(StimChangeChannel%,"Stim Chg.");
-	SampleTitle$(StimChangeChannel%,"Stim Chg.");
+	SampleEvent(AdvanceChannel%,4,2,3600); 'Trigger channel, level
+	SampleComment$(AdvanceChannel%,"Advance");
+	SampleTitle$(AdvanceChannel%,"Advance");
 	
 	
     
@@ -1593,6 +1593,15 @@ func IdleProcessing%()
         SafeSampleKey("S");  'request stimulus  
         ChangeStateTo(stateWaitForAnimationOn%, tNow); 
         
+        'It is possible for the Advance Channel to start high based on the results of the previous run.
+        'If this happens, the init process for the VSG will drop the Advnace Channel low.  If THIS happens,
+        'the first trigger check of the Advance Channel will see the "init" change and will jump the gun.
+        'This will result in the advance request being ignored by the VSG and the VSG/Spike2 will be out of
+        'register, which means bad stuff happens.  So, we have to make sure that for the first trial, the 
+        'initial value of tLastAdvance is pushed beyond the init point.  May as well do it here.
+        if tLastAdvance = -1 then
+            tLastAdvance := tNow;
+        endif
         
     case iState% = stateWaitForAnimationOn% then
         tTrigger := View(DataWindow%).NextTime(StimChannel%, tLast, vTrigger);
@@ -2282,9 +2291,9 @@ func IdleProcessing%()
         ChangeStateTo(stateVerifyAdvance%, tNow);
         
     case iState% = stateVerifyAdvance% then
-        tTriggerAdvance := View(DataWindow%).NextTime(StimChangeChannel%, tLastAdvance);
-    if tTriggerAdvance > tLastAdvance then
-        tLastAdvance := tTriggerAdvance;
+        tTriggerAdvance := View(DataWindow%).NextTime(AdvanceChannel%, tLastAdvance);
+        if tTriggerAdvance > tLastAdvance then
+            tLastAdvance := tTriggerAdvance;
             docase
             case nTrialsThisBlockCompleted% = nTrialsThisBlock% then
                 ChangeStateTo(stateBlockCompleted%, tNow);
