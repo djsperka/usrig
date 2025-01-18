@@ -269,6 +269,7 @@ var ctCueRectUncuedCont%;
 var ctMinInvalidRate;
 var ctDropFixpt%;
 var ctTargetAcqTime;
+var ctNoSideSwapping%;
 
 'Variables that allow us to build the allowed tunable values from strings
 var ctDotPct[100];  '100 possible values is way too many
@@ -340,6 +341,7 @@ var ctDlgAdditionalTargetRadius% := 50;
 var ctDlgMinInvalidRate% := 51;
 var ctDlgDropFixpt% := 52;
 var ctDlgTargetAcqTime% := 53;
+var ctDlgNoSideSwapping% := 54;
 
 var ctDlgTotalTrials%;  'This just holds a pointer to the total trials text so we can update the text value
 var ctTotalTrialsText$;
@@ -558,7 +560,7 @@ proc GetConteTaskParameters()
     ctMinInvalidRate := GetFloatRegistryValue(key$, "MinInvalidRate", ctMinInvalidRate);
     ctDropFixpt% := GetIntRegistryValue%(key$, "DropFixpt", ctDropFixpt%);
     ctTargetAcqTime := GetFloatRegistryValue(key$, "TargetAcqTime", ctTargetAcqTime);
-    
+    ctNoSideSwapping% := GetIntRegistryValue%(key$, "NoSideSwapping", ctNoSideSwapping%);
     
 end;
 
@@ -615,7 +617,7 @@ proc SaveConteTaskParameters()
     SetFloatRegistryValue(key$, "MinInvalidRate", ctMinInvalidRate);
     SetIntRegistryValue(key$, "DropFixpt", ctDropFixpt%);
     SetFloatRegistryValue(key$, "TargetAcqTime", ctTargetAcqTime);
-    
+    SetIntRegistryValue(key$, "NoSideSwapping", ctNoSideSwapping%);
     
 end;
 
@@ -721,7 +723,7 @@ func ConteTaskDialog%()
     var c23% := 38;    'second column starts, 3-col, 36+2
     var c33% := 74;    'third column starts, 3-col, 72+2
 '    var hTrExpOpt% := 2; 'height of training/experimental options group
-    var hTrSpec% := 7;   'height of trial specification group
+    var hTrSpec% := 8;   'height of trial specification group
     var hFix% := 3;      'height of fixation options group
     var hTime% := 5;     'height of timing options group
     var hCue% := 4;      'height of cue patch/cue dots options group
@@ -754,6 +756,7 @@ func ConteTaskDialog%()
     DlgInteger(ctDlgNDistractorOn%,wNum%,0,100,c1%+1,sTrSpec%+6);  ctTxtNDistractorOn% := DlgText("Distractor trials/data point (0=off)",c1%+wNum%+2,sTrSpec%+6);
     DlgInteger(ctDlgNDistractorOff%,wNum%,0,100,c23%+1,sTrSpec%+6);  ctTxtNDistractorOff% := DlgText("No-Distractor trials/data point",c23%+wNum%+2,sTrSpec%+6);
     DlgCheck(ctDlgContrastMatches%, "L/R Sample Contrasts match",c33%,sTrSpec%+6);
+    DlgCheck(ctDlgNoSideSwapping%, "Do Not Swap Sides",c1%,sTrSpec%+7);
     
     
     DlgGroup("Fixation Options",1,sFix%,wDlg%-2,hFix%);
@@ -819,7 +822,8 @@ func ConteTaskDialog%()
     i% := DlgShow(nTrialsPerDataPoint%,ctCountTrainCueRect%,ctCountTrainGrating%,ctCountFull%,
                   ctAdditionalWindowRadius,eightFloats[],sixPlusOneInts%[],ctPatchRadiusDeg,
                   ctRefreshPerPF%,ctPFsPerPatch%,sixFloats[],sevenInts%[],threeStrings$[],fourFloats[],
-                  sixInts%[],ctAdditionalTargetRadius,ctMinInvalidRate,ctDropFixpt%,ctTargetAcqTime);  'Now at 19!
+                  sixInts%[],ctAdditionalTargetRadius,ctMinInvalidRate,ctDropFixpt%,ctTargetAcqTime,
+                  ctNoSideSwapping%);  'Now at 20!
     
 
     if i% = 1 then        
@@ -978,6 +982,11 @@ func ConteTaskDialogChanged%(item%)
     'Calculate total trials for display  
     nTrials% := CalcNumTrials%(DlgValue(ctDlgnTrialsPerDataPoint%),DlgValue(ctDlgCountTrainCueRect%),DlgValue(ctDlgCountTrainGrating%),DlgValue(ctDlgCountFull%),
                 DlgValue$(ctDlgDotPctString%),DlgValue$(ctDlgSampleContString%),DlgValue$(ctDlgContChangeString%),DlgValue(ctDlgNDistractorOn%),DlgValue(ctDlgNDistractorOff%));
+    'And if we turn off side-swapping, the total number of trials will be half what was calculated above
+    if dlgValue(ctDlgNoSideSwapping%) = 1 then
+        nTrials% := nTrials%/2;
+    endif
+    
     
     docase
     case nTrials% > ctMaxTrials% then
@@ -2342,7 +2351,7 @@ func Start%()
     var CueRectArg$;
     var BorderArg$;
     var Verbose$ := " -v ";  'For now, verbose is always on 
-    var i%, j%, k%, m%, n%, p%, q%;
+    var i%, j%, k%, m%, n%, p%, q%, q2%;
     var startSecs := 5;
     var cmdLine$;
     var CSVFileName$;
@@ -2443,13 +2452,19 @@ func Start%()
     printlog("Performing counterbalance: nRepeats = %d, nCueDotPct = %d, nCont = %d, nContChange = %d, ",n%,nCueDotPct%,nCont%,nCh%);
     printlog("nDistractor = %d, nTrainType = %d, total trials = %d\n",nDist%,nTrainType%,nTrials%);
     
+    'If we are not side-swapping, change "for q% := 0 to 1" lines to "for q% := 0 to 0"
+    if ctNoSideSwapping% = 1 then
+        q2% := 0;
+    else
+        q2% := 1;
+    endif
     
     'Need to make separate loops for train-cue-rect, train-grating, and full trials
     
     'loop through n, CuePct, side - this is for train-cue-rect trials
     for i% := 1 to (n%*ctCountTrainCueRect%) do  'i% is not used as an index, just for getting correct count of trials
         for j% := 0 to nCueDotPct%-1 do
-            for q% := 0 to 1 do 'If q% is 0, Color1 goes to Loc1 (RF)
+            for q% := 0 to q2% do 'If q% is 0, Color1 goes to Loc1 (RF)
 
                 'Setting cue dot pct, color index, training type is easy
                 cueDotPct[count%] := cueDotPctLocal[j%];
@@ -2507,7 +2522,7 @@ func Start%()
         for k% := 0 to nCont%-1 do
             for m% := 0 to nCh%-1 do
                 for p% := 0 to nDist%-1 do
-                    for q% := 0 to 1 do  'Here q% is the side that changes 
+                    for q% := 0 to q2% do  'Here q% is the side that changes 
                         
                         stimTrainType%[count%] := 2;  '2 = train-grating trials
                         
@@ -2586,7 +2601,7 @@ func Start%()
             for k% := 0 to nCont%-1 do
                 for m% := 0 to nCh%-1 do
                     for p% := 0 to nDist%-1 do
-                        for q% := 0 to 1 do   
+                        for q% := 0 to q2% do   
 
                             'Setting cue dot pct and validity is easy, set these at top and then use below for minor clarity
                             cueDotPct[count%] := cueDotPctLocal[j%];                            
