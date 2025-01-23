@@ -1127,12 +1127,15 @@ func IdleProcessing%()
             else
                 tInterTrialTime := tunStdInterTrialTime;
             endif;
-            'Go to intertrial interval - through pause if one has been called
-            if Pause% = 1 then
+            'Go to intertrial interval - through pause if one has been called, or go to WaitForBlank if in MaintainMode
+            docase
+            case tunUseMaintainMode% >= 1 then
+                ChangeStateTo(stateWaitForBlank%, tNow);  'Need to wait for blank here, fixation wasn't turned off previously because of maintain mode
+            case Pause% = 1 then
                 ChangeStateTo(statePause%, tNow);
             else
                 ChangeStateTo(stateInterTrialInterval%, tNow);  'at end of block, we do not maintain fixation, it will start again for next time
-            endif;
+            endcase;
         else
             docase
             case Pause% = 1 then
