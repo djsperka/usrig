@@ -1048,7 +1048,7 @@ func IdleProcessing%()
             printlog("Trial complete, Not an opto trial, doOpto = %d, optoState = %d, time = %f\n",tunDoOpto%,tunOptoState%,tStateStart);
         case tunOptoStaysOn% = 1 and (nTrialsCompleted% mod (tunNAdvances%+1)) <> 0 then 'this is for when we're keeping the opto on and it's mid block
             ChangeStateTo(stateTrialCompleted%, tStateStart);
-            printlog("Opto is staying on, OptoStaysOn = %d, TrialsComplete = %d, time = %f\n",tunOptoStaysOn%,(nTrialsCompleted% mod (tunNAdvances%+1)),tStateStart);
+            printlog("Opto is staying on, OptoStaysOn = %d, TrialsComplete = %d, time = %f\n",tunOptoStaysOn%,nTrialsCompleted%,tStateStart);
         case tunOptoUsePulse% = 1 and tunOptoState% = 1 then  'it is a pulsed opto trial
             printlog("Trial complete, Pulsed opto trial, time = %f\n",tStateStart);
             ChangeStateTo(stateTrialCompleted%, tStateStart);
@@ -1122,8 +1122,8 @@ func IdleProcessing%()
                 tunOptoState% := 1-tunOptoState%;  'but only toggle if we're actually doing opto, and we haven't been told to not toggle opto, and we're not doing trial-by-trial
             endif;
             if tunUseMaintainMode% >= 1 then
-            SafeSampleKey("X");  'turn everything off, fixation wasn't turned off previously because of maintain mode
-            DrawFix(0);
+                SafeSampleKey("X");  'turn everything off, fixation wasn't turned off previously because of maintain mode
+                DrawFix(0);
             endif;
             if tunDoOpto% = 1 and doTBTopto% = 0 then
                 tInterTrialTime := tunStdInterTrialTime + tunInterBlockTime;
@@ -5056,7 +5056,7 @@ func Start%()
 
         
         'printlog("BDNumStim is %d\n",BDNumStim%);
-        tunNAdvances% := BDNumStim%;
+        tunNAdvances% := BDNumStim%-1;
         tunNValues% := BDNumStim%;
         
         
