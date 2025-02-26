@@ -1001,7 +1001,7 @@ func IdleProcessing%()
                     'For a Fixpt Jump experiment, we need to determine if we will do a jump or not
                     if tunFPJProbSaccade > rand() then 'do jump, increment nTrialsCompleted%
                         nTrialsCompleted% += 1;
-                        trialIndex% := (nTrialsCompleted% mod tunNAdvances%);  'index to trial-by-trial opto and conditions, need to do mod operation for RepeatForever to keep working right past the first pass  
+                        trialIndex% := (nTrialsCompleted% mod (tunNAdvances%+1));  'index to trial-by-trial opto and conditions, need to do mod operation for RepeatForever to keep working right past the first pass  
                         tunFPJIsJump% := 1;
                         'but do not advance yet, because that will move the fixpt
                     else 'don't jump
@@ -1041,7 +1041,7 @@ func IdleProcessing%()
         
     case iState% = stateCheckTurnOffOpto% then
         nTrialsCompleted% += 1;  'trial is complete, change of count here makes logic easier
-        trialIndex% := (nTrialsCompleted% mod tunNAdvances%);  'index to trial-by-trial opto and conditions, need to do mod operation for RepeatForever to keep working right past the first pass        
+        trialIndex% := (nTrialsCompleted% mod (tunNAdvances%+1));  'index to trial-by-trial opto and conditions, need to do mod operation for RepeatForever to keep working right past the first pass        
         docase
         case tunDoOpto% = 0 or (tunOptoState% = 0 and tunOptoUsePulse% = 1) then 'if this is not an opto trial, trial is complete
             ChangeStateTo(stateTrialCompleted%, tStateStart);
@@ -1104,8 +1104,8 @@ func IdleProcessing%()
         endif
     
         ' Check for change in condition if we are pausing on condition change, note nTrialsCompleted has been incremented
-        if nTrialsCompleted% > 0 and (nTrialsCompleted% mod tunNAdvances%) = 0 then
-            tempNTC1% := tunNAdvances%-1;
+        if nTrialsCompleted% > 0 and (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 then
+            tempNTC1% := tunNAdvances%;
             tempNTC2% := 0;
         else
             tempNTC1% := trialIndex%-1;
@@ -1117,7 +1117,7 @@ func IdleProcessing%()
         endif
         
         ' Check to see if we need to toggle opto at the end of a block, if not determine where to go next
-        if nTrialsCompleted% > 0 and (nTrialsCompleted% mod tunNAdvances%) = 0 and not(tunRepeatForever% = 1 and tunType$ = tunTypeBakersDozen$) then 'toggle tunOptoState at the end of a block, use interblock time
+        if nTrialsCompleted% > 0 and (nTrialsCompleted% mod (tunNAdvances%+1)) = 0 and not(tunRepeatForever% = 1 and tunType$ = tunTypeBakersDozen$) then 'toggle tunOptoState at the end of a block, use interblock time
             if tunDoOpto% = 1 and dontToggleOpto% = 0 and doTBTopto% = 0 then
                 tunOptoState% := 1-tunOptoState%;  'but only toggle if we're actually doing opto, and we haven't been told to not toggle opto, and we're not doing trial-by-trial
             endif;
