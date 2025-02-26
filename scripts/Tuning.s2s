@@ -156,7 +156,7 @@ var iState% := stateVSGWait%;	' present state
 
 var nTrialsStarted%:=0;
 var nTrialsCompleted%:=0;
-var OCindex%:=0;  'index to trial-by-trial opto and condition labels, need to wrap it if we RepeatForever
+var trialIndex%:=0;  'index to trial-by-trial opto and condition labels, etc., need to wrap it if we RepeatForever, will now replace nTrialsCompleted% in many contexts
 var nTrialsAborted% :=0;		
 var nTrialsRewarded% :=0;
 var giveReward%;  'we are going to be moving the reward later so that opto is turned off first.
@@ -497,11 +497,11 @@ func IdleProcessing%()
         
         docase
         case tbtFix% = 1 then  'there is fixpt tuning in Baker's Dozen
-            tbtFixX := Val(tunBDTuningValues$[nTrialsCompleted%][13]);  'nTrialsCompleted is a zero-based index here
-            tbtFixY := Val(tunBDTuningValues$[nTrialsCompleted%][14]);  'Values 13 and 14 are X and Y, respectively
+            tbtFixX := Val(tunBDTuningValues$[trialIndex%][13]);  'trialIndex% is a zero-based index here
+            tbtFixY := Val(tunBDTuningValues$[trialIndex%][14]);  'Values 13 and 14 are X and Y, respectively
         case tbtFix% = 2 then  'this is the Fixpt Jump experiment
-            tbtFixX := tunFPJFixptX[nTrialsCompleted%];
-            tbtFixY := tunFPJFixptY[nTrialsCompleted%];
+            tbtFixX := tunFPJFixptX[trialIndex%];
+            tbtFixY := tunFPJFixptY[trialIndex%];
         endcase
         
 
@@ -589,7 +589,7 @@ func IdleProcessing%()
         
     case iState% = stateCheckTurnOnOpto% then
         if doTBTopto% = 1 then  'if we're doing trial-byt-trial opto, get this trial's opto state, from here, just proceed as normal
-            tunOptoState% := tunTBTOpto%[OCindex%];
+            tunOptoState% := tunTBTOpto%[trialIndex%];
         endif
         docase
         case tunDoOpto% = 0 then 'if this is not an opto trial, just start it
@@ -636,7 +636,7 @@ func IdleProcessing%()
     case iState% = statePulsedOpto% then
         SafeSampleKey("P");  'start pulsed opto, the whole sequence is controlled by the sequencer, this does the "S" implicitly
         tOpt := View(DataWindow%).MaxTime();
-        SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)),tOpt);
+        SampleText("T," + str$(GetPlotXCoord(trialIndex%)),tOpt);
         printlog("Started opto trial at %f\n",tOpt);
         'ChangeStateTo(stateWaitPulsedOpto%, tOpt);
         ChangeStateTo(stateWaitForStimTrigger%, tOpt);
@@ -661,57 +661,59 @@ func IdleProcessing%()
         LogStatus("StartTrial", "Request stimulus");
         docase
         case TunType$ = tunTypeFixptColor$ then
-            SampleText("T," + GetFixptColorThisTrial$(nTrialsCompleted%,tunValues[],tunValuesIndices%[]));
+            SampleText("T," + GetFixptColorThisTrial$(trialIndex%,tunValues[],tunValuesIndices%[]));
         case TunType$ = tunTypeFixptJump$ then
-            SampleText("FP," + str$(tunFPJFixptX[nTrialsCompleted%]) + "," + str$(tunFPJFixptY[nTrialsCompleted%]) + ",Gr," + str$(tunFPJGratingX[nTrialsCompleted%]) + "," + str$(tunFPJGratingY[nTrialsCompleted%]) + ",Jump=" + Str$(tunFPJIsJump%));
+            SampleText("FP," + str$(tunFPJFixptX[trialIndex%]) + "," + str$(tunFPJFixptY[trialIndex%]) + ",Gr," + str$(tunFPJGratingX[trialIndex%]) + "," + str$(tunFPJGratingY[trialIndex%]) + ",Jump=" + Str$(tunFPJIsJump%));
             tunFPJIsJump% := 0;  'reset the is-jump variable, if there is a fixation break from here on out and we get back here, the "jump" is lost
         case TunType$ = tunTypePolkaDot$ then
-            SampleText("T," + tunPDDotSpecsPerTrial$[nTrialsCompleted%]);
+            SampleText("T," + tunPDDotSpecsPerTrial$[trialIndex%]);
         case TunType$ = tunTypeBoxODonuts$ and TunType1$ = tunTypeFixptColor$ then
-            GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval even though we only use yval
-            SampleText("T," + GetFixptColorThisTrial$(nTrialsCompleted%,tun1Values[],tun1ValuesIndices%[]) + ",T2," + str$(yval));
+            GetPlotXYCoord(trialIndex%,xval,yval,xind%,yind%);  'fill xval, yval even though we only use yval
+            SampleText("T," + GetFixptColorThisTrial$(trialIndex%,tun1Values[],tun1ValuesIndices%[]) + ",T2," + str$(yval));
         case TunType$ = tunTypeBoxODonuts$ and TunType2$ = tunTypeFixptColor$ then
-            GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval even though we only use xval
-            SampleText("T," + str$(xval) + ",T2," + GetFixptColorThisTrial$(nTrialsCompleted%,tun2Values[],tun2ValuesIndices%[]));
+            GetPlotXYCoord(trialIndex%,xval,yval,xind%,yind%);  'fill xval, yval even though we only use xval
+            SampleText("T," + str$(xval) + ",T2," + GetFixptColorThisTrial$(trialIndex%,tun2Values[],tun2ValuesIndices%[]));
         case TunType$ = tunTypeBoxODonuts$ and TunType2$ = tunTypePolkaDot$ then
-            GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, don't worry about yval
-            SampleText("T," + str$(xval) + ",T2," + tunPDDotSpecsPerTrial$[nTrialsCompleted%]);
+            GetPlotXYCoord(trialIndex%,xval,yval,xind%,yind%);  'fill xval, don't worry about yval
+            SampleText("T," + str$(xval) + ",T2," + tunPDDotSpecsPerTrial$[trialIndex%]);
         case TunType$ = tunTypeBoxODonuts$ or TunType$ = tunTypeCRG$ or TunType$ = tunTypeXYPos$ or (tunType$ = tunTypeContrast$ and tunContrastDualScreenCombo% = 1) or (tunType$ = tunTypeArea$ and tunAreaDualScreenCombo% = 1) then
-            GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
+            GetPlotXYCoord(trialIndex%,xval,yval,xind%,yind%);  'fill xval, yval
             SampleText("T," + str$(xval) + ",T2," + str$(yval));  'Just a guess at what will work
         case TunType$ = tunTypeBakersDozen$ then  'We want to give the stimulus number
             'Creates the sampletext string for all values that are changed
             SampleTextStr$ := "";
-            if tunBDImGrType%[nTrialsCompleted%] > 0 then  'create sample text for images, nTrialsCompleted% is still in "index mode" here
-                SampleTextStr$ := tunBDImageList$[tunBDImageIndex%[nTrialsCompleted%]];
+            if tunBDImGrType%[trialIndex%] > 0 then  'create sample text for images, trialIndex% is still in "index mode" here
+                SampleTextStr$ := tunBDImageList$[tunBDImageIndex%[trialIndex%]];
             else  'create sample text for gratings
                 for i% := 0 to tunNumBDCurvesAllowed%-1 do
                     if tunBDWhichTunCurve[i%] = 1 then
-                        SampleTextStr$ := SampleTextStr$ + tunBDTunCurveLabel$[i%] + "," + tunBDTuningValues$[OCindex%][i%] + ",";
+                        SampleTextStr$ := SampleTextStr$ + tunBDTunCurveLabel$[i%] + "," + tunBDTuningValues$[trialIndex%][i%] + ",";
                         if i% = 7 or i% = 10 or i% = 13 or i% = 17 then
-                            SampleTextStr$ := SampleTextStr$ + tunBDTuningValues$[OCindex%][i%+1] + ",";
+                            SampleTextStr$ := SampleTextStr$ + tunBDTuningValues$[trialIndex%][i%+1] + ",";
                         endif
                         if i% = 17 then
-                            SampleTextStr$ := SampleTextStr$ + tunBDTuningValues$[OCindex%][i%+2] + ",";
+                            SampleTextStr$ := SampleTextStr$ + tunBDTuningValues$[trialIndex%][i%+2] + ",";
                         endif
                     endif
                 next
                 SampleTextStr$ := Left$(SampleTextStr$,Len(SampleTextStr$)-1);
             endif;
             if tunBDUseOCFile% = 1 then  'add condition label
-                SampleText("T," + str$((nTrialsCompleted% mod BDNumStim%)+1) + "," + SampleTextStr$ + ",Condition: " + tunBDConditionLabel$[OCindex%]);
+                'SampleText("T," + str$((nTrialsCompleted% mod BDNumStim%)+1) + "," + SampleTextStr$ + ",Condition: " + tunBDConditionLabel$[trialIndex%]);
+                SampleText("T," + str$(nTrialsCompleted%+1) + "," + SampleTextStr$ + ",Condition: " + tunBDConditionLabel$[trialIndex%]);  'probably should not wrap trial count?
             else 'no condition label specified
-                SampleText("T," + str$((nTrialsCompleted% mod BDNumStim%)+1) + "," + SampleTextStr$); 
+                'SampleText("T," + str$((nTrialsCompleted% mod BDNumStim%)+1) + "," + SampleTextStr$); 
+                SampleText("T," + str$(nTrialsCompleted%+1) + "," + SampleTextStr$);  'probably should not wrap trial count?
             endif            
         else
-            SampleText("T," + str$(GetPlotXCoord(nTrialsCompleted%)));
+            SampleText("T," + str$(GetPlotXCoord(trialIndex%)));
         endcase;
         
         'Determine how long the stimulus will be up
         docase
         case tunCRGSecsPerSeq > 0 then  'will only be non-zero is tunType$ = tunTypeCRG$
             stimulusHoldTime := tunCRGSecsPerSeq;
-        case tunBDImGrType%[nTrialsCompleted%] = 0 then  'if grating, use standard time
+        case tunBDImGrType%[trialIndex%] = 0 then  'if grating, use standard time
             stimulusHoldTime := tunFixationDuration;
         else  'else it's an image, use image duration
             stimulusHoldTime := tunImageDur;
@@ -890,7 +892,7 @@ func IdleProcessing%()
                 endif
                 
                 ' Note that reward is to be given
-                if tunBDImGrType%[nTrialsCompleted%] <> 1 then 'give reward for grating and terminal images
+                if tunBDImGrType%[trialIndex%] <> 1 then 'give reward for grating and terminal images
                     giveReward% := 1;
                 else
                     giveReward% := 0;  'do not give reward for non-terminal images in an image series
@@ -900,17 +902,17 @@ func IdleProcessing%()
                 if tunDoTuningHist% = 1 then
                     docase
                     case TunType$ = tunTypeBoxODonuts$ then
-                        GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
+                        GetPlotXYCoord(trialIndex%,xval,yval,xind%,yind%);  'fill xval, yval
                         PlotSpikes2TunCurves(tStimOn, tNow, 1, xval, yind%);
                     case TunType$ = tunTypeCRG$ then
-                        GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
-                        PlotSpikes(tStimOn, tNow, 1, yval, nTrialsCompleted%);  'yes, yval
+                        GetPlotXYCoord(trialIndex%,xval,yval,xind%,yind%);  'fill xval, yval
+                        PlotSpikes(tStimOn, tNow, 1, yval, trialIndex%);  'yes, yval
                     case TunType$ = tunTypeXYPos$ then
-                        GetPlotXYCoord(nTrialsCompleted%,xval,yval,xind%,yind%);  'fill xval, yval
+                        GetPlotXYCoord(trialIndex%,xval,yval,xind%,yind%);  'fill xval, yval
                         PlotDots(tStimOn, tNow, xind%, yind%); 
                     else
-                        'PlotSpikes(tStimOn, tNow, 1, GetPlotXCoord(nTrialsCompleted%), nTrialsCompleted%);
-                        PlotSpikesAverage(tStimOn, tNow, 1, GetPlotXCoord(nTrialsCompleted%), nTrialsCompleted%, GetPlotXInd%(nTrialsCompleted%), tunNAdvances%);
+                        'PlotSpikes(tStimOn, tNow, 1, GetPlotXCoord(trialIndex%), trialIndex%);
+                        PlotSpikesAverage(tStimOn, tNow, 1, GetPlotXCoord(trialIndex%), trialIndex%, GetPlotXInd%(trialIndex%), tunNAdvances%);
                     endcase; 
                 endif;
                 
@@ -999,6 +1001,7 @@ func IdleProcessing%()
                     'For a Fixpt Jump experiment, we need to determine if we will do a jump or not
                     if tunFPJProbSaccade > rand() then 'do jump, increment nTrialsCompleted%
                         nTrialsCompleted% += 1;
+                        trialIndex% := (nTrialsCompleted% mod tunNAdvances%);  'index to trial-by-trial opto and conditions, need to do mod operation for RepeatForever to keep working right past the first pass  
                         tunFPJIsJump% := 1;
                         'but do not advance yet, because that will move the fixpt
                     else 'don't jump
@@ -1038,7 +1041,7 @@ func IdleProcessing%()
         
     case iState% = stateCheckTurnOffOpto% then
         nTrialsCompleted% += 1;  'trial is complete, change of count here makes logic easier
-        OCindex% := (nTrialsCompleted% mod tunNAdvances%);  'index to trial-by-trial opto and conditions, need to do mod operation for RepeatForever to keep working right past the first pass        
+        trialIndex% := (nTrialsCompleted% mod tunNAdvances%);  'index to trial-by-trial opto and conditions, need to do mod operation for RepeatForever to keep working right past the first pass        
         docase
         case tunDoOpto% = 0 or (tunOptoState% = 0 and tunOptoUsePulse% = 1) then 'if this is not an opto trial, trial is complete
             ChangeStateTo(stateTrialCompleted%, tStateStart);
@@ -1105,8 +1108,8 @@ func IdleProcessing%()
             tempNTC1% := tunNAdvances%-1;
             tempNTC2% := 0;
         else
-            tempNTC1% := OCindex%-1;
-            tempNTC2% := OCindex%;
+            tempNTC1% := trialIndex%-1;
+            tempNTC2% := trialIndex%;
         endif;
         if tunPauseOnConditionChange% = 1 and tunBDConditionLabel$[tempNTC1%] <> tunBDConditionLabel$[tempNTC2%] then
             Pause% := 1;
@@ -1145,7 +1148,7 @@ func IdleProcessing%()
             case tunType$ = tunTypeFixptJump$ then
                 ChangeStateTo(stateMaintainFixation%, tStimulusDown);  'maintain fixation, but start "counting" at the time the stimulus went down
             case tunUseMaintainMode% >= 1 then
-                if tunBDImGrType%[nTrialsCompleted%-1] <> 1 then 'if the previous stimulus was either a grating or a terminal image, use standard ITI
+                if tunBDImGrType%[trialIndex%-1] <> 1 then 'if the previous stimulus was either a grating or a terminal image, use standard ITI
                     'tunMaintainITI := tunStdInterTrialTime;
                     tunMaintainITI := tunMaintainFixation;
                 else
@@ -1163,12 +1166,13 @@ func IdleProcessing%()
         docase
         case tNow > tStateStart + tunFPJtFixptMove and Pause% = 0 then  'wait until time fixpt is supposed to move - but don't go forward if pause called
             SafeSampleKey("a");  'Advance the stimulus/fixation point, will move fixpt immediately - not gonna check a trigger line on this one
-            tbtFixX := tunFPJFixptX[nTrialsCompleted%];
-            tbtFixY := tunFPJFixptY[nTrialsCompleted%];
+            tbtFixX := tunFPJFixptX[trialIndex%];
+            tbtFixY := tunFPJFixptY[trialIndex%];
             DrawFix(2);  'update fixation point location on CED screen
             ChangeStateTo(stateWaitForJumpAcquisition%, tStimulusDown);  'should we use tNow (and then a standard acquisition window) or tStimulusDown (and give until next grating woudl appear)?
         case Looking%(xEye, yEye) = 0 or Pause% = 1 then  'fixation was not maintained prior to the jump, or pause was called
             nTrialsCompleted% -= 1;  'Decrement, was incremented in wait for stim off but jump was not completed, keep fixpt where it was
+            trialIndex% -= 1;  'Also decrement
             tunFPJIsJump% := 0;  'Reset jump variable, this is no longer a legit jump because the fixpt will come down
             tInterTrialTime := tunMaintainFailTime;
     
@@ -1205,7 +1209,7 @@ func IdleProcessing%()
 
                 LogStatus("MaintainFixation", "success");
                 
-                if (tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4) and tunBDImGrType%[nTrialsCompleted%-1] <> 1 then  'Only give juice if requested in original dialog; Give maintain-reward for gratings and terminal images, but not intermediate images in an image series
+                if (tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4) and tunBDImGrType%[trialIndex%-1] <> 1 then  'Only give juice if requested in original dialog; Give maintain-reward for gratings and terminal images, but not intermediate images in an image series
                     if tunSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
                         'set sequencer variable 11 to 8 to indicate 8-ms pre-secondary-reward pulse
                         SampleSeqVar(11,8);
@@ -1223,7 +1227,7 @@ func IdleProcessing%()
                 docase
                 case tunType$ = tunTypeFixptJump$ then
                     ChangeStateTo(stateRequestStimulus%,tNow);  'in Fixpt Jump expt, on successful Jump Acquisition OR successful Maintain Fixation go straight to stim request, there's no need to acquire and no opto anyway.
-                case (tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4) and tunBDImGrType%[nTrialsCompleted%-1] <> 1 then  'this will allow a "break" after giving a reward, uses intertrial interval
+                case (tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4) and tunBDImGrType%[trialIndex%-1] <> 1 then  'this will allow a "break" after giving a reward, uses intertrial interval
                     ChangeStateTo(stateInterTrialIntervalFixAlreadyUp%, tNow);                
                 else  'if no reward, try going to acquisition step first, this allows opto to happen, also penalizes for fixation break after second reward
                     ChangeStateTo(stateWaitForAcquisition%, tNow-tunAcquisitionTime);  'do not allow acquisition window, if animal is not fixating during maintain, this is an abort
