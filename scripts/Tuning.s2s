@@ -1148,7 +1148,7 @@ func IdleProcessing%()
             case tunType$ = tunTypeFixptJump$ then
                 ChangeStateTo(stateMaintainFixation%, tStimulusDown);  'maintain fixation, but start "counting" at the time the stimulus went down
             case tunUseMaintainMode% >= 1 then
-                if tunBDImGrType%[trialIndex%-1] <> 1 then 'if the previous stimulus was either a grating or a terminal image, use standard ITI
+                if tunBDImGrType%[tempNTC1%] <> 1 then 'if the previous stimulus was either a grating or a terminal image, use standard ITI
                     'tunMaintainITI := tunStdInterTrialTime;
                     tunMaintainITI := tunMaintainFixation;
                 else
@@ -1209,7 +1209,7 @@ func IdleProcessing%()
 
                 LogStatus("MaintainFixation", "success");
                 
-                if (tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4) and tunBDImGrType%[trialIndex%-1] <> 1 then  'Only give juice if requested in original dialog; Give maintain-reward for gratings and terminal images, but not intermediate images in an image series
+                if (tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4) and tunBDImGrType%[tempNTC1%] <> 1 then  'Only give juice if requested in original dialog; Give maintain-reward for gratings and terminal images, but not intermediate images in an image series
                     if tunSendINTANPulse% = 1 then  'if using the INTAN system, our reward is a bit more complicated
                         'set sequencer variable 11 to 8 to indicate 8-ms pre-secondary-reward pulse
                         SampleSeqVar(11,8);
@@ -1227,7 +1227,7 @@ func IdleProcessing%()
                 docase
                 case tunType$ = tunTypeFixptJump$ then
                     ChangeStateTo(stateRequestStimulus%,tNow);  'in Fixpt Jump expt, on successful Jump Acquisition OR successful Maintain Fixation go straight to stim request, there's no need to acquire and no opto anyway.
-                case (tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4) and tunBDImGrType%[trialIndex%-1] <> 1 then  'this will allow a "break" after giving a reward, uses intertrial interval
+                case (tunUseMaintainMode% = 2 or tunUseMaintainMode% = 4) and tunBDImGrType%[tempNTC1%] <> 1 then  'this will allow a "break" after giving a reward, uses intertrial interval
                     ChangeStateTo(stateInterTrialIntervalFixAlreadyUp%, tNow);                
                 else  'if no reward, try going to acquisition step first, this allows opto to happen, also penalizes for fixation break after second reward
                     ChangeStateTo(stateWaitForAcquisition%, tNow-tunAcquisitionTime);  'do not allow acquisition window, if animal is not fixating during maintain, this is an abort
