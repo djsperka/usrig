@@ -4914,7 +4914,27 @@ func Start%()
             docase
             case valsPerSpec% = 1 then
                 tunBDTuningValues$[BDNumStim%][curveIndex%] := tempchar$;  'BDNumStim% has been incremented, but not used for the final trial; it is the correct index for the final trial
+                
+                'If we are reading the image file specs, we need to know what kind of image we are looking at
+                'Since we can have series, we need to know where the end is
+                if curveIndex% = 21 then
+                    tunBDImageIndex%[BDNumStim%] := Val(tempchar$);  'just keep the index
+                    if Val(tempchar$) < 0 then  'not an image
+                        tunBDImGrType%[BDNumStim%] := 0; '0 for not an image
+                        imageCount% := 0;  'reset image count, in case?
+                    else 
+                        imageCount% += 1;  'it's an image, increment image count
+                        if imageCount% < tunNImagesInSeries% then
+                            tunBDImGrType%[BDNumStim%] := 1; '1 for primary/intermediate image
+                        else
+                            tunBDImGrType%[BDNumStim%] := 2; '2 for final image
+                            imageCount% := 0;  'reset image count
+                        endif
+                    endif
+                endif;
+                
                 BDNumStim% += 1;  'Change BDNumStim% to the actual number of stimuli
+                
             case valsPerSpec% = 2 then
                 'printlog("BDNumStim-1 is %d and curveIndex+1 is %d\n",BDNumStim%-1,curveIndex%+1);
                 tunBDTuningValues$[BDNumStim%-1][curveIndex%+1] := tempchar$;  'CurveIndex% adjusted for final value in spec; 
