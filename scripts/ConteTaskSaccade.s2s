@@ -174,6 +174,8 @@ var colorIndexAtRF%[ctMaxTrials%];   'Color index (0,1) of the primary location 
 var validity%[ctMaxTrials%];       'Validity on each trial, -1 = no change, 0 = invalid, 1 = valid (what if cueDotPct is 50?)
 var whichLocChange%[ctMaxTrials%]; '0 = no change, 1 = location 1 changes, 2 = location 2 changes
 var flankerIsH%;                   '-1 = no flanker; 0 = flanker vertical; 1 = flanker horizontal; cue box shrinks if flankers are off
+var ctPatchToSampleDelay[ctMaxTrials%];  'We are adding variable-by-trial values for patch-to-sample delay
+var ctSampleToTargetDelay[ctMaxTrials%];  '...and sample-to-target delay
 
 var samp1Contrast%[ctMaxTrials%];
 var samp2Contrast%[ctMaxTrials%];
@@ -218,9 +220,11 @@ var ctCountFull%;  'per data point
 var ctFixCrossWidthPixels := 1;   'Note that this is NOT an integer, due to the way that the dialog is created, would be too much trouble to convert to integer
 var ctFixCrossWidthPixels%;  'So here's the integer version, we'll just convert directly
 var ctPatchOnsetDelay;
-var ctGratingOnsetDelay;     'This variablewill hold the identical value as ctPatchOnsetDelay (comes from same dialog entry) but will be renamed to avoid confusion for grating training
-var ctPatchToSampleDelay;
-var ctSampleToTargetDelay;  'Target is the "orientation change" if any
+var ctGratingOnsetDelay;     'This variable will hold the identical value as ctPatchOnsetDelay (comes from same dialog entry) but will be renamed to avoid confusion for grating training
+var ctPatchToSampleDelayMin;  'We will allow patch-to-sample to be variable
+var ctPatchToSampleDelayVar;
+var ctSampleToTargetDelayMin;  'Target is the "orientation change" if any
+var ctSampleToTargetDelayVar;  'As with patch-to-sample, this can now be variable
 var ctSampleDuration;
 var ctTargetDuration;
 var ctITI;
@@ -287,61 +291,64 @@ var ctFixRadiusText$ := "Fixation radius (deg)";
 var ctGratingOnsetDelayText$ := "Grating onset delay (s)";
 var ctPatchOnsetDelayText$ := "Cue patch onset delay (s)";
 
+
 'Dialog Box Position Variables - will make things easier if we decide to rearrange
 var ctDlgnTrialsPerDataPoint% := 1;
 var ctDlgCountTrainCueRect% := 2;    
 var ctDlgCountTrainGrating% := 3;  
 var ctDlgCountFull% := 4; 
 var ctDlgAdditionalWindowRadius% := 5;
-var ctDlgFixCrossWidthPixels% := 6; 
+var ctDlgFixCrossWidthPixels% := 6;  'start eightFloats
 var ctDlgPatchOnsetDelay% := 7;
-var ctDlgPatchToSampleDelay% := 8;
-var ctDlgSampleToTargetDelay% := 9; 
-var ctDlgSampleDuration% := 10; 
-var ctDlgTargetDuration% := 11;
-var ctDlgITI% := 12;
-var ctDlgDotRadiusDeg% := 13;
-var ctDlgDotColor1R% := 14; 
-var ctDlgDotColor1G% := 15;
-var ctDlgDotColor1B% := 16; 
-var ctDlgDotColor2R% := 17;
-var ctDlgDotColor2G% := 18;
-var ctDlgDotColor2B% := 19;
-var ctDlgDotsPerPF% := 20;   
-var ctDlgPatchRadiusDeg% := 21;
-var ctDlgRefreshPerPF% := 22; 
-var ctDlgPFsPerPatch% := 23;
-var ctDlgGaborXLoc% := 24;
-var ctDlgGaborYLoc% := 25;
-var ctDlgGaborWDeg% := 26;
-var ctDlgGaborSF% := 27;
-var ctDlgGaborPhase% := 28;
-var ctDlgGaborDivisor% := 29;
-var ctDlgPanelIsHoriz% := 30;
-var ctDlgPanelLinePixels% := 31;
-var ctDlgStimValsFromConfig% := 32;
-var ctDlgAlwaysLooking% := 33;
-var ctDlgContrastMatches% := 34;
-var ctDlgNDistractorOn% := 35;
-var ctDlgNDistractorOff% := 36;
-var ctDlgDotPctString% := 37;
-var ctDlgSampleContString% := 38;
-var ctDlgContChangeString% := 39;
-var ctDlgAbort% := 40;
-var ctDlgFixAcqTime% := 41;
-var ctDlgFAPenalty% := 42;
-var ctDlgMissPenalty% := 43;
-var ctDlgGaborCuedCont% := 44;
-var ctDlgGaborUncuedCont% := 45;
-var ctDlgFlankerCuedCont% := 46;
-var ctDlgFlankerUncuedCont% := 47;
-var ctDlgCueRectCuedCont% := 48;
-var ctDlgCueRectUncuedCont% := 49;
-var ctDlgAdditionalTargetRadius% := 50;
-var ctDlgMinInvalidRate% := 51;
-var ctDlgDropFixpt% := 52;
-var ctDlgTargetAcqTime% := 53;
-var ctDlgNoSideSwapping% := 54;
+var ctDlgPatchToSampleDelayMin% := 8;
+var ctDlgPatchToSampleDelayVar% := 9;
+var ctDlgSampleToTargetDelayMin% := 10; 
+var ctDlgSampleToTargetDelayVar% := 11; 
+var ctDlgSampleDuration% := 12; 
+var ctDlgTargetDuration% := 13;
+var ctDlgITI% := 14;
+var ctDlgDotRadiusDeg% := 15;  'end eightFloats
+var ctDlgDotColor1R% := 16; 
+var ctDlgDotColor1G% := 17;
+var ctDlgDotColor1B% := 18; 
+var ctDlgDotColor2R% := 19;
+var ctDlgDotColor2G% := 20;
+var ctDlgDotColor2B% := 21;
+var ctDlgDotsPerPF% := 22;   
+var ctDlgPatchRadiusDeg% := 23;
+var ctDlgRefreshPerPF% := 24; 
+var ctDlgPFsPerPatch% := 25;
+var ctDlgGaborXLoc% := 26;
+var ctDlgGaborYLoc% := 27;
+var ctDlgGaborWDeg% := 28;
+var ctDlgGaborSF% := 29;
+var ctDlgGaborPhase% := 30;
+var ctDlgGaborDivisor% := 31;
+var ctDlgPanelIsHoriz% := 32;
+var ctDlgPanelLinePixels% := 33;
+var ctDlgStimValsFromConfig% := 34;
+var ctDlgAlwaysLooking% := 35;
+var ctDlgContrastMatches% := 36;
+var ctDlgNDistractorOn% := 37;
+var ctDlgNDistractorOff% := 38;
+var ctDlgDotPctString% := 39;
+var ctDlgSampleContString% := 40;
+var ctDlgContChangeString% := 41;
+var ctDlgAbort% := 42;
+var ctDlgFixAcqTime% := 43;
+var ctDlgFAPenalty% := 44;
+var ctDlgMissPenalty% := 45;
+var ctDlgGaborCuedCont% := 46;
+var ctDlgGaborUncuedCont% := 47;
+var ctDlgFlankerCuedCont% := 48;
+var ctDlgFlankerUncuedCont% := 49;
+var ctDlgCueRectCuedCont% := 50;
+var ctDlgCueRectUncuedCont% := 51;
+var ctDlgAdditionalTargetRadius% := 52;
+var ctDlgMinInvalidRate% := 53;
+var ctDlgDropFixpt% := 54;
+var ctDlgTargetAcqTime% := 55;
+var ctDlgNoSideSwapping% := 56;
 
 var ctDlgTotalTrials%;  'This just holds a pointer to the total trials text so we can update the text value
 var ctTotalTrialsText$;
@@ -361,8 +368,10 @@ var ctTxtAdditionalWindowRadius%;
 var ctTxtAdditionalTargetRadius%;
 var ctTxtFixCrossWidthPixels%; 
 var ctTxtPatchOnsetDelay%;
-var ctTxtPatchToSampleDelay%;
-var ctTxtSampleToTargetDelay%; 
+var ctTxtPatchToSampleDelayMin%;
+var ctTxtPatchToSampleDelayVar%;
+var ctTxtSampleToTargetDelayMin%; 
+var ctTxtSampleToTargetDelayVar%;
 var ctTxtSampleDuration%; 
 var ctTxtTargetDuration%; 
 var ctTxtDotRadiusDeg%;
@@ -520,8 +529,10 @@ proc GetConteTaskParameters()
     ctCountFull% := GetIntRegistryValue%(key$, "CountFull", ctCountFull%);
     ctFixCrossWidthPixels := GetFloatRegistryValue(key$, "FixCrossWidthPixels", ctFixCrossWidthPixels);
     ctPatchOnsetDelay := GetFloatRegistryValue(key$, "PatchOnsetDelay", ctPatchOnsetDelay);
-    ctPatchToSampleDelay := GetFloatRegistryValue(key$, "PatchToSampleDelay", ctPatchToSampleDelay);
-    ctSampleToTargetDelay := GetFloatRegistryValue(key$, "SampleToTargetDelay", ctSampleToTargetDelay);
+    ctPatchToSampleDelayMin := GetFloatRegistryValue(key$, "PatchToSampleDelay", ctPatchToSampleDelayMin);  'Note, adapted from previous non-variable version, keeping old registry key name
+    ctPatchToSampleDelayVar := GetFloatRegistryValue(key$, "PatchToSampleDelayVar", ctPatchToSampleDelayVar);
+    ctSampleToTargetDelayMin := GetFloatRegistryValue(key$, "SampleToTargetDelay", ctSampleToTargetDelayMin);  'Note, adapted from previous non-variable version, keeping old registry key name
+    ctSampleToTargetDelayVar := GetFloatRegistryValue(key$, "SampleToTargetDelayVar", ctSampleToTargetDelayVar);
     ctSampleDuration := GetFloatRegistryValue(key$, "SampleDuration", ctSampleDuration);
     ctTargetDuration := GetFloatRegistryValue(key$, "TargetDuration", ctTargetDuration); 
     ctITI := GetFloatRegistryValue(key$, "ITI", ctITI);
@@ -577,8 +588,10 @@ proc SaveConteTaskParameters()
     SetIntRegistryValue(key$, "CountFull", ctCountFull%);
     SetFloatRegistryValue(key$, "FixCrossWidthPixels", ctFixCrossWidthPixels);
     SetFloatRegistryValue(key$, "PatchOnsetDelay", ctPatchOnsetDelay);
-    SetFloatRegistryValue(key$, "PatchToSampleDelay", ctPatchToSampleDelay);
-    SetFloatRegistryValue(key$, "SampleToTargetDelay", ctSampleToTargetDelay);
+    SetFloatRegistryValue(key$, "PatchToSampleDelay", ctPatchToSampleDelayMin);    'Note, adapted from previous non-variable version, keeping old registry key name
+    SetFloatRegistryValue(key$, "PatchToSampleDelayVar", ctPatchToSampleDelayVar); 
+    SetFloatRegistryValue(key$, "SampleToTargetDelay", ctSampleToTargetDelayMin);    'Note, adapted from previous non-variable version, keeping old registry key name
+    SetFloatRegistryValue(key$, "SampleToTargetDelayVar", ctSampleToTargetDelayVar); 
     SetFloatRegistryValue(key$, "SampleDuration", ctSampleDuration);
     SetFloatRegistryValue(key$, "TargetDuration", ctTargetDuration);
     SetFloatRegistryValue(key$, "ITI", ctITI);
@@ -632,7 +645,7 @@ func ConteTaskDialog%()
     var con%;             'etc.
     var tempXY;  'for color randomization
     
-    var eightFloats[8]; 
+    var tenFloats[10]; 
     var sixFloats[6];    
     var sixPlusOneInts%[7];  'This was nicer when it was just the RGB variables, but alas!
     var sevenInts%[7];  
@@ -668,14 +681,16 @@ func ConteTaskDialog%()
     
     
     'Pack sixFloats[], sixPlusOneInts%[], sevenFloats[], sevenInts%[], threeStrings$[], eightInts%[]
-    eightFloats[0] := ctFixCrossWidthPixels;
-    eightFloats[1] := ctPatchOnsetDelay;
-    eightFloats[2] := ctPatchToSampleDelay;
-    eightFloats[3] := ctSampleToTargetDelay;
-    eightFloats[4] := ctSampleDuration;
-    eightFloats[5] := ctTargetDuration;
-    eightFloats[6] := ctITI;
-    eightFloats[7] := ctDotRadiusDeg;
+    tenFloats[0] := ctFixCrossWidthPixels;
+    tenFloats[1] := ctPatchOnsetDelay;
+    tenFloats[2] := ctPatchToSampleDelayMin;
+    tenFloats[3] := ctPatchToSampleDelayVar;
+    tenFloats[4] := ctSampleToTargetDelayMin;
+    tenFloats[5] := ctSampleToTargetDelayVar;
+    tenFloats[6] := ctSampleDuration;
+    tenFloats[7] := ctTargetDuration;
+    tenFloats[8] := ctITI;
+    tenFloats[9] := ctDotRadiusDeg;
     
     sixPlusOneInts%[0] := ctDotColor1R%;
     sixPlusOneInts%[1] := ctDotColor1G%;
@@ -770,15 +785,18 @@ func ConteTaskDialog%()
     
     DlgGroup("Timing Options",1,sTime%,wDlg%-2,hTime%);
     DlgReal(ctDlgITI%,wNum%,0.01,100,c1%+1,sTime%+1);  DlgText("Intertrial interval (s)",c1%+wNum%+2,sTime%+1);
-    DlgReal(ctDlgPatchOnsetDelay%,wNum%,0.01,100,c23%+1,sTime%+1);  ctTxtPatchOnsetDelay% := DlgText(ctPatchOnsetDelayText$,c23%+wNum%+2,sTime%+1);
-    DlgReal(ctDlgPatchToSampleDelay%,wNum%,0,100,c33%+1,sTime%+1);  ctTxtPatchToSampleDelay% := DlgText("Cue patch to sample gap (s)",c33%+wNum%+2,sTime%+1);
-    DlgReal(ctDlgSampleDuration%,wNum%,0.01,100,c1%+1,sTime%+2);  ctTxtSampleDuration% := DlgText("Sample duration (s)",c1%+wNum%+2,sTime%+2);
-    DlgReal(ctDlgSampleToTargetDelay%,wNum%,0,100,c23%+1,sTime%+2);  ctTxtSampleToTargetDelay% := DlgText("Sample to Test gap (s)",c23%+wNum%+2,sTime%+2);
-    DlgReal(ctDlgTargetDuration%,wNum%,0.01,100,c33%+1,sTime%+2);  ctTxtTargetDuration% := DlgText("Test duration (s)",c33%+wNum%+2,sTime%+2);
-    DlgReal(ctDlgAbort%,wNum%,0,100,c1%+1,sTime%+3);  ctTxtAbort% := DlgText("Abort penalty (s)",c1%+wNum%+2,sTime%+3);
-    DlgReal(ctDlgFAPenalty%,wNum%,0,100,c23%+1,sTime%+3);  ctTxtFAPenalty% := DlgText("False Alarm penalty (s)",c23%+wNum%+2,sTime%+3);
-    DlgReal(ctDlgMissPenalty%,wNum%,0,100,c33%+1,sTime%+3);  ctTxtMissPenalty% := DlgText("Miss penalty (s)",c33%+wNum%+2,sTime%+3);
-    DlgReal(ctDlgTargetAcqTime%,wNum%,0,10,c1%+1,sTime%+4);  ctTxtTargetAcqTime% := DlgText("Target Acq Time (s)",c1%+wNum%+2,sTime%+4);
+    DlgReal(ctDlgTargetAcqTime%,wNum%,0,10,c23%+1,sTime%+1);  ctTxtTargetAcqTime% := DlgText("Target Acq Time (s)",c23%+wNum%+2,sTime%+1);
+    DlgReal(ctDlgPatchOnsetDelay%,wNum%,0.01,100,c33%+1,sTime%+1);  ctTxtPatchOnsetDelay% := DlgText(ctPatchOnsetDelayText$,c33%+wNum%+2,sTime%+1);
+    DlgReal(ctDlgPatchToSampleDelayMin%,wNum%,0,100,c1%+1,sTime%+2);  ctTxtPatchToSampleDelayMin% := DlgText("Cue patch to sample gap min (s)",c1%+wNum%+2,sTime%+2);
+    DlgReal(ctDlgPatchToSampleDelayVar%,wNum%,0,100,c23%+1,sTime%+2);  ctTxtPatchToSampleDelayVar% := DlgText("Cue patch to sample gap var (s)",c23%+wNum%+2,sTime%+2);
+    DlgReal(ctDlgSampleDuration%,wNum%,0.01,100,c33%+1,sTime%+2);  ctTxtSampleDuration% := DlgText("Sample duration (s)",c33%+wNum%+2,sTime%+2);
+    DlgReal(ctDlgSampleToTargetDelayMin%,wNum%,0,100,c1%+1,sTime%+3);  ctTxtSampleToTargetDelayMin% := DlgText("Sample to Test gap min (s)",c1%+wNum%+2,sTime%+3);
+    DlgReal(ctDlgSampleToTargetDelayVar%,wNum%,0,100,c23%+1,sTime%+3);  ctTxtSampleToTargetDelayVar% := DlgText("Sample to Test gap var (s)",c23%+wNum%+2,sTime%+3);
+    DlgReal(ctDlgTargetDuration%,wNum%,0.01,100,c33%+1,sTime%+3);  ctTxtTargetDuration% := DlgText("Test duration (s)",c33%+wNum%+2,sTime%+3);
+    DlgReal(ctDlgAbort%,wNum%,0,100,c1%+1,sTime%+4);  ctTxtAbort% := DlgText("Abort penalty (s)",c1%+wNum%+2,sTime%+4);
+    DlgReal(ctDlgFAPenalty%,wNum%,0,100,c23%+1,sTime%+4);  ctTxtFAPenalty% := DlgText("False Alarm penalty (s)",c23%+wNum%+2,sTime%+4);
+    DlgReal(ctDlgMissPenalty%,wNum%,0,100,c33%+1,sTime%+4);  ctTxtMissPenalty% := DlgText("Miss penalty (s)",c33%+wNum%+2,sTime%+4);
+    
     
     
     DlgGroup("Cue Dot And Cue Patch Options",1,sCue%,wDlg%-2,hCue%);
@@ -820,7 +838,7 @@ func ConteTaskDialog%()
     DlgAllow(0, 0, ConteTaskDialogChanged%);
     
     i% := DlgShow(nTrialsPerDataPoint%,ctCountTrainCueRect%,ctCountTrainGrating%,ctCountFull%,
-                  ctAdditionalWindowRadius,eightFloats[],sixPlusOneInts%[],ctPatchRadiusDeg,
+                  ctAdditionalWindowRadius,tenFloats[],sixPlusOneInts%[],ctPatchRadiusDeg,
                   ctRefreshPerPF%,ctPFsPerPatch%,sixFloats[],sevenInts%[],threeStrings$[],fourFloats[],
                   sixInts%[],ctAdditionalTargetRadius,ctMinInvalidRate,ctDropFixpt%,ctTargetAcqTime,
                   ctNoSideSwapping%);  'Now at 20!
@@ -829,14 +847,16 @@ func ConteTaskDialog%()
     if i% = 1 then        
         
         'Unpack variables
-        ctFixCrossWidthPixels := eightFloats[0];
-        ctPatchOnsetDelay := eightFloats[1];
-        ctPatchToSampleDelay := eightFloats[2];
-        ctSampleToTargetDelay := eightFloats[3];
-        ctSampleDuration := eightFloats[4];
-        ctTargetDuration := eightFloats[5];
-        ctITI := eightFloats[6];
-        ctDotRadiusDeg := eightFloats[7];
+        ctFixCrossWidthPixels := tenFloats[0];
+        ctPatchOnsetDelay := tenFloats[1];
+        ctPatchToSampleDelayMin := tenFloats[2];
+        ctPatchToSampleDelayVar := tenFloats[3];
+        ctSampleToTargetDelayMin := tenFloats[4];
+        ctSampleToTargetDelayVar := tenFloats[5];
+        ctSampleDuration := tenFloats[6];
+        ctTargetDuration := tenFloats[7];
+        ctITI := tenFloats[8];
+        ctDotRadiusDeg := tenFloats[9];
     
         ctDotColor1R% := sixPlusOneInts%[0];
         ctDotColor1G% := sixPlusOneInts%[1];
@@ -882,7 +902,7 @@ func ConteTaskDialog%()
         
         ctGratingOnsetDelay := ctPatchOnsetDelay;  'Just keep this in two differently-named variables, same value, but let's not confuse ourselves            
         
-        'Convert float pixel width to integer (due to "eightFloats[]", was too difficult to convert to integer for dialog)
+        'Convert float pixel width to integer (due to "tenFloats[]", was too difficult to convert to integer for dialog)
         ctFixCrossWidthPixels% := ctFixCrossWidthPixels;
         
         'Get "secondary" gabor location based on requested orientation, in fixation-based coordinates
@@ -1028,7 +1048,8 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(1,ctDlgPFsPerPatch%,ctTxtPFsPerPatch%);
         DlgEnable(1,ctDlgDotPctString%,ctTxtDotPctString%);
         DlgEnable(1,ctTxtPatchDur%);
-        DlgEnable(1,ctDlgPatchToSampleDelay%,ctTxtPatchToSampleDelay%);
+        DlgEnable(1,ctDlgPatchToSampleDelayMin%,ctTxtPatchToSampleDelayMin%);
+        DlgEnable(1,ctDlgPatchToSampleDelayVar%,ctTxtPatchToSampleDelayVar%);
         DlgEnable(1,ctDlgCueRectUncuedCont%,ctTxtCueRectUncuedCont%);
         DlgEnable(1,ctDlgCueRectCuedCont%,ctTxtCueRectCuedCont%);
         DlgValue$(ctTxtPatchRadiusDeg%,ctPatchRadiusText$);
@@ -1048,7 +1069,8 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(0,ctDlgPFsPerPatch%,ctTxtPFsPerPatch%);
         DlgEnable(0,ctDlgDotPctString%,ctTxtDotPctString%);
         DlgEnable(0,ctTxtPatchDur%);
-        DlgEnable(0,ctDlgPatchToSampleDelay%,ctTxtPatchToSampleDelay%);
+        DlgEnable(0,ctDlgPatchToSampleDelayMin%,ctTxtPatchToSampleDelayMin%);
+        DlgEnable(0,ctDlgPatchToSampleDelayVar%,ctTxtPatchToSampleDelayVar%);
         DlgEnable(0,ctDlgCueRectUncuedCont%,ctTxtCueRectUncuedCont%);
         DlgEnable(0,ctDlgCueRectCuedCont%,ctTxtCueRectCuedCont%);
         DlgValue$(ctTxtPatchRadiusDeg%,ctFixRadiusText$);
@@ -1069,7 +1091,8 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(1,ctDlgGaborUncuedCont%,ctTxtGaborUncuedCont%);
         DlgEnable(1,ctDlgFlankerCuedCont%,ctTxtFlankerCuedCont%);
         DlgEnable(1,ctDlgFlankerUncuedCont%,ctTxtFlankerUncuedCont%);
-        DlgEnable(1,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
+        DlgEnable(1,ctDlgSampleToTargetDelayMin%,ctTxtSampleToTargetDelayMin%);
+        DlgEnable(1,ctDlgSampleToTargetDelayVar%,ctTxtSampleToTargetDelayVar%);
         DlgEnable(1,ctDlgTargetDuration%,ctTxtTargetDuration%);
     else
         DlgEnable(0,ctDlgSampleContString%,ctTxtSampleContString%);
@@ -1083,18 +1106,21 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(0,ctDlgGaborUncuedCont%,ctTxtGaborUncuedCont%);
         DlgEnable(0,ctDlgFlankerCuedCont%,ctTxtFlankerCuedCont%);
         DlgEnable(0,ctDlgFlankerUncuedCont%,ctTxtFlankerUncuedCont%);
-        DlgEnable(0,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
+        DlgEnable(0,ctDlgSampleToTargetDelayMin%,ctTxtSampleToTargetDelayMin%);
+        DlgEnable(0,ctDlgSampleToTargetDelayVar%,ctTxtSampleToTargetDelayVar%);
         DlgEnable(0,ctDlgTargetDuration%,ctTxtTargetDuration%);
     endif
     
     
     'If there are any full trials, enable sample-to-test and test duration, min invalid rate 
     if DlgValue(ctDlgCountFull%) > 0 then
-        DlgEnable(1,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
+        DlgEnable(1,ctDlgSampleToTargetDelayMin%,ctTxtSampleToTargetDelayMin%);
+        DlgEnable(1,ctDlgSampleToTargetDelayVar%,ctTxtSampleToTargetDelayVar%);
         DlgEnable(1,ctDlgTargetDuration%,ctTxtTargetDuration%);
         DlgEnable(1,ctDlgMinInvalidRate%,ctTxtMinInvalidRate%);
     else  'Do not disable sample-to-test and test duration as they may be needed for grating training)
-        'DlgEnable(0,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
+        'DlgEnable(0,ctDlgSampleToTargetDelayMin%,ctTxtSampleToTargetDelayMin%);
+        'DlgEnable(0,ctDlgSampleToTargetDelayVar%,ctTxtSampleToTargetDelayVar%);
         'DlgEnable(0,ctDlgTargetDuration%,ctTxtTargetDuration%);
         DlgEnable(0,ctDlgMinInvalidRate%,ctTxtMinInvalidRate%);  'but do disable this!
     endif
@@ -1357,7 +1383,7 @@ func IdleProcessing%()
                     'Set values for expected triggers
                     LastPatchTrigger% := ctPFsPerPatch%;
                     PatchDownTrigger% := ctPFsPerPatch%+1;
-                    if ctPatchToSampleDelay = 0 then
+                    if ctPatchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then
                         SampleUpTrigger% := PatchDownTrigger%;
                     else
                         SampleUpTrigger% := PatchDownTrigger%+1;
@@ -1414,7 +1440,7 @@ func IdleProcessing%()
                     PatchDownTrigger% := -1;  'no patch, won't go to cue portion
                     SampleUpTrigger% := 1;
                     SampleDownTrigger% := SampleUpTrigger%+1;
-                    if ctSampleToTargetDelay = 0 then
+                    if ctSampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then
                         TargetUpTrigger% := SampleDownTrigger%;
                     else
                         TargetUpTrigger% := SampleDownTrigger%+1;
@@ -1478,13 +1504,13 @@ func IdleProcessing%()
                     'Set values for expected triggers
                     LastPatchTrigger% := ctPFsPerPatch%;
                     PatchDownTrigger% := ctPFsPerPatch%+1;
-                    if ctPatchToSampleDelay = 0 then
+                    if ctPatchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then
                         SampleUpTrigger% := PatchDownTrigger%;
                     else
                         SampleUpTrigger% := PatchDownTrigger%+1;
                     endif
                     SampleDownTrigger% := SampleUpTrigger%+1;
-                    if ctSampleToTargetDelay = 0 then
+                    if ctSampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then
                         TargetUpTrigger% := SampleDownTrigger%;
                     else
                         TargetUpTrigger% := SampleDownTrigger%+1;
@@ -1601,7 +1627,7 @@ func IdleProcessing%()
                         SampleText("Cue Frame #" + Str$(FrameTriggersFound%) + ", trial " + Str$(nTrialsCompleted%+1),tTrigger);  'let's sampletext every patch-frame in the cue
                     endif
                     
-                case FrameTriggersFound% = SampleUpTrigger% and ctPatchToSampleDelay = 0 and thisStim$ <> "train-grating" then  'This pulse indicates cue down AND sample up
+                case FrameTriggersFound% = SampleUpTrigger% and ctPatchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 and thisStim$ <> "train-grating" then  'This pulse indicates cue down AND sample up
                     LogStatus("MonitorFrameChannel", "Cue off and sample on at " + Str$(tTrigger));
                     SampleText(TextForSample$,tTrigger);
                     DrawMonitorScreen(0,-1,drawGaborsSample%,drawFlankers%,drawCueRects%);  'Remove cue on monitor screen, draw others if appropriate
@@ -1614,7 +1640,7 @@ func IdleProcessing%()
                     SampleText(TextForSample$,tTrigger);
                     DrawMonitorScreen(0,0,drawGaborsSample%,drawFlankers%,drawCueRects%);
                     
-                case FrameTriggersFound% = TargetUpTrigger% and ctSampleToTargetDelay = 0 then  'This pulse indicates sample off AND target on
+                case FrameTriggersFound% = TargetUpTrigger% and ctSampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then  'This pulse indicates sample off AND target on
                     LogStatus("MonitorFrameChannel", "Sample off and target on at " + Str$(tTrigger));
                     SampleText(TextForTest$,tTrigger);
                     DrawMonitorScreen(0,0,drawGaborsTest%,drawFlankers%,drawCueRects%);
@@ -1644,13 +1670,13 @@ func IdleProcessing%()
                 tLastFrameTrigger := tFall;                    
                 
             'Check timing, just in case things go all wrong, we should bail after one second too long    
-            case thisStim$ = "full" and tNow > tStateStart + ctPatchDur + ctPatchToSampleDelay + ctSampleDuration + ctSampleToTargetDelay + ctTargetDuration + 1 then 
+            case thisStim$ = "full" and tNow > tStateStart + ctPatchDur + ctPatchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] + ctSampleDuration + ctSampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] + ctTargetDuration + 1 then 
                 message("Full trial, waited for one second beyond end of stimuli,\n but did not find all expected triggers!  Quitting!");
                 Stop%();
-            case thisStim$ = "train-cue-rect" and tNow > tStateStart + ctPatchDur + ctPatchToSampleDelay + ctSampleDuration + 1 then 
+            case thisStim$ = "train-cue-rect" and tNow > tStateStart + ctPatchDur + ctPatchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] + ctSampleDuration + 1 then 
                 message("Train-cue-rect trial, waited for one second beyond end of stimuli,\n but did not find all expected triggers!  Quitting!");
                 Stop%();
-            case thisStim$ = "train-grating" and tNow > tStateStart + ctSampleDuration + ctSampleToTargetDelay + ctTargetDuration + 1 then 
+            case thisStim$ = "train-grating" and tNow > tStateStart + ctSampleDuration + ctSampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] + ctTargetDuration + 1 then 
                 message("Train-grating trial, waited for one second beyond end of stimuli,\n but did not find all expected triggers!  Quitting!");
                 Stop%();
             endcase
@@ -2505,7 +2531,7 @@ func Start%()
                 test2CueRectContrast%[count%] := 0;  'so the cue rects will go down before then
                 
                 'Set timing parameters - make sure to multiply values in seconds by 1000 to get ms
-                patchToSampleDelay[count%] := ctPatchToSampleDelay*1000;
+                patchToSampleDelay[count%] := (ctPatchToSampleDelayMin+rand(ctPatchToSampleDelayVar,0))*1000;
                 sampleDuration[count%] := ctSampleDuration*1000;
                 sampleToTargetDelay[count%] := 0;
                 targetDuration[count%] := -1;
@@ -2583,7 +2609,7 @@ func Start%()
                         'Set timing parameters - make sure to multiply values in seconds by 1000 to get ms
                         patchToSampleDelay[count%] := 0;
                         sampleDuration[count%] := ctSampleDuration*1000;
-                        sampleToTargetDelay[count%] := ctSampleToTargetDelay*1000;
+                        sampleToTargetDelay[count%] := (ctSampleToTargetDelayMin+rand(ctSampleToTargetDelayVar,0))*1000;
                         targetDuration[count%] := ctTargetDuration*1000;                        
                         
                         count% += 1;  'increment counter                                
@@ -2709,9 +2735,9 @@ func Start%()
                             
  
                             'Set timing parameters - make sure to multiply values in seconds by 1000 to get ms
-                            patchToSampleDelay[count%] := ctPatchToSampleDelay*1000;
+                            patchToSampleDelay[count%] := (ctPatchToSampleDelayMin+rand(ctPatchToSampleDelayVar,0))*1000;
                             sampleDuration[count%] := ctSampleDuration*1000;
-                            sampleToTargetDelay[count%] := ctSampleToTargetDelay*1000;
+                            sampleToTargetDelay[count%] := (ctSampleToTargetDelayMin+rand(ctSampleToTargetDelayVar,0))*1000;
                             targetDuration[count%] := ctTargetDuration*1000;
                             
   
@@ -3150,9 +3176,11 @@ proc WriteParameterFile()
     Print("Patch radius (deg)                       : %f\n", ctPatchRadiusDeg);
     Print("Additional fix window radius (deg)       : %f\n", ctAdditionalWindowRadius);
     Print("Additional target radius (deg)           : %f\n", ctAdditionalTargetRadius);
-    Print("Patch to sample delay (s)                : %f\n", ctPatchToSampleDelay);
+    Print("Patch to sample delay minimum (s)        : %f\n", ctPatchToSampleDelayMin);
+    Print("Patch to sample delay variable (s)       : %f\n", ctPatchToSampleDelayVar);
     Print("Sample duration (s)                      : %f\n", ctSampleDuration);
-    Print("Sample to target delay (s)               : %f\n", ctSampleToTargetDelay);
+    Print("Sample to target delay minimum (s)       : %f\n", ctSampleToTargetDelayMin);
+    Print("Sample to target delay variable (s)      : %f\n", ctSampleToTargetDelayVar);
     Print("Target duration (s)                      : %f\n", ctTargetDuration);  
     Print("Target hold time (s)                     : %f\n", ctTargetAcqTime); 
     Print("Abort penalty (s)                        : %f\n", ctAbortPenalty);
