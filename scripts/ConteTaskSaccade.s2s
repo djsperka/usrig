@@ -174,8 +174,6 @@ var colorIndexAtRF%[ctMaxTrials%];   'Color index (0,1) of the primary location 
 var validity%[ctMaxTrials%];       'Validity on each trial, -1 = no change, 0 = invalid, 1 = valid (what if cueDotPct is 50?)
 var whichLocChange%[ctMaxTrials%]; '0 = no change, 1 = location 1 changes, 2 = location 2 changes
 var flankerIsH%;                   '-1 = no flanker; 0 = flanker vertical; 1 = flanker horizontal; cue box shrinks if flankers are off
-var ctPatchToSampleDelay[ctMaxTrials%];  'We are adding variable-by-trial values for patch-to-sample delay
-var ctSampleToTargetDelay[ctMaxTrials%];  '...and sample-to-target delay
 
 var samp1Contrast%[ctMaxTrials%];
 var samp2Contrast%[ctMaxTrials%];
@@ -1383,7 +1381,7 @@ func IdleProcessing%()
                     'Set values for expected triggers
                     LastPatchTrigger% := ctPFsPerPatch%;
                     PatchDownTrigger% := ctPFsPerPatch%+1;
-                    if ctPatchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then
+                    if patchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then
                         SampleUpTrigger% := PatchDownTrigger%;
                     else
                         SampleUpTrigger% := PatchDownTrigger%+1;
@@ -1440,7 +1438,7 @@ func IdleProcessing%()
                     PatchDownTrigger% := -1;  'no patch, won't go to cue portion
                     SampleUpTrigger% := 1;
                     SampleDownTrigger% := SampleUpTrigger%+1;
-                    if ctSampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then
+                    if sampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then
                         TargetUpTrigger% := SampleDownTrigger%;
                     else
                         TargetUpTrigger% := SampleDownTrigger%+1;
@@ -1504,13 +1502,13 @@ func IdleProcessing%()
                     'Set values for expected triggers
                     LastPatchTrigger% := ctPFsPerPatch%;
                     PatchDownTrigger% := ctPFsPerPatch%+1;
-                    if ctPatchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then
+                    if patchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then
                         SampleUpTrigger% := PatchDownTrigger%;
                     else
                         SampleUpTrigger% := PatchDownTrigger%+1;
                     endif
                     SampleDownTrigger% := SampleUpTrigger%+1;
-                    if ctSampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then
+                    if sampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then
                         TargetUpTrigger% := SampleDownTrigger%;
                     else
                         TargetUpTrigger% := SampleDownTrigger%+1;
@@ -1599,15 +1597,15 @@ func IdleProcessing%()
                 endif                
                 
             'Check for a break of fixation if response is not yet allowed, if so abort
-            case thisStim$ = "train-cue-rect" and FrameTriggersFound% < SampleUpTrigger% and LookingFixation%(xEye,yEye) = 0 then
+            case thisStim$ = "train-cue-rect" and FrameTriggersFound% < SampleUpTrigger% and IsLookingFixation% = 0 then
                 LogStatus("MonitorFrameChannel", "Fixation broken, train-cue-rect trial");
                 SafeSampleKey("X");  'Drop fixation point
                 WaitForBlankTo(stateAbort%, tNow); 
-            case thisStim$ = "train-grating" and FrameTriggersFound% < TargetUpTrigger% and LookingFixation%(xEye,yEye) = 0 then
+            case thisStim$ = "train-grating" and FrameTriggersFound% < TargetUpTrigger% and IsLookingFixation% = 0 then
                 LogStatus("MonitorFrameChannel", "Fixation broken, train-grating trial");
                 SafeSampleKey("X");  'Drop fixation point
                 WaitForBlankTo(stateAbort%, tNow); 
-            case thisStim$ = "full" and FrameTriggersFound% < TargetUpTrigger% and LookingFixation%(xEye,yEye) = 0 then
+            case thisStim$ = "full" and FrameTriggersFound% < TargetUpTrigger% and IsLookingFixation% = 0 then
                 LogStatus("MonitorFrameChannel", "Fixation broken, full trial");
                 SafeSampleKey("X");  'Drop fixation point
                 WaitForBlankTo(stateAbort%, tNow); 
@@ -1627,7 +1625,7 @@ func IdleProcessing%()
                         SampleText("Cue Frame #" + Str$(FrameTriggersFound%) + ", trial " + Str$(nTrialsCompleted%+1),tTrigger);  'let's sampletext every patch-frame in the cue
                     endif
                     
-                case FrameTriggersFound% = SampleUpTrigger% and ctPatchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 and thisStim$ <> "train-grating" then  'This pulse indicates cue down AND sample up
+                case FrameTriggersFound% = SampleUpTrigger% and patchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 and thisStim$ <> "train-grating" then  'This pulse indicates cue down AND sample up
                     LogStatus("MonitorFrameChannel", "Cue off and sample on at " + Str$(tTrigger));
                     SampleText(TextForSample$,tTrigger);
                     DrawMonitorScreen(0,-1,drawGaborsSample%,drawFlankers%,drawCueRects%);  'Remove cue on monitor screen, draw others if appropriate
@@ -1640,7 +1638,7 @@ func IdleProcessing%()
                     SampleText(TextForSample$,tTrigger);
                     DrawMonitorScreen(0,0,drawGaborsSample%,drawFlankers%,drawCueRects%);
                     
-                case FrameTriggersFound% = TargetUpTrigger% and ctSampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then  'This pulse indicates sample off AND target on
+                case FrameTriggersFound% = TargetUpTrigger% and sampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] = 0 then  'This pulse indicates sample off AND target on
                     LogStatus("MonitorFrameChannel", "Sample off and target on at " + Str$(tTrigger));
                     SampleText(TextForTest$,tTrigger);
                     DrawMonitorScreen(0,0,drawGaborsTest%,drawFlankers%,drawCueRects%);
@@ -1670,13 +1668,13 @@ func IdleProcessing%()
                 tLastFrameTrigger := tFall;                    
                 
             'Check timing, just in case things go all wrong, we should bail after one second too long    
-            case thisStim$ = "full" and tNow > tStateStart + ctPatchDur + ctPatchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] + ctSampleDuration + ctSampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] + ctTargetDuration + 1 then 
+            case thisStim$ = "full" and tNow > tStateStart + ctPatchDur + patchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] + ctSampleDuration + sampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] + ctTargetDuration + 1 then 
                 message("Full trial, waited for one second beyond end of stimuli,\n but did not find all expected triggers!  Quitting!");
                 Stop%();
-            case thisStim$ = "train-cue-rect" and tNow > tStateStart + ctPatchDur + ctPatchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] + ctSampleDuration + 1 then 
+            case thisStim$ = "train-cue-rect" and tNow > tStateStart + ctPatchDur + patchToSampleDelay[ctTrialOrder%[nTrialsCompleted%]] + ctSampleDuration + 1 then 
                 message("Train-cue-rect trial, waited for one second beyond end of stimuli,\n but did not find all expected triggers!  Quitting!");
                 Stop%();
-            case thisStim$ = "train-grating" and tNow > tStateStart + ctSampleDuration + ctSampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] + ctTargetDuration + 1 then 
+            case thisStim$ = "train-grating" and tNow > tStateStart + ctSampleDuration + sampleToTargetDelay[ctTrialOrder%[nTrialsCompleted%]] + ctTargetDuration + 1 then 
                 message("Train-grating trial, waited for one second beyond end of stimuli,\n but did not find all expected triggers!  Quitting!");
                 Stop%();
             endcase
