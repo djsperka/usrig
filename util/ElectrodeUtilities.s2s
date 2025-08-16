@@ -118,8 +118,11 @@ func ElectrodesDialog%()
         if EyeYPort% >= 0 then
             CustomLabels$[EyeYPort%] := "";
         endif;
-        if JoystickPort% >= 0 then
-            CustomLabels$[JoystickPort%] := "";
+        if JoystickPortX% >= 0 then
+            CustomLabels$[JoystickPortX%] := "";
+        endif;
+        if JoystickPortY% >= 0 then
+            CustomLabels$[JoystickPortY%] := "";
         endif;
         if EEGPort% >= 0 then
             CustomLabels$[EEGPort%] := "";
@@ -185,8 +188,11 @@ func ElectrodesDialogSetSampFreq%()
         if EyeYPort% >= 0 then
             CustomLabels$[EyeYPort%] := "";
         endif;
-        if JoystickPort% >= 0 then
-            CustomLabels$[JoystickPort%] := "";
+        if JoystickPortX% >= 0 then
+            CustomLabels$[JoystickPortX%] := "";
+        endif;
+        if JoystickPortY% >= 0 then
+            CustomLabels$[JoystickPortY%] := "";
         endif;
         if EEGPort% >= 0 then
             CustomLabels$[EEGPort%] := "";
@@ -567,8 +573,9 @@ func CreateElectrodeSamplingConfiguration30WF30WMPrimary()
     var iStatus% := -1;
     var i%;
     
-    'Note: This function is unused.
+    'Note: This function is unused.  (oh, really, well then check note 3)
     'Note2: This function does not properly skip ExcludedChans
+    'Note3: This function does not allow JoystickPortY, because it is unused
     
     'do not use ports 13-15
     'do not use channels 23-32
@@ -591,12 +598,17 @@ func CreateElectrodeSamplingConfiguration30WF30WMPrimary()
         halt;
     endcase;
     docase 
-    case WhichjoystickPort%() = -1 then
+    case WhichjoystickPortX%() = -1 then
        'This is OK, do nothing
-    case WhichJoystickPort%() < 13 or WhichJoystickPort%() > 15 then
-        message("The EyeX port must be between 13 and 15!");
+    case WhichJoystickPortX%() < 13 or WhichJoystickPortX%() > 15 then
+        message("The JoystickX port must be between 13 and 15!");
         halt;
     endcase;
+    if WhichjoystickPortX%() <> -1 then
+        message("The JoystickY port is not enabled for this electrode sampling configuration!");
+        halt;
+    endif
+    
     
     'do not use ports 13-15
     'do not use channels 23-32
@@ -668,6 +680,8 @@ func CreateElectrodeSamplingConfiguration32LFP29SpikingPrimary(ExcludedChans%[])
     var chanIndex%;
     var UseChans%[32];  'actually could be 29 here, due to 3 Eye/Joy channels, but 32 is fine
     
+    'Note: This function does not allow JoystickPortY, because there are not enough available ports
+    
     'The easiest way to sort out the channels is going to be to make a UseChans%[] list
     i% := 1; 'This will be possible channels, channels start at 1
     chanIndex% := 0
@@ -703,12 +717,16 @@ func CreateElectrodeSamplingConfiguration32LFP29SpikingPrimary(ExcludedChans%[])
         halt;
     endcase;
     docase 
-    case WhichjoystickPort%() = -1 then
+    case WhichjoystickPortX%() = -1 then
        'This is OK, do nothing
-    case WhichJoystickPort%() < 13 or WhichJoystickPort%() > 15 then
-        message("The EyeX port must be between 13 and 15!");
+    case WhichJoystickPortX%() < 13 or WhichJoystickPortX%() > 15 then
+        message("The Joystick X port must be between 13 and 15!");
         halt;
     endcase;
+        if WhichjoystickPortX%() <> -1 then
+        message("The JoystickY port is not enabled for this electrode sampling configuration!");
+        halt;
+    endif
     
     'do not use ports 13-15
     'respect UseChans%[]

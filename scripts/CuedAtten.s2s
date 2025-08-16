@@ -357,7 +357,7 @@ ExcludedChans%[1] := 37;  'TimingChannel% is highest non-electrode channel used 
 
 
 LogInit(1);
-InitJoystick2(JoyChannel%,GetJoystickPort%()); 'now calls InitJoystick2 - we must do this BEFORE calling the main dialog
+InitJoystickX(JoyChannel%,GetJoystickPortX%()); 'now calls InitJoystickX - we must do this BEFORE calling the main dialog
 
 UseTwo1401s% := DoWeUseTwo1401s%();
 GetPortsAndNumWMsWFs%(caNumWavemarks%,caNumContinuous%,caWavemarkPorts%[],caContinuousPorts%[]);
@@ -1180,10 +1180,10 @@ proc CreateSampleConfiguration()
     
     'Create joystick channel, but only if the joystick is actually present
     if caRequireSaccadeResponse% = 0 then  
-        printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPort%());
+        printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPortX%());
         var ok%;
-        ok%:=SampleWaveform(JoyChannel%, GetJoystickPort%(), 1000);
-        SampleTitle$(JoyChannel%, JoystickPortLabel$);
+        ok%:=SampleWaveform(JoyChannel%, GetJoystickPortX%(), 1000);
+        SampleTitle$(JoyChannel%, JoystickPortLabelX$);
     endif;
     if ok% < 0 then
         printlog("Error opening joystick channel: %s\n",Error$(ok%));
@@ -1477,11 +1477,11 @@ func Start%()
     
     'Change offset of joystick channel
     'View(DataWindow%).ChanOffset(JoyChannel%,-2.386);  'try this value, looks pretty good
-    View(DataWindow%).ChanOffset(JoyChannel%,joystickOffset);  'use value from registry
+    View(DataWindow%).ChanOffset(JoyChannel%,joystickOffsetX);  'use value from registry
     
     'Set value of right/left joystick
     GetJoystickParameters();  'now we run the joystick functions from Sperka, should work smoothly
-    DisplayJoystickParameters();
+    DisplayJoystickParametersX();
 '    jsRightLow := caJoyRight;  'Just set this brute force from the dialog box
 '    jsCenterHigh := caJoyRight;
 '    jsLeftHigh := -caJoyRight;  'And set this to the same value - this will probably not be great due to the nonlinearity of the joystick.
@@ -3754,14 +3754,14 @@ func Answer%(chan%,now)
     'v := ChanValue(chan%,now);
     'printlog("voltage is %f\n",v);
     if ChanKind(chan%) > 0 then  'if the channel does not exist, return 0
-        ans% := GetJoystickPosition%(v);   
+        ans% := GetJoystickPositionX%(v);   
     else
         ans% := 0;
     endif;
         
     
     if ans% = -1 then
-        printlog("There has been an error in reading the joystick!  GetJoystickPosition% has returned -1!\n");
+        printlog("There has been an error in reading the joystick!  GetJoystickPositionX% has returned -1!\n");
     endif
     
     
@@ -3989,7 +3989,7 @@ func CallJoystickConfigDialog%()
     
     DoSampleAutoName(key$,"joystick","joy",primaryTxt$,secondaryTxt$);    
     
-    JoystickConfigDialog%();
+    JoystickConfigDialogX%();
     
     'Set autoname back to what it should be once we return
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);

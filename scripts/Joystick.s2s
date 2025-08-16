@@ -2,7 +2,16 @@
 '
 ' This file contains utilities for using the joystick on the alert2 rig. 
 
+
 #include "../util/UsreyUtil.s2s"
+
+' ===================================================================
+'
+' This entire script was updated on 8/15/2025, to allow use of both X 
+' and Y (or both) joystick axes.
+'
+' ===================================================================
+
 
 const JSLeft% := 1;
 const JSRight% := 3;
@@ -36,19 +45,23 @@ var jsExclUIn := 2.1;   'up exclusion zone inner reach
 var jsExclUOut := 2.9;   'up exclusion zone outer reach
 
 
-var jsPrevPos% := JSUndefined%;  'We need to keep track of the previous joystick position to utilize inner/outer thresholds
+var jsPrevPosX% := JSUndefined%;  'We need to keep track of the previous joystick position to utilize inner/outer thresholds
+var jsPrevPosY% := JSUndefined%;
 
-var jsAllowExclusion%;  'If 1, allow "exclusion zones" to be used for L/R, otherwise jsUseExclusion% will be ignored
-var jsAllowExclusionUD%;  'If 1, allow "exclusion zones" to be used for U/D, otherwise jsUseExclusion% will be ignored
+var jsAllowExclusionX%;  'If 1, allow "exclusion zones" to be used for L/R, otherwise jsUseExclusion% will be ignored
+var jsAllowExclusionY%;  'If 1, allow "exclusion zones" to be used for U/D, otherwise jsUseExclusion% will be ignored
 var jsUseExclusion%;  'If 1, use "exclusion zones", return JSUndefined% if joystick is in exclusion zone, 
                       'must be set "manually" in calling code and can be toggled
 
 var jsXInverted% := 0;  'if 1, polarity of the X-axis (normally left-negative, right-positive) should be taken to be inverted
 var jsYInverted% := 0;  'if 1, polarity of the Y-axis (normally down-negative, up-positive) should be taken to be inverted
-var jsChannelNumber% := -999;
-var jsPortNumber% := 0;
+var jsChannelNumberX% := -999;
+var jsPortNumberX% := 0;
+var jsChannelNumberY% := -999;
+var jsPortNumberY% := 0;
 var jsIsInitialized% := 0;
-var joystickOffset;  'offset of joystick, will be saved to registry
+var joystickOffsetX;  'offset of joystick, will be saved to registry
+var joystickOffsetY;  'offset of joystick, will be saved to registry
 
 var jsDlgLeftHighTextItem%;
 var jsDlgCenterLowTextItem%;
@@ -60,56 +73,54 @@ var jsDlgUpLowerEdgeTextItem%;
 GetJoystickParameters();
 
 
+
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
-' InitJoystick
+' InitJoystick[X/Y/Both]
 '
-' Scripts that use the joystick functions must indicate which input channel the 
-' joystick is connected to. This function must be called before calling the 
-' GetJoystickPosition() func or it will return JSError. 
+' Scripts that use the joystick functions must indicate which input 
+' channel(s) and port number(s) the joystick is connected to. This 
+' function must be called before calling the various GetJoystickPosition() 
+' funcs or they will return JSError. 
+'
+' All scripts that use joystick must be updated to use these functions
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-proc InitJoystick(channel%)
-    jsChannelNumber% := channel%;
+
+proc InitJoystickX(channel%,port%)
+    jsChannelNumberX% := channel%;
+    jsPortNumberX% := port%;
+    jsIsInitialized% := 1;
+    return;
+end
+
+proc InitJoystickY(channel%,port%)
+    jsChannelNumberY% := channel%;
+    jsPortNumberY% := port%;
+    jsIsInitialized% := 1;
+    return;
+end
+
+proc InitJoystickBoth(channelX%,portX%,channelY%,portY%)
+    jsChannelNumberX% := channelX%;
+    jsPortNumberX% := portX%;
+    jsChannelNumberY% := channelY%;
+    jsPortNumberY% := portY%;
     jsIsInitialized% := 1;
     return;
 end
 
 
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'
-' InitJoystick2
-'
-' Scripts that use the joystick functions must indicate which input channel the 
-' joystick is connected to. This function must be called before calling the 
-' GetJoystickPosition() func or it will return JSError. 
-'
-' Same as InitJoystick, but also assigns port number
-' InitJoystick currently maintained in case anything still calls it.
-' Have updated hopefully all scripts that use joystick to call InitJoystick2
-'
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-
-proc InitJoystick2(channel%,port%)
-    jsChannelNumber% := channel%;
-    jsPortNumber% := port%;
-    jsIsInitialized% := 1;
-    return;
-end
-
-
-
-
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
-' SetJoystickOffset%
+' SetJoystickOffset[X/Y/Both]%
 '
-' This function can only be run when sampling is not occurring,
+' These functions can only be run when sampling is not occurring,
 ' because it opens a new sampling instance to find the joystick
-' offset, then sets joystickOffset in the registry based on the
-' current value.  This joystickOffset value is then used at each
+' offset, then sets joystickOffset[X/Y/Both] in the registry based on the
+' current value.  Thes joystickOffset[X/Y/Both] values are then used at each
 ' instance of setting up a joystick channel to ensure that when
 ' the joystick is in the origin, the value of the joystick channel
 ' is zero.
@@ -118,7 +129,7 @@ end
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-func SetJoystickOffset%()
+func SetJoystickOffsetX%()
     var jview%;
     var currentVal;
     if SampleStatus() > -1 then  'if we are currently sampling, or prepared to sample, don't allow calibration
@@ -126,7 +137,7 @@ func SetJoystickOffset%()
     else
         'Get the port number that is specified in the current config if the joystick has not been initialized (this is common)
         if jsIsInitialized% = 0 then
-            jsPortNumber% := GetJoystickPort%();
+            jsPortNumberX% := GetJoystickPortX%();
         endif
         
         'Reset the sampling configuration
@@ -134,15 +145,13 @@ func SetJoystickOffset%()
         
         'Get the current offset value
         GetJoystickParameters();
-        printlog("Setting Joystick Offset\n");
-        printlog("Original joystick offset is %f volts\n",joystickOffset);
-        printlog("Joystick port number is %d\n",jsPortNumber%);
+        printlog("Setting Joystick X Offset\n");
+        printlog("Original joystick X offset is %f volts\n",joystickOffsetX);
+        printlog("Joystick X port number is %d\n",jsPortNumberX%);
         
         'Create sampling configuration with current port/channel
-        'SampleWaveform(jsChannelNumber%,jsPortNumber%,5000); 
-        'SampleCalibrate(jsChannelNumber%,"volt",1,joystickOffset);  'set offset of novel channel to registry value
-        SampleWaveform(1,jsPortNumber%,5000); 'Channel number is irrelevant for novel channel, cannot be -999 as jsChannelNumber% default
-        SampleCalibrate(1,"volt",1,joystickOffset);  'set offset of novel channel to registry value
+        SampleWaveform(1,jsPortNumberX%,5000); 'Channel number is irrelevant for novel channel, cannot be -999 as jsChannelNumber% default
+        SampleCalibrate(1,"volt",1,joystickOffsetX);  'set offset of novel channel to registry value
         'Start sampling, sample for about 5 seconds,
         samplemode(1);   'sets continuous recording
         jview% := FileNew(0,1+2+4);
@@ -160,12 +169,12 @@ func SetJoystickOffset%()
         SampleStop();
         
         'Adjust the offset
-        joystickOffset := joystickOffset - currentVal;
+        joystickOffsetX := joystickOffsetX - currentVal;
         
         'Save the new offset value to the registry
         SaveJoystickParameters();
         
-        PrintLog("New Joystick Offset :  %f\n",joystickOffset);
+        PrintLog("New Joystick X Offset :  %f\n",joystickOffsetX);
         
         'Offset value from registry will be used to adjust the offset of the joystick channel each time it is initialized
         
@@ -175,25 +184,151 @@ end
 
 
 
+func SetJoystickOffsetY%()
+    var jview%;
+    var currentVal;
+    if SampleStatus() > -1 then  'if we are currently sampling, or prepared to sample, don't allow calibration
+        message("This function cannot be used if sampling is currently occurring!");
+    else
+        'Get the port number that is specified in the current config if the joystick has not been initialized (this is common)
+        if jsIsInitialized% = 0 then
+            jsPortNumberY% := GetJoystickPortY%();
+        endif
+        
+        'Reset the sampling configuration
+        SampleClear(0);
+        
+        'Get the current offset value
+        GetJoystickParameters();
+        printlog("Setting Joystick Y Offset\n");
+        printlog("Original joystick Y offset is %f volts\n",joystickOffsetY);
+        printlog("Joystick Y port number is %d\n",jsPortNumberY%);
+        
+        'Create sampling configuration with current port/channel
+        SampleWaveform(1,jsPortNumberY%,5000); 'Channel number is irrelevant for novel channel, cannot be -999 as jsChannelNumber% default
+        SampleCalibrate(1,"volt",1,joystickOffsetY);  'set offset of novel channel to registry value
+        'Start sampling, sample for about 5 seconds,
+        samplemode(1);   'sets continuous recording
+        jview% := FileNew(0,1+2+4);
+        SampleStart();   'start sampling
+        while view(jview%).maxtime() < 5 do
+            yield(1);
+        wend;
+        
+        'Get mean channel value, using registry offset
+        'currentVal := ChanMeasure(jsChannelNumber%,2,0,5);
+        currentVal := ChanMeasure(1,2,0,5);
+        printlog("Current voltage value (joystick zeroed) is %f\n",currentVal);
+        
+        'Stop sampling
+        SampleStop();
+        
+        'Adjust the offset
+        joystickOffsetY := joystickOffsetY - currentVal;
+        
+        'Save the new offset value to the registry
+        SaveJoystickParameters();
+        
+        PrintLog("New Joystick Y Offset :  %f\n",joystickOffsetY);
+        
+        'Offset value from registry will be used to adjust the offset of the joystick channel each time it is initialized
+        
+    endif
+    
+end
+
+
+
+
+func SetJoystickOffsetBoth%()
+    var jview%;
+    var currentValX;
+    var currentValY;
+    if SampleStatus() > -1 then  'if we are currently sampling, or prepared to sample, don't allow calibration
+        message("This function cannot be used if sampling is currently occurring!");
+    else
+        'Get the port number that is specified in the current config if the joystick has not been initialized (this is common)
+        if jsIsInitialized% = 0 then
+            jsPortNumberX% := GetJoystickPortX%();
+            jsPortNumberY% := GetJoystickPortY%();
+        endif
+        
+        'Reset the sampling configuration
+        SampleClear(0);
+        
+        'Get the current offset value
+        GetJoystickParameters();
+        printlog("Setting Joystick X Offset\n");
+        printlog("Original joystick X offset is %f volts\n",joystickOffsetX);
+        printlog("Joystick X port number is %d\n",jsPortNumberX%);
+        printlog("Setting Joystick Y Offset\n");
+        printlog("Original joystick Y offset is %f volts\n",joystickOffsetY);
+        printlog("Joystick Y port number is %d\n",jsPortNumberY%);
+        
+        'Create sampling configuration with current port/channel
+        'SampleWaveform(jsChannelNumber%,jsPortNumber%,5000); 
+        'SampleCalibrate(jsChannelNumber%,"volt",1,joystickOffset);  'set offset of novel channel to registry value
+        SampleWaveform(1,jsPortNumberX%,5000); 'Channel number is irrelevant for novel channel, cannot be -999 as jsChannelNumber% default
+        SampleCalibrate(1,"volt",1,joystickOffsetX);  'set offset of novel channel to registry value
+        SampleWaveform(2,jsPortNumberY%,5000); 'Channel number is irrelevant for novel channel, cannot be -999 as jsChannelNumber% default
+        SampleCalibrate(2,"volt",1,joystickOffsetY);  'set offset of novel channel to registry value
+        'Start sampling, sample for about 5 seconds,
+        samplemode(1);   'sets continuous recording
+        jview% := FileNew(0,1+2+4);
+        SampleStart();   'start sampling
+        while view(jview%).maxtime() < 5 do
+            yield(1);
+        wend;
+        
+        'Get mean channel value, using registry offset
+        'currentVal := ChanMeasure(jsChannelNumber%,2,0,5);
+        currentValX := ChanMeasure(1,2,0,5);
+        printlog("Current X voltage value (joystick zeroed) is %f\n",currentValX);
+        currentValY := ChanMeasure(2,2,0,5);
+        printlog("Current Y voltage value (joystick zeroed) is %f\n",currentValY);
+        
+        
+        'Stop sampling
+        SampleStop();
+        
+        'Adjust the offset
+        joystickOffsetX := joystickOffsetX - currentValX;
+        joystickOffsetY := joystickOffsetY - currentValY;
+        
+        'Save the new offset value to the registry
+        SaveJoystickParameters();
+        
+        PrintLog("New Joystick X Offset :  %f\n",joystickOffsetX);
+        PrintLog("New Joystick Y Offset :  %f\n",joystickOffsetY);
+        
+        'Offset value from registry will be used to adjust the offset of the joystick channel each time it is initialized
+        
+    endif
+    
+end
+
+
+
+
+
+
+
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
-' GetJoystickVoltage%
+' GetJoystickVoltage[X/Y]%
 '
-' Returns voltage currently read on joystick channel. Returns 0 if a 
+' Returns voltage currently read on joystick channel X/Y. Returns 0 if a 
 ' value was read, or -1 if the joystick channel was not initialized 
-' (i.e. InitJoystick() was not called), or if there is some other 
+' (i.e. InitJoystick[X/Y/Both]() was not called), or if there is some other 
 ' error (wrong channel number, e.g.). 
-'
-' Note that we currently have only one joystick channel.  If we ever
-' decide to use two channels we'll have to update a ton of stuff.
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-func GetJoystickVoltage%(&v)
+func GetJoystickVoltageX%(&v)
     var status% := -1;
     var data%;
     if jsIsInitialized% <> 0 then
-        v := ChanValue(jsChannelNumber%, MaxTime(), data%);
+        v := ChanValue(jsChannelNumberX%, MaxTime(), data%);
         if data% = 1 then
             status% := 0;
         endif
@@ -201,6 +336,18 @@ func GetJoystickVoltage%(&v)
     return status%;
 end
 
+
+func GetJoystickVoltageY%(&v)
+    var status% := -1;
+    var data%;
+    if jsIsInitialized% <> 0 then
+        v := ChanValue(jsChannelNumberY%, MaxTime(), data%);
+        if data% = 1 then
+            status% := 0;
+        endif
+    endif
+    return status%;
+end
 
 
 
@@ -236,7 +383,7 @@ proc GetJoystickParameters()
     jsExclRIn := GetFloatRegistryValue(key$, "ExclRIn", jsExclRIn);
     jsExclLOut := GetFloatRegistryValue(key$, "ExclLOut", jsExclLOut);
     jsExclROut := GetFloatRegistryValue(key$, "ExclROut", jsExclROut);
-    jsAllowExclusion% := GetIntRegistryValue%(key$, "AllowExclusion", jsAllowExclusion%);
+    jsAllowExclusionX% := GetIntRegistryValue%(key$, "AllowExclusion", jsAllowExclusionX%);
     jsXInverted% := GetIntRegistryValue%(key$, "XInverted", jsXInverted%);
     
     jsC2U := GetFloatRegistryValue(key$, "C2U", jsC2U);
@@ -247,10 +394,11 @@ proc GetJoystickParameters()
     jsExclUOut := GetFloatRegistryValue(key$, "ExclUOut", jsExclUOut);
     jsExclDIn := GetFloatRegistryValue(key$, "ExclDIn", jsExclDIn);
     jsExclDOut := GetFloatRegistryValue(key$, "ExclDOut", jsExclDOut);
-    jsAllowExclusionUD% := GetIntRegistryValue%(key$, "AllowExclusionUD", jsAllowExclusionUD%);
+    jsAllowExclusionY% := GetIntRegistryValue%(key$, "AllowExclusionY", jsAllowExclusionY%);
     jsYInverted% := GetIntRegistryValue%(key$, "YInverted", jsYInverted%);
     
-    joystickOffset := GetFloatRegistryValue(key$, "joystickOffset", joystickOffset);
+    joystickOffsetX := GetFloatRegistryValue(key$, "joystickOffset", joystickOffsetX);
+    joystickOffsetY := GetFloatRegistryValue(key$, "joystickOffsetY", joystickOffsetY);
     return;
 end
 
@@ -277,7 +425,7 @@ proc SaveJoystickParameters()
     SetFloatRegistryValue(key$, "ExclRIn", jsExclRIn);
     SetFloatRegistryValue(key$, "ExclLOut", jsExclLOut);
     SetFloatRegistryValue(key$, "ExclROut", jsExclROut);
-    SetIntRegistryValue(key$, "AllowExclusion", jsAllowExclusion%);
+    SetIntRegistryValue(key$, "AllowExclusion", jsAllowExclusionX%);
     SetIntRegistryValue(key$, "XInverted", jsXInverted%);
     
     SetFloatRegistryValue(key$, "C2U", jsC2U);
@@ -288,10 +436,11 @@ proc SaveJoystickParameters()
     SetFloatRegistryValue(key$, "ExclUOut", jsExclUOut);
     SetFloatRegistryValue(key$, "ExclDIn", jsExclDIn);
     SetFloatRegistryValue(key$, "ExclDOut", jsExclDOut);
-    SetIntRegistryValue(key$, "AllowExclusionUD", jsAllowExclusionUD%);
+    SetIntRegistryValue(key$, "AllowExclusionY", jsAllowExclusionY%);
     SetIntRegistryValue(key$, "YInverted", jsYInverted%);
     
-    SetFloatRegistryValue(key$, "joystickOffset", joystickOffset);
+    SetFloatRegistryValue(key$, "joystickOffset", joystickOffsetX);
+    SetFloatRegistryValue(key$, "joystickOffsetY", joystickOffsetY);
     return;
 end
 
@@ -300,13 +449,13 @@ end
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
-' DisplayJoystickParameters[UD]
+' DisplayJoystickParameters[X/Y]
 '
 ' These functions print current joystick settings to the log file 
 '
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
-proc DisplayJoystickParameters()
+proc DisplayJoystickParametersX()
     PrintLog("**************************************\n\n");
     
     PrintLog("JSCenterToLeft           :  %f\n", jsC2L);
@@ -318,14 +467,14 @@ proc DisplayJoystickParameters()
     PrintLog("JSRightToCenterExclusion :  %f\n", jsExclROut);
     PrintLog("JSCenterToRight          :  %f\n", jsC2R);
     
-    PrintLog("Offset                   :  %f\n", joystickOffset);
-    PrintLog("Allow Exclusion Zones    :  %f\n", jsAllowExclusion%);
+    PrintLog("Offset                   :  %f\n", joystickOffsetX);
+    PrintLog("Allow Exclusion Zones    :  %f\n", jsAllowExclusionX%);
     Printlog("X Inverted               :  %d\n", jsXInverted%);
     PrintLog("\n**************************************\n");
     return;
 end
 
-proc DisplayJoystickParametersUD()  'Same thing, but for up/down
+proc DisplayJoystickParametersY()  'Same thing, but for up/down
     PrintLog("**************************************\n\n");
     
     PrintLog("JSCenterToDown          :  %f\n", jsC2D);
@@ -337,8 +486,8 @@ proc DisplayJoystickParametersUD()  'Same thing, but for up/down
     PrintLog("JSUpExclusionOuter      :  %f\n", jsExclUOut);
     PrintLog("JSCenterToUp            :  %f\n", jsC2U);
     
-    PrintLog("Offset                  :  %f\n", joystickOffset);
-    PrintLog("Allow Exclusion Zones   :  %f\n", jsAllowExclusionUD%);
+    PrintLog("Offset                  :  %f\n", joystickOffsetY);
+    PrintLog("Allow Exclusion Zones   :  %f\n", jsAllowExclusionY%);
     Printlog("Y Inverted              :  %d\n", jsYInverted%);
     PrintLog("\n**************************************\n");
     return;
@@ -349,7 +498,7 @@ end
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
-' GetJoystickPosition%
+' GetJoystickPositionX%
 '
 ' Tests current voltage from joystick channel and determines position, 
 ' either JSLeft%, JSCenter%, JSRight% or JSUndefined%. If JoystickInit()
@@ -358,7 +507,7 @@ end
 ' We have now implemented an "exclusion zone" (over my philosophical
 ' objections) which returns JSUndefined%. This exclusion zone is double
 ' gated, which means that for the exclusion zone to be active, it must
-' both be selected in the dialog (jsAllowExclusion%) AND toggled on in
+' both be selected in the dialog (jsAllowExclusionX%) AND toggled on in
 ' the main code (jsUseExclusion%). The general idea is for the exclusion
 ' zone to operate during a mandatory "hold" period (e.g. during the S1
 ' for an S1-S2 stimulus pair) and then to be disabled with the code
@@ -374,26 +523,26 @@ end
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 
-func GetJoystickPosition%(&v)
+func GetJoystickPositionX%(&v)
     var pos% := JSError%;
     var s%;
     
     'Removing debug dialog from earlier version, return undefined if joystick channel is negative
-    if jsIsInitialized% <> 0 and jsChannelNumber% < 0 then
+    if jsIsInitialized% <> 0 and jsChannelNumberX% < 0 then
         pos% := JSUndefined%;
     else
-        s% := GetJoystickVoltage%(v);
+        s% := GetJoystickVoltageX%(v);
         if jsXInverted% = 1 then 'invert voltage if necessary
             v := -v;
         endif;
         
         if s% = 0 then
             docase
-            case jsAllowExclusion% = 1 and jsUseExclusion% = 1 and v > jsExclLOut and v < jsExclLIn then
+            case jsAllowExclusionX% = 1 and jsUseExclusion% = 1 and v > jsExclLOut and v < jsExclLIn then
                 pos% := JSUndefined%;  'we don't care what the previous position was, if you are in the exclusion zone while it is in use, that's a no-no
-            case jsAllowExclusion% = 1 and jsUseExclusion% = 1 and v > jsExclRIn and v < jsExclROut then
+            case jsAllowExclusionX% = 1 and jsUseExclusion% = 1 and v > jsExclRIn and v < jsExclROut then
                 pos% := JSUndefined%;  'we don't care what the previous position was, if you are in the exclusion zone while it is in use, that's a no-no    
-            case jsPrevPos% = JSLeft% then  'if the joystick was left, use "inner" left threshold
+            case jsPrevPosX% = JSLeft% then  'if the joystick was left, use "inner" left threshold
                 docase
                 case v <= jsL2C then
                     pos% := JSLeft%;
@@ -402,7 +551,7 @@ func GetJoystickPosition%(&v)
                 else
                     pos% := JSRight%;
                 endcase
-            case jsPrevPos% = JSRight% then   'if the joystick was right, use "inner" right threshold
+            case jsPrevPosX% = JSRight% then   'if the joystick was right, use "inner" right threshold
                 docase
                 case v <= jsC2L then
                     pos% := JSLeft%;
@@ -425,7 +574,7 @@ func GetJoystickPosition%(&v)
     endif
     
     if pos% <> JSUndefined% then
-        jsPrevPos% := pos%;  'Keep a record of the most recent joystick position, except for undefined
+        jsPrevPosX% := pos%;  'Keep a record of the most recent joystick position, except for undefined
     endif
     
     return pos%;
@@ -434,7 +583,7 @@ end
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
-' GetJoystickPositionUD%
+' GetJoystickPositionY%
 '
 ' Tests current voltage from joystick channel and determines position, 
 ' either JSDown%, JSCenter%, JSUp% or JSUndefined%. If JoystickInit()
@@ -443,7 +592,7 @@ end
 ' We have now implemented an "exclusion zone" (over my philosophical
 ' objections) which returns JSUndefined%. This exclusion zone is double
 ' gated, which means that for the exclusion zone to be active, it must
-' both be selected in the dialog (jsAllowExclusion%) AND toggled on in
+' both be selected in the dialog (jsAllowExclusionY%) AND toggled on in
 ' the main code (jsUseExclusion%). The general idea is for the exclusion
 ' zone to operate during a mandatory "hold" period (e.g. during the S1
 ' for an S1-S2 stimulus pair) and then to be disabled with the code
@@ -459,26 +608,26 @@ end
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 
-func GetJoystickPositionUD%(&v)
+func GetJoystickPositionY%(&v)
     var pos% := JSError%;
     var s%;
     
     'Removing debug dialog from eariler version, return undefined if joystick channel is negative
-    if jsIsInitialized% <> 0 and jsChannelNumber% < 0 then
+    if jsIsInitialized% <> 0 and jsChannelNumberY% < 0 then
         pos% := JSUndefined%;
     else
-        s% := GetJoystickVoltage%(v); 'invert voltage if necessary
+        s% := GetJoystickVoltageY%(v); 'invert voltage if necessary
         if jsYInverted% = 1 then
             v := -v;
         endif;
 
         if s% = 0 then
             docase
-            case jsAllowExclusionUD% = 1 and jsUseExclusion% = 1 and v > jsExclDOut and v < jsExclDIn then
+            case jsAllowExclusionY% = 1 and jsUseExclusion% = 1 and v > jsExclDOut and v < jsExclDIn then
                 pos% := JSUndefined%;  'we don't care what the previous position was, if you are in the exclusion zone while it is in use, that's a no-no
-            case jsAllowExclusionUD% = 1 and jsUseExclusion% = 1 and v > jsExclUIn and v < jsExclUOut then
+            case jsAllowExclusionY% = 1 and jsUseExclusion% = 1 and v > jsExclUIn and v < jsExclUOut then
                 pos% := JSUndefined%;  'we don't care what the previous position was, if you are in the exclusion zone while it is in use, that's a no-no 
-            case jsPrevPos% = JSDown% then  'if the joystick was down, use "inner" down threshold
+            case jsPrevPosY% = JSDown% then  'if the joystick was down, use "inner" down threshold
                 docase
                 case v <= jsD2C then
                     pos% := JSDown%;
@@ -487,7 +636,7 @@ func GetJoystickPositionUD%(&v)
                 else
                     pos% := JSUp%;
                 endcase
-            case jsPrevPos% = JSUp% then   'if the joystick was up, use "inner" up threshold
+            case jsPrevPosY% = JSUp% then   'if the joystick was up, use "inner" up threshold
                 docase
                 case v <= jsC2D then
                     pos% := JSDown%;
@@ -510,7 +659,7 @@ func GetJoystickPositionUD%(&v)
     endif
     
     if pos% <> JSUndefined% then
-        jsPrevPos% := pos%;  'Keep a record of the most recent joystick position, except for undefined
+        jsPrevPosY% := pos%;  'Keep a record of the most recent joystick position, except for undefined
     endif
     
     return pos%;
@@ -518,14 +667,13 @@ end
 
 
 
-func JoystickConfigDialog%()   'This is only mildly different from the proc of same name (minus the %) 
-                               'Since it appears nothing actually calls the proc I have not updated it
-    
+func JoystickConfigDialogX%()   
+                               
     var status%;
     
     GetJoystickParameters();
     
-    DlgCreate("Joystick Configuration", 40, 40);
+    DlgCreate("Joystick X Configuration", 40, 40);
                                                      'Note: Left voltage is small (or negative), Right voltage is large (or positive)
     DlgReal(1,"(1) Center-to-Left Voltage",-20,20);  '+/-20V should cover the range of any imaginable joystick
     DlgReal(2,"(2) Outer Exclusion Voltage",-20,20);  'Callback function will check legality of values
@@ -539,10 +687,98 @@ func JoystickConfigDialog%()   'This is only mildly different from the proc of s
     
     DlgCheck(9,"Allow Exclusion Zones");
     DlgCheck(10,"Invert X Voltage");
-    DlgButton(101, "Set Joystick Offset", SetJoystickOffset%, 1, 11); 
+    DlgButton(101, "Set Joystick Offset", SetJoystickOffsetX%, 1, 11); 
     DlgAllow(0, 0, JoystickDialogCheck%);    
     
-    status% := DlgShow(jsC2L,jsExclLOut,jsExclLIn,jsL2C,jsR2C,jsExclRIn,jsExclROut,jsC2R,jsAllowExclusion%,jsXInverted%);
+    status% := DlgShow(jsC2L,jsExclLOut,jsExclLIn,jsL2C,jsR2C,jsExclRIn,jsExclROut,jsC2R,jsAllowExclusionX%,jsXInverted%);
+    
+    if status% = 1 then
+        PrintLog("Status = 1\n");
+        SaveJoystickParameters();
+    endif
+    
+    return 1;  'return of >0 allows calling dialog to remain open, return 1 whether the dialog is OKed or cancelled.
+end
+
+
+
+func JoystickConfigDialogY%()   
+                                 
+    var volts:=0.0;  'please note that the value here is competely unused
+    var iNoGaps% := 0;
+    var status%;
+    
+    GetJoystickParameters();
+    
+    DlgCreate("Joystick Y Configuration", 40, 40);
+                                                     'Note: Down voltage is small (or negative), Up voltage is large (or positive)    
+    DlgReal(1,"(1) Center-to-Down Voltage",-20,20);  '+/-20V should cover the range of any imaginable joystick
+    DlgReal(2,"(2) Outer Exclusion Voltage",-20,20);  'Callback function will check legality of values
+    DlgReal(3,"(3) Inner Exclusion Voltage",-20,20);
+    DlgReal(4,"(4) Down-to-Center Voltage",-20,20);  
+    
+    DlgReal(5,"(5) Up-to-Center Exclusion Voltage",-20,20);
+    DlgReal(6,"(6) Inner Exclusion Voltage",-20,20); 
+    DlgReal(7,"(7) Outer Exclusion Voltage",-20,20);  
+    DlgReal(8,"(8) Center-to-Up Exclusion Voltage",-20,20);
+
+    DlgCheck(9,"Allow Exclusion Zones");
+    DlgCheck(10,"Invert Y Voltage");
+    DlgButton(101, "Set Joystick Offset", SetJoystickOffsetY%, 1, 11); 
+    DlgAllow(0, 0, JoystickDialogCheck%);    
+    
+    status% := DlgShow(jsC2D,jsExclDOut,jsExclDIn,jsD2C,jsU2C,jsExclUIn,jsExclUOut,jsC2U,jsAllowExclusionY%,jsYInverted%);
+
+    if status% = 1 then
+        PrintLog("Status = 1\n");
+        SaveJoystickParameters();
+    endif
+    
+    return 1;  'return of >0 allows calling dialog to remain open, return 1 whether the dialog is OKed or cancelled.
+end
+
+
+func JoystickConfigDialogBoth%()   
+                               
+    var status%;
+    
+    GetJoystickParameters();
+    
+    DlgCreate("Joystick X/Y Configuration", 40, 40);
+                                                     'Note: Left voltage is small (or negative), Right voltage is large (or positive)
+    DlgReal(1,"(1) Center-to-Left Voltage",-20,20);  '+/-20V should cover the range of any imaginable joystick
+    DlgReal(2,"(2) Outer Exclusion Voltage",-20,20);  'Callback function will check legality of values
+    DlgReal(3,"(3) Inner Exclusion Voltage",-20,20); 
+    DlgReal(4,"(4) Left-to-Center Voltage",-20,20);  
+    
+    DlgReal(5,"(5) Right-to-Center Voltage",-20,20);
+    DlgReal(6,"(6) Inner Exclusion Voltage",-20,20);  
+    DlgReal(7,"(7) Outer Exclusion Voltage",-20,20);
+    DlgReal(8,"(8) Center-to-Right Voltage",-20,20);  
+    
+                                                     'Note: Down voltage is small (or negative), Up voltage is large (or positive)
+    DlgReal(9,"(9) Center-to-Down Voltage",-20,20);  '+/-20V should cover the range of any imaginable joystick
+    DlgReal(10,"(10) Outer Exclusion Voltage",-20,20);  'Callback function will check legality of values
+    DlgReal(11,"(11) Inner Exclusion Voltage",-20,20);
+    DlgReal(12,"(12) Down-to-Center Voltage",-20,20);  
+    
+    DlgReal(13,"(13) Up-to-Center Exclusion Voltage",-20,20);
+    DlgReal(14,"(14) Inner Exclusion Voltage",-20,20); 
+    DlgReal(15,"(15) Outer Exclusion Voltage",-20,20);  
+    DlgReal(16,"(16) Center-to-Up Exclusion Voltage",-20,20);
+    
+    
+    
+    DlgCheck(17,"Allow Exclusion Zones X");
+    DlgCheck(18,"Allow Exclusion Zones Y");
+    DlgCheck(19,"Invert X Voltage");
+    DlgCheck(20,"Invert Y Voltage");
+    DlgButton(101, "Set Joystick Offset", SetJoystickOffsetBoth%, 1, 11); 
+    DlgAllow(0, 0, JoystickDialogCheckBoth%);    
+    
+    status% := DlgShow(jsC2L,jsExclLOut,jsExclLIn,jsL2C,jsR2C,jsExclRIn,jsExclROut,jsC2R,
+                       jsC2D,jsExclDOut,jsExclDIn,jsD2C,jsU2C,jsExclUIn,jsExclUOut,jsC2U,
+                       jsAllowExclusionX%,jsAllowExclusionY%,jsXInverted%,jsYInverted%);
     
     if status% = 1 then
         PrintLog("Status = 1\n");
@@ -596,45 +832,77 @@ end
 
 
 
-func JoystickConfigDialogUD%()   'This is only mildly different from the proc of same name (minus the %) 
-                                 'Since it appears nothing actually calls the proc I have not updated it
+func JoystickDialogCheckBoth%(item%)
+    var status% := 1;
     
-    var volts:=0.0;  'please note that the value here is competely unused
-    var iNoGaps% := 0;
-    var status%;
+    'Enable/disable exclusion zone dialog entries for X
+    DlgEnable(DlgValue(17),2);
+    DlgEnable(DlgValue(17),3);
+    DlgEnable(DlgValue(17),6);
+    DlgEnable(DlgValue(17),7);
     
-    GetJoystickParameters();
-    
-    DlgCreate("Joystick Configuration (up/down)", 40, 40);
-                                                     'Note: Down voltage is small (or negative), Up voltage is large (or positive)    
-    DlgReal(1,"(1) Center-to-Down Voltage",-20,20);  '+/-20V should cover the range of any imaginable joystick
-    DlgReal(2,"(2) Outer Exclusion Voltage",-20,20);  'Callback function will check legality of values
-    DlgReal(3,"(3) Inner Exclusion Voltage",-20,20);
-    DlgReal(4,"(4) Down-to-Center Voltage",-20,20);  
-    
-    DlgReal(5,"(5) Up-to-Center Exclusion Voltage",-20,20);
-    DlgReal(6,"(6) Inner Exclusion Voltage",-20,20); 
-    DlgReal(7,"(7) Outer Exclusion Voltage",-20,20);  
-    DlgReal(8,"(8) Center-to-Up Exclusion Voltage",-20,20);
-
-    DlgCheck(9,"Allow Exclusion Zones");
-    DlgCheck(10,"Invert Y Voltage");
-    DlgButton(101, "Set Joystick Offset", SetJoystickOffset%, 1, 11); 
-    DlgAllow(0, 0, JoystickDialogCheck%);    
-    
-    status% := DlgShow(jsC2D,jsExclDOut,jsExclDIn,jsD2C,jsU2C,jsExclUIn,jsExclUOut,jsC2U,jsAllowExclusionUD%,jsYInverted%);
-
-    if status% = 1 then
-        PrintLog("Status = 1\n");
-        SaveJoystickParameters();
+    'Check for legality of values for X
+    if DlgValue(17) = 0 then  'Don't bother checking exclusion zones if they are not used
+        DlgEnable(1,-1);  'Enable OK, we will fix errors if exclusion zones aren't used
+        if DlgValue(4) < DlgValue(1) then
+            message("Error: (4) must be >= (1)");
+            DlgValue(4,DlgValue(1));
+        endif
+        if DlgValue(8) < DlgValue(5) then
+            message("Error: (8) must be >= (5)");
+            DlgValue(8,DlgValue(5));
+        endif
+    else  'If exclusion zones are used, check more extensively, this is too tough to "fix"
+        DlgEnable(1,-1);  'Enable OK by default, but disable if exclusion zone values are wrong
+        if DlgValue(4) < DlgValue(3) or DlgValue(3) < DlgValue(2) or DlgValue(2) < DlgValue(1) then
+            message("Error: (4) must be >= (3) must be >= (2) must be >= (1)");
+            DlgEnable(0,-1);  'Disable OK
+        endif
+        if DlgValue(8) < DlgValue(7) or DlgValue(7) < DlgValue(6) or DlgValue(6) < DlgValue(5) then
+            message("Error: (8) must be >= (7) must be >= (6) must be >= (5)");
+            DlgEnable(0,-1);  'Disable OK
+        endif
     endif
     
-    return 1;  'return of >0 allows calling dialog to remain open, return 1 whether the dialog is OKed or cancelled.
+    
+    'Enable/disable exclusion zone dialog entries for Y
+    DlgEnable(DlgValue(18),10);
+    DlgEnable(DlgValue(18),11);
+    DlgEnable(DlgValue(18),14);
+    DlgEnable(DlgValue(18),15);
+    
+    'Check for legality of values for Y
+    if DlgValue(18) = 0 then  'Don't bother checking exclusion zones if they are not used
+        DlgEnable(9,-1);  'Enable OK, we will fix errors if exclusion zones aren't used
+        if DlgValue(12) < DlgValue(9) then
+            message("Error: (12) must be >= (9)");
+            DlgValue(12,DlgValue(9));
+        endif
+        if DlgValue(16) < DlgValue(13) then
+            message("Error: (16) must be >= (13)");
+            DlgValue(16,DlgValue(13));
+        endif
+    else  'If exclusion zones are used, check more extensively, this is too tough to "fix"
+        DlgEnable(9,-1);  'Enable OK by default, but disable if exclusion zone values are wrong
+        if DlgValue(12) < DlgValue(11) or DlgValue(11) < DlgValue(10) or DlgValue(10) < DlgValue(9) then
+            message("Error: (12) must be >= (11) must be >= (10) must be >= (9)");
+            DlgEnable(0,-1);  'Disable OK
+        endif
+        if DlgValue(16) < DlgValue(15) or DlgValue(15) < DlgValue(14) or DlgValue(14) < DlgValue(13) then
+            message("Error: (16) must be >= (15) must be >= (14) must be >= (13)");
+            DlgEnable(0,-1);  'Disable OK
+        endif
+    endif
+    
+
+    
+    if SampleStatus() > -1 then 'if we are currently sampling, or prepared to sample, don't allow calibration
+        DlgEnable(0,-101);
+    else
+        DlgEnable(1,-101);
+    endif;
+    return status%;
 end
-
-
-
-
 
 
 

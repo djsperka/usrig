@@ -865,7 +865,7 @@ func ConteTaskDialog%()
     DlgCheck(ctDlgAlwaysPressing%,"Always Pressing?",c1%,hDlg%-2);
     DlgCheck(ctDlgBorder%,"Border On",c33%,hDlg%-2);
     
-    DlgButton(51, "Joystick Dialog", CallJoystickConfigDialogUD%,2,hDlg%-1);
+    DlgButton(51, "Joystick Dialog", CallJoystickConfigDialogY%,2,hDlg%-1);
 
     DlgAllow(0, 0, ConteTaskDialogChanged%);
     
@@ -2128,10 +2128,10 @@ proc CreateSampleConfiguration()
 	SampleTitle$(AdvanceChannel%,"Advance");
     
     'Create joystick channel, ALL scenarios will use the joystick 
-    printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPort%());
+    printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPortY%());
     var ok%;
-    ok%:=SampleWaveform(JoyChannel%, GetJoystickPort%(), 1000);
-    SampleTitle$(JoyChannel%, JoystickPortLabel$);
+    ok%:=SampleWaveform(JoyChannel%, GetJoystickPortY%(), 1000);
+    SampleTitle$(JoyChannel%, JoystickPortLabelY$);
     if ok% < 0 then
         printlog("Error opening joystick channel: %s\n",Error$(ok%));
     endif;
@@ -2393,7 +2393,7 @@ proc InitializeToolbar()
 	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
 	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
     ToolbarSet(6,"Select Wavemarks",SelectWavemarkDialog%);   'this may be an older unused functionality??
-    ToolbarSet(7,"Adjust Joystick",CallJoystickConfigDialogUD%);
+    ToolbarSet(7,"Adjust Joystick",CallJoystickConfigDialogY%);
 	ToolbarSet(8,"Quit",Quit%);
 	ToolbarEnable(2,0);
 	ToolbarEnable(4,0);
@@ -3129,9 +3129,9 @@ func Start%()
     'Set values for the joystick
     GetJoystickParameters();  'get voltage values for thresholds, offset
     'Change offset of joystick channel
-    View(DataWindow%).ChanOffset(JoyChannel%,joystickOffset);  'use value from registry
-    InitJoystick2(JoyChannel%,GetJoystickPort%());  'initialize the joystick
-    DisplayJoystickParametersUD();  'write values to log file
+    View(DataWindow%).ChanOffset(JoyChannel%,joystickOffsetY);  'use value from registry
+    InitJoystickY(JoyChannel%,GetJoystickPortY%());  'initialize the joystick
+    DisplayJoystickParametersY();  'write values to log file
     
     'set YRange for JoyChannel...was [0 1] for some reason, that's not good
     View(DataWindow%).YRange(JoyChannel%,-1,1);  '[-5 5] ain't great, we can do [-1 1] because the voltage off this baby is not huge (more like [-0.5 0.6])
@@ -3396,7 +3396,7 @@ end;
 
 
 
-func CallJoystickConfigDialogUD%()
+func CallJoystickConfigDialogY%()
     'This function was written simply to prevent "odd" autonaming of files when saving joystick calibration data
     'Unfortunately, there doesn't seem to be a way to *not* save the data as SampleStop automatically saves it, so
     'this is the next best thing.  Should work for either dialog-based or toolbar-based calls of Joystick config
@@ -3413,7 +3413,7 @@ func CallJoystickConfigDialogUD%()
     
     DoSampleAutoName(key$,"joystick","joy",primaryTxt$,secondaryTxt$);    
     
-    JoystickConfigDialogUD%();
+    JoystickConfigDialogY%();
     
     'Set autoname back to what it should be once we return
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
@@ -3812,7 +3812,7 @@ func Answer%(goForward%)
     
     
     if ChanKind(JoyChannel%) > 0 then  'if the channel does not exist, return -2 (was 0, but 0 is now used as a meaningful output)
-        ans% := GetJoystickPositionUD%(v);   
+        ans% := GetJoystickPositionY%(v);   
     else
         ans% := -2;
     endif;

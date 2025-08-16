@@ -52,7 +52,7 @@ var dhChanJoystickRangeC%;
 var dhChanJoystickRangeR%;
 var dhVCoeff;
 var dhVConst;
-var dhJoystickDisplayY;  'no X?
+var dhJoystickDisplayY;  'Joystick is using X axis, but this is a display thing
 
 ' xy windows for plotting (TuningWindow) and PSTH. 
 var TuningWindow%[16];	' one for each wavemark channel
@@ -224,7 +224,7 @@ ButtonPort% := 5;  'This appears to be correct
 JoyChannel% := 13;
 
 
-InitJoystick2(JoyChannel%,GetJoystickPort%());
+InitJoystickX(JoyChannel%,GetJoystickPortX%());
 
 if dhIsHuman% = 0 then
     ' Fetch electrode information. 
@@ -331,8 +331,8 @@ proc CreateSampleConfiguration()
         
         'Set up joystick channel if using joystick, monkey only
         if dhUseJoystick% = 1 then
-            SampleWaveform(JoyChannel%, GetJoystickPort%(), 1000);
-            SampleTitle$(JoyChannel%, "Joy");
+            SampleWaveform(JoyChannel%, GetJoystickPortX%(), 1000);
+            SampleTitle$(JoyChannel%, "Joy X");
         endif;
         
     else 'if human, set up button channel
@@ -1105,7 +1105,7 @@ func IdleProcessing%()
         
         ' Get and display joystick voltage and position
         if dhUseJoystick% = 1 then
-            joystickPosition% := View(DataWindow%).GetJoystickPosition%(joystickVoltage);
+            joystickPosition% := View(DataWindow%).GetJoystickPositionX%(joystickVoltage);
         endif;
         
         'But only update eye position/joystick DISPLAY every 5 ms....

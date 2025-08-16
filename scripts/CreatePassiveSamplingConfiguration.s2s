@@ -17,7 +17,9 @@ var index;
 var key$;
 var XChannel%;
 var YChannel%;
-var JoyChannel%;
+var JoyChannelX%;
+var JoyChannelY%;
+var ok%;
 
 key$:="AlertRig\\" + GetCurrentConfiguration$() + "\\Temp\\Filepref";
 SampleClear(); 'Set standard sampling state
@@ -26,8 +28,9 @@ SampleChannels(64);  '32 does not work, we need more!
 ' Assign necessary channel numbers
 XChannel% := 23;
 YChannel% := 24;
-JoyChannel% := 22;
-ExcludedChans%[0] := 22;  'Joystick is lowest non-electrode channel used by this function
+JoyChannelX% := 21;
+JoyChannelY% := 22;
+ExcludedChans%[0] := 21;  'Joystick is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 35;  'This parallels the current CuedAtten, though not all the dig in channels are created
 
 
@@ -38,12 +41,17 @@ SampleAutoFile(1);  'Enable automatic file naming
 SampleAutoComment(0); 'Prompt for comment after sampling
 SampleAutoCommit(60); 'Seconds between each file commit
 
-'If the config requests a joystick port
-if JoystickPort% >= 0 then 
-    printlog("Joy channel is %d and joystick port is %d\n", JoyChannel%, GetJoystickPort%());
-    var ok%;
-    ok%:=SampleWaveform(JoyChannel%, GetJoystickPort%(), 1000);
-    SampleTitle$(JoyChannel%, "Joy");
+'If the config requests either joystick port
+if JoystickPortX% >= 0 then 
+    printlog("Joy X channel is %d and joystick X port is %d\n", JoyChannelX%, GetJoystickPortX%());
+    ok%:=SampleWaveform(JoyChannelX%, GetJoystickPortX%(), 1000);
+    SampleTitle$(JoyChannelX%, "Joy X");
+endif;
+
+if JoystickPortY% >= 0 then 
+    printlog("Joy Y channel is %d and joystick Y port is %d\n", JoyChannelY%, GetJoystickPortY%());
+    ok%:=SampleWaveform(JoyChannelY%, GetJoystickPortY%(), 1000);
+    SampleTitle$(JoyChannelY%, "Joy Y");
 endif;
 
 'Set up eye channels, normally this would NOT be independent for X/Y, but who know what wacky thing we might want to do in testing

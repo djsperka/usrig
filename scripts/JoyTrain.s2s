@@ -82,7 +82,7 @@ StimChangeChannel% := 28;
 ReadyChannel% := 29;
 
 LogInit(1);
-InitJoystick2(JoyChannel%,GetJoystickPort%()); 'now calls InitJoystick2 - we must do this BEFORE calling the main dialog
+InitJoystickY(JoyChannel%,GetJoystickPortY%()); 'now calls InitJoystickY - we must do this BEFORE calling the main dialog
 
 
 ' Check for valid data file path
@@ -222,7 +222,7 @@ func CallJoystickConfigDialog%()
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1);
     SampleAutoName$(dataCellName$ + "_joystick_000");  'NOTE: maximum of 13 characters!!!    
     
-    JoystickConfigDialog%();
+    JoystickConfigDialogY%();
     
     'Set autoname back to what it should be once we return
     FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3);
@@ -385,11 +385,11 @@ func Start%()
     SampleStart(0); 'Start sampling now
     
     'Change offset of joystick channel
-    View(DataWindow%).ChanOffset(JoyChannel%,joystickOffset);  'use value from registry
+    View(DataWindow%).ChanOffset(JoyChannel%,joystickOffsetY);  'use value from registry
     
-    'Set value of right/left joystick
+    'Set value of up/Down joystick
     GetJoystickParameters();  'now we run the joystick functions from Sperka, should work smoothly
-    DisplayJoystickParameters();
+    DisplayJoystickParametersY();
     
     
     ' Set Sequencer Variable #3 based on juicer type 
@@ -709,14 +709,14 @@ func JoyAnswer%(chan%,now)
     'v := ChanValue(chan%,now);
     'printlog("voltage is %f\n",v);
     if ChanKind(chan%) > 0 then  'if the channel does not exist, return 0
-        ans% := GetJoystickPosition%(v);   
+        ans% := GetJoystickPositionY%(v);   
     else
         ans% := 0;
     endif;
         
     
     if ans% = -1 then
-        printlog("There has been an error in reading the joystick!  GetJoystickPosition% has returned -1!\n");
+        printlog("There has been an error in reading the joystick!  GetJoystickPositionY% has returned -1!\n");
     endif
     
     
