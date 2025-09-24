@@ -792,7 +792,7 @@ func ConteTaskDialog%()
     DlgReal(ctDlgSampleToTargetDelay%,wNum%,0,100,c23%+1,sTime%+3);  ctTxtSampleToTargetDelay% := DlgText("Sample to Test gap (s)",c23%+wNum%+2,sTime%+3);
     DlgReal(ctDlgTargetDuration%,wNum%,0.01,100,c33%+1,sTime%+3);  ctTxtTargetDuration% := DlgText("Test duration (s)",c33%+wNum%+2,sTime%+3);
     DlgReal(ctDlgAbort%,wNum%,0,100,c1%+1,sTime%+4);  ctTxtAbort% := DlgText("Abort penalty (s)",c1%+wNum%+2,sTime%+4);
-    DlgReal(ctDlgFAPenalty%,wNum%,0,100,c23%+1,sTime%+4);  ctTxtFAPenalty% := DlgText("False Alarm penalty (s)",c23%+wNum%+2,sTime%+4);
+    DlgReal(ctDlgFAPenalty%,wNum%,0,100,c23%+1,sTime%+4);  ctTxtFAPenalty% := DlgText("FA penalty (disabled, FA=Abort)",c23%+wNum%+2,sTime%+4);
     DlgReal(ctDlgMissPenalty%,wNum%,0,100,c33%+1,sTime%+4);  ctTxtMissPenalty% := DlgText("Miss penalty (s)",c33%+wNum%+2,sTime%+4);
     
     
@@ -821,13 +821,13 @@ func ConteTaskDialog%()
     DlgInteger(ctDlgPanelLinePixels%,wNum%,1,100,c23%+1,sStim%+4);  ctTxtPanelLinePixels% := DlgText("Cue Rect line width (pixels)",c23%+wNum%+2,sStim%+4);
     DlgCheck(ctDlgPanelIsHoriz%,"Panel orientation horizontal",c33%+1,sStim%+4);
     
-    DlgGroup("Stimulus Contrasts",1,sStimCont%,wDlg%-2,hStimCont%);
-    DlgInteger(ctDlgGaborCuedCont%,wNum%,0,100,c1%+1,sStimCont%+1);  ctTxtGaborCuedCont% := DlgText("Cued Gabor Contrast (0-100)",c1%+wNum%+2,sStimCont%+1);
-    DlgInteger(ctDlgFlankerCuedCont%,wNum%,0,100,c23%+1,sStimCont%+1);  ctTxtFlankerCuedCont% := DlgText("Cued Flanker Contrast (0-100)",c23%+wNum%+2,sStimCont%+1);
-    DlgInteger(ctDlgCueRectCuedCont%,wNum%,0,100,c33%+1,sStimCont%+1);  ctTxtCueRectCuedCont% := DlgText("Cued Cue Rect Contrast (0-100)",c33%+wNum%+2,sStimCont%+1);
-    DlgInteger(ctDlgGaborUncuedCont%,wNum%,0,100,c1%+1,sStimCont%+2);  ctTxtGaborUncuedCont% := DlgText("Uncued Gabor Contrast (0-100)",c1%+wNum%+2,sStimCont%+2);
-    DlgInteger(ctDlgFlankerUncuedCont%,wNum%,0,100,c23%+1,sStimCont%+2);  ctTxtFlankerUncuedCont% := DlgText("Uncued Flanker Contrast (0-100)",c23%+wNum%+2,sStimCont%+2);
-    DlgInteger(ctDlgCueRectUncuedCont%,wNum%,0,100,c33%+1,sStimCont%+2);  ctTxtCueRectUncuedCont% := DlgText("Uncued Cue Rect Contrast (0-100)",c33%+wNum%+2,sStimCont%+2);  
+    DlgGroup("Stimulus Contrast Fade-In Percentages",1,sStimCont%,wDlg%-2,hStimCont%);
+    DlgInteger(ctDlgGaborCuedCont%,wNum%,0,100,c1%+1,sStimCont%+1);  ctTxtGaborCuedCont% := DlgText("Cued Gabor Fade In (==100)",c1%+wNum%+2,sStimCont%+1);
+    DlgInteger(ctDlgFlankerCuedCont%,wNum%,0,100,c23%+1,sStimCont%+1);  ctTxtFlankerCuedCont% := DlgText("Cued Flanker Fade In (0-100)",c23%+wNum%+2,sStimCont%+1);
+    DlgInteger(ctDlgCueRectCuedCont%,wNum%,0,100,c33%+1,sStimCont%+1);  ctTxtCueRectCuedCont% := DlgText("Cued Cue Rect Fade In (0-100)",c33%+wNum%+2,sStimCont%+1);
+    DlgInteger(ctDlgGaborUncuedCont%,wNum%,0,100,c1%+1,sStimCont%+2);  ctTxtGaborUncuedCont% := DlgText("Uncued Gabor Fade In (0-100)",c1%+wNum%+2,sStimCont%+2);
+    DlgInteger(ctDlgFlankerUncuedCont%,wNum%,0,100,c23%+1,sStimCont%+2);  ctTxtFlankerUncuedCont% := DlgText("Uncued Flanker Fade In (0-100)",c23%+wNum%+2,sStimCont%+2);
+    DlgInteger(ctDlgCueRectUncuedCont%,wNum%,0,100,c33%+1,sStimCont%+2);  ctTxtCueRectUncuedCont% := DlgText("Uncued Cue Rect Fade In (0-100)",c33%+wNum%+2,sStimCont%+2);  
     
     
     
@@ -991,6 +991,7 @@ func ConteTaskDialogChanged%(item%)
     
     'Just kill the FA penalty as there's technically no FA possible...lazier than extracting it at this point
     DlgEnable(0,ctDlgFAPenalty%);
+    DlgEnable(0,ctTxtFAPenalty%);
     
     'Force value of ctDlgNDistractorOff% if ctDlgNDistractorOn% is 0
     if DlgValue(ctDlgNDistractorOn%) = 0 then
@@ -1091,8 +1092,8 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(1,ctDlgGaborUncuedCont%,ctTxtGaborUncuedCont%);
         DlgEnable(1,ctDlgFlankerCuedCont%,ctTxtFlankerCuedCont%);
         DlgEnable(1,ctDlgFlankerUncuedCont%,ctTxtFlankerUncuedCont%);
-        DlgEnable(1,ctDlgSampleDurationMin%,ctTxtSampleDurationMin%);
-        DlgEnable(1,ctDlgSampleDurationVar%,ctTxtSampleDurationVar%);
+        'DlgEnable(1,ctDlgSampleDurationMin%,ctTxtSampleDurationMin%);
+        'DlgEnable(1,ctDlgSampleDurationVar%,ctTxtSampleDurationVar%);
         DlgEnable(1,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
         DlgEnable(1,ctDlgTargetDuration%,ctTxtTargetDuration%);
     else
@@ -1107,8 +1108,8 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(0,ctDlgGaborUncuedCont%,ctTxtGaborUncuedCont%);
         DlgEnable(0,ctDlgFlankerCuedCont%,ctTxtFlankerCuedCont%);
         DlgEnable(0,ctDlgFlankerUncuedCont%,ctTxtFlankerUncuedCont%);
-        DlgEnable(0,ctDlgSampleDurationMin%,ctTxtSampleDurationMin%);
-        DlgEnable(0,ctDlgSampleDurationVar%,ctTxtSampleDurationVar%);
+        'DlgEnable(0,ctDlgSampleDurationMin%,ctTxtSampleDurationMin%);
+        'DlgEnable(0,ctDlgSampleDurationVar%,ctTxtSampleDurationVar%);
         DlgEnable(0,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
         DlgEnable(0,ctDlgTargetDuration%,ctTxtTargetDuration%);
     endif
@@ -1116,8 +1117,8 @@ func ConteTaskDialogChanged%(item%)
     
     'If there are any full trials, enable sample-to-test and test duration, min invalid rate 
     if DlgValue(ctDlgCountFull%) > 0 then
-        DlgEnable(1,ctDlgSampleDurationMin%,ctTxtSampleDurationMin%);
-        DlgEnable(1,ctDlgSampleDurationVar%,ctTxtSampleDurationVar%);
+        'DlgEnable(1,ctDlgSampleDurationMin%,ctTxtSampleDurationMin%);
+        'DlgEnable(1,ctDlgSampleDurationVar%,ctTxtSampleDurationVar%);
         DlgEnable(1,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
         DlgEnable(1,ctDlgTargetDuration%,ctTxtTargetDuration%);
         DlgEnable(1,ctDlgMinInvalidRate%,ctTxtMinInvalidRate%);
@@ -1365,7 +1366,7 @@ func IdleProcessing%()
                     TextForSample$ := "Target; ";
                     TextForSample$ += "CueRectCont " + Str$(samp1CueRectContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(samp2CueRectContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";
                     docase
-                    case validity%[ctTrialOrder%[nTrialsCompleted%]] = -1 then
+                    case validity%[ctTrialOrder%[nTrialsCompleted%]] = -1 then  'Currently no scenarios allow catch trials (validity = -1) but here we are ready if that changes
                         TextForSample$ += "NoChange,";
                     case validity%[ctTrialOrder%[nTrialsCompleted%]] = 0 then
                         TextForSample$ += "Invalid,";
@@ -1488,7 +1489,7 @@ func IdleProcessing%()
                         TextForTest$ += "HorizFlankerCont " + Str$(test1FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "," + Str$(test2FlankerContrast%[ctTrialOrder%[nTrialsCompleted%]]) + "; ";  'horizontal flankers
                     endcase
                     docase
-                    case validity%[ctTrialOrder%[nTrialsCompleted%]] = -1 then
+                    case validity%[ctTrialOrder%[nTrialsCompleted%]] = -1 then  'Currently no scenarios allow catch trials (validity = -1) but here we are ready if that changes
                         TextForTest$ += "NoChange,";
                     case validity%[ctTrialOrder%[nTrialsCompleted%]] = 0 then
                         TextForTest$ += "Invalid,";
