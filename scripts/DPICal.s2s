@@ -1,0 +1,719 @@
+' $Id$
+' Update 11/8/11 Jeff, includes SafeSampleKey and multi-juicer updates
+
+#include "../util/UsreyUtil.s2s"
+#include "../util/ChannelUtilities.s2s"
+#include "UsreyDAQ.s2s"
+#include "UsreyFixationPoint.s2s"
+
+'========================================================================
+'
+' INPUTS
+'
+' Eye X, Y - ADC input 14, 15 respectively
+' VSG trigger - assumed on DIGIN byte 0.  *** THE 1401 SHOULD HAVE PREFERENCES 
+'               SET WITH THE "Event Ports 0 and 1 on read digital input connector" 
+'               BOX CHECKED!!!
+'
+'========================================================================
+
+
+
+' Window handles and channel numbers
+var XChannel%,YChannel%;		' Channel number assigned to eye x and y
+var keyboardChannel%:=31;       'this is the number of the keyboard channel
+var TriggerChannel%;			' Channel number assigned to vsg trigger input (i.e. trigger sent by vsg)
+var ReadyChannel%;			' channel number for VSG ready pulse signal
+var UtilityChannel%;
+var DataWindow%;	' time view
+var XYWindow%;		' window with eye pos shown
+var iStimChannel%;	' channel number for stimulus in xy window
+var iStimWindowChannel%;' channel number for stimulus window in xy window
+var iMonitorChannel%;	' channel number for monitor position display in xy window
+var StimHandle%;	' handle for stimulus application
+' Experimental control
+var Pause%:=0;		' When 1, expt is paused - no idle processing done
+
+
+' Display stuff
+var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
+var windowX[36], windowY[36];
+' Stimulus location stuff
+var iStimX%[9];
+var iStimY%[9];
+var iStimIndex% := 1;
+
+
+const stateStartTrial%		:= 0;
+const stateWaitForFixpt%		:= 1;
+const stateWaitForAcquisition%	:= 2;
+const stateHoldFixation%	:= 3;
+const stateSuccess%		:= 4;
+const stateFailure%		:= 5;
+const stateStimOff%		:= 6;
+const stateWaitForBlank%	:= 7;
+const stateCheckTrial%		:= 8;
+const stateInterval%		:= 9;
+const stateVSGWait%:=10;		' wait for vsg to send ready signal #1
+const stateVSGWaitConfirm%:=11;		' waif for vsg to send ready signal #2
+const stateNextAfterFixation%:=19;
+const stateDone% := 99;
+
+var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
+var tLast:=-1;		' last time we checked for a trigger. 
+var xEye, yEye;		' eye positions
+var tLastUpdate:=-1;	' last time view was updated
+var iState%:=stateVSGWait%;		' present state
+var vTrigger;		' set by NextTime to indicate trigger transition
+var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
+var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
+var tTrigger:=-1;	' temp var for newly discovered trigger times
+var nTrialsStarted%:=0;
+var nTrialsSuccess%:=0;
+var nTrialsFail%:=0;
+var fixSuccess% := 0;
+
+' settings
+var fixAcquisitionTime := 2.0;
+var fixFixationDuration := 0.5;
+var fixInterTrialTime := 0.2;
+var fixCalibrationOffset := 5;
+var fixAlwaysLooking% := 1;
+
+' for rotating through different sets of fixpts
+const numFixptRows% := 3;
+const numFixptInd% := 4;
+var xyFixpt[numFixptRows%][numFixptInd%][2];
+var currentFixptRow% := 0;
+var currentFixptInd% := 0;
+
+ArrConst(xyFixpt, 0);
+
+' Row 0 is all 0,0
+' Row 1 is horizontal
+xyFixpt[1][0][0] := 0;
+xyFixpt[1][0][1] := 0;
+xyFixpt[1][1][0] := 1;
+xyFixpt[1][1][1] := 0;
+xyFixpt[1][2][0] := 0;
+xyFixpt[1][2][1] := 0;
+xyFixpt[1][3][0] := -1;
+xyFixpt[1][3][1] := 0;
+
+' Row 2 is vertical
+xyFixpt[1][0][0] := 0;
+xyFixpt[1][0][1] := 0;
+xyFixpt[1][1][0] := 0;
+xyFixpt[1][1][1] := 1;
+xyFixpt[1][2][0] := 0;
+xyFixpt[1][2][1] := 0;
+xyFixpt[1][3][0] := 0;
+xyFixpt[1][3][1] := -1;
+
+' Row 3 is corners
+xyFixpt[1][0][0] := 1;
+xyFixpt[1][0][1] := 1;
+xyFixpt[1][1][0] := 1;
+xyFixpt[1][1][1] := -1;
+xyFixpt[1][2][0] := -1;
+xyFixpt[1][2][1] := -1;
+xyFixpt[1][3][0] := -1;
+xyFixpt[1][3][1] := 1;
+
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' Fixation script execution START
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+' init logging so msgs appear in LogWindow
+LogInit(1);
+
+' Check for valid data file path
+if Len(dataDataSet$) = 0 then
+	Message("No data set is selected! Edit Data parameters...");
+	' Might be nice to open the dialog here....
+	halt;
+endif
+
+' Assign channel numbers for eye X,Y and trigger. 
+XChannel% := 21;
+YChannel% := 22;
+TriggerChannel% := 23;
+ReadyChannel% := 24;
+UtilityChannel% := 27;
+ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[1] := 27;  'UtilityChannel% is highest non-electrode channel used by this function
+
+
+CreateSampleConfiguration();
+
+
+' Get display windows ready
+InitializeWindows();
+
+' Prepare the toolbar buttons, remainder of program runs inside toolbar
+InitializeToolbar();
+
+
+
+
+' Run real time analysis here. 
+func IdleProcessing%()
+	var iStatus% := 1;	' this is return value. value of 1 (0) continues (stops) processing
+    var stayInLoop% := 1;
+    var pulseFound%;
+    var tRise, tFall;
+    
+	tNow := MaxTime();
+    
+    if tNow - tLast < 0.001 then
+        Yield(.001);
+        return 1;
+    endif
+    
+
+	xEye := ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+	yEye := ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+
+	' Don't update display every time....
+	if tNow-tLastUpdate > .005 then
+		View(XYWindow%).XYAddData(1,xEye,yEye);
+		tLastUpdate := tNow;
+	endif
+    
+    while stayInLoop% = 1 do
+        
+        tNow := MaxTime();  'reestablish tNow in case it has changed
+        stayInLoop% := 0;  'Allow break
+        
+        ' What state are we in? 
+        docase 
+            
+            
+        case iState% = stateVSGWait% then
+            
+            pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+View(DataWindow%).BinSize(), tRise, tFall);
+        
+            if pulseFound% = 1 then
+                LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
+                Yield(1.0);
+                tLastTrigger := tFall;
+                'hangeStateTo(stateStartTrial%, tFall);
+                ChangeStateTo(stateDone%, tFall);
+            else
+                if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
+                    LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
+                    tLastTrigger := tFall;
+                endif;
+            endif;
+            
+            stayInLoop% := 0;   ' exit loop; need a gap in between pulse and F
+                          
+        case iState% = stateStartTrial% then
+            
+            ' initial state on startup. 
+            ' DIGOUT to present stimulus
+            ' Enter state 1
+            if Pause% = 0 then
+                nTrialsStarted% += 1;
+                
+                 ' djs - calibration x,y are set at trial end. 
+                SafeSampleKey("F");
+                
+                UpdateToolbarText();
+                ChangeStateTo(stateWaitForFixpt%, tNow);
+            endif;
+            
+            
+        case iState% = stateWaitForFixpt% then
+            
+            if View(DataWindow%).FindRisingEdge%(TriggerChannel%, tStateStart, tTrigger) = 0 then
+                ' Fixation point is up
+                LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
+                tLastTrigger := tTrigger;
+                ChangeStateTo(stateWaitForAcquisition%, tTrigger);
+                DrawStim(1);
+            endif
+            
+        case iState% = stateWaitForAcquisition% then
+            
+            if tNow-tStateStart < fixAcquisitionTime then
+                ' Acquisition happens when the eye falls within the fixation window.
+                if InFixationWindow%(xEye, yEye) > 0 then
+                    ChangeStateTo(stateHoldFixation%, tNow);
+                endif
+            else
+                ' Failed. Turn off stim and try again.
+                fixSuccess% := 0;
+                ChangeStateTo(stateStimOff%, tNow);
+                stayInLoop% := 1;  'No reason to wait, go straight to stim off
+            endif
+            
+        case iState% = stateHoldFixation% then
+            
+            ' Waiting for fixation....
+            if InFixationWindow%(xEye, yEye) <= 0 then
+                fixSuccess% := 0;
+                ChangeStateTo(stateStimOff%, tNow);
+                stayInLoop% := 1;  'No reason to wait, go straight to stim off
+            else
+                if tNow - tStateStart >= fixFixationDuration then
+                    ' Fixation. Reward. New trial.
+                    fixSuccess% := 1;
+                    ChangeStateTo(stateStimOff%, tNow);
+                    stayInLoop% := 1;  'No reason to wait, go straight to stim off
+                endif
+            endif
+            
+        case iState% = stateStimOff% then
+            
+            ' Turn off stimulus
+            DrawStim(0);
+            SafeSampleKey("X");
+            'if fixSimultaneousLED% = 1 then
+            '    SafeSampleKey("M");
+            'endif
+            ChangeStateTo(stateWaitForBlank%, tNow);            
+            
+            
+        case iState% = stateWaitForBlank% then
+            
+            ' Wait for stim to be off
+            tTrigger := NextTime(TriggerChannel%, tStateStart,vTrigger);
+            'LogStatus("WaitForBlank", str$(tStateStart) + "," + str$(tNow) + "," + str$(tTrigger) + "," + str$(vTrigger));
+            if tTrigger > tLastTrigger then
+                
+                if vTrigger = 1 then      
+                    tLastTrigger := tTrigger;
+                    LogStatus("WaitForBlank", "Stim off trig");
+                    if fixSuccess% = 0 then
+                        ChangeStateTo(stateFailure%, tTrigger);
+                    else
+                        ChangeStateTo(stateSuccess%, tTrigger);
+                    endif;
+                    
+                    ' calibration run: Update next x,y for eye window, send "a".
+                    AdvanceCalibrationPoint();
+                    
+                else
+                    ' this should never happen!
+                    Message("Wrong trig edge in stateWaitForBlank!");
+                    LogStatus("WaitForBlank", "Wrong trig edge tNow=" + str$(tNow) + " tTrigger=" + str$(tTrigger) + " tLastTrigger=" + str$(tLastTrigger));
+                    halt;
+                endif
+                
+            endif
+            
+            
+        case iState% = stateSuccess% then
+            
+            nTrialsSuccess% += 1;
+            DefaultReward();
+            ChangeStateTo(stateNextAfterFixation%, tNow);
+            stayInLoop% := 1;  'No reason to wait
+            
+        case iState% = stateFailure% then
+            
+            nTrialsFail% += 1;
+            ChangeStateTo(stateNextAfterFixation%, tNow);
+            stayInLoop% := 1;  'No reason to wait
+            
+        
+        case iState% = stateNextAfterFixation% then
+            
+            ChangeStateTo(stateCheckTrial%, tNow);
+            stayInLoop% := 1;  'No reason to wait
+            
+        case iState% = stateCheckTrial% then
+            
+            ChangeStateTo(stateInterval%, tNow);
+            
+        case iState% = stateInterval% then
+            
+            ' Inter-trial wait time
+            if tNow - tStateStart > fixInterTrialTime then
+                
+                ' Back to state 0
+                ChangeStateTo(stateStartTrial%, tNow);
+                stayInLoop% := 1;  'No reason to wait
+                
+            endif
+            
+        case iState% = stateDone% then
+            
+            LogStatus("Done", "Done!!!");
+            iStatus% := 0;  ' exits idle loop
+            
+        else 
+            
+            ' Unknown state!
+            Message("Unknown state=" + str$(iState%));
+            halt;
+            
+        endcase;
+        
+        tLast := tNow;
+                
+    wend
+    
+	return iStatus%;
+
+end;
+
+proc AdvanceCalibrationPoint()
+    iStimIndex% := (iStimIndex% + 1) mod 9;         
+    SafeSampleKey("a");
+end;
+
+proc UpdateToolbarText()
+
+	var s$;
+    s$ := Print$("Trial# %d Success/Failure %d/%d", nTrialsStarted%, nTrialsSuccess%, nTrialsFail%);
+	ToolbarText(s$);
+
+end;
+
+
+proc ChangeStateTo(stateTo%, t)
+    iState% := stateTo%;
+    tStateStart := t;
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+proc CreateSampleConfiguration()
+	var index;
+	SampleClear(); 'Set standard sampling state
+'	SampleAutoFile(0); 'Enable automatic file naming
+	SampleAutoComment(0); 'Prompt for comment after sampling
+	SampleAutoCommit(60); 'Seconds between each file commit
+    
+    ' Text marks make extraction easier
+    SampleTextMark(200);  'Channel 30 is textmark channel
+    
+	' Set path for new data files
+	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3, 1);
+	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1, 1);
+	SampleAutoName$(dataCellName$ + "_fix_000");
+	SampleAutoFile(1);
+
+	'----Event Channel recording definitions----
+	SampleEvent(TriggerChannel%, 2, 2, 3600); 'Trigger channel, level
+	SampleComment$(TriggerChannel%, "Trigger");
+	SampleTitle$(TriggerChannel%, "Trigger");
+
+	' channel to look for ready signal from vsg
+	SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+	SampleComment$(ReadyChannel%,"VSG Ready");
+	SampleTitle$(ReadyChannel%,"VSG Ready");
+    
+    '----Analog, non-spiking electrode recording conditions
+	'EYE COIL CHANNELS. Last # is sampling freq in Hz. 
+	SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+	SampleTitle$(XChannel%,EyeXPortLabel$);
+	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+	SampleTitle$(YChannel%,EyeYPortLabel$);
+    
+    SampleSequencer(script$ + "Tuning.pls");
+        
+	SampleOptimise(2, 2, 2, 2, 50);  'Set optimise mode (do this last)
+	SampleMode(1); 'Continuous sampling
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' DrawStim
+' 
+' Draws stimulus in xy window (iDraw%==1) or blanks it (0). 
+proc DrawStim(iDraw%)
+
+	if iDraw% > 0 then
+		var xstim, ystim;
+		xstim := GetStimX();
+		ystim := GetStimY();
+
+		' Draw stimulus in xy window
+		View(XYWindow%).XYAddData(iStimChannel%, xstim, ystim);
+	
+		' draw fixation window
+		ArrConst(windowX[], FixWindowX[]);
+		ArrAdd(windowX[], xstim);
+		ArrConst(windowY[], FixWindowY[]);
+		ArrAdd(windowY[], ystim);
+
+		View(XYWindow%).XYAddData(iStimWindowChannel%, windowX[], windowY[]);		
+	else 
+		' erase the stim and the window from xy view
+		View(XYWindow%).XYDelete(iStimChannel%);
+		View(XYWindow%).XYDelete(iStimWindowChannel%);
+	endif
+
+end;
+
+
+proc InitializeWindows()
+
+	'Open the data sampling window
+	DataWindow% := FileNew(0,4);
+    Window(-0.235849,52.746,97.2484,99.8856);
+    XRange(0, 30);
+	View(DataWindow%).WindowVisible(1);
+
+	'Open an XY view to display eye position
+	XYWindow% := FileNew(12);
+	XRange(-30,30);
+	YRange(-2,-30,30);
+	XYDrawMode(0,5,0);
+	WindowVisible(1);
+	Window(-0.550314,0.114416,41.5094,52.746);
+	XYColour(1,16);
+	XYSize(1,-1);
+
+	'Calcuate the fixation window
+	var index%;
+	var twopi;
+	twopi := 2.0*4.0*ATan(1.0);
+	
+	for index% := 0 to 35 do
+		FixWindowX[index%] := WindowRadius * Cos(index% * twopi/36.0);
+		FixWindowY[index%] := WindowRadius * Sin(index% * twopi/36.0);
+	next;
+
+	'Create a new channel in the XY view to display the fixation window
+	iStimWindowChannel% := XYSetChan(0);
+	XYColour(2,13);
+	XYDrawMode(2,2,1);
+	XYJoin(2,1);
+
+	'Create a new channel in the XY view to display the fixation point
+	iStimChannel% := XYSetChan(0);
+
+	'Create a new channel in the XY view to show the monitor's location
+	iMonitorChannel% := XYSetChan(0);
+	XYColour(4,13);
+	XYDrawMode(4,3,1);
+	XYJoin(4,2);
+	XYAddData(4,-9,-7);
+	XYAddData(4,9,-7);
+	XYAddData(4,9,7);
+	XYAddData(4,-9,7);
+
+end;
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' InitilizeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' not set here. That's done when the user hits the start button.
+'
+proc InitializeToolbar()
+
+	'View(App(8)).WindowVisible(0);	'Hide the standard sample bar
+	ToolbarVisible(1);
+	ToolbarSet(1,"Sample start",Start%);
+	ToolbarSet(2,"Sample stop", Stop%);
+	ToolbarSet(3,"Juice",DefaultReward%);
+	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
+	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
+	ToolbarSet(6,"Quit",Quit%);
+	ToolbarEnable(2,0);
+	ToolbarEnable(4,0);
+	ToolbarEnable(5,0);
+	Toolbar("Go", 0x3ff);
+
+end;
+
+
+' Used to hard-quit from toolbar. This will close data files without saving!!! 
+' It is important that this function be disabled once sampling is started!!!
+
+func Quit%()
+	FileClose(-1,-1);
+	return 0;
+end;
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Start%()
+	var CommandLine$;
+	var FixationPoint$;
+    var DualTrigger$ := "";
+	var Extras$;
+    var GrParams$;
+	var Distractors$:="";
+    var DistractorFlag$ := " -g ";  ' -k for fixstim/remote
+    var DistractorFixstimFlag$ := "";
+    var Invocation$;                ' initialized below
+    
+	SampleStart(0); 'Start sampling
+    
+	' Set Sequencer Variable #3 based on juicer type 
+    SetJuicerSequencerVariable%();
+    
+	'GetFixationScriptParameters();
+
+    Invocation$ := "cmd /c " + GetBinDir$(1) + "remote " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
+    FixationArg$ := "-f 0,0,4.0,red";
+	Extras$ := " --serial COM3  -b gray -d 813 --dpi-cal ";
+    LogWarn("Start%()", "hard-coded settings in invocation");
+    SampleSeqVar(5, 0);
+
+		
+		
+	CommandLine$ := Invocation$ + FixationArg$ + Extras$;
+
+	'Begin the stimulus program. It will take a few seconds for the VSG to initialize.
+	LogStatus("Start%()", CommandLine$);
+	StimHandle% := ProgRun(CommandLine$,1);
+	if StimHandle% <0 then Message("Could not start stimulus."); halt; endif
+    
+ 	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
+	ToolbarEnable(2,1);
+	ToolbarEnable(1,0);
+	ToolbarEnable(6,1);
+	View(DataWindow%);
+	Yield(.1);
+	return 1;
+end;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func Stop%()
+    var s$;
+    
+    'Take down stimulus, just in case "Stop" button was pressed while stim was up
+    SafeSampleKey("X");
+    
+	' Disable idle process func
+	ToolbarSet(0,"");
+
+	' Tell stim app to shut down
+    Yield(.1);
+	SafeSampleKey("Q");
+	Yield(.1);
+	SampleStop();
+	ProgKill(StimHandle%);
+	while ProgStatus(StimHandle%) > 0 do
+		Yield();
+	wend
+
+	' Increment daily totals and save then
+	'TotalTrials% += (nTrialsStarted% + nLEDTrialsStarted%);  'deprecated
+	'TotalRewards% += (nTrialsSuccess% + nLEDTrialsSuccess%);
+    TotalTrials% += nTrialsStarted%;
+	TotalRewards% += nTrialsSuccess%;
+	SaveDailyTotals();
+
+	s$ := Print$("Trial# %d Success/Failure %d/%d", nTrialsStarted%, nTrialsSuccess%, nTrialsFail%);
+	LogStatus("Stop%()", s$);
+    
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func PauseStimuli%();
+Pause% :=1;
+ToolbarEnable(4,0);
+ToolbarEnable(5,1);
+return 1;
+end
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func ResumeStimuli%();
+Pause% :=0;
+ToolbarEnable(4,1);
+ToolbarEnable(5,0);
+return 1;
+end
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func GetStimX()
+    return xyFixpt[currentFixptRow%][currentFixptInd%][0] * fixCalibrationOffset;
+end;
+
+func GetStimY()
+    return xyFixpt[currentFixptRow%][currentFixptInd%][1] * fixCalibrationOffset;
+end;
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func InFixationWindow%(EyePosX,EyePosY)
+	var i% := 0;
+	var xstim, ystim;
+    if fixAlwaysLooking% = 1 then
+        i% := 1;
+    else
+        xstim := GetStimX();
+        ystim := GetStimY();
+        'Determine if the eye position is within the fixation window
+        if (Pow(EyePosX-xstim, 2) + Pow(EyePosY-ystim, 2)) <= Pow(WindowRadius,2) then 
+            i% := 1;
+        endif
+    endif
+    
+	return i%;
+end;
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+' When user hits one of the direction buttons (Horizontal, Vertical, Corners, Center), a flag is set to indicate
+' a pending mode change. The mode isn't changed immediately. If we did that in the middle of a trial, the idle 
+' function may think that the target is at a position DIFFERENT than the one its really at. This function is called
+' from DoCalSampleKeys, which is called at a "safe" time (between trials), to ensure that the stim program and this
+' script have the same notion of where the target is on screen. 
+
+'proc UpdateCalMode()
+'    if fixPendingCalMode% = 0 then return; endif
+'        
+'    docase
+'    case fixPendingCalMode% = 1 then        ' horizontal
+'        iStimX%[0] := 1; iStimY%[0] := 2;
+'        iStimX%[1] := 1; iStimY%[1] := 2;
+'        iStimX%[2] := 2; iStimY%[2] := 2;
+'        iStimX%[3] := 2; iStimY%[3] := 2;
+'        iStimX%[4] := 3; iStimY%[4] := 2;
+'        iStimX%[5] := 3; iStimY%[5] := 2;
+'        iStimX%[6] := 2; iStimY%[6] := 2;
+'        iStimX%[7] := 2; iStimY%[7] := 2;
+'    case fixPendingCalMode% = 2 then        ' vertical
+'        iStimX%[0] := 2; iStimY%[0] := 1;
+'        iStimX%[1] := 2; iStimY%[1] := 1;
+'        iStimX%[2] := 2; iStimY%[2] := 2;
+'        iStimX%[3] := 2; iStimY%[3] := 2;
+'        iStimX%[4] := 2; iStimY%[4] := 3;
+'        iStimX%[5] := 2; iStimY%[5] := 3;
+'        iStimX%[6] := 2; iStimY%[6] := 2;
+'        iStimX%[7] := 2; iStimY%[7] := 2;
+'    case fixPendingCalMode% = 3 then        ' corners
+'        iStimX%[0] := 1; iStimY%[0] := 1;
+'        iStimX%[1] := 1; iStimY%[1] := 1;
+'        iStimX%[2] := 3; iStimY%[2] := 1;
+'        iStimX%[3] := 3; iStimY%[3] := 1;
+'        iStimX%[4] := 3; iStimY%[4] := 3;
+'        iStimX%[5] := 3; iStimY%[5] := 3;
+'        iStimX%[6] := 1; iStimY%[6] := 3;
+'        iStimX%[7] := 1; iStimY%[7] := 3;
+'    case fixPendingCalMode% = 4 then    ' center
+'        iStimX%[0] := 2; iStimY%[0] := 2;
+'        iStimX%[1] := 2; iStimY%[1] := 2;
+'        iStimX%[2] := 2; iStimY%[2] := 2;
+'        iStimX%[3] := 2; iStimY%[3] := 2;
+'        iStimX%[4] := 2; iStimY%[4] := 2;
+'        iStimX%[5] := 2; iStimY%[5] := 2;
+'        iStimX%[6] := 2; iStimY%[6] := 2;
+'        iStimX%[7] := 2; iStimY%[7] := 2;        
+'    endcase    
+'    fixPendingCalMode% := 0;
+'    
+'    return;
+'end;
+'    
+'
