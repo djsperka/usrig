@@ -1,0 +1,35 @@
+var ok%, item1%, item2%, item3, item4$:= "", item5, item6;
+var iPort% := 4;
+
+func sendCommand%()
+    var scmd$, resp$;
+    scmd$ := DlgValue$(1);
+    PrintLog("cmd: %s\n", scmd$);
+    SerialWrite(iPort%, scmd$);
+    if SerialRead(iPort%, resp$) > 0 then
+        PrintLog("got serial response: " + resp$ + "\n");
+    else
+        PrintLog("error in serial read\n");
+    endif
+
+    return 1;
+end
+
+
+
+
+' Open serial
+if SerialOpen(iPort%, 115200) < 0 then
+    Message("Cannot open serial port " + str$(iPort%));
+    halt;
+endif
+
+
+
+DlgCreate ("Title for the dialog");        'start new dialog
+DlgString (1, "&Serial command...", 20);  'string, any characters
+DlgButton (2, "&Send||Tooltip", sendCommand%);          'button 2, tooltip
+ 
+ok% := DlgShow(item4$); 'show dialog
+
+PrintLog("ok = %d\n", ok%);
