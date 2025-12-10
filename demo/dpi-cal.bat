@@ -1,1 +1,1 @@
-%~dp0\..\bin\remote.exe 127.0.0.1 7000 fixstim --serial COM7 -f 0,0,4.0,red -b gray -d 813 --dpi-cal
+%~dp0\..\bin\remote.exe 127.0.0.1 7000 fixstim --serial COM3 -f 0,0,4.0,red -b gray -d 813 --dpi-cal

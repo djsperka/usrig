@@ -80,8 +80,13 @@ var fixInterTrialTime := 0.2;
 var fixCalibrationOffset := 5;
 var fixAlwaysLooking% := 1;
 
+' COM port for sending fixstim commands
+var iPort% := 4;
+
 ' for rotating through different sets of fixpts
-const numFixptRows% := 3;
+' The fixation point will advance through the second index - currentFixptInd%.
+' Changing modes is just changing currentFixptRow%. The buttons 'Center', 'Horiz', 'Vert', 'Corners'
+const numFixptRows% := 4;
 const numFixptInd% := 4;
 var xyFixpt[numFixptRows%][numFixptInd%][2];
 var currentFixptRow% := 0;
@@ -90,6 +95,15 @@ var currentFixptInd% := 0;
 ArrConst(xyFixpt, 0);
 
 ' Row 0 is all 0,0
+xyFixpt[0][0][0] := 0;
+xyFixpt[0][0][1] := 0;
+xyFixpt[0][1][0] := 0;
+xyFixpt[0][1][1] := 0;
+xyFixpt[0][2][0] := 0;
+xyFixpt[0][2][1] := 0;
+xyFixpt[0][3][0] := 0;
+xyFixpt[0][3][1] := 0;
+
 ' Row 1 is horizontal
 xyFixpt[1][0][0] := 0;
 xyFixpt[1][0][1] := 0;
@@ -101,24 +115,24 @@ xyFixpt[1][3][0] := -1;
 xyFixpt[1][3][1] := 0;
 
 ' Row 2 is vertical
-xyFixpt[1][0][0] := 0;
-xyFixpt[1][0][1] := 0;
-xyFixpt[1][1][0] := 0;
-xyFixpt[1][1][1] := 1;
-xyFixpt[1][2][0] := 0;
-xyFixpt[1][2][1] := 0;
-xyFixpt[1][3][0] := 0;
-xyFixpt[1][3][1] := -1;
+xyFixpt[2][0][0] := 0;
+xyFixpt[2][0][1] := 0;
+xyFixpt[2][1][0] := 0;
+xyFixpt[2][1][1] := 1;
+xyFixpt[2][2][0] := 0;
+xyFixpt[2][2][1] := 0;
+xyFixpt[2][3][0] := 0;
+xyFixpt[2][3][1] := -1;
 
 ' Row 3 is corners
-xyFixpt[1][0][0] := 1;
-xyFixpt[1][0][1] := 1;
-xyFixpt[1][1][0] := 1;
-xyFixpt[1][1][1] := -1;
-xyFixpt[1][2][0] := -1;
-xyFixpt[1][2][1] := -1;
-xyFixpt[1][3][0] := -1;
-xyFixpt[1][3][1] := 1;
+xyFixpt[3][0][0] := 1;
+xyFixpt[3][0][1] := 1;
+xyFixpt[3][1][0] := 1;
+xyFixpt[3][1][1] := -1;
+xyFixpt[3][2][0] := -1;
+xyFixpt[3][2][1] := -1;
+xyFixpt[3][3][0] := -1;
+xyFixpt[3][3][1] := 1;
 
 
 
@@ -160,15 +174,14 @@ InitializeWindows();
 InitializeToolbar();
 
 
-
-
 ' Run real time analysis here. 
 func IdleProcessing%()
 	var iStatus% := 1;	' this is return value. value of 1 (0) continues (stops) processing
     var stayInLoop% := 1;
     var pulseFound%;
     var tRise, tFall;
-    
+    var stmp$;
+        
 	tNow := MaxTime();
     
     if tNow - tLast < 0.001 then
@@ -187,6 +200,8 @@ func IdleProcessing%()
 	endif
     
     while stayInLoop% = 1 do
+        stmp$ := Print$("State %d", iState%);
+        LogStatus("loop", stmp$);
         
         tNow := MaxTime();  'reestablish tNow in case it has changed
         stayInLoop% := 0;  'Allow break
@@ -204,7 +219,7 @@ func IdleProcessing%()
                 Yield(1.0);
                 tLastTrigger := tFall;
                 'hangeStateTo(stateStartTrial%, tFall);
-                ChangeStateTo(stateDone%, tFall);
+                ChangeStateTo(stateStartTrial%, tFall);
             else
                 if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
                     LogStatus("VSGWait", "Got FALSE Ready Pulse from VSG at " + str$(tRise));
@@ -222,8 +237,11 @@ func IdleProcessing%()
             if Pause% = 0 then
                 nTrialsStarted% += 1;
                 
-                 ' djs - calibration x,y are set at trial end. 
-                SafeSampleKey("F");
+                ' write serial command for current fixpt
+                stmp$ := Print$("F %.2f,%.2f,%.2f,%s;", fixCalibrationOffset*xyFixpt[currentFixptRow%][currentFixptInd%][0], fixCalibrationOffset*xyFixpt[currentFixptRow%][currentFixptInd%][1], FixationDiameter, FixationColor$);
+                LogStatus("stateStartTrial", stmp$);
+                SerialWrite(iPort%, stmp$);
+                'SafeSampleKey("F");
                 
                 UpdateToolbarText();
                 ChangeStateTo(stateWaitForFixpt%, tNow);
@@ -245,6 +263,7 @@ func IdleProcessing%()
             if tNow-tStateStart < fixAcquisitionTime then
                 ' Acquisition happens when the eye falls within the fixation window.
                 if InFixationWindow%(xEye, yEye) > 0 then
+                    LogStatus("WaitForAcq", "Acquisition gotten.");
                     ChangeStateTo(stateHoldFixation%, tNow);
                 endif
             else
@@ -274,10 +293,9 @@ func IdleProcessing%()
             
             ' Turn off stimulus
             DrawStim(0);
-            SafeSampleKey("X");
-            'if fixSimultaneousLED% = 1 then
-            '    SafeSampleKey("M");
-            'endif
+          
+            SerialWrite(iPort%, "X;");
+            'SafeSampleKey("X");
             ChangeStateTo(stateWaitForBlank%, tNow);            
             
             
@@ -285,7 +303,7 @@ func IdleProcessing%()
             
             ' Wait for stim to be off
             tTrigger := NextTime(TriggerChannel%, tStateStart,vTrigger);
-            'LogStatus("WaitForBlank", str$(tStateStart) + "," + str$(tNow) + "," + str$(tTrigger) + "," + str$(vTrigger));
+            LogStatus("WaitForBlank", str$(tStateStart) + "," + str$(tNow) + "," + str$(tTrigger) + "," + str$(vTrigger));
             if tTrigger > tLastTrigger then
                 
                 if vTrigger = 1 then      
@@ -298,7 +316,9 @@ func IdleProcessing%()
                     endif;
                     
                     ' calibration run: Update next x,y for eye window, send "a".
-                    AdvanceCalibrationPoint();
+                    currentFixptInd% := (currentFixptInd% + 1) % numFixptInd%;
+                    stmp$ := Print$("currentFixptInd = %d", currentFixptInd%);
+                    LogStatus("WaitForBlank", stmp$);
                     
                 else
                     ' this should never happen!
@@ -519,12 +539,16 @@ proc InitializeToolbar()
 	ToolbarSet(1,"Sample start",Start%);
 	ToolbarSet(2,"Sample stop", Stop%);
 	ToolbarSet(3,"Juice",DefaultReward%);
-	ToolbarSet(4,"Pause stimuli",PauseStimuli%);
-	ToolbarSet(5,"Resume stimuli",ResumeStimuli%);
-	ToolbarSet(6,"Quit",Quit%);
+    ToolbarSet(4,"Center",CenterOnly%);
+    ToolbarSet(5,"Horizontal",Horizontal%);
+    ToolbarSet(6,"Vertical",Vertical%);
+    ToolbarSet(7,"Corners",Corners%);
+	ToolbarSet(8,"Pause stimuli",PauseStimuli%);
+	ToolbarSet(9,"Resume stimuli",ResumeStimuli%);
+	ToolbarSet(10,"Quit",Quit%);
 	ToolbarEnable(2,0);
-	ToolbarEnable(4,0);
-	ToolbarEnable(5,0);
+	ToolbarEnable(8,0);
+	ToolbarEnable(9,0);
 	Toolbar("Go", 0x3ff);
 
 end;
@@ -549,6 +573,7 @@ func Start%()
     var DistractorFlag$ := " -g ";  ' -k for fixstim/remote
     var DistractorFixstimFlag$ := "";
     var Invocation$;                ' initialized below
+    var x, y;
     
 	SampleStart(0); 'Start sampling
     
@@ -559,7 +584,7 @@ func Start%()
 
     Invocation$ := "cmd /c " + GetBinDir$(1) + "remote " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
     FixationArg$ := "-f 0,0,4.0,red";
-	Extras$ := " --serial COM3  -b gray -d 813 --dpi-cal ";
+	Extras$ := " --serial COM3  -b gray -d 813 -p 2 --dpi-cal ";
     LogWarn("Start%()", "hard-coded settings in invocation");
     SampleSeqVar(5, 0);
 
@@ -572,19 +597,50 @@ func Start%()
 	StimHandle% := ProgRun(CommandLine$,1);
 	if StimHandle% <0 then Message("Could not start stimulus."); halt; endif
     
+    ' Open serial
+    if SerialOpen(iPort%, 115200) < 0 then
+        Message("Cannot open serial port " + str$(iPort%));
+        halt;
+    endif
+
+    
  	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
 	ToolbarEnable(2,1);
 	ToolbarEnable(1,0);
-	ToolbarEnable(6,1);
+	ToolbarEnable(8,1);
+	ToolbarEnable(9,0);
 	View(DataWindow%);
 	Yield(.1);
 	return 1;
+end;
+
+func CenterOnly%()
+    currentFixptRow% := 0;
+    return 1;
+end;
+
+func Horizontal%()
+    currentFixptRow% := 1;
+    return 1;
+end;
+
+func Vertical%()
+    currentFixptRow% := 2;
+    return 1;
+end;
+
+func Corners%()
+    currentFixptRow% := 3;
+    return 1;
 end;
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Stop%()
     var s$;
+    
+    ' close serial port
+    SerialClose(iPort%);
     
     'Take down stimulus, just in case "Stop" button was pressed while stim was up
     SafeSampleKey("X");
@@ -619,15 +675,15 @@ end;
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func PauseStimuli%();
 Pause% :=1;
-ToolbarEnable(4,0);
-ToolbarEnable(5,1);
+ToolbarEnable(8,0);
+ToolbarEnable(9,1);
 return 1;
 end
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func ResumeStimuli%();
 Pause% :=0;
-ToolbarEnable(4,1);
-ToolbarEnable(5,0);
+ToolbarEnable(8,1);
+ToolbarEnable(9,0);
 return 1;
 end
 
@@ -661,59 +717,3 @@ end;
 
 
 
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-
-
-' When user hits one of the direction buttons (Horizontal, Vertical, Corners, Center), a flag is set to indicate
-' a pending mode change. The mode isn't changed immediately. If we did that in the middle of a trial, the idle 
-' function may think that the target is at a position DIFFERENT than the one its really at. This function is called
-' from DoCalSampleKeys, which is called at a "safe" time (between trials), to ensure that the stim program and this
-' script have the same notion of where the target is on screen. 
-
-'proc UpdateCalMode()
-'    if fixPendingCalMode% = 0 then return; endif
-'        
-'    docase
-'    case fixPendingCalMode% = 1 then        ' horizontal
-'        iStimX%[0] := 1; iStimY%[0] := 2;
-'        iStimX%[1] := 1; iStimY%[1] := 2;
-'        iStimX%[2] := 2; iStimY%[2] := 2;
-'        iStimX%[3] := 2; iStimY%[3] := 2;
-'        iStimX%[4] := 3; iStimY%[4] := 2;
-'        iStimX%[5] := 3; iStimY%[5] := 2;
-'        iStimX%[6] := 2; iStimY%[6] := 2;
-'        iStimX%[7] := 2; iStimY%[7] := 2;
-'    case fixPendingCalMode% = 2 then        ' vertical
-'        iStimX%[0] := 2; iStimY%[0] := 1;
-'        iStimX%[1] := 2; iStimY%[1] := 1;
-'        iStimX%[2] := 2; iStimY%[2] := 2;
-'        iStimX%[3] := 2; iStimY%[3] := 2;
-'        iStimX%[4] := 2; iStimY%[4] := 3;
-'        iStimX%[5] := 2; iStimY%[5] := 3;
-'        iStimX%[6] := 2; iStimY%[6] := 2;
-'        iStimX%[7] := 2; iStimY%[7] := 2;
-'    case fixPendingCalMode% = 3 then        ' corners
-'        iStimX%[0] := 1; iStimY%[0] := 1;
-'        iStimX%[1] := 1; iStimY%[1] := 1;
-'        iStimX%[2] := 3; iStimY%[2] := 1;
-'        iStimX%[3] := 3; iStimY%[3] := 1;
-'        iStimX%[4] := 3; iStimY%[4] := 3;
-'        iStimX%[5] := 3; iStimY%[5] := 3;
-'        iStimX%[6] := 1; iStimY%[6] := 3;
-'        iStimX%[7] := 1; iStimY%[7] := 3;
-'    case fixPendingCalMode% = 4 then    ' center
-'        iStimX%[0] := 2; iStimY%[0] := 2;
-'        iStimX%[1] := 2; iStimY%[1] := 2;
-'        iStimX%[2] := 2; iStimY%[2] := 2;
-'        iStimX%[3] := 2; iStimY%[3] := 2;
-'        iStimX%[4] := 2; iStimY%[4] := 2;
-'        iStimX%[5] := 2; iStimY%[5] := 2;
-'        iStimX%[6] := 2; iStimY%[6] := 2;
-'        iStimX%[7] := 2; iStimY%[7] := 2;        
-'    endcase    
-'    fixPendingCalMode% := 0;
-'    
-'    return;
-'end;
-'    
-'
