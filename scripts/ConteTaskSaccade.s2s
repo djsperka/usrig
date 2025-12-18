@@ -763,7 +763,7 @@ func ConteTaskDialog%()
     DlgInteger(ctDlgCountTrainCueRect%,wNum%,0,ctMaxTrialPerDataPoint%,c1%+1,sTrSpec%+2);  ctTxtCountTrainCueRect% := DlgText("Train-CueRect trials/repeat",c1%+wNum%+2,sTrSpec%+2);
     DlgInteger(ctDlgCountTrainGrating%,wNum%,0,ctMaxTrialPerDataPoint%,c23%+1,sTrSpec%+2);  ctTxtCountTrainGrating% := DlgText("Train-Grating trials/repeat",c23%+wNum%+2,sTrSpec%+2);
     DlgInteger(ctDlgCountFull%,wNum%,-ctMaxTrialPerDataPoint%,ctMaxTrialPerDataPoint%,c33%+1,sTrSpec%+2);  ctTxtCountFull% := DlgText("Full trials/repeat",c33%+wNum%+2,sTrSpec%+2);
-    DlgString(ctDlgDotPctString%,60,400,"-0-9 .",c1%+1,sTrSpec%+3);  ctTxtDotPctString% := DlgText("Dot pct Color 1 values (0-100, space-separated)",c1%+60+2,sTrSpec%+3);
+    DlgString(ctDlgDotPctString%,40,400,"-0-9 .",c1%+1,sTrSpec%+3);  ctTxtDotPctString% := DlgText("Dot Pct Color 1 values (0-100 [+100/200 locks chg color 1/2], space-separated)",c1%+40+2,sTrSpec%+3);
     DlgString(ctDlgSampleContString%,60,400,"-0-9 .",c1%+1,sTrSpec%+4);  ctTxtSampleContString% := DlgText("Sample Contrast values (0-100, space-separated)",c1%+60+2,sTrSpec%+4);
     DlgString(ctDlgContChangeString%,60,400,"-0-9 .",c1%+1,sTrSpec%+5);  ctTxtContChangeString% := DlgText("Contrast Change values (+/- 0-100, space-separated)",c1%+60+2,sTrSpec%+5);
     DlgInteger(ctDlgNDistractorOn%,wNum%,0,100,c1%+1,sTrSpec%+6);  ctTxtNDistractorOn% := DlgText("Distractor trials/data point (0=off)",c1%+wNum%+2,sTrSpec%+6);
@@ -2486,12 +2486,19 @@ func Start%()
             for q% := 0 to q2% do 'If q% is 0, Color1 goes to Loc1 (RF)
 
                 'Setting cue dot pct, color index, training type is easy
-                cueDotPct[count%] := cueDotPctLocal[j%];
+                docase
+                case cueDotPctLocal[j%] > 200 then  'if value is > 200 ("lock to color 2"), ignore, for training we always lock to majority
+                    cueDotPct[count%] := cueDotPctLocal[j%]-200;
+                case cueDotPctLocal[j%] > 100 then  'if value is > 100 ("lock to color 1"), ignore, for training we always lock to majority
+                    cueDotPct[count%] := cueDotPctLocal[j%]-100;
+                else
+                    cueDotPct[count%] := cueDotPctLocal[j%];
+                endcase
                 colorIndexAtRF%[count%] := q%;  'If 0, first color listed (index 0) is at RF
                 stimTrainType%[count%] := 1;  '1 = train-cue-rect trials
                 validity%[count%] := 1;  'Train-cue-rect trials are always valid
                 
-                'Set contrast of cue rects and which location is rewarded - these trials are always valid
+                'Set contrast of cue rects and which location is rewarded - Train-cue-rect trials are always valid
                 if (cueDotPct[count%] > 50) or ((cueDotPct[count%] = 50) and (round(rand()) = 1)) then  'Dot pct should never be == 50% by convention, but just in case
                     'Color 1 is cued (or 50% prob on ambiguous cue)
                     'Location holding color 1 is rewarded response
@@ -2623,16 +2630,67 @@ func Start%()
                         for q% := 0 to q2% do   
 
                             'Setting cue dot pct and validity is easy, set these at top and then use below for minor clarity
-                            cueDotPct[count%] := cueDotPctLocal[j%];                            
+                            docase
+                            case cueDotPctLocal[j%] > 200 then  'if value is > 200 ("lock to color 2"), set cueDotPct
+                                cueDotPct[count%] := cueDotPctLocal[j%]-200;
+                            case cueDotPctLocal[j%] > 100 then  'if value is > 100 ("lock to color 1"), set cueDotPct
+                                cueDotPct[count%] := cueDotPctLocal[j%]-100;
+                            else
+                                cueDotPct[count%] := cueDotPctLocal[j%];
+                            endcase                           
                             colorIndexAtRF%[count%] := q%;  'If 0, first color listed is at RF
                             stimTrainType%[count%] := 3;  '3 = full trials
                             
                             
                             'Determine validity/whichLocChanges based on dot percentage and minimum invalid rate
-                            'Math is verified!  Regardless of which color is "cued", IF triggers when the change is
-                            'to occur at the locaiton of Color 1, ELSE triggers when the change is to occur at the
-                            'location of Color 2
-                            if rand() < (((cueDotPct[count%]/100)*(1-(2*ctMinInvalidRate))) + ctMinInvalidRate) then  
+                            'but allow override to lock change at either location in first two CASE arguments.
+                            'Math on "min invalid rate" is verified!  Regardless of which color is "cued", final CASE 
+                            'triggers when the change is to occur at the location of Color 1, ELSE triggers when the 
+                            'change is to occur at the location of Color 2
+                            docase
+                            case cueDotPctLocal[j%] > 200 then  'if value is > 200 ("lock to color 2")
+                                'Change will occur at location of color 2
+                                if q% = 0 then 
+                                    'Color 1 is in RF
+                                    whichLocChange%[count%] := 2;  'Therefore not-RF is rewarded
+                                else
+                                    'Color 2 is in RF
+                                    whichLocChange%[count%] := 1;  'Therefore RF is rewarded
+                                endif
+                                
+                                docase
+                                case cueDotPct[count%] > 50 then
+                                    'Cue indicates Color 1
+                                    validity%[count%] := 0;  'cue was invalid
+                                case cueDotPct[count%] < 50 then
+                                    'Cue indicates Color 2
+                                    validity%[count%] := 1;  'cue was valid
+                                else
+                                    'Cue is ambiguous
+                                    validity%[count%] := 100;
+                                endcase
+                            case cueDotPctLocal[j%] > 100 then  'if value is > 100 ("lock to color 1")
+                                'Change will occur at location of color 1
+                                if q% = 0 then  
+                                    'Color 1 is in RF
+                                    whichLocChange%[count%] := 1;  'Therefore RF is rewarded
+                                else
+                                    'Color 2 is in RF
+                                    whichLocChange%[count%] := 2;  'Therefore not-RF is rewarded
+                                endif
+                                
+                                docase
+                                case cueDotPct[count%] > 50 then
+                                    'Cue indicates Color 1
+                                    validity%[count%] := 1;  'cue was valid
+                                case cueDotPct[count%] < 50 then
+                                    'Cue indicates Color 2
+                                    validity%[count%] := 0;  'cue was invalid
+                                else
+                                    'Cue is ambiguous
+                                    validity%[count%] := 100;
+                                endcase
+                            case rand() < (((cueDotPct[count%]/100)*(1-(2*ctMinInvalidRate))) + ctMinInvalidRate) then 'Could use OR and wrap with above CASE, which is identical 
                                 'Change will occur at location of color 1
                                 if q% = 0 then  
                                     'Color 1 is in RF
@@ -2674,7 +2732,7 @@ func Start%()
                                     'Cue is ambiguous
                                     validity%[count%] := 100;
                                 endcase
-                            endif                            
+                            endcase                            
                             
                             
                             'Set contrast of cue rects based on which location is cued
