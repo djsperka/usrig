@@ -268,7 +268,8 @@ var ctFlankerCuedCont%;
 var ctFlankerUncuedCont%;
 var ctCueRectCuedCont%;
 var ctCueRectUncuedCont%;
-var ctMinInvalidRate;
+var ctMinInvalidRate:=0;  'MIN REPLACED BY FLAT -- code has been retained, to revert simply search 'InvalidRate' and flip-flop comments (change in dialog box call) 
+var ctFlatInvalidRate;
 var ctDropFixpt%;
 var ctTargetAcqTime;
 var ctNoSideSwapping%;
@@ -343,7 +344,8 @@ var ctDlgFlankerUncuedCont% := 49;
 var ctDlgCueRectCuedCont% := 50;
 var ctDlgCueRectUncuedCont% := 51;
 var ctDlgAdditionalTargetRadius% := 52;
-var ctDlgMinInvalidRate% := 53;
+'var ctDlgMinInvalidRate% := 53;  'MIN REPLACED BY FLAT
+var ctDlgFlatInvalidRate% := 53;
 var ctDlgDropFixpt% := 54;
 var ctDlgTargetAcqTime% := 55;
 var ctDlgNoSideSwapping% := 56;
@@ -356,7 +358,8 @@ var ctPatchDurText$;
 'Dialog Box Text Variables - will make things easier if we decide to rearrange
 'Value will be returned by DlgText when setting up the text box
 'Won't create a text value if we're never going to turn off the dialog entry, don't need it.
-var ctTxtMinInvalidRate%;
+'var ctTxtMinInvalidRate%;  'MIN REPLACED BY FLAT
+var ctTxtFlatInvalidRate%;
 var ctTxtCountTrainCueRect%;    
 var ctTxtCountTrainGrating%;  
 var ctTxtCountFull%; 
@@ -566,7 +569,8 @@ proc GetConteTaskParameters()
     ctFlankerUncuedCont% := GetIntRegistryValue%(key$, "FlankerInvC", ctFlankerUncuedCont%);  'changed variable name, keeping old key value
     ctCueRectCuedCont% := GetIntRegistryValue%(key$, "CueRectVC", ctCueRectCuedCont%);  'changed variable name, keeping old key value
     ctCueRectUncuedCont% := GetIntRegistryValue%(key$, "CueRectInvC", ctCueRectUncuedCont%);  'changed variable name, keeping old key value
-    ctMinInvalidRate := GetFloatRegistryValue(key$, "MinInvalidRate", ctMinInvalidRate);
+    'ctMinInvalidRate := GetFloatRegistryValue(key$, "MinInvalidRate", ctMinInvalidRate);  'MIN REPLACED BY FLAT
+    ctFlatInvalidRate := GetFloatRegistryValue(key$, "FlatInvalidRate", ctFlatInvalidRate);
     ctDropFixpt% := GetIntRegistryValue%(key$, "DropFixpt", ctDropFixpt%);
     ctTargetAcqTime := GetFloatRegistryValue(key$, "TargetAcqTime", ctTargetAcqTime);
     ctNoSideSwapping% := GetIntRegistryValue%(key$, "NoSideSwapping", ctNoSideSwapping%);
@@ -625,7 +629,8 @@ proc SaveConteTaskParameters()
     SetIntRegistryValue(key$, "FlankerInvC", ctFlankerUncuedCont%);  'changed variable name, keeping old key value
     SetIntRegistryValue(key$, "CueRectVC", ctCueRectCuedCont%);  'changed variable name, keeping old key value
     SetIntRegistryValue(key$, "CueRectInvC", ctCueRectUncuedCont%);  'changed variable name, keeping old key value
-    SetFloatRegistryValue(key$, "MinInvalidRate", ctMinInvalidRate);
+    'SetFloatRegistryValue(key$, "MinInvalidRate", ctMinInvalidRate);  'MIN REPLACED BY FLAT
+    SetFloatRegistryValue(key$, "FlatInvalidRate", ctFlatInvalidRate);
     SetIntRegistryValue(key$, "DropFixpt", ctDropFixpt%);
     SetFloatRegistryValue(key$, "TargetAcqTime", ctTargetAcqTime);
     SetIntRegistryValue(key$, "NoSideSwapping", ctNoSideSwapping%);
@@ -758,7 +763,8 @@ func ConteTaskDialog%()
     
     DlgGroup("Trial Specification",1,sTrSpec%,wDlg%-2,hTrSpec%);
     ctDlgTotalTrials% := DlgText(ctTotalTrialsText$,c1%,sTrSpec%+1,30);
-    DlgReal(ctDlgMinInvalidRate%,wNum%,0,1,c23%+1,sTrSpec%+1);  ctTxtMinInvalidRate% := DlgText("Minimum Invalid Rate (0-1)",c23%+wNum%+2,sTrSpec%+1);
+    'DlgReal(ctDlgMinInvalidRate%,wNum%,0,1,c23%+1,sTrSpec%+1);  ctTxtMinInvalidRate% := DlgText("Minimum Invalid Rate (0-1)",c23%+wNum%+2,sTrSpec%+1);  'MIN REPLACED BY FLAT
+    DlgReal(ctDlgFlatInvalidRate%,wNum%,-1,1,c23%+1,sTrSpec%+1);  ctTxtFlatInvalidRate% := DlgText("Flat Invalid Rate (0-1, -1 disables)",c23%+wNum%+2,sTrSpec%+1);
     DlgInteger(ctDlgnTrialsPerDataPoint%,wNum%,1,ctMaxTrialPerDataPoint%,c33%+1,sTrSpec%+1);  DlgText("Number of Repeats",c33%+wNum%+2,sTrSpec%+1);  'no variable to hold output of DlgText if we won't ever turn the field off
     DlgInteger(ctDlgCountTrainCueRect%,wNum%,0,ctMaxTrialPerDataPoint%,c1%+1,sTrSpec%+2);  ctTxtCountTrainCueRect% := DlgText("Train-CueRect trials/repeat",c1%+wNum%+2,sTrSpec%+2);
     DlgInteger(ctDlgCountTrainGrating%,wNum%,0,ctMaxTrialPerDataPoint%,c23%+1,sTrSpec%+2);  ctTxtCountTrainGrating% := DlgText("Train-Grating trials/repeat",c23%+wNum%+2,sTrSpec%+2);
@@ -838,7 +844,7 @@ func ConteTaskDialog%()
     i% := DlgShow(nTrialsPerDataPoint%,ctCountTrainCueRect%,ctCountTrainGrating%,ctCountFull%,
                   ctAdditionalWindowRadius,tenFloats[],sixPlusOneInts%[],ctPatchRadiusDeg,
                   ctRefreshPerPF%,ctPFsPerPatch%,sixFloats[],sevenInts%[],threeStrings$[],fourFloats[],
-                  sixInts%[],ctAdditionalTargetRadius,ctMinInvalidRate,ctDropFixpt%,ctTargetAcqTime,
+                  sixInts%[],ctAdditionalTargetRadius,ctFlatInvalidRate,ctDropFixpt%,ctTargetAcqTime,
                   ctNoSideSwapping%);  'Now at 20!
     
 
@@ -1121,12 +1127,14 @@ func ConteTaskDialogChanged%(item%)
         'DlgEnable(1,ctDlgSampleDurationVar%,ctTxtSampleDurationVar%);
         DlgEnable(1,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
         DlgEnable(1,ctDlgTargetDuration%,ctTxtTargetDuration%);
-        DlgEnable(1,ctDlgMinInvalidRate%,ctTxtMinInvalidRate%);
+        'DlgEnable(1,ctDlgMinInvalidRate%,ctTxtMinInvalidRate%);  'MIN REPLACED BY FLAT
+        DlgEnable(1,ctDlgFlatInvalidRate%,ctTxtFlatInvalidRate%);
     else  'Do not disable sample-to-test and test duration as they may be needed for grating training)
         'DlgEnable(0,ctDlgSampleDurationVar%,ctTxtSampleDurationVar%);
         'DlgEnable(0,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
         'DlgEnable(0,ctDlgTargetDuration%,ctTxtTargetDuration%);
-        DlgEnable(0,ctDlgMinInvalidRate%,ctTxtMinInvalidRate%);  'but do disable this!
+        'DlgEnable(0,ctDlgMinInvalidRate%,ctTxtMinInvalidRate%);  'but do disable this!  MIN REPLACED BY FLAT
+        DlgEnable(0,ctDlgFlatInvalidRate%,ctTxtFlatInvalidRate%);  'but do disable this!
     endif
     
     
@@ -2629,7 +2637,7 @@ func Start%()
                     for p% := 0 to nDist%-1 do
                         for q% := 0 to q2% do   
 
-                            'Setting cue dot pct and validity is easy, set these at top and then use below for minor clarity
+                            'Setting cue dot pct is easy, set these at top and then use below for minor clarity
                             docase
                             case cueDotPctLocal[j%] > 200 then  'if value is > 200 ("lock to color 2"), set cueDotPct
                                 cueDotPct[count%] := cueDotPctLocal[j%]-200;
@@ -2642,11 +2650,55 @@ func Start%()
                             stimTrainType%[count%] := 3;  '3 = full trials
                             
                             
-                            'Determine validity/whichLocChanges based on dot percentage and minimum invalid rate
-                            'but allow override to lock change at either location in first two CASE arguments.
-                            'Math on "min invalid rate" is verified!  Regardless of which color is "cued", final CASE 
-                            'triggers when the change is to occur at the location of Color 1, ELSE triggers when the 
-                            'change is to occur at the location of Color 2
+                            'Setting validity%[]/whichLocChange%[] is complicated enough to write a detailed description
+                            'Determine validity%[]/whichLocChange%[] based on various values from the dialog box.
+                            'Primary determinant: OVERRIDE
+                            '   In OVERRIDE mode, the location (color) of the change is set directly using the value
+                            '   present in the "Dot Percent Color1 Values" dialog box, and validity will depend on
+                            '   the actual dot percentages.
+                            '   If the value in the "Dot Percent Color1 Values" dialog box is outside the range
+                            '   of 0-100 (i.e. is in the 101-200 or the 201-300 range), the location that changes
+                            '   will be OVERRIDDEN and will be Location 1 (101-200) or Location 2 (201-300).
+                            '   Dot Percent Color1 values will be the final two digits of the value (or 100 for 200/300)
+                            '   The validity value will be 0 if the minority color location changes, 1 if the majority
+                            '   color location changes, and 100 if the dots are 50-50.
+                            '   If the value in the "Dot Percent Color1 Values" dialog box is between 0-100, move
+                            '   to Secondary Determinant.
+                            'Secondary determinant: FLAT INVALID RATE
+                            '   In FLAT INVALID RATE mode, the validity of every trial is set directly using the
+                            '   "Flat Invalid Rate" dialog box, and the location (color) of the change is determined
+                            '   by the randomly-set validity and the actual dot percentages.
+                            '   If the value ("P") in Flat Invalid Rate is between 0-1, the cue will be invalid P
+                            '   proportion of the time and valid 1-P proportion of the time.  If Dot Percent Color1
+                            '   is >50, a change at location 1 is valid, if <50 a change at location 2 is valid, 
+                            '   if ==50, change is random and validity is set to 100.
+                            '   Another way to think about this: if you plot "Percent Dots Color 1" on the x-axis (0-100)
+                            '   and "Percent Location 1 Changes" (0-100) on the y-axis, FLAT INVALID RATE mode results 
+                            '   in a flat line at y = P for x = 0-49.999, y = 50 at x = 50, and a flat line at y = 1-P
+                            '   for x = 50.001-100.
+                            '   If the value in the "Flat Invalid Rate" dialog box is negative, move to Default.
+                            'Default: IF NEITHER OF THE ABOVE
+                            '   In default mode, the validity of each trial is determined randomly, weighted by the
+                            '   actual dot percentages.  For example, if the dots are 93% color 1, the change will
+                            '   occur at location 1 93% of the time and at location 2 7% for the time.  If the dots
+                            '   are 7% color 1, the change will occur at location 1 7% of the time and at location 2
+                            '   93% of the time.  
+                            '   Another way to think about this: if you plot "Percent Dots Color 1" on the x-axis (0-100)
+                            '   and "Percent Location 1 Changes" (0-100) on the y-axis, default mode results in a unity 
+                            '   line.
+                            
+                            'DISABLED Secondary determinant: MIN INVALID RATE --- NOTE: MIN REPLACED BY FLAT
+                            '   In MIN INVALID RATE mode (DISABLED), the invalid rate for 0% Dot Color1 and for 100%
+                            '   Dot Color1 will be set to the value ("P") in Min Invalid Rate.  Invalid rates for other
+                            '   dot percentages will be set by a line between these two points.
+                            '   Another way to think about this: if you plot "Percent Dots Color 1" on the x-axis (0-100)
+                            '   and "Percent Location 1 Changes" (0-100) on the y-axis, MIN INVALID RATE mode results in 
+                            '   a line which passes through the point x=50, y=50.  The line will pivot around x=50, y=50
+                            '   such that the x-intercept is equal to P.  Thus a value of P=0 results in a unity line
+                            '   (same as default mode) and greater values of P result in lines of shallower slope passing
+                            '   through x=50, y=50.  If P > 0.5, the line would invert to a negative slope (but why would
+                            '   you do this???)
+                            
                             docase
                             case cueDotPctLocal[j%] > 200 then  'if value is > 200 ("lock to color 2")
                                 'Change will occur at location of color 2
@@ -2690,6 +2742,61 @@ func Start%()
                                     'Cue is ambiguous
                                     validity%[count%] := 100;
                                 endcase
+                                
+                            ''''MIN REPLACED BY FLAT    
+                            case ctFlatInvalidRate >= 0 then 
+                                docase
+                                case cueDotPct[count%] = 50 then 'Cue is ambiguous
+                                    validity%[count%] := 100;
+                                    if rand() > 0.5 then
+                                        whichLocChange%[count%] := 1;
+                                    else
+                                        whichLocChange%[count%] := 2;
+                                    endif
+                                case rand() < ctFlatInvalidRate then  'if invalid
+                                    validity%[count%] := 0;  'cue was invalid
+                                    if cueDotPct[count%] > 50 then 'invalid change will occur at location of color 2
+                                        if q% = 0 then  
+                                            'Color 1 is in RF
+                                            whichLocChange%[count%] := 2;  'Therefore not-RF is rewarded
+                                        else
+                                            'Color 2 is in RF
+                                            whichLocChange%[count%] := 1;  'Therefore RF is rewarded
+                                        endif
+                                    else  'invalid change will occur at location of color 1
+                                        if q% = 0 then  
+                                            'Color 1 is in RF
+                                            whichLocChange%[count%] := 1;  'Therefore RF is rewarded
+                                        else
+                                            'Color 2 is in RF
+                                            whichLocChange%[count%] := 2;  'Therefore not-RF is rewarded
+                                        endif
+                                    endif
+                                else 'if valid
+                                    validity%[count%] := 1;  'cue was valid
+                                    if cueDotPct[count%] < 50 then 'valid change will occur at location of color 2
+                                        if q% = 0 then  
+                                            'Color 1 is in RF
+                                            whichLocChange%[count%] := 2;  'Therefore not-RF is rewarded
+                                        else
+                                            'Color 2 is in RF
+                                            whichLocChange%[count%] := 1;  'Therefore RF is rewarded
+                                        endif
+                                    else  'valid change will occur at location of color 1
+                                        if q% = 0 then  
+                                            'Color 1 is in RF
+                                            whichLocChange%[count%] := 1;  'Therefore RF is rewarded
+                                        else
+                                            'Color 2 is in RF
+                                            whichLocChange%[count%] := 2;  'Therefore not-RF is rewarded
+                                        endif
+                                    endif
+                                endcase
+                                
+                            ''''This CASE and the following ELSE will implement "minimum invalid rate" mode
+                            ''''(see above comment prior to DOCASE for details) if applicable, but will
+                            ''''ALSO implement default mode with the same calculation as long as ctMinInvalidRate
+                            ''''exists and is set to 0 (so we do this)
                             case rand() < (((cueDotPct[count%]/100)*(1-(2*ctMinInvalidRate))) + ctMinInvalidRate) then 'Could use OR and wrap with above CASE, which is identical 
                                 'Change will occur at location of color 1
                                 if q% = 0 then  
@@ -3245,7 +3352,8 @@ proc WriteParameterFile()
     Print("Train Cue Rect per data point            : %d\n", ctCountTrainCueRect%);
     Print("Train Grating per data point             : %d\n", ctCountTrainGrating%);
     Print("Full trials per data point               : %d\n", ctCountFull%);
-    Print("Minimum Invalid Rate (full trials only)  : %f\n", ctMinInvalidRate);
+    'Print("Minimum Invalid Rate (full trials only)  : %f\n", ctMinInvalidRate);  'MIN REPLACED BY FLAT
+    Print("Flat Invalid Rate (full trials only)     : %f\n", ctFlatInvalidRate);
     Print("N distractor on per data point           : %d\n", ctNDistractorOn%);
     Print("N distractor off per data point          : %d\n", ctNDistractorOff%);
     Print("Contrasts match?                         : %d\n", ctContrastMatches%);
