@@ -37,6 +37,7 @@ var ReadyChannel%;
 var FixationPointChannel%;
 var AdvanceChannel%;
 var UtilityChannel%;
+var PupilChannel%
 
 'var ChangeChannel%;
 'var FrameSlaveChannel%;
@@ -459,6 +460,7 @@ endif;
 ' Assign channel numbers for eye X,Y and trigger. 
 XChannel% := 25;
 YChannel% := 26;
+PupilChannel% := 27;
 
 TimingChannel% := 38;
 UtilityChannel% := 39;
@@ -2031,7 +2033,10 @@ proc CreateSampleConfiguration()
     SampleTitle$(XChannel%,EyeXPortLabel$);
     SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
     SampleTitle$(YChannel%,EyeYPortLabel$);
-
+    if PupilPort% > -1 then
+        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+        SampleTitle$(PupilChannel%,PupilPortLabel$);
+    endif;
     
     
     if UtilityPort% > -1 then

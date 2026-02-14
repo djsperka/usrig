@@ -35,6 +35,7 @@ var StimHandleSlave%;			' handle for stimulus application
 var DataWindow%;		' 
 var XChannel%;
 var YChannel%;
+var PupilChannel%;
 
 var FrameChannel%;
 'var FrameSlaveChannel%;
@@ -271,8 +272,9 @@ endif;
 
 XChannel% := 25;
 YChannel% := 26;
-JoyChannelX% := 27;
-JoyChannelY% := 28;
+PupilChannel% := 27;
+JoyChannelX% := 28;
+JoyChannelY% := 29;
 
 ' djs 9-18-14 renumber these channels - save this stanza in case the extracts suffer....
 'FixationPointChannel% := 28;
@@ -299,11 +301,11 @@ UtilityChannel% := 38;
 TimingChannel% := 37;
 IntanTrialChannel% := 36;
 
-ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[0] := 24;  'ButtonChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
 
 
-ButtonChannel% := 27;
+ButtonChannel% := 24;
 'ButtonPort% := 5;  'No longer used, now uses UtilityPort% from config
 
 ' Fetch information about whether we are going to be using two 1401s 
@@ -2925,6 +2927,11 @@ proc CreateSampleConfiguration()
         SampleTitle$(XChannel%,EyeXPortLabel$);
         SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
         SampleTitle$(YChannel%,EyeYPortLabel$);
+    endif;
+    
+    if PupilPort% > -1 then
+        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+        SampleTitle$(PupilChannel%,PupilPortLabel$);
     endif;
     
     if JoystickPortX% > -1 then

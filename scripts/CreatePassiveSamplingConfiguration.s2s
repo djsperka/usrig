@@ -17,6 +17,7 @@ var index;
 var key$;
 var XChannel%;
 var YChannel%;
+var PupilChannel%;
 var JoyChannelX%;
 var JoyChannelY%;
 var ok%;
@@ -28,6 +29,7 @@ SampleChannels(64);  '32 does not work, we need more!
 ' Assign necessary channel numbers
 XChannel% := 23;
 YChannel% := 24;
+PupilChannel% := 25;
 JoyChannelX% := 21;
 JoyChannelY% := 22;
 ExcludedChans%[0] := 21;  'Joystick is lowest non-electrode channel used by this function
@@ -65,6 +67,11 @@ if EyeYPort% >= 0 then  'don't set up eye channels unless we are looking at eye 
     ' Set up eye Y channel 
     SampleWaveform(YChannel%,GetEyeYPort%(),1000);
     SampleTitle$(YChannel%,"Eye Y");
+endif;
+
+if PupilPort% > -1 then
+    SampleWaveform(PupilChannel%,PupilPort%,1000);       
+    SampleTitle$(PupilChannel%,PupilPortLabel$);
 endif;
 
 GetElectrodeParameters();

@@ -571,6 +571,7 @@ end;
 
 ' Window handles and channel numbers
 var XChannel%,YChannel%;		' Channel number assigned to eye x and y
+var PupilChannel%;
 var FixationChannel%;
 var StimChannel%;
 var ChangeChannel%;
@@ -635,12 +636,13 @@ starEyeTraceColors%[11] := 39;
 ' Assign channel numbers for eye X,Y and trigger. 
 XChannel% := 21;
 YChannel% := 22;
-ReadyChannel% := 23;
-FixationChannel% := 24;
-StimChannel% := 25;
-ChangeChannel% := 26;
-UtilityChannel% := 27;
-TimingChannel% := 28;
+PupilChannel% := 23;
+ReadyChannel% := 24;
+FixationChannel% := 25;
+StimChannel% := 26;
+ChangeChannel% := 27;
+UtilityChannel% := 28;
+TimingChannel% := 29;
 
 ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 32;  'Digmark (default) is highest non-electrode channel used by this function
@@ -1235,6 +1237,11 @@ proc CreateSampleConfiguration()
 	SampleTitle$(XChannel%,EyeXPortLabel$);
 	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
 	SampleTitle$(YChannel%,EyeYPortLabel$);
+    if PupilPort% > -1 then
+        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+        SampleTitle$(PupilChannel%,PupilPortLabel$);
+    endif;
+    
     
     if UtilityPort% > -1 then
         SampleWaveform(UtilityChannel%,UtilityPort%,30000);         

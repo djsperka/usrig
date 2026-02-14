@@ -28,6 +28,7 @@ var StimHandle%;			' handle for stimulus application
 var DataWindow%;		
 var XChannel%;
 var YChannel%;
+var PupilChannel%;
 var JoyChannel%;  'does this need to be initiated?  Does not in CuedAtten, may be done in the joystick init stuff
 var StimChannel%;
 var FrameChannel%;
@@ -446,7 +447,8 @@ endif;
 ' Assign channel numbers for eye X,Y and trigger. 
 XChannel% := 25;
 YChannel% := 26;
-JoyChannel% := 27;
+PupilChannel% := 27;
+JoyChannel% := 28;
 
 TimingChannel% := 38;
 UtilityChannel% := 39;
@@ -2155,7 +2157,10 @@ proc CreateSampleConfiguration()
         SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
         SampleTitle$(YChannel%,EyeYPortLabel$);
     endif
-    
+    if PupilPort% > -1 then
+        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+        SampleTitle$(PupilChannel%,PupilPortLabel$);
+    endif;
     
     if UtilityPort% > -1 then
         SampleWaveform(UtilityChannel%,UtilityPort%,30000);       

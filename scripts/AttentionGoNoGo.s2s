@@ -1462,6 +1462,7 @@ var StimHandle%;			' handle for stimulus application
 var DataWindow%;		' 
 var XChannel%;
 var YChannel%;
+var PupilChannel%;
 
 var FrameTriggerChannel%;
 var SynchChannel%;
@@ -1518,6 +1519,7 @@ endif;
 
 
 ' Assign channel numbers for eye X,Y and trigger. 
+PupilChannel% := 22;
 XChannel% := 23;
 YChannel% := 24;
 FrameTriggerChannel% := 25;
@@ -1529,7 +1531,7 @@ SynchChannel% := 32;  'note - this should be default be 32
 TimingChannel% := 48;
 OptoCopyChannel% := 49;
 
-ExcludedChans%[0] := 23;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[0] := 22;  'PupilChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel is highest non-electrode channel used by this function
 
 
@@ -3169,7 +3171,10 @@ proc CreateSampleConfiguration()
 	'SampleWaveform(YChannel%,15,1000);
     SampleWaveform(YChannel%,GetEyeYPort%(),1000);
 	SampleTitle$(YChannel%,"Eye Y");
-    
+    if PupilPort% > -1 then
+        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+        SampleTitle$(PupilChannel%,PupilPortLabel$);
+    endif;
     
     'Add a digital marker channel for pulsing optogenetics
     'Do it for every opto, easy enough to add this into the wraparound calls in the PLS

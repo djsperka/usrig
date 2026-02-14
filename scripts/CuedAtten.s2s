@@ -181,6 +181,7 @@ var StimHandle%;			' handle for stimulus application
 var DataWindow%;		' 
 var XChannel%;
 var YChannel%;
+var PupilChannel%;
 var JoyChannel%;
 
 var FrameTriggerChannel%;
@@ -337,12 +338,13 @@ var caContinuousPorts%[64];
 ' Assign channel numbers for eye X,Y and trigger. 
 XChannel% := 23;
 YChannel% := 24;
+PupilChannel% := 22;
 FrameTriggerChannel% := 25;
 FixationPointChannel% := 26;
 StimChannel% := 27;
 StimChangeChannel% := 28;  '??
 ReadyChannel% := 29;
-JoyChannel% := 22;
+JoyChannel% := 21;
 unicFileChannel% := 33;
 unicCommandSuccessChannel% := 34;
 unicStimulatingChannel% := 35;
@@ -351,7 +353,7 @@ TimingChannel% := 37;
 unicFilePort% := 5;
 unicCommandSuccessPort% := 6;
 unicStimulatingPort% := 7;
-ExcludedChans%[0] := 22;  'Joystick is lowest non-electrode channel used by this function
+ExcludedChans%[0] := 21;  'Joystick is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 37;  'TimingChannel% is highest non-electrode channel used by this function
 
 
@@ -1231,7 +1233,10 @@ proc CreateSampleConfiguration()
         SampleWaveform(YChannel%,GetEyeYPort%(),1000);
         SampleTitle$(YChannel%,EyeYPortLabel$);
     endif;
-    
+    if PupilPort% > -1 then
+        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+        SampleTitle$(PupilChannel%,PupilPortLabel$);
+    endif;
     
     
     

@@ -15,6 +15,7 @@ var index;
 var key$;
 var XChannel%;
 var YChannel%;
+var PupilChannel%;
 var DigitalLaserChannel%;
 var TimingChannel%;
 var OptoCopyChannel%;
@@ -102,6 +103,7 @@ func CreateSampleConfiguration()
     ' Assign necessary channel numbers
     XChannel% := 23;
     YChannel% := 24;
+    PupilChannel% := 25;
     DigitalLaserChannel% := 32;  'Digmark channel has to be 32
     OptoCopyChannel% := 26;
     TimingChannel% := 27;
@@ -131,6 +133,11 @@ func CreateSampleConfiguration()
         ' Set up eye Y channel 
         SampleWaveform(YChannel%,GetEyeYPort%(),1000);
         SampleTitle$(YChannel%,"Eye Y");
+    endif;
+    
+    if PupilPort% > -1 then
+        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+        SampleTitle$(PupilChannel%,PupilPortLabel$);
     endif;
     
     if UseTwo1401s% = 1 then

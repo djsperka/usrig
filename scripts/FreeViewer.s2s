@@ -28,6 +28,7 @@ var StimHandle%;			' handle for stimulus application
 var DataWindow%;		
 var XChannel%;
 var YChannel%;
+var PupilChannel%;
 var iStimChannel%;
 
 var FrameChannel%;
@@ -256,6 +257,7 @@ endif;
 
 
 ' Assign channel numbers for eye X,Y and trigger. 
+PupilChannel% := 24;
 XChannel% := 25;
 YChannel% := 26;
 ReadyChannel% := 40;
@@ -273,7 +275,7 @@ FixationPointChannel% := 45;
 IntanMarkChannel% := 27;
 IntanTrialChannel% := 28;
 
-ExcludedChans%[0] := 25;  'XChannel is lowest non-electrode channel used by this function
+ExcludedChans%[0] := 24;  'PupilChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 49;  'OptoCopyChannel% is highest non-electrode channel used by this function  
 
 
@@ -887,6 +889,10 @@ proc CreateSampleConfiguration()
 	SampleTitle$(XChannel%,EyeXPortLabel$);
 	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
 	SampleTitle$(YChannel%,EyeYPortLabel$);
+    if PupilPort% > -1 then
+        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+        SampleTitle$(PupilChannel%,PupilPortLabel$);
+    endif;
     
     if UtilityPort% > -1 then
         SampleWaveform(UtilityChannel%,UtilityPort%,30000);       

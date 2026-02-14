@@ -372,6 +372,7 @@ var StimHandle%;			' handle for stimulus application
 var DataWindow%;		' 
 var XChannel%;
 var YChannel%;
+var PupilChannel%;
 var JoyChannel%;
 var TimingChannel%;
 
@@ -510,6 +511,7 @@ proc AttentionGNGGratingOrImage()
     
     
     ' Assign channel numbers for eye X,Y and trigger. 
+    PupilChannel% := 22;
     XChannel% := 23;
     YChannel% := 24;
     FrameTriggerChannel% := 25;
@@ -526,7 +528,7 @@ proc AttentionGNGGratingOrImage()
     
     
     
-    ExcludedChans%[0] := 23;  'XChannel is lowest non-electrode channel used by this function
+    ExcludedChans%[0] := 22;  'PupilChannel is lowest non-electrode channel used by this function
     ExcludedChans%[1] := 49;  'OptoCopyChannel is highest non-electrode channel used by this function
     
     
@@ -835,6 +837,10 @@ proc CreateSampleConfiguration()
 	SampleTitle$(XChannel%,EyeXPortLabel$);
     SampleWaveform(YChannel%,GetEyeYPort%(),1000);
 	SampleTitle$(YChannel%,EyeYPortLabel$);
+    if PupilPort% > -1 then
+        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+        SampleTitle$(PupilChannel%,PupilPortLabel$);
+    endif;
     
     'Add a waveform channel for efference copy, only if defined in Config->DAQ
     if attOptoUsePulse% = 1 and attDoOpto% = 1 and OptoEffCopyPort% > -1 then

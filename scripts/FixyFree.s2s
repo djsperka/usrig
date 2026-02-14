@@ -33,6 +33,7 @@ var StimHandle%;	' handle for stimulus application
 var DataWindow%;		 
 var XChannel%;
 var YChannel%;
+var PupilChannel%;
 var iFixationWindowChannel%;
 var iStimChannel%;
 var iMonitorChannel%;
@@ -104,8 +105,9 @@ origRewardMS% := GetJuiceRewardMS%();
 ' Assign channel numbers for eye X,Y and trigger. 
 XChannel% := 23;
 YChannel% := 24;
-FrameTriggerChannel% := 25;
-FixationPointChannel% := 26;
+PupilChannel% := 25;
+FrameTriggerChannel% := 26;
+FixationPointChannel% := 27;
 'StimChannel% := 27;
 'StimChangeChannel% := 28;
 ReadyChannel% := 29;
@@ -264,6 +266,11 @@ proc CreateSampleConfiguration()
 	SampleTitle$(XChannel%,EyeXPortLabel$);
 	SampleWaveform(YChannel%,GetEyeYPort%(),1000);
 	SampleTitle$(YChannel%,EyeYPortLabel$);
+    if PupilPort% > -1 then
+        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+        SampleTitle$(PupilChannel%,PupilPortLabel$);
+    endif;    
+    
     
     if UtilityPort% > -1 then
         SampleWaveform(UtilityChannel%,UtilityPort%,30000); 

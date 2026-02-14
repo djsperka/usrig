@@ -29,6 +29,7 @@ var StimHandle%;			' handle for stimulus application
 var DataWindow%;		' 
 var XChannel%;
 var YChannel%;
+var PupilChannel%;
 var JoyChannel%;
 
 var FrameTriggerChannel%;
@@ -48,6 +49,7 @@ var iMonitorChannel%;	' channel number for monitor position display in xy window
 
 
 ' Assign channel numbers for eye X,Y and trigger. 
+PupilChannel% := 22;
 XChannel% := 23;
 YChannel% := 24;
 FrameTriggerChannel% := 25;
@@ -55,7 +57,7 @@ FixationPointChannel% := 26;
 StimChannel% := 27;
 StimChangeChannel% := 28;  '??
 ReadyChannel% := 29;
-JoyChannel% := 22;
+JoyChannel% := 21;
 
 LogInit(1);
 
@@ -143,6 +145,10 @@ proc CreateSampleConfiguration()
     SampleTitle$(XChannel%,"Eye X");
     SampleWaveform(YChannel%,GetEyeYPort%(),1000);
     SampleTitle$(YChannel%,"Eye Y");
+    if PupilPort% > -1 then
+        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+        SampleTitle$(PupilChannel%,PupilPortLabel$);
+    endif;
     
 	SampleTextMark(200);  'increase number of allowed characters, 1 is so stingy!
     

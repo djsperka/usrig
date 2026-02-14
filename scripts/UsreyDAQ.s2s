@@ -28,6 +28,7 @@ var wrongJuicerWarningGiven%;   ' Only give wrong juicer type warning once
 var DisplayHardwareIndex% := 0; ' 0 for VSG/ViSaGe, 1 for Render, many scripts will not check this flag and assume VSG
 var EyeXPort%;                  ' Port horizontal eye signal connected to
 var EyeYPort%;                  ' Port vertical eye signal connected to
+var PupilPort%;                 ' Port pupil size signal connected to
 var JoystickPortX%;             ' Port X-axis of joystick is connected to
 var JoystickPortY%;             ' Port Y-axis of joystick is connected to
 var EEGPort%;                   ' Port for EEG (independent of spiking electrode)
@@ -38,6 +39,7 @@ var TemperaturePort%;           ' Port for a thermometer
 var UtilityPort%;               ' Port for arbitrary utility input
 var EyeXPortLabel$ := "Eye X";  ' Default label for EyeX port, hardcode almost all of these
 var EyeYPortLabel$ := "Eye Y";  ' Default label for EyeY port
+var PupilPortLabel$ := "Pupil"; ' Default label for pupil port
 var JoystickPortLabelX$ := "Joy X";  ' Default label for joystick port X
 var JoystickPortLabelY$ := "Joy Y";  ' Default label for joystick port Y
 var EEGPortLabel$ := "EEG";     ' Default label for EEG port
@@ -146,6 +148,7 @@ func GetEyeYPort%()
     return EyeYPort%;
 end
 
+
 'These "which" functions are to allow us to poll if the port is set without quitting if it's not
 func WhichJoystickPortX%()
     return JoystickPortX%;
@@ -165,6 +168,12 @@ end
 
 
 
+
+'These functions do not have a "which" counterpart, we do not expect to have to quit if the port is not defined
+
+func GetPupilPort%()
+    return PupilPort%;
+end
 
 func GetEEGPort%()
     return EEGPort%;
@@ -384,7 +393,7 @@ func DAQParametersDialog%()
 	var iReturn%;
     var JuicerIndexDecremented%;
     var fiveInts%[5];  'There can be a maximum of 20 arguments fed to DlgShow, we need to make some space
-    var tenInts%[10];  'MOAR SPACE!!!
+    var elevenInts%[11];  'MOAR SPACE!!!
     var fourReals[4];  'EVAN MOAR SPACE!!!
     
     'This little bit allows us to disallow any values other than legal juicer values
@@ -408,17 +417,18 @@ func DAQParametersDialog%()
     fiveInts%[3] := JuiceRewardMSMax%;
     fiveInts%[4] := JuicerIndexDecremented%;
     
-    'Fill nineInts%
-    tenInts%[0] := EEGPort%;
-    tenInts%[1] := EyeXPort%;
-    tenInts%[2] := EyeYPort%;
-    tenInts%[3] := JoystickPortX%;
-    tenInts%[4] := JoystickPortY%;
-    tenInts%[5] := OptoEffCopyPort%;
-    tenInts%[6] := StimEffCopyPort%;
-    tenInts%[7] := PhotodiodePort%;
-    tenInts%[8] := TemperaturePort%;
-    tenInts%[9] := UtilityPort%;
+    'Fill elevebInts%
+    elevenInts%[0] := EEGPort%;
+    elevenInts%[1] := EyeXPort%;
+    elevenInts%[2] := EyeYPort%;
+    elevenInts%[3] := PupilPort%;
+    elevenInts%[4] := JoystickPortX%;
+    elevenInts%[5] := JoystickPortY%;
+    elevenInts%[6] := OptoEffCopyPort%;
+    elevenInts%[7] := StimEffCopyPort%;
+    elevenInts%[8] := PhotodiodePort%;
+    elevenInts%[9] := TemperaturePort%;
+    elevenInts%[10] := UtilityPort%;
     
     'Fill fourReals
     fourReals[0] := DegreesPerVoltX;
@@ -453,29 +463,30 @@ func DAQParametersDialog%()
     DlgInteger(15, "Juice Reward (max) ms:",0,1000,28,16);
     DlgList(16, "Juicer Open State:",juicerList2$,2,22,17);
     
-    DlgGroup("Analog Inputs, will not use if value is -1",42,1,38,12);
+    DlgGroup("Analog Inputs, will not use if value is -1",42,1,38,13);
     DlgInteger(17,8,-1,31,71,2);  DlgText("EEG Port",43,2);
     DlgInteger(18,8,-1,31,71,3);  DlgText("Eye X Port",43,3);
     DlgInteger(19,8,-1,31,71,4);  DlgText("Eye Y Port",43,4);
-    DlgInteger(20,8,-1,31,71,5);  DlgText("Joystick Port",43,5);
-    DlgInteger(21,8,-1,31,71,6);  DlgText("Joystick Port Y",43,6);
-    DlgInteger(22,8,-1,31,71,7);  DlgText("Opto Eff Copy Port",43,7);
-    DlgInteger(23,8,-1,31,71,8);  DlgText("Stim Eff Copy Port",43,8);
-    DlgInteger(24,8,-1,31,71,9);  DlgText("Photodiode Port",43,9);
-    DlgInteger(25,8,-1,31,71,10);  DlgText("Temperature Port",43,10);
-    DlgInteger(26,8,-1,31,71,11); DlgText("Utility Port",43,11);
-    DlgString(27,10,6,"",69,12);   DlgText("Utility Port Label",43,12);
+    DlgInteger(20,8,-1,31,71,5);  DlgText("Pupil Port",43,5);
+    DlgInteger(21,8,-1,31,71,6);  DlgText("Joystick Port X",43,6);
+    DlgInteger(22,8,-1,31,71,7);  DlgText("Joystick Port Y",43,7);
+    DlgInteger(23,8,-1,31,71,8);  DlgText("Opto Eff Copy Port",43,8);
+    DlgInteger(24,8,-1,31,71,9);  DlgText("Stim Eff Copy Port",43,9);
+    DlgInteger(25,8,-1,31,71,10);  DlgText("Photodiode Port",43,10);
+    DlgInteger(26,8,-1,31,71,11);  DlgText("Temperature Port",43,11);
+    DlgInteger(27,8,-1,31,71,12); DlgText("Utility Port",43,12);
+    DlgString(28,10,6,"",69,13);   DlgText("Utility Port Label",43,13);
     
-    DlgGroup("Remote Stimulus",42,13,38,6);
-    DlgCheck(28, "Use Remote Stimulus",43,14);
-    DlgString(29,21,15,"",58,15);   DlgText("Remote IP",43,15);
-    DlgString(30,6,5,"",73,16);   DlgText("Remote Port",43,16);
-    DlgString(31,21,15,"",58,17);   DlgText("Secondary IP",43,17);
-    DlgString(32,6,5,"",73,18);   DlgText("Secondary Port",43,18);
+    DlgGroup("Remote Stimulus",42,14,38,6);
+    DlgCheck(29, "Use Remote Stimulus",43,15);
+    DlgString(30,21,15,"",58,16);   DlgText("Remote IP",43,16);
+    DlgString(31,6,5,"",73,17);   DlgText("Remote Port",43,17);
+    DlgString(32,21,15,"",58,18);   DlgText("Secondary IP",43,18);
+    DlgString(33,6,5,"",73,19);   DlgText("Secondary Port",43,19);
     
     DlgAllow(0xffff, 0, DAQParametersDialogChanged%);
     iReturn% := DlgShow(DisplayHardwareIndex%,NumberOfElectrodes%,fourReals[],CalibrationOffsetDegrees,
-        CalibrationComPort%,EyeCoilSamplingFrequency%,RecordEyeTrackerOutputFile%,pReward,fiveInts%[],tenInts%[],
+        CalibrationComPort%,EyeCoilSamplingFrequency%,RecordEyeTrackerOutputFile%,pReward,fiveInts%[],elevenInts%[],
         UtilityPortLabel$,UseRemoteStimulus%,RemoteStimulusIP$,RemoteStimulusPort$,SlaveStimulusIP$,SlaveStimulusPort$);
     
 
@@ -497,16 +508,17 @@ func DAQParametersDialog%()
         SetJuicerSequencerVariable%();  'This allows reset of juicer sequencer variable without restarting the script.  Probably redundant.
         
         'Unpack nineInts%
-        EEGPort% := tenInts%[0];
-        EyeXPort% := tenInts%[1];
-        EyeYPort% := tenInts%[2];
-        JoystickPortX% := tenInts%[3];
-        JoystickPortY% := tenInts%[4];
-        OptoEffCopyPort% := tenInts%[5];
-        StimEffCopyPort% := tenInts%[6];
-        PhotodiodePort% := tenInts%[7];
-        TemperaturePort% := tenInts%[8];
-        UtilityPort% := tenInts%[9];
+        EEGPort% := elevenInts%[0];
+        EyeXPort% := elevenInts%[1];
+        EyeYPort% := elevenInts%[2];
+        PupilPort% := elevenInts%[3];
+        JoystickPortX% := elevenInts%[4];
+        JoystickPortY% := elevenInts%[5];
+        OptoEffCopyPort% := elevenInts%[6];
+        StimEffCopyPort% := elevenInts%[7];
+        PhotodiodePort% := elevenInts%[8];
+        TemperaturePort% := elevenInts%[9];
+        UtilityPort% := elevenInts%[10];
         
         'Unpack fourReals
         DegreesPerVoltX := fourReals[0];
@@ -522,40 +534,22 @@ end;
 func DAQParametersDialogChanged%(item%)    
     docase 
     case item% = 0 then
-        DlgEnable(UseRemoteStimulus%, 29, 30, 31, 32);
+        DlgEnable(UseRemoteStimulus%, 30, 31, 32, 33);
         if UtilityPort% = -1 then
-            DlgEnable(0,27);
+            DlgEnable(0,28);
         else
-            DlgEnable(1,27);
+            DlgEnable(1,28);
         endif;
         
-    case item% = 28 then
-        DlgEnable(DlgValue(28), 29, 30, 31, 32);
+    case item% = 29 then
+        DlgEnable(DlgValue(29), 30, 31, 32, 33);
         
-    case item% = 26 then 
-        if DlgValue(26) = -1 then
-            DlgEnable(0,27);
+    case item% = 27 then 
+        if DlgValue(27) = -1 then
+            DlgEnable(0,28);
         else
-            DlgEnable(1,27);
+            DlgEnable(1,28);
         endif;
-        
-'    case item% = 0 then
-'        DlgEnable(UseRemoteStimulus%, 28, 29, 30, 31);
-'        if UtilityPort% = -1 then
-'            DlgEnable(0,26);
-'        else
-'            DlgEnable(1,26);
-'        endif;
-'        
-'    case item% = 27 then
-'        DlgEnable(DlgValue(27), 28, 29, 30, 31);
-'        
-'    case item% = 25 then 
-'        if DlgValue(25) = -1 then
-'            DlgEnable(0,26);
-'        else
-'            DlgEnable(1,26);
-'        endif;
         
     endcase
     return 1;
@@ -587,6 +581,7 @@ proc GetDAQParameters()
     JuicerIndex% := GetIntRegistryValue%(globalKey$, "JuicerIndex", GetIntRegistryValue%(key$, "JuicerIndex", JuicerIndex%));
     EyeXPort% := GetIntRegistryValue%(key$, "EyeXPort", 14);
     EyeYPort% := GetIntRegistryValue%(key$, "EyeYPort", 15);
+    PupilPort% := GetIntRegistryValue%(key$, "PupilPort", -1);
     JoystickPortX% := GetIntRegistryValue%(key$, "JoystickPort", 13);  'Have updated variable name to JoystickPortX but retain registry value in JoystickPort
     JoystickPortY% := GetIntRegistryValue%(key$, "JoystickPortY", 12);
     UseRemoteStimulus% := GetIntRegistryValue%(globalKey$, "UseRemoteStimulus", GetIntRegistryValue%(key$, "UseRemoteStimulus", 0));
@@ -632,6 +627,7 @@ proc SaveDAQParameters()
     SetIntRegistryValue(globalKey$, "JuicerIndex", JuicerIndex%);
     SetIntRegistryValue(key$, "EyeXPort", EyeXPort%);
     SetIntRegistryValue(key$, "EyeYPort", EyeYPort%);
+    SetIntRegistryValue(key$, "PupilPort", PupilPort%);
     SetIntRegistryValue(key$, "JoystickPort", JoystickPortX%);  'Have updated variable name to JoystickPortX but retain registry value in JoystickPort
     SetIntRegistryValue(key$, "JoystickPortY", JoystickPortY%);
     SetIntRegistryValue(globalKey$, "UseRemoteStimulus", UseRemoteStimulus%);
