@@ -30,6 +30,9 @@ var DataWindow%;		'
 var XChannel%;
 var YChannel%;
 var PupilChannel%;
+var XChannelPurkinje%;
+var YChannelPurkinje%;
+var PupilChannelPurkinje%;
 var JoyChannel%;
 
 var FrameTriggerChannel%;
@@ -58,6 +61,10 @@ StimChannel% := 27;
 StimChangeChannel% := 28;  '??
 ReadyChannel% := 29;
 JoyChannel% := 21;
+
+PupilChannelPurkinje% := 33;
+XChannelPurkinje% := 34;
+YChannelPurkinje% := 35;
 
 LogInit(1);
 
@@ -141,13 +148,43 @@ proc CreateSampleConfiguration()
     'endcase;
 	
     ' Set up eye channels 
-    SampleWaveform(XChannel%,GetEyeXPort%(),1000);
-    SampleTitle$(XChannel%,"Eye X");
-    SampleWaveform(YChannel%,GetEyeYPort%(),1000);
-    SampleTitle$(YChannel%,"Eye Y");
+    'SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+    'SampleTitle$(XChannel%,"Eye X");
+    'SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+    'SampleTitle$(YChannel%,"Eye Y");
+    
+    if EyeXPort% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye X channel
+        SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+        SampleTitle$(XChannel%,"Eye X");
+    endif;
+    
+    if EyeYPort% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye Y channel 
+        SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+        SampleTitle$(YChannel%,"Eye Y");
+    endif;
+    
+    if EyeXPortPurkinje% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye X channel
+        SampleWaveform(XChannelPurkinje%,GetEyeXPortPurkinje%(),1000);
+        SampleTitle$(XChannelPurkinje%,"Eye X P");
+    endif;
+    
+    if EyeYPortPurkinje% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye Y channel 
+        SampleWaveform(YChannelPurkinje%,GetEyeYPortPurkinje%(),1000);
+        SampleTitle$(YChannelPurkinje%,"Eye Y P");
+    endif;
+    
     if PupilPort% > -1 then
         SampleWaveform(PupilChannel%,PupilPort%,1000);       
         SampleTitle$(PupilChannel%,PupilPortLabel$);
+    endif;
+    
+    if PupilPortPurkinje% > -1 then
+        SampleWaveform(PupilChannelPurkinje%,PupilPortPurkinje%,1000);       
+        SampleTitle$(PupilChannelPurkinje%,PupilPortLabelPurkinje$);
     endif;
     
 	SampleTextMark(200);  'increase number of allowed characters, 1 is so stingy!
@@ -314,10 +351,25 @@ func Stop%()
     
     
     'Code for putting other various channels into the Matlab extraction, Ben doesn't want them but they will be useful for other code    
-    totalChanToExport% += 1;
-    chanToExport%[totalChanToExport%] := XChannel%;
-    totalChanToExport% += 1;
-    chanToExport%[totalChanToExport%] := YChannel%;
+    if EyeXPort% > -1 then
+        totalChanToExport% += 1;
+        chanToExport%[totalChanToExport%] := XChannel%;
+    endif
+    
+    if EyeYPort% > -1 then
+        totalChanToExport% += 1;
+        chanToExport%[totalChanToExport%] := YChannel%;
+    endif
+    
+    if EyeXPortPurkinje% > -1 then
+        totalChanToExport% += 1;
+        chanToExport%[totalChanToExport%] := XChannelPurkinje%;
+    endif
+    
+    if EyeYPortPurkinje% > -1 then
+        totalChanToExport% += 1;
+        chanToExport%[totalChanToExport%] := YChannelPurkinje%;
+    endif
     
     'The first element in the chanToExport% variable must be the number of channels to be exported    
     chanToExport%[0] := totalChanToExport%;

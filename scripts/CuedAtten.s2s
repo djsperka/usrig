@@ -182,6 +182,9 @@ var DataWindow%;		'
 var XChannel%;
 var YChannel%;
 var PupilChannel%;
+var XChannelPurkinje%;
+var YChannelPurkinje%;
+var PupilChannelPurkinje%;
 var JoyChannel%;
 
 var FrameTriggerChannel%;
@@ -233,8 +236,8 @@ var dist1H;
 
 'Idle loop variables
 var tNow;               ' latest time for which there are values recorded. Used in IdleProcessing
-var xEye;		        ' eye positions
-var yEye;
+'var xEye;		        ' eye positions
+'var yEye;
 var tLastUpdate:=-1;	' last time view was updated
 var tTrigger;           ' temp var for newly discovered trigger times
 var vTrigger;		    ' set by NextTime to indicate trigger transition
@@ -339,6 +342,9 @@ var caContinuousPorts%[64];
 XChannel% := 23;
 YChannel% := 24;
 PupilChannel% := 22;
+XChannelPurkinje% := 38;
+YChannelPurkinje% := 39;
+PupilChannelPurkinje% := 40;
 FrameTriggerChannel% := 25;
 FixationPointChannel% := 26;
 StimChannel% := 27;
@@ -354,7 +360,7 @@ unicFilePort% := 5;
 unicCommandSuccessPort% := 6;
 unicStimulatingPort% := 7;
 ExcludedChans%[0] := 21;  'Joystick is lowest non-electrode channel used by this function
-ExcludedChans%[1] := 37;  'TimingChannel% is highest non-electrode channel used by this function
+ExcludedChans%[1] := 40;  'TimingChannel% is highest non-electrode channel used by this function
 
 
 
@@ -1228,16 +1234,43 @@ proc CreateSampleConfiguration()
     if caRequireFixation% <> 0 then  'don't set up eye channels unless we are looking at eye position
         'caRequireFixation% of -1 means watch fixation but don't require Looking%()
         ' Set up eye channels 
-        SampleWaveform(XChannel%,GetEyeXPort%(),1000);
-        SampleTitle$(XChannel%,EyeXPortLabel$);
-        SampleWaveform(YChannel%,GetEyeYPort%(),1000);
-        SampleTitle$(YChannel%,EyeYPortLabel$);
+        'SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+        'SampleTitle$(XChannel%,EyeXPortLabel$);
+        'SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+        'SampleTitle$(YChannel%,EyeYPortLabel$);
+        if EyeXPort% > -1 then  'don't set up eye channels unless we are looking at eye position
+            ' Set up eye X channel
+            SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+            SampleTitle$(XChannel%,"Eye X");
+        endif;
+        
+        if EyeYPort% > -1 then  'don't set up eye channels unless we are looking at eye position
+            ' Set up eye Y channel 
+            SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+            SampleTitle$(YChannel%,"Eye Y");
+        endif;
+        if EyeXPortPurkinje% > -1 then  'don't set up eye channels unless we are looking at eye position
+            ' Set up eye X channel
+            SampleWaveform(XChannelPurkinje%,GetEyeXPortPurkinje%(),1000);
+            SampleTitle$(XChannelPurkinje%,"Eye X P");
+        endif;
+        
+        if EyeYPortPurkinje% > -1 then  'don't set up eye channels unless we are looking at eye position
+            ' Set up eye Y channel 
+            SampleWaveform(YChannelPurkinje%,GetEyeYPortPurkinje%(),1000);
+            SampleTitle$(YChannelPurkinje%,"Eye Y P");
+        endif;
     endif;
+    
     if PupilPort% > -1 then
         SampleWaveform(PupilChannel%,PupilPort%,1000);       
         SampleTitle$(PupilChannel%,PupilPortLabel$);
     endif;
     
+    if PupilPortPurkinje% > -1 then
+        SampleWaveform(PupilChannelPurkinje%,PupilPortPurkinje%,1000);       
+        SampleTitle$(PupilChannelPurkinje%,PupilPortLabelPurkinje$);
+    endif;
     
     
     '----Set up "spiking" Electrode Channels----
@@ -1291,13 +1324,24 @@ proc InitializeWindows()
         
         'Open an XY view to display eye position
         XYWindow% := FileNew(12);
+        iEyePosChannel% := 1;  'The primary eye position channel is #1
         XRange(-30,30);
         YRange(-2,-30,30);
         XYDrawMode(0,5,0);
         WindowVisible(1);
         Window(0, 0, 100, 47);
-        XYColour(1,16);
-        XYSize(1,-1);
+        XYColour(iEyePosChannel%,16);  'Make this channel red
+        XYSize(iEyePosChannel%,-1);  'Only one point on this channel
+        
+        'Create a new channel in the XY view to show the ASL eye position
+        iEyePosASLChannel% := XYSetChan(0);
+        XYColour(iEyePosASLChannel%,8);  'Make this channel green
+        XYSize(iEyePosASLChannel%,-1);  'Only one point on this channel
+    
+        'Create a new channel in the XY view to show the Purkinje eye position
+        iEyePosPurkinjeChannel% := XYSetChan(0);
+        XYColour(iEyePosPurkinjeChannel%,32);  'Make this channel purplekinje
+        XYSize(iEyePosPurkinjeChannel%,-1);  'Only one point on this channel
         
     endif
     
@@ -1716,10 +1760,22 @@ func Stop%()
     if caRequireFixation% <> 0 then  'eye position channel only if used
         'ExportChanList(0,view(datawindow%).maxtime(),XChannel%);  'Eye position channel, X
         'ExportChanList(0,view(datawindow%).maxtime(),YChannel%);  'Eye position channel, Y
-        totalChanToExport% += 1;
-        chanToExport%[totalChanToExport%] := XChannel%;
-        totalChanToExport% += 1;
-        chanToExport%[totalChanToExport%] := YChannel%;
+        if EyeXPort% > -1 then 
+            totalChanToExport% += 1;
+            chanToExport%[totalChanToExport%] := XChannel%;
+        endif
+        if EyeYPort% > -1 then
+            totalChanToExport% += 1;
+            chanToExport%[totalChanToExport%] := YChannel%;
+        endif
+        if EyeXPortPurkinje% > -1 then 
+            totalChanToExport% += 1;
+            chanToExport%[totalChanToExport%] := XChannelPurkinje%;
+        endif
+        if EyeYPortPurkinje% > -1 then
+            totalChanToExport% += 1;
+            chanToExport%[totalChanToExport%] := YChannelPurkinje%;
+        endif
     endif;
     if caRequireSaccadeResponse% = 0 then 
         totalChanToExport% += 1;
@@ -1808,13 +1864,27 @@ func IdleProcessing%()
             
             'get eye position, but don't check if tNow is small enough that we would give a negative value to ChanMeasure
             if tNow > .006 then
-                xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
-                yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+                GetAllFixationPosition(DataWindow%,XChannel%,YChannel%,XChannelPurkinje%,YChannelPurkinje%,tNow);
+'                docase
+'                case UseASLEyetracker% = 1 and UsePurkinjeEyetracker% = 1 then  'Crazy!  We should average them if both eyetrackers are present and the config says to use both
+'                    xEye := ((View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX) + (View(DataWindow%).ChanMeasure(XChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltXPurkinje))/2;
+'                    yEye := ((View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY) + (View(DataWindow%).ChanMeasure(YChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltYPurkinje))/2;
+'                case UseASLEyetracker% = 1 then
+'                    xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+'                    yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+'                case UsePurkinjeEyetracker% = 1 then
+'                    xEye := View(DataWindow%).ChanMeasure(XChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltXPurkinje;
+'                    yEye := View(DataWindow%).ChanMeasure(YChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltYPurkinje;
+'                else  'No eyetracker to use!
+'                    xEye := 0;
+'                    yEye := 0;
+'                endcase
             endif;
             
             ' Don't update eye position display every time....
             if tNow-tLastUpdate > .005 then
-                View(XYWindow%).XYAddData(1,xEye,yEye);
+                UpdateFixationDisplay(XYWindow%);
+                'View(XYWindow%).XYAddData(1,xEye,yEye);
                 tLastUpdate := tNow;
             endif
         endif

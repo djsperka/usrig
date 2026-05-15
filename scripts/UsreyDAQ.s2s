@@ -8,17 +8,41 @@
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 
-
+var NumberOfElectrodes%;		' Number of electrodes (i.e. wavemark inputs) in use
 var DistanceToScreenMM$;		' Distance to screen in MM 
+
 var DegreesPerVoltX;			' Conversion factor from ADC to visual degrees
 var DegreesPerVoltY;			' Conversion factor from ADC to visual degrees
 var XVoltOffset;                ' With the advent of "pursuit" calibration, we will calculate an offset as well as a gain, this should be quite small
 var YVoltOffset;                ' etc.
-var CalibrationOffsetDegrees;   ' Calibration dots are this many degrees offset in x,y from (0,0)
-var CalibrationComPort%;        ' COM port to use for calibration (connection to ASL 'Serial Out')
-var CalibrationConfigFile$;     ' path to xml file for calibration config. Can be same as regular config file for eye tracker.
-var EyeCoilSamplingFrequency%;		' Frequency to sample eye coil at
-var NumberOfElectrodes%;		' Number of electrodes (i.e. wavemark inputs) in use
+''Calibration values are unused by any known script.  Deprecating.  -jj 5/1/2026
+'var CalibrationOffsetDegrees;   ' Calibration dots are this many degrees offset in x,y from (0,0)
+'var CalibrationComPort%;        ' COM port to use for calibration (connection to ASL 'Serial Out')
+'var CalibrationConfigFile$;     ' path to xml file for calibration config. Can be same as regular config file for eye tracker.
+var EyeCoilSamplingFrequency%;		' Frequency to sample eye position at
+var RecordEyeTrackerOutputFile%;  'if checked, use 1401 to start/stop eyetracke output file, send "heartbeat"
+var UseASLEyetracker%;           'Reimagined! If 0, do not use ASL.  If > 0, relative weight of ASL contribution to in-window eye position
+
+var DegreesPerVoltXPurkinje;    ' Conversion factor from ADC to visual degrees, Purkinje eyetracker
+var DegreesPerVoltYPurkinje;	' Conversion factor from ADC to visual degrees, Purkinje eyetracker
+var XVoltOffsetPurkinje;        ' With the advent of "pursuit" calibration, we will calculate an offset as well as a gain, this should be quite small, Purkinje eyetracker
+var YVoltOffsetPurkinje;        ' etc.
+var EyeCoilSamplingFrequencyPurkinje%;		' Frequency to sample eye position at, Purkinje eyetracker
+var RecordEyeTrackerOutputFilePurkinje%;  'if checked, use 1401 to start/stop eyetracke output file, send "heartbeat", Purkinje eyetracker, NOTE THIS IS NOT YET FUNCTIONAL AND DETAILS MAY CHANGE
+var UsePurkinjeEyetracker%;     'Reimagined! If 0, do not use Purkinje.  If > 0, relative weight of Purkinje contribution to in-window eye position
+
+var xEye, yEye, xEyeA, yEyeA, xEyeP, yEyeP;  'X/Y eye position variables: Overall (used for Looking%(), etc.), ASL eye position, Purkinje eye position
+                                             '5/5/26 update has moved xEye/yEye to global varibales in UsreyDAQ and created the other variables
+                                             'This is required to facilitate reasonable usage of ASL/Purkinje trackers side-by-side
+                                             'Will update all known "in use" scripts.  Any "older" scripts using xEye/yEye will
+                                             'fail to compile until local xEye/yEye variable definitions are removed (but should work as original once that is done)
+                                             'This failure to compile actually serves as a nice flag to indicate functions that are out of date and need TLC
+var iEyePosChannel% := 1;                    'As with xEye/yEye, this variable is being moved to a global variable in UsreyDAQ for purposes of an integrated window update function
+                                             'Note that failure to compile MAY occur for "older" scripts but is not guaranteed as this variable name may not be consistent
+                                             'This variable is generally expected to be set to 1 as the first channel defined when opening the XYWindow
+var iEyePosASLChannel%;                      'New variables, will not step on anything.  Define channel when setting up XYWindow in each script.
+var iEyePosPurkinjeChannel%;
+
 var JuicePerReward%;			' Number of juice squirts per reward
 var JuiceRewardMS% := 200;      ' for Ben's new juicer this is the length of time juicer is held open.
 var JuiceRewardMSMin%;          ' minimum juicer duration, used for delay-based-reward-size
@@ -29,6 +53,9 @@ var DisplayHardwareIndex% := 0; ' 0 for VSG/ViSaGe, 1 for Render, many scripts w
 var EyeXPort%;                  ' Port horizontal eye signal connected to
 var EyeYPort%;                  ' Port vertical eye signal connected to
 var PupilPort%;                 ' Port pupil size signal connected to
+var EyeXPortPurkinje%;          ' Port horizontal eye signal connected to, Purkinje eyetracker
+var EyeYPortPurkinje%;          ' Port vertical eye signal connected to, Purkinje eyetracker
+var PupilPortPurkinje%;         ' Port pupil size signal connected to, Purkinje eyetracker
 var JoystickPortX%;             ' Port X-axis of joystick is connected to
 var JoystickPortY%;             ' Port Y-axis of joystick is connected to
 var EEGPort%;                   ' Port for EEG (independent of spiking electrode)
@@ -40,6 +67,9 @@ var UtilityPort%;               ' Port for arbitrary utility input
 var EyeXPortLabel$ := "Eye X";  ' Default label for EyeX port, hardcode almost all of these
 var EyeYPortLabel$ := "Eye Y";  ' Default label for EyeY port
 var PupilPortLabel$ := "Pupil"; ' Default label for pupil port
+var EyeXPortLabelPurkinje$ := "Eye X P";  ' Default label for EyeX port, Purkinje eyetracker, hardcode almost all of these
+var EyeYPortLabelPurkinje$ := "Eye Y P";  ' Default label for EyeY port, Purkinje eyetracker
+var PupilPortLabelPurkinje$ := "Pupil P"; ' Default label for pupil port, Purkinje eyetracker
 var JoystickPortLabelX$ := "Joy X";  ' Default label for joystick port X
 var JoystickPortLabelY$ := "Joy Y";  ' Default label for joystick port Y
 var EEGPortLabel$ := "EEG";     ' Default label for EEG port
@@ -56,7 +86,6 @@ var RemoteStimulusIP$ := "192.168.1.2";
 var RemoteStimulusPort$ := "7000";
 var SlaveStimulusIP$ := "192.168.1.2";
 var SlaveStimulusPort$ := "7000";
-var RecordEyeTrackerOutputFile%;  'if checked, use 1401 to start/stop eyetracke output file, send "heartbeat"
 'var WavemarkPorts%[16];
 'var NumWavemarkPorts%;
 'var ContinuousPorts%[16];
@@ -148,6 +177,21 @@ func GetEyeYPort%()
     return EyeYPort%;
 end
 
+func GetEyeXPortPurkinje%()
+    if EyeXPortPurkinje% = -1 then
+        message("EyeX port (Purkinje) has been set to -1 (off) in Config->DAQ but the current script requires eyetracking!  Quitting!");
+        halt
+    endif
+    return EyeXPortPurkinje%;
+end
+
+func GetEyeYPortPurkinje%()
+    if EyeYPortPurkinje% = -1 then
+        message("EyeY port (Purkinje) has been set to -1 (off) in Config->DAQ but the current script requires eyetracking!  Quitting!");
+        halt
+    endif
+    return EyeYPortPurkinje%;
+end
 
 'These "which" functions are to allow us to poll if the port is set without quitting if it's not
 func WhichJoystickPortX%()
@@ -166,13 +210,23 @@ func WhichEyeYPort%()
     return EyeYPort%;
 end
 
+func WhichEyeXPortPurkinje%()
+    return EyeXPortPurkinje%;
+end
 
+func WhichEyeYPortPurkinje%()
+    return EyeYPortPurkinje%;
+end
 
 
 'These functions do not have a "which" counterpart, we do not expect to have to quit if the port is not defined
 
 func GetPupilPort%()
     return PupilPort%;
+end
+
+func GetPupilPortPurkinje%()
+    return PupilPortPurkinje%;
 end
 
 func GetEEGPort%()
@@ -220,18 +274,33 @@ func GetYVoltOffset()
     return YVoltOffset;
 end
 
-
-func GetCalibrationOffsetDegrees()
-    return CalibrationOffsetDegrees;
+func GetDegreesPerVoltXPurkinje()
+    return DegreesPerVoltXPurkinje;
 end
 
-func GetCalibrationCOMPort%()
-    return CalibrationComPort%; 
+func GetDegreesPerVoltYPurkinje()
+    return DegreesPerVoltYPurkinje;
 end
 
-func GetCalibrationConfigFile$()
-    return CalibrationConfigFile$;
+func GetXVoltOffsetPurkinje()
+    return XVoltOffsetPurkinje;
 end
+
+func GetYVoltOffsetPurkinje()
+    return YVoltOffsetPurkinje;
+end
+
+'func GetCalibrationOffsetDegrees()
+'    return CalibrationOffsetDegrees;
+'end
+'
+'func GetCalibrationCOMPort%()
+'    return CalibrationComPort%; 
+'end
+'
+'func GetCalibrationConfigFile$()
+'    return CalibrationConfigFile$;
+'end
 
 func GetNumberOfElectrodes%()
     return NumberOfElectrodes%;
@@ -393,8 +462,9 @@ func DAQParametersDialog%()
 	var iReturn%;
     var JuicerIndexDecremented%;
     var fiveInts%[5];  'There can be a maximum of 20 arguments fed to DlgShow, we need to make some space
-    var elevenInts%[11];  'MOAR SPACE!!!
+    var fourteenInts%[14];  'MOAR SPACE!!!
     var fourReals[4];  'EVAN MOAR SPACE!!!
+    var fourPurkinjeReals[4];  'PURKINJE!!!
     
     'This little bit allows us to disallow any values other than legal juicer values
     'without changing the rest of the code
@@ -417,18 +487,21 @@ func DAQParametersDialog%()
     fiveInts%[3] := JuiceRewardMSMax%;
     fiveInts%[4] := JuicerIndexDecremented%;
     
-    'Fill elevebInts%
-    elevenInts%[0] := EEGPort%;
-    elevenInts%[1] := EyeXPort%;
-    elevenInts%[2] := EyeYPort%;
-    elevenInts%[3] := PupilPort%;
-    elevenInts%[4] := JoystickPortX%;
-    elevenInts%[5] := JoystickPortY%;
-    elevenInts%[6] := OptoEffCopyPort%;
-    elevenInts%[7] := StimEffCopyPort%;
-    elevenInts%[8] := PhotodiodePort%;
-    elevenInts%[9] := TemperaturePort%;
-    elevenInts%[10] := UtilityPort%;
+    'Fill fourteenInts%
+    fourteenInts%[0] := EEGPort%;
+    fourteenInts%[1] := EyeXPort%;
+    fourteenInts%[2] := EyeYPort%;
+    fourteenInts%[3] := PupilPort%;
+    fourteenInts%[4] := EyeXPortPurkinje%;
+    fourteenInts%[5] := EyeYPortPurkinje%;
+    fourteenInts%[6] := PupilPortPurkinje%;
+    fourteenInts%[7] := JoystickPortX%;
+    fourteenInts%[8] := JoystickPortY%;
+    fourteenInts%[9] := OptoEffCopyPort%;
+    fourteenInts%[10] := StimEffCopyPort%;
+    fourteenInts%[11] := PhotodiodePort%;
+    fourteenInts%[12] := TemperaturePort%;
+    fourteenInts%[13] := UtilityPort%;
     
     'Fill fourReals
     fourReals[0] := DegreesPerVoltX;
@@ -436,13 +509,19 @@ func DAQParametersDialog%()
     fourReals[2] := XVoltOffset;
     fourReals[3] := YVoltOffset;
     
+    'Fill fourPurkinjeReals
+    fourPurkinjeReals[0] := DegreesPerVoltXPurkinje;
+    fourPurkinjeReals[1] := DegreesPerVoltYPurkinje;
+    fourPurkinjeReals[2] := XVoltOffsetPurkinje;
+    fourPurkinjeReals[3] := YVoltOffsetPurkinje;
+    
     DlgCreate("DAQ parameters");
     DlgList(1, "Display Hardware:",displayHardwareList$,2,22,1);
     
     DlgGroup("Used Only For Cool(er)Mouse",1,2,40,2);
 	DlgInteger(2, "Number of Electrodes:",1,32,28,3,1);
     
-    DlgGroup("Eyetracker",1,4,40,7);
+    DlgGroup("ASL Eyetracker",1,4,40,6);
     DlgReal(3,7,0,10,19,5);  DlgText("Degrees/Volt (X):",2,5);  
     DlgReal(4,7,0,10,33,5);  DlgText("(Y):",28,5); 
     DlgReal(5,7,-5,5,19,6);  DlgText("Offset (Volts) (X):",2,6);  
@@ -450,45 +529,63 @@ func DAQParametersDialog%()
 	'DlgReal(3, "Degrees/Volt (X):",0,100,27,5);
     'DlgReal(4, "Degrees/Volt (Y):",0,100,27,6);
     
-    DlgReal(7, "Calibration offset(deg)",0.1,100,27,7);
-    DlgInteger(8, "Calibration COM port",1,16,28,8);
-    DlgInteger(9, "Eye Coil Sampling Freq (Hz):",1,20000,28,9);
-    DlgCheck(10, "Create Eyetracker Output File",2,10);
+'    DlgReal(7, "Calibration offset(deg)",0.1,100,27,7);
+'    DlgInteger(8, "Calibration COM port",1,16,28,8);
+    DlgInteger(7, "Eye Position Sampling Freq (Hz):",1,20000,28,7);
+    'DlgCheck(8, "Use ASL Eyetracker For Eye Position",2,8);
+    DlgInteger(8, "ASL Eyetracker (Weight)",0,1000000,28,8);
+    DlgCheck(9, "Create Eyetracker Output File",2,9);
     
-    DlgGroup("Reward",1,11,40,7);
-    DlgReal(11, "Reward Prob (0-1):",0,1,27,12);
-	DlgInteger(12, "Juice per reward:",0,10,28,13,1);
-    DlgInteger(13, "Juice Reward (default) ms:",0,1000,28,14);
-    DlgInteger(14, "Juice Reward (min) ms:",0,1000,28,15);
-    DlgInteger(15, "Juice Reward (max) ms:",0,1000,28,16);
-    DlgList(16, "Juicer Open State:",juicerList2$,2,22,17);
+    DlgGroup("Purkinje Eyetracker",1,10,40,6);
+    DlgReal(10,7,0,10,19,11);  DlgText("Degrees/Volt (X):",2,11);  
+    DlgReal(11,7,0,10,33,11);  DlgText("(Y):",28,11); 
+    DlgReal(12,7,-5,5,19,12);  DlgText("Offset (Volts) (X):",2,12);  
+    DlgReal(13,7,-5,5,33,12);  DlgText("(Y):",28,12); 
+    DlgInteger(14, "Eye Position Sampling Freq (Hz):",1,20000,28,13);
+    'DlgCheck(15, "Use Purkinje Eyetracker For Eye Position",2,14);
+    DlgInteger(15, "Purkinje Eyetracker (Weight)",0,1000000,28,14);
+    DlgCheck(16, "Create Eyetracker Output File",2,15);
     
-    DlgGroup("Analog Inputs, will not use if value is -1",42,1,38,13);
-    DlgInteger(17,8,-1,31,71,2);  DlgText("EEG Port",43,2);
-    DlgInteger(18,8,-1,31,71,3);  DlgText("Eye X Port",43,3);
-    DlgInteger(19,8,-1,31,71,4);  DlgText("Eye Y Port",43,4);
-    DlgInteger(20,8,-1,31,71,5);  DlgText("Pupil Port",43,5);
-    DlgInteger(21,8,-1,31,71,6);  DlgText("Joystick Port X",43,6);
-    DlgInteger(22,8,-1,31,71,7);  DlgText("Joystick Port Y",43,7);
-    DlgInteger(23,8,-1,31,71,8);  DlgText("Opto Eff Copy Port",43,8);
-    DlgInteger(24,8,-1,31,71,9);  DlgText("Stim Eff Copy Port",43,9);
-    DlgInteger(25,8,-1,31,71,10);  DlgText("Photodiode Port",43,10);
-    DlgInteger(26,8,-1,31,71,11);  DlgText("Temperature Port",43,11);
-    DlgInteger(27,8,-1,31,71,12); DlgText("Utility Port",43,12);
-    DlgString(28,10,6,"",69,13);   DlgText("Utility Port Label",43,13);
+    DlgGroup("Reward",1,16,40,7);
+    DlgReal(17, "Reward Prob (0-1):",0,1,27,17);
+	DlgInteger(18, "Juice per reward:",0,10,28,18,1);
+    DlgInteger(19, "Juice Reward (default) ms:",0,1000,28,19);
+    DlgInteger(20, "Juice Reward (min) ms:",0,1000,28,20);
+    DlgInteger(21, "Juice Reward (max) ms:",0,1000,28,21);
+    DlgList(22, "Juicer Open State:",juicerList2$,2,22,22);
     
-    DlgGroup("Remote Stimulus",42,14,38,6);
-    DlgCheck(29, "Use Remote Stimulus",43,15);
-    DlgString(30,21,15,"",58,16);   DlgText("Remote IP",43,16);
-    DlgString(31,6,5,"",73,17);   DlgText("Remote Port",43,17);
-    DlgString(32,21,15,"",58,18);   DlgText("Secondary IP",43,18);
-    DlgString(33,6,5,"",73,19);   DlgText("Secondary Port",43,19);
+    DlgGroup("Analog Inputs, will not use if value is -1",42,1,38,16);
+    DlgInteger(23,8,-1,31,71,2);  DlgText("EEG Port",43,2);
+    DlgInteger(24,8,-1,31,71,3);  DlgText("Eye X Port - ASL",43,3);
+    DlgInteger(25,8,-1,31,71,4);  DlgText("Eye Y Port - ASL",43,4);
+    DlgInteger(26,8,-1,31,71,5);  DlgText("Pupil Port - ASL",43,5);
+    DlgInteger(27,8,-1,31,71,6);  DlgText("Eye X Port - Purkinje",43,6);
+    DlgInteger(28,8,-1,31,71,7);  DlgText("Eye Y Port - Purkinje",43,7);
+    DlgInteger(29,8,-1,31,71,8);  DlgText("Pupil Port - Purkinje",43,8);
+    DlgInteger(30,8,-1,31,71,9);  DlgText("Joystick Port X",43,9);
+    DlgInteger(31,8,-1,31,71,10);  DlgText("Joystick Port Y",43,10);
+    DlgInteger(32,8,-1,31,71,11);  DlgText("Opto Eff Copy Port",43,11);
+    DlgInteger(33,8,-1,31,71,12);  DlgText("Stim Eff Copy Port",43,12);
+    DlgInteger(34,8,-1,31,71,13);  DlgText("Photodiode Port",43,13);
+    DlgInteger(35,8,-1,31,71,14);  DlgText("Temperature Port",43,14);
+    DlgInteger(36,8,-1,31,71,15); DlgText("Utility Port",43,15);
+    DlgString(37,10,6,"",69,16);   DlgText("Utility Port Label",43,16);
+    
+    DlgGroup("Remote Stimulus",42,17,38,6);
+    DlgCheck(38, "Use Remote Stimulus",43,18);
+    DlgString(39,21,15,"",58,19);   DlgText("Remote IP",43,19);
+    DlgString(40,6,5,"",73,20);   DlgText("Remote Port",43,20);
+    DlgString(41,21,15,"",58,21);   DlgText("Secondary IP",43,21);
+    DlgString(42,6,5,"",73,22);   DlgText("Secondary Port",43,22);
     
     DlgAllow(0xffff, 0, DAQParametersDialogChanged%);
-    iReturn% := DlgShow(DisplayHardwareIndex%,NumberOfElectrodes%,fourReals[],CalibrationOffsetDegrees,
-        CalibrationComPort%,EyeCoilSamplingFrequency%,RecordEyeTrackerOutputFile%,pReward,fiveInts%[],elevenInts%[],
-        UtilityPortLabel$,UseRemoteStimulus%,RemoteStimulusIP$,RemoteStimulusPort$,SlaveStimulusIP$,SlaveStimulusPort$);
-    
+    iReturn% := DlgShow(DisplayHardwareIndex%,NumberOfElectrodes%,fourReals[],EyeCoilSamplingFrequency%,UseASLEyetracker%,
+        RecordEyeTrackerOutputFile%,fourPurkinjeReals[],EyeCoilSamplingFrequencyPurkinje%,UsePurkinjeEyetracker%,
+        RecordEyeTrackerOutputFilePurkinje%,pReward,fiveInts%[],fourteenInts%[],UtilityPortLabel$,UseRemoteStimulus%,
+        RemoteStimulusIP$,RemoteStimulusPort$,SlaveStimulusIP$,SlaveStimulusPort$);
+'    iReturn% := DlgShow(DisplayHardwareIndex%,NumberOfElectrodes%,fourReals[],CalibrationOffsetDegrees,
+'        CalibrationComPort%,EyeCoilSamplingFrequency%,RecordEyeTrackerOutputFile%,pReward,fiveInts%[],elevenInts%[],
+'        UtilityPortLabel$,UseRemoteStimulus%,RemoteStimulusIP$,RemoteStimulusPort$,SlaveStimulusIP$,SlaveStimulusPort$);
 
 	if iReturn% = 1 then
         'Unpack fiveInts%
@@ -507,24 +604,33 @@ func DAQParametersDialog%()
         JuicerIndex% := JuicerIndexDecremented% + 1; 'Correct JuicerIndex%
         SetJuicerSequencerVariable%();  'This allows reset of juicer sequencer variable without restarting the script.  Probably redundant.
         
-        'Unpack nineInts%
-        EEGPort% := elevenInts%[0];
-        EyeXPort% := elevenInts%[1];
-        EyeYPort% := elevenInts%[2];
-        PupilPort% := elevenInts%[3];
-        JoystickPortX% := elevenInts%[4];
-        JoystickPortY% := elevenInts%[5];
-        OptoEffCopyPort% := elevenInts%[6];
-        StimEffCopyPort% := elevenInts%[7];
-        PhotodiodePort% := elevenInts%[8];
-        TemperaturePort% := elevenInts%[9];
-        UtilityPort% := elevenInts%[10];
+        'Unpack fourteenInts%
+        EEGPort% := fourteenInts%[0];
+        EyeXPort% := fourteenInts%[1];
+        EyeYPort% := fourteenInts%[2];
+        PupilPort% := fourteenInts%[3];
+        EyeXPortPurkinje% := fourteenInts%[4];
+        EyeYPortPurkinje% := fourteenInts%[5];
+        PupilPortPurkinje% := fourteenInts%[6];
+        JoystickPortX% := fourteenInts%[7];
+        JoystickPortY% := fourteenInts%[8];
+        OptoEffCopyPort% := fourteenInts%[9];
+        StimEffCopyPort% := fourteenInts%[10];
+        PhotodiodePort% := fourteenInts%[11];
+        TemperaturePort% := fourteenInts%[12];
+        UtilityPort% := fourteenInts%[13];
         
         'Unpack fourReals
         DegreesPerVoltX := fourReals[0];
         DegreesPerVoltY := fourReals[1];
         XVoltOffset := fourReals[2];
         YVoltOffset := fourReals[3];
+        
+        'Unpack fourPurkinjeReals
+        DegreesPerVoltXPurkinje := fourPurkinjeReals[0];
+        DegreesPerVoltYPurkinje := fourPurkinjeReals[1];
+        XVoltOffsetPurkinje := fourPurkinjeReals[2];
+        YVoltOffsetPurkinje := fourPurkinjeReals[3];
         
 		SaveDAQParameters();
 	endif
@@ -534,21 +640,58 @@ end;
 func DAQParametersDialogChanged%(item%)    
     docase 
     case item% = 0 then
-        DlgEnable(UseRemoteStimulus%, 30, 31, 32, 33);
+        'Enable remote stimulus elements by default
+        DlgEnable(UseRemoteStimulus%, 39, 40, 41, 42);
+        
+        'Enable/disable utility port label
         if UtilityPort% = -1 then
-            DlgEnable(0,28);
+            DlgEnable(0,37);
         else
-            DlgEnable(1,28);
+            DlgEnable(1,37);
         endif;
         
-    case item% = 29 then
-        DlgEnable(DlgValue(29), 30, 31, 32, 33);
-        
-    case item% = 27 then 
-        if DlgValue(27) = -1 then
-            DlgEnable(0,28);
+        'Do not allow use of ASL/Purkinje eyetracker if ASL/Purkinje ports are not enabled
+        if DlgValue(24) = -1 or DlgValue(25) = -1 then  'ASL not active
+            DlgEnable(0,8);  'Disable Use ASL
+            DlgValue(8,0);  'Set value to 0
         else
-            DlgEnable(1,28);
+            DlgEnable(1,8);  'Enable Use ASL
+        endif
+        if DlgValue(27) = -1 or DlgValue(28) = -1 then  'Purkinje not active
+            DlgEnable(0,15);  'Disable Use Purkinje
+            DlgValue(15,0);  'Set value to 0
+        else
+            DlgEnable(1,15);  'Enable Use Purkinje
+        endif
+        
+    case item% = 24 or item% = 25 then
+        'Do not allow use of ASL eyetracker if ASL ports are not enabled
+        if DlgValue(24) = -1 or DlgValue(25) = -1 then  'ASL not active
+            DlgEnable(0,8);  'Disable Use ASL
+            DlgValue(8,0);  'Set value to 0
+        else
+            DlgEnable(1,8);  'Enable Use ASL
+        endif   
+        
+    case item% = 27 or item% = 28 then
+        'Do not allow use of Purkinje eyetracker if Purkinje ports are not enabled
+        if DlgValue(27) = -1 or DlgValue(28) = -1 then  'Purkinje not active
+            DlgEnable(0,15);  'Disable Use Purkinje
+            DlgValue(15,0);  'Set value to 0
+        else
+            DlgEnable(1,15);  'Enable Use Purkinje
+        endif
+        
+    case item% = 38 then
+        'Disable remote stimulus elements if not used
+        DlgEnable(DlgValue(38), 39, 40, 41, 42);
+        
+    case item% = 36 then 
+        'Enable/disable utility port label
+        if DlgValue(36) = -1 then
+            DlgEnable(0,37);
+        else
+            DlgEnable(1,37);
         endif;
         
     endcase
@@ -566,12 +709,23 @@ proc GetDAQParameters()
     DegreesPerVoltY := GetFloatRegistryValue(key$, "DegreesPerVoltY", DegreesPerVoltY);
     XVoltOffset := GetFloatRegistryValue(key$, "XVoltOffset", XVoltOffset);
     YVoltOffset := GetFloatRegistryValue(key$, "YVoltOffset", YVoltOffset);
-    
-    CalibrationOffsetDegrees := GetFloatRegistryValue(key$, "CalibrationOffsetDegrees", 8);
-    CalibrationComPort% := GetIntRegistryValue%(globalKey$, "CalibrationComPort", GetIntRegistryValue%(key$, "CalibrationComPort", 2));    'We get the value from the global key, if it does not exist, the default is the value from the 
-                                                                                                                                           'config-specific key, if THAT does not exist, default as default
-    CalibrationConfigFile$ := GetStringRegistryValue$(key$, "CalibrationConfigFile", "NONE_SELECTED");
     EyeCoilSamplingFrequency% := GetIntRegistryValue%(key$, "EyeCoilSamplingFrequency", 1000);
+    RecordEyeTrackerOutputFile% := GetIntRegistryValue%(key$, "RecordEyeTrackerOutputFile", 0);
+    UseASLEyetracker% := GetIntRegistryValue%(key$, "UseASLEyetracker", 1);
+    
+'    CalibrationOffsetDegrees := GetFloatRegistryValue(key$, "CalibrationOffsetDegrees", 8);
+'    CalibrationComPort% := GetIntRegistryValue%(globalKey$, "CalibrationComPort", GetIntRegistryValue%(key$, "CalibrationComPort", 2));    'We get the value from the global key, if it does not exist, the default is the value from the 
+'                                                                                                                                           'config-specific key, if THAT does not exist, default as default
+'    CalibrationConfigFile$ := GetStringRegistryValue$(key$, "CalibrationConfigFile", "NONE_SELECTED");
+    
+    DegreesPerVoltXPurkinje := GetFloatRegistryValue(key$, "DegreesPerVoltXPurkinje", DegreesPerVoltXPurkinje);
+    DegreesPerVoltYPurkinje := GetFloatRegistryValue(key$, "DegreesPerVoltYPurkinje", DegreesPerVoltYPurkinje);
+    XVoltOffsetPurkinje := GetFloatRegistryValue(key$, "XVoltOffsetPurkinje", XVoltOffsetPurkinje);
+    YVoltOffsetPurkinje := GetFloatRegistryValue(key$, "YVoltOffsetPurkinje", YVoltOffsetPurkinje);
+    EyeCoilSamplingFrequencyPurkinje% := GetIntRegistryValue%(key$, "EyeCoilSamplingFrequencyPurkinje", 1000);
+    RecordEyeTrackerOutputFilePurkinje% := GetIntRegistryValue%(key$, "RecordEyeTrackerOutputFilePurkinje", 0);
+    UsePurkinjeEyetracker% := GetIntRegistryValue%(key$, "UsePurkinjeEyetracker", 0);
+    
     NumberOfElectrodes% := GetIntRegistryValue%(key$, "NumberOfElectrodes", 1);
     pReward := GetFloatRegistryValue(key$, "pReward", 1);
     JuicePerReward% := GetIntRegistryValue%(key$, "JuicePerReward", 1);
@@ -582,6 +736,9 @@ proc GetDAQParameters()
     EyeXPort% := GetIntRegistryValue%(key$, "EyeXPort", 14);
     EyeYPort% := GetIntRegistryValue%(key$, "EyeYPort", 15);
     PupilPort% := GetIntRegistryValue%(key$, "PupilPort", -1);
+    EyeXPortPurkinje% := GetIntRegistryValue%(key$, "EyeXPortPurkinje", 14);
+    EyeYPortPurkinje% := GetIntRegistryValue%(key$, "EyeYPortPurkinje", 15);
+    PupilPortPurkinje% := GetIntRegistryValue%(key$, "PupilPortPurkinje", -1);
     JoystickPortX% := GetIntRegistryValue%(key$, "JoystickPort", 13);  'Have updated variable name to JoystickPortX but retain registry value in JoystickPort
     JoystickPortY% := GetIntRegistryValue%(key$, "JoystickPortY", 12);
     UseRemoteStimulus% := GetIntRegistryValue%(globalKey$, "UseRemoteStimulus", GetIntRegistryValue%(key$, "UseRemoteStimulus", 0));
@@ -590,7 +747,7 @@ proc GetDAQParameters()
     SlaveStimulusIP$ := GetStringRegistryValue$(globalKey$, "SlaveStimulusIP", GetStringRegistryValue$(key$, "SlaveStimulusIP", "192.168.1.2"));
     SlaveStimulusPort$ := GetStringRegistryValue$(globalKey$, "SlaveStimulusPort", GetStringRegistryValue$(key$, "SlaveStimulusPort", "7000"));
     DisplayHardwareIndex% := GetIntRegistryValue%(globalKey$, "DisplayHardwareIndex", GetIntRegistryValue%(key$, "DisplayHardwareIndex", DisplayHardwareIndex%));
-    RecordEyeTrackerOutputFile% := GetIntRegistryValue%(key$, "RecordEyeTrackerOutputFile", 0);
+    
     EEGPort% := GetIntRegistryValue%(key$, "EEGPort", -1);
     OptoEffCopyPort% := GetIntRegistryValue%(key$, "OptoEffCopyPort", -1);
     StimEffCopyPort% := GetIntRegistryValue%(key$, "StimEffCopyPort", -1);
@@ -614,11 +771,24 @@ proc SaveDAQParameters()
 	SetFloatRegistryValue(key$, "DegreesPerVoltY", DegreesPerVoltY);
     SetFloatRegistryValue(key$, "XVoltOffset", XVoltOffset);
     SetFloatRegistryValue(key$, "YVoltOffset", YVoltOffset);
-    SetFloatRegistryValue(key$, "CalibrationOffsetDegrees", CalibrationOffsetDegrees);
-    SetIntRegistryValue(globalKey$, "CalibrationComPort", CalibrationComPort%);
-    SetStringRegistryValue(key$, "CalibrationConfigFile", CalibrationConfigFile$);
+    SetIntRegistryValue(key$, "EyeCoilSamplingFrequency", EyeCoilSamplingFrequency%);
+    SetIntRegistryValue(key$, "RecordEyeTrackerOutputFile", RecordEyeTrackerOutputFile%);
+    SetIntRegistryValue(key$, "UseASLEyetracker", UseASLEyetracker%);
+    
+'    SetFloatRegistryValue(key$, "CalibrationOffsetDegrees", CalibrationOffsetDegrees);
+'    SetIntRegistryValue(globalKey$, "CalibrationComPort", CalibrationComPort%);
+'    SetStringRegistryValue(key$, "CalibrationConfigFile", CalibrationConfigFile$);
+    
+    SetFloatRegistryValue(key$, "DegreesPerVoltXPurkinje", DegreesPerVoltXPurkinje);
+	SetFloatRegistryValue(key$, "DegreesPerVoltYPurkinje", DegreesPerVoltYPurkinje);
+    SetFloatRegistryValue(key$, "XVoltOffsetPurkinje", XVoltOffsetPurkinje);
+    SetFloatRegistryValue(key$, "YVoltOffsetPurkinje", YVoltOffsetPurkinje);
+    SetIntRegistryValue(key$, "EyeCoilSamplingFrequencyPurkinje", EyeCoilSamplingFrequencyPurkinje%);
+    SetIntRegistryValue(key$, "RecordEyeTrackerOutputFilePurkinje", RecordEyeTrackerOutputFilePurkinje%);
+    SetIntRegistryValue(key$, "UsePurkinjeEyetracker", UsePurkinjeEyetracker%);
+    
     SetFloatRegistryValue(key$, "pReward", pReward);
-	SetIntRegistryValue(key$, "EyeCoilSamplingFrequency", EyeCoilSamplingFrequency%);
+	
 	SetIntRegistryValue(key$, "NumberOfElectrodes", NumberOfElectrodes%);
 	SetIntRegistryValue(key$, "JuicePerReward", JuicePerReward%);
     SetIntRegistryValue(key$, "JuiceRewardMSMin", JuiceRewardMSMin%);
@@ -628,6 +798,9 @@ proc SaveDAQParameters()
     SetIntRegistryValue(key$, "EyeXPort", EyeXPort%);
     SetIntRegistryValue(key$, "EyeYPort", EyeYPort%);
     SetIntRegistryValue(key$, "PupilPort", PupilPort%);
+    SetIntRegistryValue(key$, "EyeXPortPurkinje", EyeXPortPurkinje%);
+    SetIntRegistryValue(key$, "EyeYPortPurkinje", EyeYPortPurkinje%);
+    SetIntRegistryValue(key$, "PupilPortPurkinje", PupilPortPurkinje%);
     SetIntRegistryValue(key$, "JoystickPort", JoystickPortX%);  'Have updated variable name to JoystickPortX but retain registry value in JoystickPort
     SetIntRegistryValue(key$, "JoystickPortY", JoystickPortY%);
     SetIntRegistryValue(globalKey$, "UseRemoteStimulus", UseRemoteStimulus%);
@@ -636,7 +809,6 @@ proc SaveDAQParameters()
     SetStringRegistryValue(globalKey$, "SlaveStimulusIP", SlaveStimulusIP$);
     SetStringRegistryValue(globalKey$, "SlaveStimulusPort", SlaveStimulusPort$);
     SetIntRegistryValue(globalKey$, "DisplayHardwareIndex", DisplayHardwareIndex%);
-    SetIntRegistryValue(key$, "RecordEyeTrackerOutputFile", RecordEyeTrackerOutputFile%);
     SetIntRegistryValue(key$, "EEGPort", EEGPort%);
     SetIntRegistryValue(key$, "OptoEffCopyPort", OptoEffCopyPort%);
     SetIntRegistryValue(key$, "StimEffCopyPort", StimEffCopyPort%);
@@ -657,6 +829,11 @@ proc GetEyetrackerCalibrationValues()
     DegreesPerVoltY := GetFloatRegistryValue(key$, "DegreesPerVoltY", DegreesPerVoltY);
     XVoltOffset := GetFloatRegistryValue(key$, "XVoltOffset", XVoltOffset);
     YVoltOffset := GetFloatRegistryValue(key$, "YVoltOffset", YVoltOffset);
+    
+    DegreesPerVoltXPurkinje := GetFloatRegistryValue(key$, "DegreesPerVoltXPurkinje", DegreesPerVoltXPurkinje);
+    DegreesPerVoltYPurkinje := GetFloatRegistryValue(key$, "DegreesPerVoltYPurkinje", DegreesPerVoltYPurkinje);
+    XVoltOffsetPurkinje := GetFloatRegistryValue(key$, "XVoltOffsetPurkinje", XVoltOffsetPurkinje);
+    YVoltOffsetPurkinje := GetFloatRegistryValue(key$, "YVoltOffsetPurkinje", YVoltOffsetPurkinje);
 end;
 
 
@@ -668,6 +845,11 @@ proc SaveEyetrackerCalibrationValues()
 	SetFloatRegistryValue(key$, "DegreesPerVoltY", DegreesPerVoltY);
     SetFloatRegistryValue(key$, "XVoltOffset", XVoltOffset);
     SetFloatRegistryValue(key$, "YVoltOffset", YVoltOffset);
+    
+    SetFloatRegistryValue(key$, "DegreesPerVoltXPurkinje", DegreesPerVoltXPurkinje);
+	SetFloatRegistryValue(key$, "DegreesPerVoltYPurkinje", DegreesPerVoltYPurkinje);
+    SetFloatRegistryValue(key$, "XVoltOffsetPurkinje", XVoltOffsetPurkinje);
+    SetFloatRegistryValue(key$, "YVoltOffsetPurkinje", YVoltOffsetPurkinje);
 end;
 
 
@@ -787,6 +969,59 @@ func Get1401Type%()
     endcase
     
 end
+
+
+
+proc GetAllFixationPosition(DataWindow%,XChannel%,YChannel%,XChannelPurkinje%,YChannelPurkinje%,tNow)
+    'This function will retrieve the fixation position from existing fixation channels (i.e. ASL and/or Purkinje)
+    'and set the appropriate variables.  
+    'xEyeA/yEyeA will be retrieved from the ASL eyetracker and will be used for display
+    'xEyeP/yEyeP will be retrieved from the Purkinje eyetracker and will be used for display
+    'xEye/yEye will calculated from the above values based on desired weighting (if both present) and will be
+    '   used both for display and for input to the various "Looking()" functions
+    var ASLWeight, PurkinjeWeight;  'floats for float math!
+    if UseASLEyetracker% > 0 then
+        xEyeA := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+        yEyeA := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+    endif
+    
+    if UsePurkinjeEyetracker% > 0 then
+        xEyeP := View(DataWindow%).ChanMeasure(XChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltXPurkinje;
+        yEyeP := View(DataWindow%).ChanMeasure(YChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltYPurkinje;
+    endif
+    
+    docase
+    case UseASLEyetracker% > 0 and UsePurkinjeEyetracker% > 0 then  'Crazy!  We will set xEye/yEye based on requested weights for ASL/Purkinje
+        ASLWeight := UseASLEyetracker%;
+        PurkinjeWeight := UsePurkinjeEyetracker%;
+        xEye := ((xEyeA*ASLWeight)+(xEyeP*PurkinjeWeight))/(ASLWeight+PurkinjeWeight);
+        yEye := ((yEyeA*ASLWeight)+(yEyeP*PurkinjeWeight))/(ASLWeight+PurkinjeWeight);
+    case UseASLEyetracker% > 0 then
+        xEye := xEyeA;
+        yEye := yEyeA;
+    case UsePurkinjeEyetracker% > 0 then
+        xEye := xEyeP;
+        yEye := yEyeP;
+    else  'No eyetracker to use!
+        xEye := 0;
+        yEye := 0;
+    endcase 
+    
+end
+
+
+proc UpdateFixationDisplay(FixptDisplayWindow%)
+    'This function will update the fixation position on the fixation display
+    'If both ASL and Purkinje eyetrackers are present, it will display the ASL position, the Purkinje position, and the weighted average position
+    'If only one tracker is active, it will only display one position (because there is only one!)
+    
+    View(FixptDisplayWindow%).XYAddData(iEyePosChannel%,xEye,yEye);
+    if UseASLEyetracker% > 0 and UsePurkinjeEyetracker% > 0 then
+        View(FixptDisplayWindow%).XYAddData(iEyePosASLChannel%,xEyeA,yEyeA);
+        View(FixptDisplayWindow%).XYAddData(iEyePosPurkinjeChannel%,xEyeP,yEyeP);
+    endif;
+end
+
 
 
 'proc GetElectrodeParameters()

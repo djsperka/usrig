@@ -18,6 +18,9 @@ var key$;
 var XChannel%;
 var YChannel%;
 var PupilChannel%;
+var XChannelPurkinje%;
+var YChannelPurkinje%;
+var PupilChannelPurkinje%;
 var JoyChannelX%;
 var JoyChannelY%;
 var ok%;
@@ -30,6 +33,9 @@ SampleChannels(64);  '32 does not work, we need more!
 XChannel% := 23;
 YChannel% := 24;
 PupilChannel% := 25;
+XChannelPurkinje% := 26;
+YChannelPurkinje% := 27;
+PupilChannelPurkinje% := 28;
 JoyChannelX% := 21;
 JoyChannelY% := 22;
 ExcludedChans%[0] := 21;  'Joystick is lowest non-electrode channel used by this function
@@ -57,13 +63,13 @@ if JoystickPortY% >= 0 then
 endif;
 
 'Set up eye channels, normally this would NOT be independent for X/Y, but who know what wacky thing we might want to do in testing
-if EyeXPort% >= 0 then  'don't set up eye channels unless we are looking at eye position
+if EyeXPort% > -1 then  'don't set up eye channels unless we are looking at eye position
     ' Set up eye X channel
     SampleWaveform(XChannel%,GetEyeXPort%(),1000);
     SampleTitle$(XChannel%,"Eye X");
 endif;
 
-if EyeYPort% >= 0 then  'don't set up eye channels unless we are looking at eye position
+if EyeYPort% > -1 then  'don't set up eye channels unless we are looking at eye position
     ' Set up eye Y channel 
     SampleWaveform(YChannel%,GetEyeYPort%(),1000);
     SampleTitle$(YChannel%,"Eye Y");
@@ -72,6 +78,23 @@ endif;
 if PupilPort% > -1 then
     SampleWaveform(PupilChannel%,PupilPort%,1000);       
     SampleTitle$(PupilChannel%,PupilPortLabel$);
+endif;
+
+if EyeXPortPurkinje% > -1 then  'don't set up eye channels unless we are looking at eye position
+    ' Set up eye X channel
+    SampleWaveform(XChannelPurkinje%,GetEyeXPortPurkinje%(),1000);
+    SampleTitle$(XChannelPurkinje%,"Eye X P");
+endif;
+
+if EyeYPortPurkinje% > -1 then  'don't set up eye channels unless we are looking at eye position
+    ' Set up eye Y channel 
+    SampleWaveform(YChannelPurkinje%,GetEyeYPortPurkinje%(),1000);
+    SampleTitle$(YChannelPurkinje%,"Eye Y P");
+endif;
+
+if PupilPortPurkinje% > -1 then
+    SampleWaveform(PupilChannelPurkinje%,PupilPortPurkinje%,1000);       
+    SampleTitle$(PupilChannelPurkinje%,PupilPortLabelPurkinje$);
 endif;
 
 GetElectrodeParameters();

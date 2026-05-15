@@ -31,13 +31,17 @@ var StimHandle%;			' handle for stimulus application
 var DataWindow%;		
 var XChannel%;
 var YChannel%;
+var PupilChannel%;
+var XChannelPurkinje%;
+var YChannelPurkinje%;
+var PupilChannelPurkinje%;
 var StimChannel%;
 var FrameChannel%;
 var ReadyChannel%;
 var FixationPointChannel%;
 var AdvanceChannel%;
 var UtilityChannel%;
-var PupilChannel%;
+
 
 'var ChangeChannel%;
 'var FrameSlaveChannel%;
@@ -91,7 +95,7 @@ var mainH;
 var DialogOK%;      
 var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
 var tLast:=-1;		' last time we checked for a trigger. 
-var xEye, yEye;		' eye positions
+'var xEye, yEye;		' eye positions
 var tLastFixPtDisplayUpdate:=-1;	' last time view was updated
 var vTrigger;		' set by NextTime to indicate trigger transition
 var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
@@ -461,6 +465,9 @@ endif;
 XChannel% := 25;
 YChannel% := 26;
 PupilChannel% := 27;
+XChannelPurkinje% := 35;
+YChannelPurkinje% := 36;
+PupilChannelPurkinje% := 37;
 
 TimingChannel% := 38;
 UtilityChannel% := 39;
@@ -1186,12 +1193,26 @@ func IdleProcessing%()
         remainInIdleLoop% := 0;  'only run one idle cycle unless otherwise requested
         
         'Return eye position regardless of whether animal is under fixation control
-        xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
-        yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+        GetAllFixationPosition(DataWindow%,XChannel%,YChannel%,XChannelPurkinje%,YChannelPurkinje%,tNow);
+'        docase
+'        case UseASLEyetracker% = 1 and UsePurkinjeEyetracker% = 1 then  'Crazy!  We should average them if both eyetrackers are present and the config says to use both
+'            xEye := ((View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX) + (View(DataWindow%).ChanMeasure(XChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltXPurkinje))/2;
+'            yEye := ((View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY) + (View(DataWindow%).ChanMeasure(YChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltYPurkinje))/2;
+'        case UseASLEyetracker% = 1 then
+'            xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+'            yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+'        case UsePurkinjeEyetracker% = 1 then
+'            xEye := View(DataWindow%).ChanMeasure(XChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltXPurkinje;
+'            yEye := View(DataWindow%).ChanMeasure(YChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltYPurkinje;
+'        else  'No eyetracker to use!
+'            xEye := 0;
+'            yEye := 0;
+'        endcase
         
         'Don't update display every time....
         if tNow-tLastFixPtDisplayUpdate > .005 then
-            View(XYWindow%).XYAddData(1,xEye,yEye);
+            UpdateFixationDisplay(XYWindow%);
+            'View(XYWindow%).XYAddData(1,xEye,yEye);
             tLastFixPtDisplayUpdate := tNow;
         endif
         
@@ -2029,13 +2050,47 @@ proc CreateSampleConfiguration()
        
 
     'Set up eye channels 
-    SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
-    SampleTitle$(XChannel%,EyeXPortLabel$);
-    SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
-    SampleTitle$(YChannel%,EyeYPortLabel$);
+'    SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+'    SampleTitle$(XChannel%,EyeXPortLabel$);
+'    SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+'    SampleTitle$(YChannel%,EyeYPortLabel$);
+'    if PupilPort% > -1 then
+'        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+'        SampleTitle$(PupilChannel%,PupilPortLabel$);
+'    endif;
+    
+    if EyeXPort% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye X channel
+        SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+        SampleTitle$(XChannel%,"Eye X");
+    endif;
+    
+    if EyeYPort% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye Y channel 
+        SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+        SampleTitle$(YChannel%,"Eye Y");
+    endif;
+    
     if PupilPort% > -1 then
         SampleWaveform(PupilChannel%,PupilPort%,1000);       
         SampleTitle$(PupilChannel%,PupilPortLabel$);
+    endif;
+    
+    if EyeXPortPurkinje% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye X channel
+        SampleWaveform(XChannelPurkinje%,GetEyeXPortPurkinje%(),1000);
+        SampleTitle$(XChannelPurkinje%,"Eye X P");
+    endif;
+    
+    if EyeYPortPurkinje% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye Y channel 
+        SampleWaveform(YChannelPurkinje%,GetEyeYPortPurkinje%(),1000);
+        SampleTitle$(YChannelPurkinje%,"Eye Y P");
+    endif;
+    
+    if PupilPortPurkinje% > -1 then
+        SampleWaveform(PupilChannelPurkinje%,PupilPortPurkinje%,1000);       
+        SampleTitle$(PupilChannelPurkinje%,PupilPortLabelPurkinje$);
     endif;
     
     
@@ -2088,13 +2143,24 @@ proc InitializeWindows()
     
     'Open an XY view to display on screen stimuli, eye position
     XYWindow% := FileNew(12);  'the XY view has a default channel - this will hold the location of the animal's gaze
+    iEyePosChannel% := 1;  'The primary eye position channel is #1
     XRange(-30,30);
     YRange(-2,-30,30);
     XYDrawMode(0,5,0);
     WindowVisible(1);
     Window(0, 0, 100, 47);
-    XYColour(1,16);  'red
-    XYSize(1,-1);
+    XYColour(iEyePosChannel%,16);  'Make this channel red
+	XYSize(iEyePosChannel%,-1);  'Only one point on this channel
+    
+    'Create a new channel in the XY view to show the ASL eye position
+    iEyePosASLChannel% := XYSetChan(0);
+    XYColour(iEyePosASLChannel%,8);  'Make this channel green
+	XYSize(iEyePosASLChannel%,-1);  'Only one point on this channel
+    
+    'Create a new channel in the XY view to show the Purkinje eye position
+    iEyePosPurkinjeChannel% := XYSetChan(0);
+    XYColour(iEyePosPurkinjeChannel%,32);  'Make this channel purplekinje
+	XYSize(iEyePosPurkinjeChannel%,-1);  'Only one point on this channel
     
     
     'Create a new channel in the XY view to show the monitor's location, plot this no matter what

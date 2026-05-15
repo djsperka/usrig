@@ -572,6 +572,8 @@ end;
 ' Window handles and channel numbers
 var XChannel%,YChannel%;		' Channel number assigned to eye x and y
 var PupilChannel%;
+var XChannelPurkinje%,YChannelPurkinje%;		' Channel number assigned to eye x and y
+var PupilChannelPurkinje%;
 var FixationChannel%;
 var StimChannel%;
 var ChangeChannel%;
@@ -585,7 +587,7 @@ var iTargetWindowChannel%;' channel number for target window in xy window
 var iFixChannel%;	' channel number for fixpt in xy window
 var iFixWindowChannel%;' channel number for fixpt window in xy window
 var iMonitorChannel%;	' channel number for monitor position display in xy window
-var iEyePosChannel% := 1;   ' channel 1 is always used as eye position channel in xy windows
+'var iEyePosChannel% := 1;   ' channel 1 is always used as eye position channel in xy windows
 var iStarPosChannel% := 1;
 var StimHandle%;	' handle for stimulus application
 ' Experimental control
@@ -644,8 +646,12 @@ ChangeChannel% := 27;
 UtilityChannel% := 28;
 TimingChannel% := 29;
 
+XChannelPurkinje% := 33;
+YChannelPurkinje% := 34;
+PupilChannelPurkinje% := 35;
+
 ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
-ExcludedChans%[1] := 32;  'Digmark (default) is highest non-electrode channel used by this function
+ExcludedChans%[1] := 35;  'Digmark (default) is highest non-electrode channel used by this function
 
 
 if UseTwo1401s% = 0 then
@@ -692,7 +698,7 @@ const stateHoldAnswer%              := 18;
 
 var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
 var tLast:=-1;		' last time we checked for a trigger. 
-var xEye, yEye;		' eye positions
+'var xEye, yEye;		' eye positions
 var tLastUpdate:=-1;	' last time view was updated
 var iState%:=stateVSGWait%;		' present state
 var vTrigger;		' set by NextTime to indicate trigger transition
@@ -726,9 +732,21 @@ func IdleProcessing%()
     var tPostStimStart;  'will be useful for turning off "wraparound" opto after reward
     var tStimOn;  'tLast does not work to find stim off if we have intervening steps in the state logic, which we do.
 	tNow := View(DataWindow%).MaxTime();
-
-	xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
-	yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+    GetAllFixationPosition(DataWindow%,XChannel%,YChannel%,XChannelPurkinje%,YChannelPurkinje%,tNow);
+'	docase
+'    case UseASLEyetracker% = 1 and UsePurkinjeEyetracker% = 1 then  'Crazy!  We should average them if both eyetrackers are present and the config says to use both
+'        xEye := ((View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX) + (View(DataWindow%).ChanMeasure(XChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltXPurkinje))/2;
+'        yEye := ((View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY) + (View(DataWindow%).ChanMeasure(YChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltYPurkinje))/2;
+'    case UseASLEyetracker% = 1 then
+'        xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+'        yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+'    case UsePurkinjeEyetracker% = 1 then
+'        xEye := View(DataWindow%).ChanMeasure(XChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltXPurkinje;
+'        yEye := View(DataWindow%).ChanMeasure(YChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltYPurkinje;
+'    else  'No eyetracker to use!
+'        xEye := 0;
+'        yEye := 0;
+'    endcase 
 
 	' Don't update display every time. 
 	' Note that this stim displays eye continuously, without erasing... 
@@ -736,7 +754,8 @@ func IdleProcessing%()
         if iState% = stateWaitForAnswer% and iStarPosChannel% > 0 then
             View(StarWindow%).XYAddData(iStarPosChannel%, xEye, yEye);
         endif
-		View(XYWindow%).XYAddData(iEyePosChannel%, xEye, yEye);
+        UpdateFixationDisplay(XYWindow%);
+        'View(XYWindow%).XYAddData(iEyePosChannel%, xEye, yEye);
 		tLastUpdate := tNow;
 	endif
 
@@ -1233,13 +1252,46 @@ proc CreateSampleConfiguration()
     
     '----Analog, non-spiking electrode recording conditions
     'EYE COIL CHANNELS. Last # is sampling freq in Hz. 
-	SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
-	SampleTitle$(XChannel%,EyeXPortLabel$);
-	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
-	SampleTitle$(YChannel%,EyeYPortLabel$);
+'	SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
+'	SampleTitle$(XChannel%,EyeXPortLabel$);
+'	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
+'	SampleTitle$(YChannel%,EyeYPortLabel$);
+'    if PupilPort% > -1 then
+'        SampleWaveform(PupilChannel%,PupilPort%,1000);       
+'        SampleTitle$(PupilChannel%,PupilPortLabel$);
+'    endif;
+    if EyeXPort% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye X channel
+        SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+        SampleTitle$(XChannel%,"Eye X");
+    endif;
+    
+    if EyeYPort% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye Y channel 
+        SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+        SampleTitle$(YChannel%,"Eye Y");
+    endif;
+    
     if PupilPort% > -1 then
         SampleWaveform(PupilChannel%,PupilPort%,1000);       
         SampleTitle$(PupilChannel%,PupilPortLabel$);
+    endif;
+    
+    if EyeXPortPurkinje% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye X channel
+        SampleWaveform(XChannelPurkinje%,GetEyeXPortPurkinje%(),1000);
+        SampleTitle$(XChannelPurkinje%,"Eye X P");
+    endif;
+    
+    if EyeYPortPurkinje% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye Y channel 
+        SampleWaveform(YChannelPurkinje%,GetEyeYPortPurkinje%(),1000);
+        SampleTitle$(YChannelPurkinje%,"Eye Y P");
+    endif;
+    
+    if PupilPortPurkinje% > -1 then
+        SampleWaveform(PupilChannelPurkinje%,PupilPortPurkinje%,1000);       
+        SampleTitle$(PupilChannelPurkinje%,PupilPortLabelPurkinje$);
     endif;
     
     
@@ -1366,20 +1418,32 @@ proc InitializeWindows()
 	XYColour(1,16);
     
 	' Channel 1 is eye pos. Set size of this channel's data to 0 - expands as needed. Join points, too. 
-	XYSize(iEyePosChannel%, 0);
-	XYJoin(iEyePosChannel%, 1);
+	XYSize(1, 0);
+	XYJoin(1, 1);
 	XYDrawMode(1, 2, 1);	' dot size is 1
     
     
 	'Open an XY view to display eye position
 	XYWindow% := FileNew(12);
+    iEyePosChannel% := 1;  'The primary eye position channel is #1
 	XRange(-15,15);
 	YRange(-2,-15,15);
 	XYDrawMode(0,5,0);
 	WindowVisible(1);
 	Window(0, 0, 50, 50);
-	XYSize(iEyePosChannel%, -1);
-	XYColour(iEyePosChannel%, 16);
+	XYColour(iEyePosChannel%,16);  'Make this channel red
+	XYSize(iEyePosChannel%,-1);  'Only one point on this channel
+
+
+    'Create a new channel in the XY view to show the ASL eye position
+    iEyePosASLChannel% := XYSetChan(0);
+    XYColour(iEyePosASLChannel%,8);  'Make this channel green
+	XYSize(iEyePosASLChannel%,-1);  'Only one point on this channel
+    
+    'Create a new channel in the XY view to show the Purkinje eye position
+    iEyePosPurkinjeChannel% := XYSetChan(0);
+    XYColour(iEyePosPurkinjeChannel%,32);  'Make this channel purplekinje
+	XYSize(iEyePosPurkinjeChannel%,-1);  'Only one point on this channel;
     
 
 	'Calcuate the fixation window
@@ -2138,41 +2202,6 @@ proc WriteParameterFile()
 
 end;
 
-
-
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-'
-' The vdac32% function converts a value in user DAC units into an integer value
-'  (the result of the function) suitable for passing into a sequencer variable
-'  for use in the DAC, ADDAC, RAMP and OFFSET sequencer instructions. It mimics
-'  the vdac32() expression in the text sequence compiler.
-'
-' out     is the output value that you want to generate, in user DAC units.
-' scale   is the user DAC units corresponding to one volt on the actual DAC
-'         (or two volts for a ten-volt system). This is exactly the same as
-'         the DACscale field used with the SET or SDAC directives.
-' offset  is the user DAC units corresponding to zero volts output. This is
-'         exactly the same as the DACOffset field in SET or SDAC.
-'
-' If you want to use this function to calculate the slope for a ramp, use
-'  vdac32%(volts/sticks%(time)) for maximum accuracy.
-'
-func vdac32%(out, scale, offset)
-var v32;                                ' Real variable for the calculation
-out := out - offset;                    ' First compensate for offset
-v32 := ((out * (6553.6 / scale)) * 65536.0);   ' Floating point result
-var v32%;                               ' Integer value for the result
-if v32 > 2147483647.0 then              ' 2147483647 is the largest positive
-    v32% := 2147483647;                 '  integer value
-else
-    if v32 < -2147483647.0 then         ' -2147483648 is the lowest negative value
-        v32% := -2147483647;            '  but we have to stay one above that
-    else
-        v32% := round(v32);             ' We can be sure this will not overflow
-    endif;
-endif;
-return v32%;
-end
 
 
 
