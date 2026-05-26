@@ -465,6 +465,7 @@ func DAQParametersDialog%()
     var fourteenInts%[14];  'MOAR SPACE!!!
     var fourReals[4];  'EVAN MOAR SPACE!!!
     var fourPurkinjeReals[4];  'PURKINJE!!!
+    var fourStrings$[4];   'LORD HAVE MERCY!!!
     
     'This little bit allows us to disallow any values other than legal juicer values
     'without changing the rest of the code
@@ -515,13 +516,20 @@ func DAQParametersDialog%()
     fourPurkinjeReals[2] := XVoltOffsetPurkinje;
     fourPurkinjeReals[3] := YVoltOffsetPurkinje;
     
+    'Fill fourStrings
+    fourStrings$[0] := RemoteStimulusIP$;
+    fourStrings$[1] := RemoteStimulusPort$;
+    fourStrings$[2] := SlaveStimulusIP$;
+    fourStrings$[3] := SlaveStimulusPort$;
+    
+    
     DlgCreate("DAQ parameters");
     DlgList(1, "Display Hardware:",displayHardwareList$,2,22,1);
     
     DlgGroup("Used Only For Cool(er)Mouse",1,2,40,2);
 	DlgInteger(2, "Number of Electrodes:",1,32,28,3,1);
     
-    DlgGroup("ASL Eyetracker",1,4,40,6);
+    DlgGroup("ASL Eyetracker",1,4,40,8);
     DlgReal(3,7,0,10,19,5);  DlgText("Degrees/Volt (X):",2,5);  
     DlgReal(4,7,0,10,33,5);  DlgText("(Y):",28,5); 
     DlgReal(5,7,-5,5,19,6);  DlgText("Offset (Volts) (X):",2,6);  
@@ -529,30 +537,30 @@ func DAQParametersDialog%()
 	'DlgReal(3, "Degrees/Volt (X):",0,100,27,5);
     'DlgReal(4, "Degrees/Volt (Y):",0,100,27,6);
     
-'    DlgReal(7, "Calibration offset(deg)",0.1,100,27,7);
-'    DlgInteger(8, "Calibration COM port",1,16,28,8);
-    DlgInteger(7, "Eye Position Sampling Freq (Hz):",1,20000,28,7);
-    'DlgCheck(8, "Use ASL Eyetracker For Eye Position",2,8);
-    DlgInteger(8, "ASL Eyetracker (Weight)",0,1000000,28,8);
-    DlgCheck(9, "Create Eyetracker Output File",2,9);
+    DlgReal(43, "Calibration offset(deg)",0.1,100,27,7);  'These Calibration values are out of order; they are necessary for running CalibrationHelper
+    DlgInteger(44, "Calibration COM port",1,16,28,8);
+    DlgInteger(7, "Eye Position Sampling Freq (Hz):",1,20000,28,9);
+    'DlgCheck(8, "Use ASL Eyetracker For Eye Position",2,10);
+    DlgInteger(8, "ASL Eyetracker (Weight)",0,1000000,28,10);
+    DlgCheck(9, "Create Eyetracker Output File",2,11);
     
-    DlgGroup("Purkinje Eyetracker",1,10,40,6);
-    DlgReal(10,7,0,10,19,11);  DlgText("Degrees/Volt (X):",2,11);  
-    DlgReal(11,7,0,10,33,11);  DlgText("(Y):",28,11); 
-    DlgReal(12,7,-5,5,19,12);  DlgText("Offset (Volts) (X):",2,12);  
-    DlgReal(13,7,-5,5,33,12);  DlgText("(Y):",28,12); 
-    DlgInteger(14, "Eye Position Sampling Freq (Hz):",1,20000,28,13);
-    'DlgCheck(15, "Use Purkinje Eyetracker For Eye Position",2,14);
-    DlgInteger(15, "Purkinje Eyetracker (Weight)",0,1000000,28,14);
-    DlgCheck(16, "Create Eyetracker Output File",2,15);
+    DlgGroup("Purkinje Eyetracker",1,12,40,6);
+    DlgReal(10,7,0,10,19,13);  DlgText("Degrees/Volt (X):",2,13);  
+    DlgReal(11,7,0,10,33,13);  DlgText("(Y):",28,13); 
+    DlgReal(12,7,-5,5,19,14);  DlgText("Offset (Volts) (X):",2,14);  
+    DlgReal(13,7,-5,5,33,14);  DlgText("(Y):",28,14); 
+    DlgInteger(14, "Eye Position Sampling Freq (Hz):",1,20000,28,15);
+    'DlgCheck(15, "Use Purkinje Eyetracker For Eye Position",2,16);
+    DlgInteger(15, "Purkinje Eyetracker (Weight)",0,1000000,28,16);
+    DlgCheck(16, "Create Eyetracker Output File",2,17);
     
-    DlgGroup("Reward",1,16,40,7);
-    DlgReal(17, "Reward Prob (0-1):",0,1,27,17);
-	DlgInteger(18, "Juice per reward:",0,10,28,18,1);
-    DlgInteger(19, "Juice Reward (default) ms:",0,1000,28,19);
-    DlgInteger(20, "Juice Reward (min) ms:",0,1000,28,20);
-    DlgInteger(21, "Juice Reward (max) ms:",0,1000,28,21);
-    DlgList(22, "Juicer Open State:",juicerList2$,2,22,22);
+    DlgGroup("Reward",1,18,40,7);
+    DlgReal(17, "Reward Prob (0-1):",0,1,27,19);
+	DlgInteger(18, "Juice per reward:",0,10,28,20,1);
+    DlgInteger(19, "Juice Reward (default) ms:",0,1000,28,21);
+    DlgInteger(20, "Juice Reward (min) ms:",0,1000,28,22);
+    DlgInteger(21, "Juice Reward (max) ms:",0,1000,28,23);
+    DlgList(22, "Juicer Open State:",juicerList2$,2,22,24);
     
     DlgGroup("Analog Inputs, will not use if value is -1",42,1,38,16);
     DlgInteger(23,8,-1,31,71,2);  DlgText("EEG Port",43,2);
@@ -582,7 +590,7 @@ func DAQParametersDialog%()
     iReturn% := DlgShow(DisplayHardwareIndex%,NumberOfElectrodes%,fourReals[],EyeCoilSamplingFrequency%,UseASLEyetracker%,
         RecordEyeTrackerOutputFile%,fourPurkinjeReals[],EyeCoilSamplingFrequencyPurkinje%,UsePurkinjeEyetracker%,
         RecordEyeTrackerOutputFilePurkinje%,pReward,fiveInts%[],fourteenInts%[],UtilityPortLabel$,UseRemoteStimulus%,
-        RemoteStimulusIP$,RemoteStimulusPort$,SlaveStimulusIP$,SlaveStimulusPort$);
+        fourStrings$[],CalibrationOffsetDegrees,CalibrationComPort%);
 '    iReturn% := DlgShow(DisplayHardwareIndex%,NumberOfElectrodes%,fourReals[],CalibrationOffsetDegrees,
 '        CalibrationComPort%,EyeCoilSamplingFrequency%,RecordEyeTrackerOutputFile%,pReward,fiveInts%[],elevenInts%[],
 '        UtilityPortLabel$,UseRemoteStimulus%,RemoteStimulusIP$,RemoteStimulusPort$,SlaveStimulusIP$,SlaveStimulusPort$);
@@ -631,6 +639,12 @@ func DAQParametersDialog%()
         DegreesPerVoltYPurkinje := fourPurkinjeReals[1];
         XVoltOffsetPurkinje := fourPurkinjeReals[2];
         YVoltOffsetPurkinje := fourPurkinjeReals[3];
+        
+        'Unpack fourStrings
+        RemoteStimulusIP$ := fourStrings$[0];
+        RemoteStimulusPort$ := fourStrings$[1];
+        SlaveStimulusIP$ := fourStrings$[2];
+        SlaveStimulusPort$ := fourStrings$[3];
         
 		SaveDAQParameters();
 	endif
