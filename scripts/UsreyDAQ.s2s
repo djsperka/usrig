@@ -15,10 +15,10 @@ var DegreesPerVoltX;			' Conversion factor from ADC to visual degrees
 var DegreesPerVoltY;			' Conversion factor from ADC to visual degrees
 var XVoltOffset;                ' With the advent of "pursuit" calibration, we will calculate an offset as well as a gain, this should be quite small
 var YVoltOffset;                ' etc.
-''Calibration values are unused by any known script.  Deprecating.  -jj 5/1/2026
-'var CalibrationOffsetDegrees;   ' Calibration dots are this many degrees offset in x,y from (0,0)
-'var CalibrationComPort%;        ' COM port to use for calibration (connection to ASL 'Serial Out')
-'var CalibrationConfigFile$;     ' path to xml file for calibration config. Can be same as regular config file for eye tracker.
+'Calibration values are unused by any known script.  Deprecating.  -jj 5/1/2026
+var CalibrationOffsetDegrees;   ' Calibration dots are this many degrees offset in x,y from (0,0)
+var CalibrationComPort%;        ' COM port to use for calibration (connection to ASL 'Serial Out')
+var CalibrationConfigFile$;     ' path to xml file for calibration config. Can be same as regular config file for eye tracker.
 var EyeCoilSamplingFrequency%;		' Frequency to sample eye position at
 var RecordEyeTrackerOutputFile%;  'if checked, use 1401 to start/stop eyetracke output file, send "heartbeat"
 var UseASLEyetracker%;           'Reimagined! If 0, do not use ASL.  If > 0, relative weight of ASL contribution to in-window eye position
@@ -290,17 +290,17 @@ func GetYVoltOffsetPurkinje()
     return YVoltOffsetPurkinje;
 end
 
-'func GetCalibrationOffsetDegrees()
-'    return CalibrationOffsetDegrees;
-'end
-'
-'func GetCalibrationCOMPort%()
-'    return CalibrationComPort%; 
-'end
-'
-'func GetCalibrationConfigFile$()
-'    return CalibrationConfigFile$;
-'end
+func GetCalibrationOffsetDegrees()
+    return CalibrationOffsetDegrees;
+end
+
+func GetCalibrationCOMPort%()
+    return CalibrationComPort%; 
+end
+
+func GetCalibrationConfigFile$()
+    return CalibrationConfigFile$;
+end
 
 func GetNumberOfElectrodes%()
     return NumberOfElectrodes%;
@@ -713,10 +713,10 @@ proc GetDAQParameters()
     RecordEyeTrackerOutputFile% := GetIntRegistryValue%(key$, "RecordEyeTrackerOutputFile", 0);
     UseASLEyetracker% := GetIntRegistryValue%(key$, "UseASLEyetracker", 1);
     
-'    CalibrationOffsetDegrees := GetFloatRegistryValue(key$, "CalibrationOffsetDegrees", 8);
-'    CalibrationComPort% := GetIntRegistryValue%(globalKey$, "CalibrationComPort", GetIntRegistryValue%(key$, "CalibrationComPort", 2));    'We get the value from the global key, if it does not exist, the default is the value from the 
-'                                                                                                                                           'config-specific key, if THAT does not exist, default as default
-'    CalibrationConfigFile$ := GetStringRegistryValue$(key$, "CalibrationConfigFile", "NONE_SELECTED");
+    CalibrationOffsetDegrees := GetFloatRegistryValue(key$, "CalibrationOffsetDegrees", 8);
+    CalibrationComPort% := GetIntRegistryValue%(globalKey$, "CalibrationComPort", GetIntRegistryValue%(key$, "CalibrationComPort", 2));    'We get the value from the global key, if it does not exist, the default is the value from the 
+                                                                                                                                           'config-specific key, if THAT does not exist, default as default
+    CalibrationConfigFile$ := GetStringRegistryValue$(key$, "CalibrationConfigFile", "NONE_SELECTED");
     
     DegreesPerVoltXPurkinje := GetFloatRegistryValue(key$, "DegreesPerVoltXPurkinje", DegreesPerVoltXPurkinje);
     DegreesPerVoltYPurkinje := GetFloatRegistryValue(key$, "DegreesPerVoltYPurkinje", DegreesPerVoltYPurkinje);
@@ -775,9 +775,9 @@ proc SaveDAQParameters()
     SetIntRegistryValue(key$, "RecordEyeTrackerOutputFile", RecordEyeTrackerOutputFile%);
     SetIntRegistryValue(key$, "UseASLEyetracker", UseASLEyetracker%);
     
-'    SetFloatRegistryValue(key$, "CalibrationOffsetDegrees", CalibrationOffsetDegrees);
-'    SetIntRegistryValue(globalKey$, "CalibrationComPort", CalibrationComPort%);
-'    SetStringRegistryValue(key$, "CalibrationConfigFile", CalibrationConfigFile$);
+    SetFloatRegistryValue(key$, "CalibrationOffsetDegrees", CalibrationOffsetDegrees);
+    SetIntRegistryValue(globalKey$, "CalibrationComPort", CalibrationComPort%);
+    SetStringRegistryValue(key$, "CalibrationConfigFile", CalibrationConfigFile$);
     
     SetFloatRegistryValue(key$, "DegreesPerVoltXPurkinje", DegreesPerVoltXPurkinje);
 	SetFloatRegistryValue(key$, "DegreesPerVoltYPurkinje", DegreesPerVoltYPurkinje);
