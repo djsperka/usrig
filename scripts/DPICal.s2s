@@ -61,7 +61,7 @@ const stateDone% := 99;
 
 var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
 var tLast:=-1;		' last time we checked for a trigger. 
-var xEye, yEye;		' eye positions
+'var xEye, yEye;		' eye positions
 var tLastUpdate:=-1;	' last time view was updated
 var iState%:=stateVSGWait%;		' present state
 var vTrigger;		' set by NextTime to indicate trigger transition
@@ -81,7 +81,8 @@ var fixCalibrationOffset := 5;
 var fixAlwaysLooking% := 1;
 
 ' COM port for sending fixstim commands
-var iPort% := 4;
+var iPort% := 6;
+var otherPort$ := "COM7";
 
 ' for rotating through different sets of fixpts
 ' The fixation point will advance through the second index - currentFixptInd%.
@@ -584,11 +585,8 @@ func Start%()
 
     Invocation$ := "cmd /c " + GetBinDir$(1) + "remote " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
     FixationArg$ := "-f 0,0,4.0,red";
-	Extras$ := " --serial COM3  -b gray -d 813 -p 2 --dpi-cal ";
-    LogWarn("Start%()", "hard-coded settings in invocation");
+	Extras$ := print$(" --serial %s -b gray -d 813 -p 2 --dpi-cal", otherPort$) ;
     SampleSeqVar(5, 0);
-
-		
 		
 	CommandLine$ := Invocation$ + FixationArg$ + Extras$;
 
