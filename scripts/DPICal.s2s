@@ -20,73 +20,87 @@
 
 
 ' Window handles and channel numbers
-var XChannel%,YChannel%;		' Channel number assigned to eye x and y
-var keyboardChannel%:=31;       'this is the number of the keyboard channel
+var XChannel%,YChannel%;		' Channel number assigned to eye x and y (don't need to be labeled "Purkinje" here, but they are exclusively Purkinje for this script
+var keyboardChannel% := 31;     ' Keyboard channel is always 31
 var TriggerChannel%;			' Channel number assigned to vsg trigger input (i.e. trigger sent by vsg)
-var ReadyChannel%;			' channel number for VSG ready pulse signal
+var DPITriggerChannel%;         ' Channel number assigned to DPI button press (i.e. trigger sent by user to indicate looking during DPI mode)
+var ReadyChannel%;			    ' Channel number for VSG ready pulse signal
 var UtilityChannel%;
-var DataWindow%;	' time view
-var XYWindow%;		' window with eye pos shown
-var iStimChannel%;	' channel number for stimulus in xy window
-var iStimWindowChannel%;' channel number for stimulus window in xy window
-var iMonitorChannel%;	' channel number for monitor position display in xy window
-var StimHandle%;	' handle for stimulus application
-' Experimental control
-var Pause%:=0;		' When 1, expt is paused - no idle processing done
+var DataWindow%;	            ' Time view
+var XYWindow%;		            ' Window displaying eye position
+var iStimChannel%;	            ' Channel number for stimulus in xy window
+var iStimWindowChannel%;        ' Channel number for stimulus window in xy window
+var iMonitorChannel%;	        ' Channel number for monitor position display in xy window
+var StimHandle%;	            ' Handle for stimulus application
 
+' Experimental control
+var Pause%:=0;		            ' When 1, expt is paused - no idle processing done
+var useDPIStateLoop% := 1;      ' Start in DPI state loop; can toggle between DPI and CED state loops
 
 ' Display stuff
-var FixWindowX[36],FixWindowY[36];	' points for displaying fixation window in xy view
+var FixWindowX[36], FixWindowY[36];	' Points for displaying fixation window in xy view
 var windowX[36], windowY[36];
 ' Stimulus location stuff
 var iStimX%[9];
 var iStimY%[9];
 var iStimIndex% := 1;
 
+'Common states
+const stateVSGWait%             := 0;     ' Wait for vsg to send ready signal
+const stateStartTrial%		    := 1;
+const stateWaitForFixpt%		:= 2;
+const stateStimOff%		        := 3;
+const stateWaitForBlank%	    := 4;
+const stateITI%		            := 5;
+const stateDone%                := 6;     ' May never be used; no current state logic step directs to this, there is no stopping criterion, we just use the Stop button
+'DPI-controlled states
+const stateWaitForDPITrigger%   := 7;
+const stateDPIIntegrate%        := 8;
+'More??
 
-const stateStartTrial%		:= 0;
-const stateWaitForFixpt%		:= 1;
-const stateWaitForAcquisition%	:= 2;
-const stateHoldFixation%	:= 3;
-const stateSuccess%		:= 4;
-const stateFailure%		:= 5;
-const stateStimOff%		:= 6;
-const stateWaitForBlank%	:= 7;
-const stateCheckTrial%		:= 8;
-const stateInterval%		:= 9;
-const stateVSGWait%:=10;		' wait for vsg to send ready signal #1
-const stateVSGWaitConfirm%:=11;		' waif for vsg to send ready signal #2
-const stateNextAfterFixation%:=19;
-const stateDone% := 99;
+'CED-controlled states
+const stateWaitForAcquisition%	:= 9;
+const stateHoldFixation%	    := 10;
+const stateSuccess%		        := 11;
+const stateFailure%		        := 12;
 
-var tNow:=0;		' latest time for which there are values recorded. Used in IdleProcessing
-var tLast:=-1;		' last time we checked for a trigger. 
-'var xEye, yEye;		' eye positions
-var tLastUpdate:=-1;	' last time view was updated
-var iState%:=stateVSGWait%;		' present state
-var vTrigger;		' set by NextTime to indicate trigger transition
-var tStateStart:=-1;	' time that present state started. Used to measure wait time, fixation time, etc. 
-var tLastTrigger:=-1;	' last trigger time. New triggers have to be greater than this
-var tTrigger:=-1;	' temp var for newly discovered trigger times
-var nTrialsStarted%:=0;
-var nTrialsSuccess%:=0;
-var nTrialsFail%:=0;
+
+
+var tNow := 0;		             ' Latest time for which there are values recorded. Used in IdleProcessing
+var tLast := -1;		         ' Last time we checked for a trigger. 
+var tLastDisplayUpdate := -1;	 ' Last time eye position view was updated
+var iState% := stateVSGWait%;    ' Present state
+var vTrigger;		             ' Set by NextTime to indicate trigger transition
+var tStateStart := -1;	         ' Time that present state started. Used to measure wait time, fixation time, etc. 
+var tLastTrigger := -1;	         ' Last trigger time. New triggers have to be greater than this
+var tTrigger := -1;	             ' Temp var for newly discovered trigger times
+var nTrialsStarted% := 0;
+var nTrialsSuccess% := 0;
+var nTrialsFail% := 0;
 var fixSuccess% := 0;
+var ProgramHandle%;              'Handle of program that converts serial port to TCP port, via Dan
+
 
 ' settings
-var fixAcquisitionTime := 2.0;
-var fixFixationDuration := 0.5;
-var fixInterTrialTime := 0.2;
-var fixCalibrationOffset := 5;
-var fixAlwaysLooking% := 1;
+var fixAcquisitionTime := 2;             ' In CED mode, how long to wait for acquisition before turning off and trying again, in seconds
+var fixFixationDuration := 0.5;          ' In CED mode, how long to hold fixation for reward, in seconds
+var fixInterTrialTime := 0.2;            ' ITI, in seconds
+var fixCalibrationOffset := 5;           ' Location of calibration points relative to origin, in degrees
+var fixAlwaysLooking% := 0;              ' In CED mode, "always looking" as in other scripts.  Probably only useful for testing.  No effect in Purkinje mode because Looking%() is not called.
+var fixButtonIntegrationDelay := 0.25;   ' In Purkinje mode, how long to integrate eye signal following button press, in seconds 
+var fixAdvanceOnFailure% := 0;           ' Do we advance the calibration point position if not acquired?
 
 ' COM port for sending fixstim commands
 var iPort% := 6;
-var otherPort$ := "COM7";
+var otherPort$ := "COM7";  'Please rename this variable!  "Other" is not very informative!
 
-' for rotating through different sets of fixpts
-' The fixation point will advance through the second index - currentFixptInd%.
-' Changing modes is just changing currentFixptRow%. The buttons 'Center', 'Horiz', 'Vert', 'Corners'
+' The following variables allow swapping through different sets of fixpts
+' The mode is set by the first index - currentFixptRow%
+' 0 - All center; 1 - Horizontal Locations; 2 - Vertical Locations; 3 - Corner locations
+' Toolbar buttons 'Center', 'Horiz', 'Vert', 'Corners' will allow swapping between these modes.
+' The fixation point will advance location using the second index - currentFixptInd%
+' Each mode has four defined locations (but for Center all are center, for Horizontal and Vertical, 2 of 4 are center)
+' For third index, 0 defines X position and 1 defines Y position
 const numFixptRows% := 4;
 const numFixptInd% := 4;
 var xyFixpt[numFixptRows%][numFixptInd%][2];
@@ -160,9 +174,20 @@ XChannel% := 21;
 YChannel% := 22;
 TriggerChannel% := 23;
 ReadyChannel% := 24;
+DPITriggerChannel% := 25;
 UtilityChannel% := 27;
 ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 27;  'UtilityChannel% is highest non-electrode channel used by this function
+
+
+' Run dialog
+if DPICalScriptDialog%() = 0 then
+    halt;
+endif
+
+
+' TODO - here (or elsewhere?) we will need to launch a command line program that maps a serial port to a TCP port?
+'ProgramHandle%:=ProgRun(SetPA5Loc$+" "+str$(Attenuation));  'should probably be using PROGRUN like so
 
 
 CreateSampleConfiguration();
@@ -178,7 +203,7 @@ InitializeToolbar();
 ' Run real time analysis here. 
 func IdleProcessing%()
 	var iStatus% := 1;	' this is return value. value of 1 (0) continues (stops) processing
-    var stayInLoop% := 1;
+    var stayInLoop% := 1;  'This may be what is making the toolbar not very responsive; for now keeping this skeleton but never allowing to stay in loop
     var pulseFound%;
     var tRise, tFall;
     var stmp$;
@@ -186,18 +211,17 @@ func IdleProcessing%()
 	tNow := MaxTime();
     
     if tNow - tLast < 0.001 then
-        Yield(.001);
+        'Yield(.001);  'This may make toolbar unresponsive
         return 1;
     endif
     
-
-	xEye := ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
-	yEye := ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+    'Set xEye, yEye
+    GetPurkinjeFixationPosition(DataWindow%,XChannel%,YChannel%,tNow);  'Will set xEye, yEye based on Purkinje settings
 
 	' Don't update display every time....
-	if tNow-tLastUpdate > .005 then
+	if tNow-tLastDisplayUpdate > .005 then
 		View(XYWindow%).XYAddData(1,xEye,yEye);
-		tLastUpdate := tNow;
+		tLastDisplayUpdate := tNow;
 	endif
     
     while stayInLoop% = 1 do
@@ -205,12 +229,10 @@ func IdleProcessing%()
         LogStatus("loop", stmp$);
         
         tNow := MaxTime();  'reestablish tNow in case it has changed
-        stayInLoop% := 0;  'Allow break
+        stayInLoop% := 0;  'Don't stay in the idle loop, maybe never ever use this (currently not using at all)
         
         ' What state are we in? 
-        docase 
-            
-            
+        docase  
         case iState% = stateVSGWait% then
             
             pulseFound% := View(DataWindow%).FindPulseUp%(ReadyChannel%, tLastTrigger+View(DataWindow%).BinSize(), tRise, tFall);
@@ -219,7 +241,6 @@ func IdleProcessing%()
                 LogStatus("VSGWait", "Got Ready Pulse from VSG at " + str$(tRise));
                 Yield(1.0);
                 tLastTrigger := tFall;
-                'hangeStateTo(stateStartTrial%, tFall);
                 ChangeStateTo(stateStartTrial%, tFall);
             else
                 if pulseFound% = 0 then  'if a (short) "false" trigger is found, update tLastTrigger so we don't see it again
@@ -228,20 +249,19 @@ func IdleProcessing%()
                 endif;
             endif;
             
-            stayInLoop% := 0;   ' exit loop; need a gap in between pulse and F
-                          
-        case iState% = stateStartTrial% then
+            'stayInLoop% := 0;   ' exit loop; need a gap in between pulse and F
             
+            
+        case iState% = stateStartTrial% then
             ' initial state on startup. 
             ' DIGOUT to present stimulus
-            ' Enter state 1
             if Pause% = 0 then
                 nTrialsStarted% += 1;
                 
                 ' write serial command for current fixpt
                 stmp$ := Print$("F %.2f,%.2f,%.2f,%s;", fixCalibrationOffset*xyFixpt[currentFixptRow%][currentFixptInd%][0], fixCalibrationOffset*xyFixpt[currentFixptRow%][currentFixptInd%][1], FixationDiameter, FixationColor$);
                 LogStatus("stateStartTrial", stmp$);
-                SerialWrite(iPort%, stmp$);
+                SerialWrite(iPort%, stmp$);  'TODO this message needs to be echoed...somewhere, Dan will have details 
                 'SafeSampleKey("F");
                 
                 UpdateToolbarText();
@@ -250,20 +270,49 @@ func IdleProcessing%()
             
             
         case iState% = stateWaitForFixpt% then
-            
             if View(DataWindow%).FindRisingEdge%(TriggerChannel%, tStateStart, tTrigger) = 0 then
                 ' Fixation point is up
                 LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
                 tLastTrigger := tTrigger;
-                ChangeStateTo(stateWaitForAcquisition%, tTrigger);
                 DrawStim(1);
+                if useDPIStateLoop% = 0 then
+                    ChangeStateTo(stateWaitForAcquisition%, tTrigger);  'Take CED mode pathway
+                else
+                    ChangeStateTo(stateWaitForDPITrigger%, tTrigger);   'Take Purkinje mode pathway
+                endif
             endif
             
-        case iState% = stateWaitForAcquisition% then
             
+        case iState% = stateWaitForDPITrigger% then 
+            if tNow-tStateStart < fixAcquisitionTime then
+                'If button-press trigger found
+                if View(DataWindow%).FindRisingEdge%(DPITriggerChannel%, tStateStart, tTrigger) = 0 then 
+                    LogStatus("WaitForDPITrigger", "DPI trigger (button press) found at " + str$(tTrigger) + "\n");
+                    tLastTrigger := tTrigger;
+                    fixSuccess% := 1;  'Here we don't actually have a way to check whether the animal is looking so we have to run with it
+                    ChangeStateTo(stateDPIIntegrate% , tTrigger);
+                endif
+            else
+                ' Failed. Turn off stim and try again.
+                fixSuccess% := 0;
+                LogStatus("WaitForDPITrigger", "Acquisition timed out at " + str$(tTrigger) + "\n");
+                ChangeStateTo(stateStimOff%, tNow);
+                'stayInLoop% := 1;  'No reason to wait, go straight to stim off
+            endif
+            
+            
+        case iState% = stateDPIIntegrate% then
+            'Wait through integration period before turning off stimulus
+            if tNow-tStateStart < fixButtonIntegrationDelay then
+                LogStatus("DPIIntegrate", "DPI integration time done at " + str$(tTrigger) + "\n");
+                ChangeStateTo(stateStimOff%, tNow);
+            endif
+                        
+            
+        case iState% = stateWaitForAcquisition% then
             if tNow-tStateStart < fixAcquisitionTime then
                 ' Acquisition happens when the eye falls within the fixation window.
-                if InFixationWindow%(xEye, yEye) > 0 then
+                if Looking%(xEye, yEye) > 0 then
                     LogStatus("WaitForAcq", "Acquisition gotten.");
                     ChangeStateTo(stateHoldFixation%, tNow);
                 endif
@@ -271,28 +320,28 @@ func IdleProcessing%()
                 ' Failed. Turn off stim and try again.
                 fixSuccess% := 0;
                 ChangeStateTo(stateStimOff%, tNow);
-                stayInLoop% := 1;  'No reason to wait, go straight to stim off
+                'stayInLoop% := 1;  'No reason to wait, go straight to stim off
             endif
             
-        case iState% = stateHoldFixation% then
             
-            ' Waiting for fixation....
-            if InFixationWindow%(xEye, yEye) <= 0 then
+        case iState% = stateHoldFixation% then
+            ' Holding fixation....
+            if Looking%(xEye, yEye) <= 0 then
                 fixSuccess% := 0;
                 ChangeStateTo(stateStimOff%, tNow);
-                stayInLoop% := 1;  'No reason to wait, go straight to stim off
+                'stayInLoop% := 1;  'No reason to wait, go straight to stim off
             else
                 if tNow - tStateStart >= fixFixationDuration then
                     ' Fixation. Reward. New trial.
                     fixSuccess% := 1;
                     ChangeStateTo(stateStimOff%, tNow);
-                    stayInLoop% := 1;  'No reason to wait, go straight to stim off
+                    'stayInLoop% := 1;  'No reason to wait, go straight to stim off
                 endif
             endif
             
-        case iState% = stateStimOff% then
             
-            ' Turn off stimulus
+        case iState% = stateStimOff% then
+            ' Turn off stimulus - this state is the convergence point of the Purkinje mode and CED mode pathways
             DrawStim(0);
           
             SerialWrite(iPort%, "X;");
@@ -301,12 +350,10 @@ func IdleProcessing%()
             
             
         case iState% = stateWaitForBlank% then
-            
             ' Wait for stim to be off
             tTrigger := NextTime(TriggerChannel%, tStateStart,vTrigger);
             LogStatus("WaitForBlank", str$(tStateStart) + "," + str$(tNow) + "," + str$(tTrigger) + "," + str$(vTrigger));
             if tTrigger > tLastTrigger then
-                
                 if vTrigger = 1 then      
                     tLastTrigger := tTrigger;
                     LogStatus("WaitForBlank", "Stim off trig");
@@ -316,9 +363,15 @@ func IdleProcessing%()
                         ChangeStateTo(stateSuccess%, tTrigger);
                     endif;
                     
-                    ' calibration run: Update next x,y for eye window, send "a".
-                    currentFixptInd% := (currentFixptInd% + 1) % numFixptInd%;
-                    stmp$ := Print$("currentFixptInd = %d", currentFixptInd%);
+                    ' calibration run: Update next x,y for eye window, we do not send an advance here because we are using a different sytnax
+                    if fixAdvanceOnFailure%+fixSuccess% > 0 then
+                        'Advance fixation point position
+                        currentFixptInd% := (currentFixptInd% + 1) % numFixptInd%;
+                        stmp$ := Print$("currentFixptInd = %d", currentFixptInd%);
+                    else
+                        'Do not advance fixation point position
+                        stmp$ := Print$("currentFixptInd = %d, repeating", currentFixptInd%);
+                    endif
                     LogStatus("WaitForBlank", stmp$);
                     
                 else
@@ -326,52 +379,40 @@ func IdleProcessing%()
                     Message("Wrong trig edge in stateWaitForBlank!");
                     LogStatus("WaitForBlank", "Wrong trig edge tNow=" + str$(tNow) + " tTrigger=" + str$(tTrigger) + " tLastTrigger=" + str$(tLastTrigger));
                     halt;
-                endif
-                
+                endif 
             endif
             
             
         case iState% = stateSuccess% then
-            
             nTrialsSuccess% += 1;
             DefaultReward();
-            ChangeStateTo(stateNextAfterFixation%, tNow);
-            stayInLoop% := 1;  'No reason to wait
+            ChangeStateTo(stateITI%, tNow);
+            'stayInLoop% := 1;  'No reason to wait
+            
             
         case iState% = stateFailure% then
-            
             nTrialsFail% += 1;
-            ChangeStateTo(stateNextAfterFixation%, tNow);
-            stayInLoop% := 1;  'No reason to wait
+            ChangeStateTo(stateITI%, tNow);
+            'stayInLoop% := 1;  'No reason to wait
             
-        
-        case iState% = stateNextAfterFixation% then
             
-            ChangeStateTo(stateCheckTrial%, tNow);
-            stayInLoop% := 1;  'No reason to wait
-            
-        case iState% = stateCheckTrial% then
-            
-            ChangeStateTo(stateInterval%, tNow);
-            
-        case iState% = stateInterval% then
-            
+        case iState% = stateITI% then
             ' Inter-trial wait time
             if tNow - tStateStart > fixInterTrialTime then
-                
                 ' Back to state 0
                 ChangeStateTo(stateStartTrial%, tNow);
-                stayInLoop% := 1;  'No reason to wait
-                
+                'stayInLoop% := 1;  'No reason to wait
             endif
             
-        case iState% = stateDone% then
             
+        case iState% = stateDone% then  'nothing ever sends us here!
+            'I think this state may go away, unless there is a specific stopping criterion other than the Stop button
             LogStatus("Done", "Done!!!");
             iStatus% := 0;  ' exits idle loop
+            Stop%();  'Stop will do all the cleanup (if we ever get here)
+            
             
         else 
-            
             ' Unknown state!
             Message("Unknown state=" + str$(iState%));
             halt;
@@ -386,17 +427,16 @@ func IdleProcessing%()
 
 end;
 
-proc AdvanceCalibrationPoint()
-    iStimIndex% := (iStimIndex% + 1) mod 9;         
-    SafeSampleKey("a");
-end;
+'unused
+'proc AdvanceCalibrationPoint()
+'    iStimIndex% := (iStimIndex% + 1) mod 9;         
+'    SafeSampleKey("a");
+'end;
 
 proc UpdateToolbarText()
-
 	var s$;
     s$ := Print$("Trial# %d Success/Failure %d/%d", nTrialsStarted%, nTrialsSuccess%, nTrialsFail%);
 	ToolbarText(s$);
-
 end;
 
 
@@ -410,7 +450,6 @@ end;
 proc CreateSampleConfiguration()
 	var index;
 	SampleClear(); 'Set standard sampling state
-'	SampleAutoFile(0); 'Enable automatic file naming
 	SampleAutoComment(0); 'Prompt for comment after sampling
 	SampleAutoCommit(60); 'Seconds between each file commit
     
@@ -421,24 +460,28 @@ proc CreateSampleConfiguration()
 	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 3, 1);
 	FilePathSet(dataPathRoot$ + "\\" + dataDataSet$, 1, 1);
 	SampleAutoName$(dataCellName$ + "_fix_000");
-	SampleAutoFile(1);
+	SampleAutoFile(1);  'Enable automatic file naming
 
 	'----Event Channel recording definitions----
 	SampleEvent(TriggerChannel%, 2, 2, 3600); 'Trigger channel, level
 	SampleComment$(TriggerChannel%, "Trigger");
 	SampleTitle$(TriggerChannel%, "Trigger");
-
+    
+    SampleEvent(DPITriggerChannel%, 6, 2, 3600); 'DPI Trigger channel, level
+	SampleComment$(DPITriggerChannel%, "Button");
+	SampleTitle$(DPITriggerChannel%, "Button");
+    
 	' channel to look for ready signal from vsg
-	SampleEvent(ReadyChannel%, 1, 2, 3600); 'Trigger channel, level
+	SampleEvent(ReadyChannel%, 1, 2, 3600); 'Ready channel, level
 	SampleComment$(ReadyChannel%,"VSG Ready");
 	SampleTitle$(ReadyChannel%,"VSG Ready");
     
     '----Analog, non-spiking electrode recording conditions
-	'EYE COIL CHANNELS. Last # is sampling freq in Hz. 
-	SampleWaveform(XChannel%, GetEyeXPort%(), 1000);
-	SampleTitle$(XChannel%,EyeXPortLabel$);
-	SampleWaveform(YChannel%, GetEyeYPort%(), 1000);
-	SampleTitle$(YChannel%,EyeYPortLabel$);
+	'EYE CHANNELS. Last # is sampling freq in Hz. 
+	SampleWaveform(XChannel%, GetEyeXPortPurkinje%(), 1000);
+	SampleTitle$(XChannel%,EyeXPortLabelPurkinje$);
+	SampleWaveform(YChannel%, GetEyeYPortPurkinje%(), 1000);
+	SampleTitle$(YChannel%,EyeYPortLabelPurkinje$);
     
     SampleSequencer(script$ + "Tuning.pls");
         
@@ -474,7 +517,6 @@ proc DrawStim(iDraw%)
 		View(XYWindow%).XYDelete(iStimChannel%);
 		View(XYWindow%).XYDelete(iStimWindowChannel%);
 	endif
-
 end;
 
 
@@ -482,7 +524,7 @@ proc InitializeWindows()
 
 	'Open the data sampling window
 	DataWindow% := FileNew(0,4);
-    Window(-0.235849,52.746,97.2484,99.8856);
+    Window(-0.235849,52.746,97.2484,99.8856);  'Oddly specific window placement!
     XRange(0, 30);
 	View(DataWindow%).WindowVisible(1);
 
@@ -524,13 +566,12 @@ proc InitializeWindows()
 	XYAddData(4,9,-7);
 	XYAddData(4,9,7);
 	XYAddData(4,-9,7);
-
 end;
 
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
-' InitilizeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
+' InitializeToolbar - prepare toolbar buttons. Note that the idle processing function (ToolbarSet(0, blah, blah)) is 
 ' not set here. That's done when the user hits the start button.
 '
 proc InitializeToolbar()
@@ -544,14 +585,14 @@ proc InitializeToolbar()
     ToolbarSet(5,"Horizontal",Horizontal%);
     ToolbarSet(6,"Vertical",Vertical%);
     ToolbarSet(7,"Corners",Corners%);
-	ToolbarSet(8,"Pause stimuli",PauseStimuli%);
-	ToolbarSet(9,"Resume stimuli",ResumeStimuli%);
-	ToolbarSet(10,"Quit",Quit%);
+    ToolbarSet(8,"Swap To CED",Swap2CED%);  'This is a toggle button, will be renamed when pressed
+	ToolbarSet(9,"Pause stimuli",PauseStimuli%);
+	ToolbarSet(10,"Resume stimuli",ResumeStimuli%);
+	ToolbarSet(11,"Quit",Quit%);
 	ToolbarEnable(2,0);
-	ToolbarEnable(8,0);
 	ToolbarEnable(9,0);
+	ToolbarEnable(10,0);
 	Toolbar("Go", 0x3ff);
-
 end;
 
 
@@ -566,26 +607,26 @@ end;
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Start%()
 	var CommandLine$;
-	var FixationPoint$;
-    var DualTrigger$ := "";
+	'var FixationPoint$;
+    'var DualTrigger$ := "";
 	var Extras$;
-    var GrParams$;
-	var Distractors$:="";
-    var DistractorFlag$ := " -g ";  ' -k for fixstim/remote
-    var DistractorFixstimFlag$ := "";
+    'var GrParams$;
+	'var Distractors$ := "";
+    'var DistractorFlag$ := " -g ";  ' -k for fixstim/remote
+    'var DistractorFixstimFlag$ := "";
     var Invocation$;                ' initialized below
-    var x, y;
+    'var x, y;
     
 	SampleStart(0); 'Start sampling
     
 	' Set Sequencer Variable #3 based on juicer type 
     SetJuicerSequencerVariable%();
-    
-	'GetFixationScriptParameters();
 
     Invocation$ := "cmd /c " + GetBinDir$(1) + "remote " + GetRemoteStimulusIP$() + " " + GetRemoteStimulusPort$() + " fixstim ";
     FixationArg$ := "-f 0,0,4.0,red";
-	Extras$ := print$(" --serial %s -b gray -d 813 -p 2 --dpi-cal", otherPort$) ;
+    
+	'Extras$ := print$(" --serial %s -b gray -d 813 -p 2 --dpi-cal", otherPort$);
+    Extras$ := print$(" --serial %s -b gray -d %s -p 2 --dpi-cal", otherPort$, GetDistanceToScreenMM$());
     SampleSeqVar(5, 0);
 		
 	CommandLine$ := Invocation$ + FixationArg$ + Extras$;
@@ -605,8 +646,9 @@ func Start%()
  	ToolbarSet(0,"",IdleProcessing%);	'Enable the IdleProcessing function
 	ToolbarEnable(2,1);
 	ToolbarEnable(1,0);
-	ToolbarEnable(8,1);
-	ToolbarEnable(9,0);
+	ToolbarEnable(9,1);  'Enable pause, we are running
+	ToolbarEnable(10,0);  'Disable resume, we are running
+    ToolbarEnable(4,0);  'Disable "Center Only" because that is the starting state
 	View(DataWindow%);
 	Yield(.1);
 	return 1;
@@ -614,23 +656,56 @@ end;
 
 func CenterOnly%()
     currentFixptRow% := 0;
+    currentFixptInd% := 0;  'start from the "beginning"
+    ToolbarEnable(4,0);  'Disable this so we know it's pressed
+    ToolbarEnable(5,1);  'Enable the other toolbar functions that might currently be disabled
+    ToolbarEnable(6,1);
+    ToolbarEnable(7,1);
     return 1;
 end;
 
 func Horizontal%()
     currentFixptRow% := 1;
+    currentFixptInd% := 0;  'start from the "beginning"
+    ToolbarEnable(5,0);  'Disable this so we know it's pressed
+    ToolbarEnable(4,1);  'Enable the other toolbar functions that might currently be disabled
+    ToolbarEnable(6,1);
+    ToolbarEnable(7,1);
     return 1;
 end;
 
 func Vertical%()
     currentFixptRow% := 2;
+    currentFixptInd% := 0;  'start from the "beginning"
+    ToolbarEnable(6,0);  'Disable this so we know it's pressed
+    ToolbarEnable(4,1);  'Enable the other toolbar functions that might currently be disabled
+    ToolbarEnable(5,1);
+    ToolbarEnable(7,1);
     return 1;
 end;
 
 func Corners%()
     currentFixptRow% := 3;
+    currentFixptInd% := 0;  'start from the "beginning"
+    ToolbarEnable(7,0);  'Disable this so we know it's pressed
+    ToolbarEnable(4,1);  'Enable the other toolbar functions that might currently be disabled
+    ToolbarEnable(5,1);
+    ToolbarEnable(6,1);
     return 1;
 end;
+
+func Swap2CED%()
+    useDPIStateLoop% := 0;
+    ToolbarSet(8,"Swap To DPI",Swap2DPI%);  'Rename toggle button
+    return 1;
+end
+
+
+func Swap2DPI%()
+    useDPIStateLoop% := 1;
+    ToolbarSet(8,"Swap To CED",Swap2CED%);  'Rename toggle button
+    return 1;
+end
 
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -657,32 +732,29 @@ func Stop%()
 	wend
 
 	' Increment daily totals and save then
-	'TotalTrials% += (nTrialsStarted% + nLEDTrialsStarted%);  'deprecated
-	'TotalRewards% += (nTrialsSuccess% + nLEDTrialsSuccess%);
     TotalTrials% += nTrialsStarted%;
 	TotalRewards% += nTrialsSuccess%;
 	SaveDailyTotals();
 
 	s$ := Print$("Trial# %d Success/Failure %d/%d", nTrialsStarted%, nTrialsSuccess%, nTrialsFail%);
 	LogStatus("Stop%()", s$);
-    
 end;
 
 
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func PauseStimuli%();
-Pause% :=1;
-ToolbarEnable(8,0);
-ToolbarEnable(9,1);
-return 1;
+    Pause% := 1;
+    ToolbarEnable(9,0);  'Disable pause, we are paused
+    ToolbarEnable(10,1);  'Enable resume, we are paused
+    return 1;
 end
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func ResumeStimuli%();
-Pause% :=0;
-ToolbarEnable(8,1);
-ToolbarEnable(9,0);
-return 1;
+    Pause% := 0;
+    ToolbarEnable(9,1);  'Enable pause, we are running
+    ToolbarEnable(10,0);  'Disable resume, we are running
+    return 1;
 end
 
 
@@ -695,17 +767,16 @@ func GetStimY()
     return xyFixpt[currentFixptRow%][currentFixptInd%][1] * fixCalibrationOffset;
 end;
 
+
+
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-func InFixationWindow%(EyePosX,EyePosY)
+func Looking%(EyePosX,EyePosY)
 	var i% := 0;
-	var xstim, ystim;
     if fixAlwaysLooking% = 1 then
         i% := 1;
     else
-        xstim := GetStimX();
-        ystim := GetStimY();
         'Determine if the eye position is within the fixation window
-        if (Pow(EyePosX-xstim, 2) + Pow(EyePosY-ystim, 2)) <= Pow(WindowRadius,2) then 
+        if (Pow(EyePosX-GetStimX(), 2) + Pow(EyePosY-GetStimY(), 2)) <= Pow(WindowRadius,2) then 
             i% := 1;
         endif
     endif
@@ -715,3 +786,64 @@ end;
 
 
 
+func DPICalScriptDialog%()
+    var i%;
+    
+    GetDPICalScriptParameters();
+    
+    DlgCreate("DPI Calibration Script Parameters");
+	
+    DlgReal(1, "Acquisition time (s):", .01, 100);
+    DlgReal(2, "Fixation duration (s):", .01, 10);
+	DlgReal(3, "Intertrial time (s):", .01, 10);
+    DlgReal(4, "Post-button integration time (s):", .01, 10);
+	DlgReal(5, "Calibration point offset (deg):", 0, 40);
+    
+    DlgCheck(6, "Always looking?");
+    DlgCheck(7, "Advance stimulus on failure?");
+    
+    'DlgAllow(0xffff, 0, DPICalScriptDialogChanged%);  'currently no allow function necessary, function not defined
+	i%:=DlgShow(fixAcquisitionTime, fixFixationDuration, fixInterTrialTime, fixCalibrationOffset, 
+                fixButtonIntegrationDelay, fixAlwaysLooking%, fixAdvanceOnFailure%);
+
+	if i% = 1 then
+        SaveDPICalScriptParameters();
+    endif;
+    return i%;
+    
+end
+
+
+
+
+
+
+proc GetDPICalScriptParameters()
+	var key$;
+    key$ := GetRegistryKey$(1) + "\\Scripts\\DPICal";
+   
+	fixAcquisitionTime := GetFloatRegistryValue(key$, "AcquisitionTime", fixAcquisitionTime);
+    fixFixationDuration := GetFloatRegistryValue(key$, "FixationDuration", fixFixationDuration);
+    fixInterTrialTime := GetFloatRegistryValue(key$, "InterTrialTime", fixInterTrialTime);
+    fixCalibrationOffset := GetFloatRegistryValue(key$, "CalibrationOffset", fixCalibrationOffset);
+    fixButtonIntegrationDelay := GetFloatRegistryValue(key$, "ButtonIntegrationDelay", fixButtonIntegrationDelay);
+    
+    fixAlwaysLooking% := GetIntRegistryValue%(key$, "AlwaysLooking", fixAlwaysLooking%);
+    fixAdvanceOnFailure% := GetIntRegistryValue%(key$, "AdvanceOnFailure", fixAdvanceOnFailure%);
+
+end;
+ 	
+proc SaveDPICalScriptParameters()
+	var key$;
+    key$ := GetRegistryKey$(1) + "\\Scripts\\DPICal";
+    
+    SetFloatRegistryValue(key$, "AcquisitionTime", fixAcquisitionTime);
+    SetFloatRegistryValue(key$, "FixationDuration", fixFixationDuration);
+    SetFloatRegistryValue(key$, "InterTrialTime", fixInterTrialTime);
+    SetFloatRegistryValue(key$, "CalibrationOffset", fixCalibrationOffset);
+    SetFloatRegistryValue(key$, "ButtonIntegrationDelay", fixButtonIntegrationDelay);
+    
+    SetIntRegistryValue(key$, "AlwaysLooking", fixAlwaysLooking%);
+    SetIntRegistryValue(key$, "AdvanceOnFailure", fixAdvanceOnFailure%);
+
+end;

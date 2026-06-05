@@ -1024,6 +1024,23 @@ proc GetAllFixationPosition(DataWindow%,XChannel%,YChannel%,XChannelPurkinje%,YC
 end
 
 
+proc GetASLFixationPosition(DataWindow%,XChannel%,YChannel%,tNow)
+    'This function will retrieve the fixation position from ASL fixation channel ONLY
+    'and set the appropriate variables.  
+    xEye := View(DataWindow%).ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+    yEye := View(DataWindow%).ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+end
+
+
+proc GetPurkinjeFixationPosition(DataWindow%,XChannelPurkinje%,YChannelPurkinje%,tNow)
+    'This function will retrieve the fixation position from DPI fixation channel ONLY
+    'and set the appropriate variables.  
+    xEye := View(DataWindow%).ChanMeasure(XChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltXPurkinje;
+    yEye := View(DataWindow%).ChanMeasure(YChannelPurkinje%,2,tNow-.006,tNow-.001)*DegreesPerVoltYPurkinje;
+end
+
+
+
 proc UpdateFixationDisplay(FixptDisplayWindow%)
     'This function will update the fixation position on the fixation display
     'If both ASL and Purkinje eyetrackers are present, it will display the ASL position, the Purkinje position, and the weighted average position
