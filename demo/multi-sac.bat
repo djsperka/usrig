@@ -1,1 +1,1 @@
-%~dp0\..\bin\remote.exe 127.0.0.1 7000 fixstim -f 0,0,1.0,red -b gray -d 813 --multi-sac %~dp0\multi-sac.txt
+%~dp0\..\bin\remote.exe 127.0.0.1 7000 fixstim -f 0,0,1.0,red -p 2 -b gray -d 813 --multi-sac %~dp0\multi-sac.txt
