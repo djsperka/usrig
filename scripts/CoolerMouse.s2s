@@ -67,6 +67,10 @@ end;
 
 ' Window handles and channel numbers
 var XChannel%,YChannel%;		' Channel number assigned to eye x and y
+var PupilChannel%;
+var XChannelPurkinje%;
+var YChannelPurkinje%;
+var PupilChannelPurkinje%;
 var TriggerChannel%;			' Channel number assigned to vsg trigger input (i.e. trigger sent by vsg)
 var DataWindow%;	' time view
 var ReadyChannel%;	' VSG Status channel
@@ -114,9 +118,13 @@ CoolerMouseScriptDialog%();
 ' Assign channel numbers for eye X,Y and trigger. 
 XChannel% := NumberOfElectrodes%+1;
 YChannel% := NumberOfElectrodes%+2;
-TriggerChannel% := NumberOfElectrodes%+3;
-ReadyChannel% := NumberOfElectrodes%+4;
-ChangedChannel% := NumberOfElectrodes%+5;
+PupilChannel% := NumberOfElectrodes%+3;
+XChannelPurkinje% := NumberOfElectrodes%+4;
+YChannelPurkinje% := NumberOfElectrodes%+5;
+PupilChannelPurkinje% := NumberOfElectrodes%+6;
+TriggerChannel% := NumberOfElectrodes%+7;
+ReadyChannel% := NumberOfElectrodes%+8;
+ChangedChannel% := NumberOfElectrodes%+9;
 
 CreateSampleConfiguration();
 
@@ -168,12 +176,14 @@ func IdleProcessing%()
 
 	tNow := MaxTime();
 
-	xEye := ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
-	yEye := ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+	'xEye := ChanMeasure(XChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltX;
+	'yEye := ChanMeasure(YChannel%,2,tNow-.006,tNow-.001)*DegreesPerVoltY;
+    GetAllFixationPosition(DataWindow%,XChannel%,YChannel%,XChannelPurkinje%,YChannelPurkinje%,tNow);
 
 	' Don't update display every time....
 	if tNow-tLastUpdate > .005 then
-		View(XYWindow%).XYAddData(1,xEye,yEye);
+        UpdateFixationDisplay(XYWindow%);
+		'View(XYWindow%).XYAddData(1,xEye,yEye);
 		tLastUpdate := tNow;
 	endif
 
@@ -324,11 +334,46 @@ proc CreateSampleConfiguration()
 	SampleTitle$(TriggerChannel%, "Trigger");
 
 	'EYE COIL CHANNELS. Last # is sampling freq in Hz. 
-	SampleWaveform(XChannel%, 14, 1000);
-	SampleTitle$(XChannel%,"Eye X");
-	SampleWaveform(YChannel%, 15, 1000);
-	SampleTitle$(YChannel%, "Eye Y");
-
+'	SampleWaveform(XChannel%, 14, 1000);
+'	SampleTitle$(XChannel%,"Eye X");
+'	SampleWaveform(YChannel%, 15, 1000);
+'	SampleTitle$(YChannel%, "Eye Y");
+    if EyeXPort% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye X channel
+        SampleWaveform(XChannel%,GetEyeXPort%(),1000);
+        SampleTitle$(XChannel%,"Eye X");
+    endif;
+    
+    if EyeYPort% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye Y channel 
+        SampleWaveform(YChannel%,GetEyeYPort%(),1000);
+        SampleTitle$(YChannel%,"Eye Y");
+    endif;
+    
+     if PupilPort% > -1 then
+         SampleWaveform(PupilChannel%,PupilPort%,1000);       
+         SampleTitle$(PupilChannel%,PupilPortLabel$);
+     endif;
+     
+    if EyeXPortPurkinje% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye X channel
+        SampleWaveform(XChannelPurkinje%,GetEyeXPortPurkinje%(),1000);
+        SampleTitle$(XChannelPurkinje%,"Eye X P");
+    endif;
+    
+    if EyeYPortPurkinje% > -1 then  'don't set up eye channels unless we are looking at eye position
+        ' Set up eye Y channel 
+        SampleWaveform(YChannelPurkinje%,GetEyeYPortPurkinje%(),1000);
+        SampleTitle$(YChannelPurkinje%,"Eye Y P");
+    endif;
+    
+    if PupilPortPurkinje% > -1 then
+        SampleWaveform(PupilChannelPurkinje%,PupilPortPurkinje%,1000);       
+        SampleTitle$(PupilChannelPurkinje%,PupilPortLabelPurkinje$);
+    endif;    
+    
+    
+    
 	SampleEvent(ReadyChannel%,6,2,3600); 'Trigger channel, level
 	SampleComment$(ReadyChannel%,"VSG Ready");
 	SampleTitle$(ReadyChannel%,"VSG Ready");
@@ -383,13 +428,26 @@ proc InitializeWindows()
 
 	'Open an XY view to display eye position
 	XYWindow% := FileNew(12);
+    iEyePosChannel% := 1;  'The primary eye position channel is #1
 	XRange(-30,30);
 	YRange(-2,-30,30);
 	XYDrawMode(0,5,0);
 	WindowVisible(1);
 	Window(-0.550314,0.114416,41.5094,52.746);
-	XYColour(1,16);
-	XYSize(1,-1);
+	'XYColour(1,16);
+	'XYSize(1,-1);
+    XYColour(iEyePosChannel%,16);  'Make this channel red
+	XYSize(iEyePosChannel%,-1);  'Only one point on this channel
+
+    'Create a new channel in the XY view to show the ASL eye position
+    iEyePosASLChannel% := XYSetChan(0);
+    XYColour(iEyePosASLChannel%,8);  'Make this channel green
+	XYSize(iEyePosASLChannel%,-1);  'Only one point on this channel
+    
+    'Create a new channel in the XY view to show the Purkinje eye position
+    iEyePosPurkinjeChannel% := XYSetChan(0);
+    XYColour(iEyePosPurkinjeChannel%,32);  'Make this channel purplekinje
+	XYSize(iEyePosPurkinjeChannel%,-1);  'Only one point on this channel
 
 	'Calcuate the fixation window
 	var index%;
