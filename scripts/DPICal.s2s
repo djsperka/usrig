@@ -92,7 +92,7 @@ var fixAdvanceOnFailure% := 0;           ' Do we advance the calibration point p
 
 ' COM port for sending fixstim commands
 var iPort% := 6;
-var otherPort$ := "COM7";  'Please rename this variable!  "Other" is not very informative!
+var otherPort$ := "COM9";  'Please rename this variable!  "Other" is not very informative!
 
 ' The following variables allow swapping through different sets of fixpts
 ' The mode is set by the first index - currentFixptRow%
@@ -225,8 +225,8 @@ func IdleProcessing%()
 	endif
     
     while stayInLoop% = 1 do
-        stmp$ := Print$("State %d", iState%);
-        LogStatus("loop", stmp$);
+        'stmp$ := Print$("State %d", iState%);
+        'LogStatus("loop", stmp$);
         
         tNow := MaxTime();  'reestablish tNow in case it has changed
         stayInLoop% := 0;  'Don't stay in the idle loop, maybe never ever use this (currently not using at all)
@@ -248,6 +248,14 @@ func IdleProcessing%()
                     tLastTrigger := tFall;
                 endif;
             endif;
+            
+            if tNow > 3 then
+                LogStatus("VSGWait", "Waited 3 seconds, no ready pulse, let's move on.");
+                ChangeStateTo(stateStartTrial%, tNow);
+            endif;
+            
+                
+                
             
             'stayInLoop% := 0;   ' exit loop; need a gap in between pulse and F
             
@@ -640,6 +648,11 @@ func Start%()
     if SerialOpen(iPort%, 115200) < 0 then
         Message("Cannot open serial port " + str$(iPort%));
         halt;
+    else
+        ' Tell the shlub to connect to outlets - one should go to fixstim, the other will go to the DPI cal process.
+        ' There isn't a way to check the success of this command! 
+        SerialWrite(iPort%, "connect;calstart;");
+        Yield(0.1);
     endif
 
     
@@ -711,6 +724,11 @@ end
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Stop%()
     var s$;
+    
+    ' disconnect shlub
+    SerialWrite(iPort%, "calstop;disconnect;");
+    Yield(0.2);
+
     
     ' close serial port
     SerialClose(iPort%);
