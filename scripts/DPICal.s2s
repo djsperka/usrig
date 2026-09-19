@@ -25,6 +25,7 @@ var keyboardChannel% := 31;     ' Keyboard channel is always 31
 var TriggerChannel%;			' Channel number assigned to vsg trigger input (i.e. trigger sent by vsg)
 var DPITriggerChannel%;         ' Channel number assigned to DPI button press (i.e. trigger sent by user to indicate looking during DPI mode)
 var ReadyChannel%;			    ' Channel number for VSG ready pulse signal
+var FrameChannel%;              ' Channel number for FRAME signal from vsg
 var UtilityChannel%;
 var DataWindow%;	            ' Time view
 var XYWindow%;		            ' Window displaying eye position
@@ -175,6 +176,7 @@ YChannel% := 22;
 TriggerChannel% := 23;
 ReadyChannel% := 24;
 DPITriggerChannel% := 25;
+FrameChannel% := 26;
 UtilityChannel% := 27;
 ExcludedChans%[0] := 21;  'XChannel is lowest non-electrode channel used by this function
 ExcludedChans%[1] := 27;  'UtilityChannel% is highest non-electrode channel used by this function
@@ -484,6 +486,11 @@ proc CreateSampleConfiguration()
 	SampleComment$(ReadyChannel%,"VSG Ready");
 	SampleTitle$(ReadyChannel%,"VSG Ready");
     
+   	SampleEvent(FrameChannel%, 0, 2, 3600);
+	SampleComment$(FrameChannel%,"Frame");
+	SampleTitle$(FrameChannel%,"Frame");
+
+    
     '----Analog, non-spiking electrode recording conditions
 	'EYE CHANNELS. Last # is sampling freq in Hz. 
 	SampleWaveform(XChannel%, GetEyeXPortPurkinje%(), 1000);
@@ -726,7 +733,9 @@ func Stop%()
     var s$;
     
     ' disconnect shlub
-    SerialWrite(iPort%, "calstop;disconnect;");
+    SerialWrite(iPort%, "calstop;");
+    Yield(0.2);
+    SerialWrite(iPort%, "disconnect;");
     Yield(0.2);
 
     
