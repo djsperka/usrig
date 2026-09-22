@@ -2818,17 +2818,18 @@ func IdleProcessing%()
         tNow := View(DataWindow%).MaxTime();
         
         'Do up trial start sampletext
-        TrialStartText$ := "Trial " + Str$(tc%+1) + " Ready; " + laInitialST$[tc%];
+        TrialStartText$ := "Trial " + Str$(tc%+1) + " Ready";
         SampleText(TrialStartText$,tNow);
+        SampleText(laInitialST$[tc%],tNow+.001);
         
         'determine if we are doing opto on this trial
         if laDoOpto% = 1 then  'if 0, then laDoOptoThisTrial% will just be 0 from the jump
             if laOptoThisTrial%[tc%] = 1 then
                 laDoOptoThisTrial% := 1;
-                SampleText("Opto This Trial (" + Str$(tc%+1) + ")",tNow+.001);  'only sampletext for presence/absence of opto if laDoOpto% is on, no point if the whole experiment has no opto
+                SampleText("Opto This Trial (" + Str$(tc%+1) + ")",tNow+.002);  'only sampletext for presence/absence of opto if laDoOpto% is on, no point if the whole experiment has no opto
             else
                 laDoOptoThisTrial% := 0;
-                SampleText("No Opto This Trial (" + Str$(tc%+1) + ")",tNow+.001);
+                SampleText("No Opto This Trial (" + Str$(tc%+1) + ")",tNow+.002);
             endif;
         endif;
         
@@ -2836,10 +2837,10 @@ func IdleProcessing%()
         if laDoMicro% = 1 then  'if 0, then laDoMicroThisTrial% will just be 0 from the jump
             if laMicroThisTrial%[tc%] = 1 then
                 laDoMicroThisTrial% := 1;
-                SampleText("Microstim This Trial (" + Str$(tc%+1) + ")",tNow+.002);  'offset by one ms to avoid collision with opto sampletext
+                SampleText("Microstim This Trial (" + Str$(tc%+1) + ")",tNow+.003);  'offset by one ms to avoid collision with opto sampletext
             else
                 laDoMicroThisTrial% := 0;
-                SampleText("No Microstim This Trial (" + Str$(tc%+1) + ")",tNow+.002);
+                SampleText("No Microstim This Trial (" + Str$(tc%+1) + ")",tNow+.003);
             endif;
         endif;
         
@@ -2872,6 +2873,11 @@ func IdleProcessing%()
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
          
     case iState% = stateWaitForFixPtOn% then
+        if stateBegin% = 1 then
+            LogStatus("WaitForFixPt", "Began waiting for fixation point at about " + str$(tNow));
+            stateBegin% := 0;
+        endif
+        
         if View(DataWindow%).FindRisingEdge%(FixPointChannel%, tLast, tTrigger) = 0 then
             'Fixation point up. Display fix location and window.
             LogStatus("WaitForFixPt", "Fixation Point Up");
@@ -2883,6 +2889,10 @@ func IdleProcessing%()
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
                
     case iState% = stateWaitForAcquisition% then
+        if stateBegin% = 1 then
+            LogStatus("WaitForAcquisition", "Began waiting for fixation acquisition at about " + str$(tNow));
+            stateBegin% := 0;
+        endif
         if tNow-tStateStart < laFixAcquisitionTime then
             ' Acquisition happens when the eye falls within the fixation window.
             if LookingFixation%(xEye, yEye) > 0 then
@@ -2913,6 +2923,10 @@ func IdleProcessing%()
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
           
     case iState% = stateHoldFixation% then
+        if stateBegin% = 1 then
+            LogStatus("HoldFixation", "Fixation began at about " + str$(tNow));
+            stateBegin% := 0;
+        endif
         if LookingFixation%(xEye,yEye) <= 0 then
             LogStatus("HoldFixation", "Broken fixation at about " + str$(tNow));
             ChangeStateTo(stateAbort%, tNow);
@@ -2944,6 +2958,10 @@ func IdleProcessing%()
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
         
     case iState% = stateWaitForPage1Up% then
+        if stateBegin% = 1 then
+            LogStatus("WaitForPage1Up", "Began waiting for Page 1 up at about " + str$(tNow));
+            stateBegin% := 0;
+        endif
         ' Fixation may be broken while waiting for stim to come on. 
         if LookingFixation%(xEye,yEye) <= 0 then
             LogStatus("WaitForPage1Up", "Broken fixation at about " + str$(tNow));
@@ -2952,6 +2970,10 @@ func IdleProcessing%()
             ' Check if stim has come on
             if View(DataWindow%).FindRisingEdge%(StimChannel%, tLast, tTrigger) = 0 then
                 'TODO - figure out if when the stimulus goes up, the page toggle channel goes from 0 to 1, or if that only happens at the first toggle!!!
+                'Right now I expect for (1) the toggle line to start at zero at the beginning of the trial,
+                'and (2) putting Page-1 up to NOT move the toggle line.  If so, code as written should work.
+                'If putting up Page-1 does move the toggle line from 0 to 1, uncomment the line below.
+                'If the toggle line doesn't strictly start at zero at the beginning of each trial, rework the code!
                 'laPageToggle% := 1 - laPageToggle%;
                 LogStatus("WaitPage1Up", "Stimulus up (Page 1) at about " + str$(tNow));
                 SampleText("Page 1 Up",tNow);
@@ -2976,7 +2998,11 @@ func IdleProcessing%()
         
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
         
-    case iState% = stateWaitThroughPage1% then 
+    case iState% = stateWaitThroughPage1% then
+        if stateBegin% = 1 then
+            LogStatus("WaitThroughPage1", "Began waiting through Page 1 at about " + str$(tNow));
+            stateBegin% := 0;
+        endif        
         ' Fixation may be broken while waiting through page 1 
         if LookingFixation%(xEye,yEye) <= 0 then
             LogStatus("WaitThroughPage1", "Broken fixation at about " + str$(tNow));
@@ -3025,6 +3051,10 @@ func IdleProcessing%()
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
          
     case iState% = stateWaitForPage2Up% then
+        if stateBegin% = 1 then
+            LogStatus("WaitForPage2Up", "Began waiting for Page 2 up at about " + str$(tNow));
+            stateBegin% := 0;
+        endif
         ' Fixation may be broken while waiting for Page 2 to come on. 
         if LookingFixation%(xEye,yEye) <= 0 then
             LogStatus("WaitForPage2Up", "Broken fixation at about " + str$(tNow));
@@ -3063,7 +3093,11 @@ func IdleProcessing%()
         
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
         
-    case iState% = stateWaitThroughPage2% then 
+    case iState% = stateWaitThroughPage2% then
+        if stateBegin% = 1 then
+            LogStatus("WaitThroughPage2", "Began waiting through Page 2 at about " + str$(tNow));
+            stateBegin% := 0;
+        endif         
         ' Fixation may be broken while waiting through page 2 
         if LookingFixation%(xEye,yEye) <= 0 then
             LogStatus("WaitThroughPage2", "Broken fixation at about " + str$(tNow));
@@ -3124,6 +3158,10 @@ func IdleProcessing%()
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
         
     case iState% = stateWaitForPage3Up% then
+        if stateBegin% = 1 then
+            LogStatus("WaitForPage3Up", "Began waiting for Page 3 up at about " + str$(tNow));
+            stateBegin% := 0;
+        endif
         ' Fixation may be broken while waiting for Page 3 to come on. 
         if LookingFixation%(xEye,yEye) <= 0 then
             LogStatus("WaitForPage3Up", "Broken fixation at about " + str$(tNow));
@@ -3163,6 +3201,10 @@ func IdleProcessing%()
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
         
     case iState% = stateWaitThroughPage3% then 
+        if stateBegin% = 1 then
+            LogStatus("WaitThroughPage3", "Began waiting through Page 3 at about " + str$(tNow));
+            stateBegin% := 0;
+        endif 
         ' Fixation may be broken while waiting through page 3 
         if LookingFixation%(xEye,yEye) <= 0 then
             LogStatus("WaitThroughPage3", "Broken fixation at about " + str$(tNow));
@@ -3210,6 +3252,10 @@ func IdleProcessing%()
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
         
     case iState% = stateWaitForFinalBlankUp% then
+        if stateBegin% = 1 then
+            LogStatus("WaitForFinalBlankUp", "Began waiting for final blank up at about " + str$(tNow));
+            stateBegin% := 0;
+        endif
         ' Fixation may be broken while waiting for Final Blank page to come on. 
         if LookingFixation%(xEye,yEye) <= 0 then
             LogStatus("WaitForFinalBlankUp", "Broken fixation at about " + str$(tNow));
@@ -3240,7 +3286,11 @@ func IdleProcessing%()
         
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
         
-    case iState% = stateWaitForSaccadeRelease% then 
+    case iState% = stateWaitForSaccadeRelease% then
+        if stateBegin% = 1 then
+            LogStatus("WaitForSaccadeRelease", "Began waiting for saccade release at about " + str$(tNow));
+            stateBegin% := 0;
+        endif
         ' Fixation may be broken while waiting for saccade release
         if LookingFixation%(xEye,yEye) <= 0 then
             LogStatus("WaitForSaccadeRelease", "Broken fixation at about " + str$(tNow));
@@ -3362,11 +3412,15 @@ func IdleProcessing%()
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
         
     case iState% = stateHoldSaccade1% then
+        if stateBegin% = 1 then
+            LogStatus("HoldSaccade1", "Target 1 acquired, waiting for hold at about " + str$(tNow));
+            stateBegin% := 0;
+        endif
         'Re-check looking%
         looking% := LookingTarget1%(xEye,yEye,tc%);
         docase
         case looking% = laTarget1Loc%[tc%] and tNow > tStateStart+laSacc1HoldTime then  'held through entire time for saccade 1
-            LogStatus("HoldAnswer", "Target 1 fully held at about " + str$(tNow));
+            LogStatus("HoldSaccade1", "Target 1 fully held at about " + str$(tNow));
             SampleText("Saccade 1 Success",tNow);
             
             'Give hold reward on success, if requested
@@ -3393,7 +3447,7 @@ func IdleProcessing%()
                 ChangeStateTo(stateSuccess%, tNow);
             endif   
         case looking% <> laTarget1Loc%[tc%] then  'broke fixation on target 1 early
-            LogStatus("Hold Answer", "Target 1 hold broken at about " + str$(tNow));
+            LogStatus("HoldSaccade1", "Target 1 hold broken at about " + str$(tNow));
             ChangeStateTo(stateFailure%, tNow);
         endcase
 
@@ -3445,6 +3499,10 @@ func IdleProcessing%()
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
         
     case iState% = stateHoldSaccade2% then
+        if stateBegin% = 1 then
+            LogStatus("HoldSaccade2", "Target 2 acquired, waiting for hold at about " + str$(tNow));
+            stateBegin% := 0;
+        endif
         'Re-check looking%
         if laDoOptoThisTrial% = 1 then
             looking% := LookingTarget2JAWS%(xEye,yEye,tc%);
@@ -3453,11 +3511,11 @@ func IdleProcessing%()
         endif
         docase
         case looking% = laTarget2Loc%[tc%] and tNow > tStateStart+laSacc2HoldTime then  'held through entire time for saccade 1
-            LogStatus("HoldAnswer", "Target 2 fully held at about " + str$(tNow));
+            LogStatus("HoldSaccade2", "Target 2 fully held at about " + str$(tNow));
             SampleText("Saccade 2 Success",tNow);
             ChangeStateTo(stateSuccess%, tNow);
         case looking% <> laTarget2Loc%[tc%] then  'broke fixation on target 2 early
-            LogStatus("Hold Answer", "Target 2 hold broken at about " + str$(tNow));
+            LogStatus("HoldSaccade2", "Target 2 hold broken at about " + str$(tNow));
             ChangeStateTo(stateFailure%, tNow);
         endcase
         
@@ -3473,9 +3531,12 @@ func IdleProcessing%()
         'which is correct.
         
         'Right now this state will just advance to the next state so AlwaysLooking testing is possible
+        if stateBegin% = 1 then
+            'LogStatus("Give Microstim", "Deliver microstim at about " + str$(tNow));
+            LogStatus("Give Microstim", "PLACEHOLDER -- Deliver microstim at about " + str$(tNow));
+            stateBegin% := 0;
+        endif
         
-        'LogStatus("Give Microstim", "Deliver microstim at about " + str$(tNow));
-        LogStatus("Give Microstim", "PLACEHOLDER -- Deliver microstim at about " + str$(tNow));
         
         'Give the microstim!  No idea how the hardware will work for now
         
@@ -3489,9 +3550,12 @@ func IdleProcessing%()
         'exists.  Perhaps it's no different than Saccade 1
         
         'Right now this state will just advance to the next state so AlwaysLooking testing is possible
+        if stateBegin% = 1 then
+            'LogStatus("Wait Microstim Saccade", "Microstim saccade at about " + str$(tNow));
+            LogStatus("Wait Microstim Saccade", "PLACEHOLDER -- Microstim saccade at about " + str$(tNow));
+            stateBegin% := 0;
+        endif
         
-        'LogStatus("Wait Microstim Saccade", "Microstim saccade at about " + str$(tNow));
-        LogStatus("Wait Microstim Saccade", "PLACEHOLDER -- Microstim saccade at about " + str$(tNow));
         
         ChangeStateTo(stateWaitSaccade1%, tNow);
         
@@ -3515,6 +3579,9 @@ func IdleProcessing%()
             message("WARNING - opto was still on at stateSuccess%!  This should NOT happen!\n  There is a coding issue, please discontinue experiment and tell Jeff!");
         endif;
         
+        'Do this after opto check, because if opto is somehow on we want it off ASAP
+        LogStatus("StateSuccess", "Trial Success, entered StateSuccess at about " + str$(tNow));
+
         'Note trial success and recalculate pctSuccess
         nTrialsSuccess% += 1;
         if laDoOptoThisTrial% = 1 then
@@ -3575,6 +3642,9 @@ func IdleProcessing%()
             message("WARNING - opto was still on at stateFailure%!  This should NOT happen!\n  There is a coding issue, please discontinue experiment and tell Jeff!");
         endif;
         
+        'Do this after opto check, because if opto is somehow on we want it off ASAP
+        LogStatus("StateFailure", "Trial Failure, entered StateFailure at about " + str$(tNow));
+        
         'Note trial failure and recalculate pctSuccess (nTrialsStarted has changed)
         nTrialsFail% += 1;
         if laDoOptoThisTrial% = 1 then
@@ -3598,16 +3668,6 @@ func IdleProcessing%()
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
          
     case iState% = stateAbort% then
-        'Note trial abort; do not recalculate pctSuccess as it doesn't change on an abort
-        nTrialsAbort% += 1;
-        if laDoOptoThisTrial% = 1 then
-            nTrialsAbortJAWS% += 1;
-        else
-            nTrialsAbortNoJAWS% += 1;
-        endif
-        'isAbort% := 1;  'Unused
-
-
         'There are multiple places that can lead to an abort with opto laser still on, turn this off FIRST
         if optoIsOn% = 1 then
             'turn off opto
@@ -3617,6 +3677,18 @@ func IdleProcessing%()
             SampleText("OptoOff",tOpt);  'Sampletext is approximate, opto copy channel will have record of TTL pulse
             optoIsOn% := 0;
         endif;
+        
+        'Do this after opto check, because if opto is somehow on we want it off ASAP
+        LogStatus("StateAbort", "Trial Abort, entered StateAbort at about " + str$(tNow));
+        
+        'Note trial abort; do not recalculate pctSuccess as it doesn't change on an abort
+        nTrialsAbort% += 1;
+        if laDoOptoThisTrial% = 1 then
+            nTrialsAbortJAWS% += 1;
+        else
+            nTrialsAbortNoJAWS% += 1;
+        endif
+        'isAbort% := 1;  'Unused
         
         SampleText("Trial " + Str$(tc%) + " Abort");
         SafeSampleKey("X");   'Request all stimuli down
