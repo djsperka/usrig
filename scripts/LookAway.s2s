@@ -587,7 +587,6 @@ var saccadeMaxDur := 0.3;       ' Maximum time saccade is allowed to take, to pr
 var tic;                        ' Bin size on the advance channel, used to prevent finding the same advance twice
 var HBCycle% := 1;              ' Heartbeat cycle - used to put timing markers into eyetracker output files
 'var isAbort%:=0;                'Keep track of if this trial was aborted, for state logic, unused
-var laPageToggle%;              'Keep track of the state of the page toggle.  Page toggle will be reset to 0 by both "X" and "S".
 var laPage1Dur;                 'Set page durations trial-by-trial, for each relevant page
 var laPage2Dur;
 var laPage3Dur;
@@ -2948,7 +2947,6 @@ func IdleProcessing%()
                 LogStatus("HoldFixation", "Request target at about " + str$(tNow));                  
                 
                 SafeSampleKey("S");
-                laPageToggle% := 0;  'Stimulus request resets the Page toggle channel
                 
                 ChangeStateTo(stateWaitForPage1Up%, tNow);
             endif
@@ -2969,12 +2967,6 @@ func IdleProcessing%()
         else
             ' Check if stim has come on
             if View(DataWindow%).FindRisingEdge%(StimChannel%, tLast, tTrigger) = 0 then
-                'TODO - figure out if when the stimulus goes up, the page toggle channel goes from 0 to 1, or if that only happens at the first toggle!!!
-                'Right now I expect for (1) the toggle line to start at zero at the beginning of the trial,
-                'and (2) putting Page-1 up to NOT move the toggle line.  If so, code as written should work.
-                'If putting up Page-1 does move the toggle line from 0 to 1, uncomment the line below.
-                'If the toggle line doesn't strictly start at zero at the beginning of each trial, rework the code!
-                'laPageToggle% := 1 - laPageToggle%;
                 LogStatus("WaitPage1Up", "Stimulus up (Page 1) at about " + str$(tNow));
                 SampleText("Page 1 Up",tNow);
                 'tStimOn := tTrigger;  'unused
@@ -3041,7 +3033,7 @@ func IdleProcessing%()
 
                 else
                     'Request Page 2 and wait for it to come up
-                    SafeSampleKey("u");  'v will toggle to the next page
+                    SafeSampleKey("u");  'u will toggle to the next page
                     ChangeStateTo(stateWaitForPage2Up%, tNow);  
                 endcase
 
@@ -3061,8 +3053,7 @@ func IdleProcessing%()
             ChangeStateTo(stateAbort%, tNow);
         else
             ' Check if page has updated
-            if View(DataWindow%).FindEdge%(PageToggleChannel%, tLast, tTrigger) = laPageToggle% then  'FindEdge returns 0 for a 0-->1 transition, and 1 for a 1-->0 transition!
-                laPageToggle% := 1-laPageToggle%;  'update page toggle
+            if View(DataWindow%).FindEdge%(PageToggleChannel%, tLast, tTrigger) > -1 then  'FindEdge returns 0 for a 0-->1 transition, and 1 for a 1-->0 transition, and we don't care which!
                 LogStatus("WaitPage2Up", "Stimulus up (Page 2) at about " + str$(tNow));
                 SampleText("Page 2 Up",tNow);
                 'tStimOn := tTrigger;  'unused
@@ -3148,7 +3139,7 @@ func IdleProcessing%()
                     
                 else
                     'Request Page 3 and wait for it to come up
-                    SafeSampleKey("u");  'v will toggle to the next page
+                    SafeSampleKey("u");  'u will toggle to the next page
                     ChangeStateTo(stateWaitForPage3Up%, tNow);  
                 endcase
 
@@ -3168,10 +3159,9 @@ func IdleProcessing%()
             ChangeStateTo(stateAbort%, tNow);
         else
             ' Check if page has updated
-            if View(DataWindow%).FindEdge%(PageToggleChannel%, tLast, tTrigger) = laPageToggle% then  'FindEdge returns 0 for a 0-->1 transition, and 1 for a 1-->0 transition!
+            if View(DataWindow%).FindEdge%(PageToggleChannel%, tLast, tTrigger) > -1 then  'FindEdge returns 0 for a 0-->1 transition, and 1 for a 1-->0 transition, and we don't care which!
                 LogStatus("WaitPage3Up", "Stimulus up (Page 3) at about " + str$(tNow));
                 SampleText("Page 3 Up",tNow);
-                laPageToggle% := 1-laPageToggle%;  'update page toggle
                 'tStimOn := tTrigger;  'unused
 
                 'Turn on opto if requested at this stage - if it's not on and it starts at this stage, GO!
@@ -3262,10 +3252,9 @@ func IdleProcessing%()
             ChangeStateTo(stateAbort%, tNow);
         else
             ' Check if page has updated
-            if View(DataWindow%).FindEdge%(PageToggleChannel%, tLast, tTrigger) = laPageToggle% then  'FindEdge returns 0 for a 0-->1 transition, and 1 for a 1-->0 transition!
+            if View(DataWindow%).FindEdge%(PageToggleChannel%, tLast, tTrigger) > -1 then  'FindEdge returns 0 for a 0-->1 transition, and 1 for a 1-->0 transition, and we don't care which!
                 LogStatus("WaitFinalBlankPageUp", "Stimulus up (Final Blank Page) at about " + str$(tNow));
                 SampleText("Final Blank Page Up",tNow);
-                laPageToggle% := 1-laPageToggle%;  'update page toggle - technically not necessary as we won't check again
                 'tStimOn := tTrigger;  'unused
 
                 'Turn on opto if requested at this stage - if it's not on and it starts at this stage, GO!
