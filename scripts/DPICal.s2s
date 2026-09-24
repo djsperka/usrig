@@ -108,6 +108,11 @@ var xyFixpt[numFixptRows%][numFixptInd%][2];
 var currentFixptRow% := 0;
 var currentFixptInd% := 0;
 
+' For doing 9 point calibration
+var using9PT% := 1;
+var currentFixptInd9PT% := 0;
+var xyFixpt9PT[9][2];
+
 ArrConst(xyFixpt, 0);
 
 ' Row 0 is all 0,0
@@ -269,7 +274,7 @@ func IdleProcessing%()
                 nTrialsStarted% += 1;
                 
                 ' write serial command for current fixpt
-                stmp$ := Print$("F %.2f,%.2f,%.2f,%s;", fixCalibrationOffset*xyFixpt[currentFixptRow%][currentFixptInd%][0], fixCalibrationOffset*xyFixpt[currentFixptRow%][currentFixptInd%][1], FixationDiameter, FixationColor$);
+                stmp$ := Print$("F %.2f,%.2f,%.2f,%s;", GetStimX(), GetStimY(), FixationDiameter, FixationColor$);
                 LogStatus("stateStartTrial", stmp$);
                 SerialWrite(iPort%, stmp$);  'TODO this message needs to be echoed...somewhere, Dan will have details 
                 'SafeSampleKey("F");
