@@ -92,8 +92,9 @@ var fixButtonIntegrationDelay := 0.25;   ' In Purkinje mode, how long to integra
 var fixAdvanceOnFailure% := 0;           ' Do we advance the calibration point position if not acquired?
 
 ' COM port for sending fixstim commands
-var iPort% := 6;
-var otherPort$ := "COM9";  'Please rename this variable!  "Other" is not very informative!
+var iPort% := 6;    ' Use 7 on dev machine, 6 on Stacey's rig/DExter
+var otherPort$ := "COM9";  ' use COM8 on dev machine, COM9 on stacey's rig/Dexter
+Message("Fix COM port arguments before COMMIT!!!!");
 
 ' The following variables allow swapping through different sets of fixpts
 ' The mode is set by the first index - currentFixptRow%
@@ -102,61 +103,10 @@ var otherPort$ := "COM9";  'Please rename this variable!  "Other" is not very in
 ' The fixation point will advance location using the second index - currentFixptInd%
 ' Each mode has four defined locations (but for Center all are center, for Horizontal and Vertical, 2 of 4 are center)
 ' For third index, 0 defines X position and 1 defines Y position
-const numFixptRows% := 4;
-const numFixptInd% := 4;
-var xyFixpt[numFixptRows%][numFixptInd%][2];
-var currentFixptRow% := 0;
+
+const numFixptInd% := 9;
+var xyFixpt[numFixptInd%][2];
 var currentFixptInd% := 0;
-
-' For doing 9 point calibration
-var using9PT% := 1;
-var currentFixptInd9PT% := 0;
-var xyFixpt9PT[9][2];
-
-ArrConst(xyFixpt, 0);
-
-' Row 0 is all 0,0
-xyFixpt[0][0][0] := 0;
-xyFixpt[0][0][1] := 0;
-xyFixpt[0][1][0] := 0;
-xyFixpt[0][1][1] := 0;
-xyFixpt[0][2][0] := 0;
-xyFixpt[0][2][1] := 0;
-xyFixpt[0][3][0] := 0;
-xyFixpt[0][3][1] := 0;
-
-' Row 1 is horizontal
-xyFixpt[1][0][0] := 0;
-xyFixpt[1][0][1] := 0;
-xyFixpt[1][1][0] := 1;
-xyFixpt[1][1][1] := 0;
-xyFixpt[1][2][0] := 0;
-xyFixpt[1][2][1] := 0;
-xyFixpt[1][3][0] := -1;
-xyFixpt[1][3][1] := 0;
-
-' Row 2 is vertical
-xyFixpt[2][0][0] := 0;
-xyFixpt[2][0][1] := 0;
-xyFixpt[2][1][0] := 0;
-xyFixpt[2][1][1] := 1;
-xyFixpt[2][2][0] := 0;
-xyFixpt[2][2][1] := 0;
-xyFixpt[2][3][0] := 0;
-xyFixpt[2][3][1] := -1;
-
-' Row 3 is corners
-xyFixpt[3][0][0] := 1;
-xyFixpt[3][0][1] := 1;
-xyFixpt[3][1][0] := 1;
-xyFixpt[3][1][1] := -1;
-xyFixpt[3][2][0] := -1;
-xyFixpt[3][2][1] := -1;
-xyFixpt[3][3][0] := -1;
-xyFixpt[3][3][1] := 1;
-
-
-
 
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 '
@@ -192,19 +142,14 @@ if DPICalScriptDialog%() = 0 then
     halt;
 endif
 
-
-' TODO - here (or elsewhere?) we will need to launch a command line program that maps a serial port to a TCP port?
-'ProgramHandle%:=ProgRun(SetPA5Loc$+" "+str$(Attenuation));  'should probably be using PROGRUN like so
-
-
 CreateSampleConfiguration();
-
 
 ' Get display windows ready
 InitializeWindows();
 
 ' Prepare the toolbar buttons, remainder of program runs inside toolbar
 InitializeToolbar();
+NinePoints%()
 
 
 ' Run real time analysis here. 
@@ -287,7 +232,7 @@ func IdleProcessing%()
         case iState% = stateWaitForFixpt% then
             if View(DataWindow%).FindRisingEdge%(TriggerChannel%, tStateStart, tTrigger) = 0 then
                 ' Fixation point is up
-                LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
+                'LogStatus("WaitForFixPtOn", "Fixpt on at " + str$(tTrigger) + "\n");
                 tLastTrigger := tTrigger;
                 DrawStim(1);
                 if useDPIStateLoop% = 0 then
@@ -310,7 +255,7 @@ func IdleProcessing%()
             else
                 ' Failed. Turn off stim and try again.
                 fixSuccess% := 0;
-                LogStatus("WaitForDPITrigger", "Acquisition timed out at " + str$(tTrigger) + "\n");
+                'LogStatus("WaitForDPITrigger", "Acquisition timed out at " + str$(tTrigger) + "\n");
                 ChangeStateTo(stateStimOff%, tNow);
                 'stayInLoop% := 1;  'No reason to wait, go straight to stim off
             endif
@@ -319,7 +264,7 @@ func IdleProcessing%()
         case iState% = stateDPIIntegrate% then
             'Wait through integration period before turning off stimulus
             if tNow-tStateStart < fixButtonIntegrationDelay then
-                LogStatus("DPIIntegrate", "DPI integration time done at " + str$(tTrigger) + "\n");
+                'LogStatus("DPIIntegrate", "DPI integration time done at " + str$(tTrigger) + "\n");
                 ChangeStateTo(stateStimOff%, tNow);
             endif
                         
@@ -328,7 +273,7 @@ func IdleProcessing%()
             if tNow-tStateStart < fixAcquisitionTime then
                 ' Acquisition happens when the eye falls within the fixation window.
                 if Looking%(xEye, yEye) > 0 then
-                    LogStatus("WaitForAcq", "Acquisition gotten.");
+                    'LogStatus("WaitForAcq", "Acquisition gotten.");
                     ChangeStateTo(stateHoldFixation%, tNow);
                 endif
             else
@@ -367,11 +312,11 @@ func IdleProcessing%()
         case iState% = stateWaitForBlank% then
             ' Wait for stim to be off
             tTrigger := NextTime(TriggerChannel%, tStateStart,vTrigger);
-            LogStatus("WaitForBlank", str$(tStateStart) + "," + str$(tNow) + "," + str$(tTrigger) + "," + str$(vTrigger));
+            'LogStatus("WaitForBlank", str$(tStateStart) + "," + str$(tNow) + "," + str$(tTrigger) + "," + str$(vTrigger));
             if tTrigger > tLastTrigger then
                 if vTrigger = 1 then      
                     tLastTrigger := tTrigger;
-                    LogStatus("WaitForBlank", "Stim off trig");
+                    'LogStatus("WaitForBlank", "Stim off trig");
                     if fixSuccess% = 0 then
                         ChangeStateTo(stateFailure%, tTrigger);
                     else
@@ -604,7 +549,7 @@ proc InitializeToolbar()
     ToolbarSet(4,"Center",CenterOnly%);
     ToolbarSet(5,"Horizontal",Horizontal%);
     ToolbarSet(6,"Vertical",Vertical%);
-    ToolbarSet(7,"Corners",Corners%);
+    ToolbarSet(7,"9Points",NinePoints%);
     ToolbarSet(8,"Swap To CED",Swap2CED%);  'This is a toggle button, will be renamed when pressed
 	ToolbarSet(9,"Pause stimuli",PauseStimuli%);
 	ToolbarSet(10,"Resume stimuli",ResumeStimuli%);
@@ -673,15 +618,46 @@ func Start%()
 	ToolbarEnable(1,0);
 	ToolbarEnable(9,1);  'Enable pause, we are running
 	ToolbarEnable(10,0);  'Disable resume, we are running
-    ToolbarEnable(4,0);  'Disable "Center Only" because that is the starting state
+    NinePoints%()           ' Start at 9 point calibration
 	View(DataWindow%);
 	Yield(.1);
 	return 1;
 end;
 
+func NinePoints%()
+    currentFixptInd% := 0;
+    xyFixpt[0][0] := 1;
+    xyFixpt[0][1] := -1;
+    xyFixpt[1][0] := 0;
+    xyFixpt[1][1] := -1;
+    xyFixpt[2][0] := -1;
+    xyFixpt[2][1] := -1;
+    xyFixpt[3][0] := 1;
+    xyFixpt[3][1] := 0;
+    xyFixpt[4][0] := 0;
+    xyFixpt[4][1] := 0;
+    xyFixpt[5][0] := -1;
+    xyFixpt[5][1] := 0;
+    xyFixpt[6][0] := 1;
+    xyFixpt[6][1] := 1;
+    xyFixpt[7][0] := 0;
+    xyFixpt[7][1] := 1;
+    xyFixpt[8][0] := -1;
+    xyFixpt[8][1] := 1;
+    
+    ToolbarEnable(7,0);  'Disable this so we know it's pressed
+    ToolbarEnable(4,1);  'Enable the other toolbar functions that might currently be disabled
+    ToolbarEnable(5,1);
+    ToolbarEnable(6,1);    
+    
+    return 1;
+end
+
 func CenterOnly%()
-    currentFixptRow% := 0;
     currentFixptInd% := 0;  'start from the "beginning"
+    
+    ArrConst(xyFixpt, 0);   ' all zeros
+    
     ToolbarEnable(4,0);  'Disable this so we know it's pressed
     ToolbarEnable(5,1);  'Enable the other toolbar functions that might currently be disabled
     ToolbarEnable(6,1);
@@ -690,8 +666,18 @@ func CenterOnly%()
 end;
 
 func Horizontal%()
-    currentFixptRow% := 1;
     currentFixptInd% := 0;  'start from the "beginning"
+    ArrConst(xyFixpt, 0);   ' all zeros    
+    xyFixpt[0][0] := -1;
+    xyFixpt[1][0] := 0;
+    xyFixpt[2][0] := 1;
+    xyFixpt[3][0] := -1;
+    xyFixpt[4][0] := 0;
+    xyFixpt[5][0] := 1;
+    xyFixpt[6][0] := -1;
+    xyFixpt[7][0] := 0;
+    xyFixpt[8][0] := 1;
+    
     ToolbarEnable(5,0);  'Disable this so we know it's pressed
     ToolbarEnable(4,1);  'Enable the other toolbar functions that might currently be disabled
     ToolbarEnable(6,1);
@@ -700,22 +686,23 @@ func Horizontal%()
 end;
 
 func Vertical%()
-    currentFixptRow% := 2;
     currentFixptInd% := 0;  'start from the "beginning"
+    
+    ArrConst(xyFixpt, 0);   ' all zeros    
+    xyFixpt[0][1] := -1;
+    xyFixpt[1][1] := 0;
+    xyFixpt[2][1] := 1;
+    xyFixpt[3][1] := -1;
+    xyFixpt[4][1] := 0;
+    xyFixpt[5][1] := 1;
+    xyFixpt[6][1] := -1;
+    xyFixpt[7][1] := 0;
+    xyFixpt[8][1] := 1;
+    
     ToolbarEnable(6,0);  'Disable this so we know it's pressed
     ToolbarEnable(4,1);  'Enable the other toolbar functions that might currently be disabled
     ToolbarEnable(5,1);
     ToolbarEnable(7,1);
-    return 1;
-end;
-
-func Corners%()
-    currentFixptRow% := 3;
-    currentFixptInd% := 0;  'start from the "beginning"
-    ToolbarEnable(7,0);  'Disable this so we know it's pressed
-    ToolbarEnable(4,1);  'Enable the other toolbar functions that might currently be disabled
-    ToolbarEnable(5,1);
-    ToolbarEnable(6,1);
     return 1;
 end;
 
@@ -792,11 +779,11 @@ end
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func GetStimX()
-    return xyFixpt[currentFixptRow%][currentFixptInd%][0] * fixCalibrationOffset;
+    return xyFixpt[currentFixptInd%][0] * fixCalibrationOffset;
 end;
 
 func GetStimY()
-    return xyFixpt[currentFixptRow%][currentFixptInd%][1] * fixCalibrationOffset;
+    return xyFixpt[currentFixptInd%][1] * fixCalibrationOffset;
 end;
 
 
