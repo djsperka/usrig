@@ -814,7 +814,7 @@ proc CreateSampleConfiguration()
 	SampleComment$(AdvanceChannel%, "Advance");
 	SampleTitle$(AdvanceChannel%, "Advance");
     
-    SampleEvent(PageToggleChannel%, 5, 2, 3600); 'Trigger channel, level
+    SampleEvent(PageToggleChannel%, 6, 2, 3600); 'Trigger channel, level
 	SampleComment$(PageToggleChannel%, "Toggle");
 	SampleTitle$(PageToggleChannel%, "Toggle");
     
@@ -3026,7 +3026,7 @@ func IdleProcessing%()
                     RewardSmall%(laPSmallRewardHoldTarg); 
                     
                     'Remove stimulus, will not yet allow saccade
-                    SafeSampleKey("v");  'Updated logic, we will turn the stimulus to a blank page, rather than bring it down
+                    SafeSampleKey("u");  'Updated logic, we will turn the stimulus to a blank page, rather than bring it down
 
                     ChangeStateTo(stateWaitForFinalBlankUp%, tNow);
                     
@@ -3041,7 +3041,7 @@ func IdleProcessing%()
 
                 else
                     'Request Page 2 and wait for it to come up
-                    SafeSampleKey("v");  'v will toggle to the next page
+                    SafeSampleKey("u");  'v will toggle to the next page
                     ChangeStateTo(stateWaitForPage2Up%, tNow);  
                 endcase
 
@@ -3120,7 +3120,7 @@ func IdleProcessing%()
                     RewardSmall%(laPSmallRewardHoldTarg); 
                     
                     'Remove stimulus, will not yet allow saccade
-                    SafeSampleKey("v");  'Updated logic, we will turn the stimulus to a blank page, rather than bring it down
+                    SafeSampleKey("u");  'Updated logic, we will turn the stimulus to a blank page, rather than bring it down
                     
                     ChangeStateTo(stateWaitForFinalBlankUp%,tNow);
                     
@@ -3148,7 +3148,7 @@ func IdleProcessing%()
                     
                 else
                     'Request Page 3 and wait for it to come up
-                    SafeSampleKey("v");  'v will toggle to the next page
+                    SafeSampleKey("u");  'v will toggle to the next page
                     ChangeStateTo(stateWaitForPage3Up%, tNow);  
                 endcase
 
@@ -3227,7 +3227,7 @@ func IdleProcessing%()
                     RewardSmall%(laPSmallRewardHoldTarg); 
                     
                     'Remove stimulus, will not yet allow saccade
-                    SafeSampleKey("v");  'Updated logic, we will turn the stimulus to a blank page, rather than bring it down
+                    SafeSampleKey("u");  'Updated logic, we will turn the stimulus to a blank page, rather than bring it down
                     
                     ChangeStateTo(stateWaitForFinalBlankUp%,tNow);
                     
@@ -3430,7 +3430,7 @@ func IdleProcessing%()
                 if laFixDownAfterPage% < laTrialFinalPage% then  'If fixation is down but there are more pages to play, go to next page
                     'Logic is a bit complicated with all the possbilities but currently this ONLY goes to page 2 so we don't have to check expt/training stage
                     if laFixDownAfterPage% = 1 then
-                        SafeSampleKey("v");  'Request page 2
+                        SafeSampleKey("u");  'Request page 2
                         ChangeStateTo(stateWaitForPage2Up%,tNow);
                     else
                         'Sanity check, if this triggers we should find it in testing
@@ -3589,9 +3589,13 @@ func IdleProcessing%()
         else
             nTrialsSuccessNoJAWS% += 1;
         endif
-        pctSuccessJAWS := round(nTrialsSuccessJAWS%)/round(nTrialsStartedJAWS%-nTrialsAbortJAWS%);  'ROUND() is an undocumented floating-point math trick!
-        pctSuccessNoJAWS := round(nTrialsSuccessNoJAWS%)/round(nTrialsStartedNoJAWS%-nTrialsAbortNoJAWS%);
-        
+        if (nTrialsStartedJAWS%-nTrialsAbortJAWS%) > 0 then
+            pctSuccessJAWS := round(nTrialsSuccessJAWS%)/round(nTrialsStartedJAWS%-nTrialsAbortJAWS%);  'ROUND() is an undocumented floating-point math trick!
+        endif
+        if (nTrialsStartedNoJAWS%-nTrialsAbortNoJAWS%) > 0 then
+            pctSuccessNoJAWS := round(nTrialsSuccessNoJAWS%)/round(nTrialsStartedNoJAWS%-nTrialsAbortNoJAWS%);
+        endif
+    
         SafeSampleKey("X");
         Yield();
         
@@ -3652,8 +3656,12 @@ func IdleProcessing%()
         else
             nTrialsFailNoJAWS% += 1;
         endif
-        pctSuccessJAWS := round(nTrialsSuccessJAWS%)/round(nTrialsStartedJAWS%-nTrialsAbortJAWS%);  'ROUND() is an undocumented floating-point math trick!
-        pctSuccessNoJAWS := round(nTrialsSuccessNoJAWS%)/round(nTrialsStartedNoJAWS%-nTrialsAbortNoJAWS%);
+        if (nTrialsStartedJAWS%-nTrialsAbortJAWS%) > 0 then
+            pctSuccessJAWS := round(nTrialsSuccessJAWS%)/round(nTrialsStartedJAWS%-nTrialsAbortJAWS%);  'ROUND() is an undocumented floating-point math trick!
+        endif
+        if (nTrialsStartedNoJAWS%-nTrialsAbortNoJAWS%) > 0 then
+            pctSuccessNoJAWS := round(nTrialsSuccessNoJAWS%)/round(nTrialsStartedNoJAWS%-nTrialsAbortNoJAWS%);
+        endif
         
         'For the moment, I don't think we should try to implement any sort of reward-on-failure for JAWS trials, 
         'but this will obviously be up for discussion when we get around to the double-saccade task, particularly 
