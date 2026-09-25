@@ -6,7 +6,7 @@
 'location, and the animal will have to saccade to the second location for reward.  This means that we need to be
 'able to quickly detect a saccade - though I believe that a simple central fixation break should be enough.  If the
 'animal breaks central fixation and does *not* end up in the intended first-saccade location by a particular time, 
-'then the trial should be aborted.  Presumably a minimal stay in the first-saccade location will be required (long 
+'then the trial should be aborted. Presumably a minimal stay in the first-saccade location will be required (long 
 'enough to plan the second saccade) and then a saccade to the second location should be rewarded.
 
 'OK, the plan here is being altered (pray I do not alter it again).  The ORIGINAL design of this task presented a
@@ -2791,7 +2791,7 @@ func IdleProcessing%()
         
         
         
-        tc% += 1;   'Trial counter, it's an index to the various trial variables, will be zero-based, will decrement on repeated trials
+        tc% += 1;   'Trial counter, it's an index to the various trial variables, will be zero-based, will decrement on repeated trials, on first trial will be -1
         
         
         'Randomize durations of various portions of the trial (will do it even when some portions don't exist)
@@ -3091,8 +3091,14 @@ func IdleProcessing%()
         endif         
         ' Fixation may be broken while waiting through page 2 
         if LookingFixation%(xEye,yEye) <= 0 then
-            LogStatus("WaitThroughPage2", "Broken fixation at about " + str$(tNow));
-            ChangeStateTo(stateAbort%, tNow);
+            'If this is a no-go trial and it is the final page, this is a FAILURE, not an abort
+            if laTrialFinalPage% = 2 and laFixDownAfterPage% = -1 and laTarget1Loc%[tc%] = 0 then
+                LogStatus("WaitThroughPage2", "Broken fixation (fail on no-go trial) at about " + str$(tNow));
+                ChangeStateTo(stateFailure%, tNow);
+            else  '
+                LogStatus("WaitThroughPage2", "Broken fixation at about " + str$(tNow));
+                ChangeStateTo(stateAbort%, tNow);
+            endif
         else
             if (tNow - tStateStart >= laPage2Dur) then  'Page 2 done
                 'Turn off opto if requested at this stage - if it's on and it stops at this stage, STOP!
@@ -3118,11 +3124,12 @@ func IdleProcessing%()
                 case laTrialFinalPage% = 2 and laFixDownAfterPage% = -1 and laTarget1Loc%[tc%] = 0 then    
                     'This is a no-go trial success!
                     
-                    'Bring down stimulus
-                    SafeSampleKey("X");
-                    
-                    'And move to reward
-                    WaitForBlankTo(stateSuccess%, tNow);
+                    'No! No! No! Taking down the stimulus will get us stuck because stateSuccess% ALSO does it
+                    ''Bring down stimulus
+                    'SafeSampleKey("X");
+                    ''And move to reward
+                    'WaitForBlankTo(stateSuccess%, tNow);    
+                    ChangeStateTo(stateSuccess%, tNow);
                     
                 case laTrialFinalPage% = 2 then  'If final page is 2 and not saccadeToBlank, then we remove fixpt as saccade release
                     'Give hold reward on success, if requested
@@ -3197,8 +3204,14 @@ func IdleProcessing%()
         endif 
         ' Fixation may be broken while waiting through page 3 
         if LookingFixation%(xEye,yEye) <= 0 then
-            LogStatus("WaitThroughPage3", "Broken fixation at about " + str$(tNow));
-            ChangeStateTo(stateAbort%, tNow);
+            'If this is a no-go trial and it is the final page, this is a FAILURE, not an abort
+            if laTrialFinalPage% = 3 and laFixDownAfterPage% = -1 and laTarget1Loc%[tc%] = 0 then
+                LogStatus("WaitThroughPage3", "Broken fixation (fail on no-go trial) at about " + str$(tNow));
+                ChangeStateTo(stateFailure%, tNow);
+            else  '
+                LogStatus("WaitThroughPage3", "Broken fixation at about " + str$(tNow));
+                ChangeStateTo(stateAbort%, tNow);
+            endif
         else
             if (tNow - tStateStart >= laPage3Dur) then  'Page 3 done
                 'Turn off opto if requested at this stage - if it's on and it stops at this stage, STOP!
@@ -3223,13 +3236,14 @@ func IdleProcessing%()
                     
                 case laTrialFinalPage% = 3 and laFixDownAfterPage% = -1 and laTarget1Loc%[tc%] = 0 then    
                     'This is a no-go trial success!
-                    
-                    'Bring down stimulus
-                    SafeSampleKey("X");
-                    
-                    'And move to reward
-                    WaitForBlankTo(stateSuccess%, tNow);    
-                    
+                
+                    'No! No! No! Taking down the stimulus will get us stuck because stateSuccess% ALSO does it
+                    ''Bring down stimulus
+                    'SafeSampleKey("X");
+                    ''And move to reward
+                    'WaitForBlankTo(stateSuccess%, tNow);    
+                    ChangeStateTo(stateSuccess%, tNow); 
+                
                 else
                     'Remove fixpt, and allow saccade
                     SafeSampleKey("f");
@@ -3424,7 +3438,7 @@ func IdleProcessing%()
                     else
                         'Sanity check, if this triggers we should find it in testing
                         Message("After Saccade 1, laFixDownAfterPage was expected\n to be 1, but was " + Str$(laFixDownAfterPage%) + ", quitting!");
-                        Halt;
+                        Stop%();
                     endif                    
                 else 'fixation is down and there are no more pages to play
                     'Under current logic, we are now released to do the second saccade (first saccade hold needs to be short, but it is the only thing, there is no release signal!)
@@ -3604,18 +3618,18 @@ func IdleProcessing%()
             endif
             'Now we want to reward if JAWS success is less than No-JAWS, but randomly not-reward if JAWS success is too high
             if pctSuccessJAWS < laPJawsReward then
-                SampleText("Trial " + Str$(tc%) + " Success, giving reward!");
+                SampleText("Trial " + Str$(tc%+1) + " Success, giving reward!");
                 DefaultReward%();
             else
                 if (laPJawsReward/pctSuccessJAWS) >= Rand() then
-                    SampleText("Trial " + Str$(tc%) + " Success, giving reward!");
+                    SampleText("Trial " + Str$(tc%+1) + " Success, giving reward!");
                     DefaultReward%();
                 else
-                    SampleText("Trial " + Str$(tc%) + " Success, no reward (window may be too large)!");
+                    SampleText("Trial " + Str$(tc%+1) + " Success, no reward (window may be too large)!");
                 endif
             endif            
         else
-            SampleText("Trial " + Str$(tc%) + " Success, giving reward!");
+            SampleText("Trial " + Str$(tc%+1) + " Success, giving reward!");
             DefaultReward%();  'On regular trials, reward
         endif
         
@@ -3657,7 +3671,7 @@ func IdleProcessing%()
         'if failure rate on JAWS trials is very high, but the animal IS saccading somewhere (just not where we
         'expected).
         
-        SampleText("Trial " + Str$(tc%) + " Failure");
+        SampleText("Trial " + Str$(tc%+1) + " Failure");
 
         SafeSampleKey("X");
         WaitForBlankTo(stateAdvance%, tNow); 
@@ -3687,7 +3701,10 @@ func IdleProcessing%()
         endif
         'isAbort% := 1;  'Unused
         
-        SampleText("Trial " + Str$(tc%) + " Abort");
+        SampleText("Trial " + Str$(tc%+1) + " Abort");
+    
+        tc% -= 1; 'Decrement trial count, will repeat trial
+    
         SafeSampleKey("X");   'Request all stimuli down
         
         WaitForBlankTo(stateAbortPenalty%, tNow);
@@ -3707,9 +3724,16 @@ func IdleProcessing%()
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
         
     case iState% = stateAdvance% then    
-        SafeSampleKey("a");
-        LogStatus("Advance", "Requesting advance at about " + str$(tNow));
-        ChangeStateTo(stateCheckAdvance%,tNow);
+        'Check to see if we are done!
+        if tc%+1 >= nTrials% then  'If we have completed the final trial, don't bother advancing, just quit
+            UpdateToolbarText();  'If we are quitting we need to update this first
+            LogStatus("Advance", "Completed last trial at about " + str$(tNow) + ", quitting!");
+            Stop%();
+        else
+            SafeSampleKey("a");
+            LogStatus("Advance", "Requesting advance at about " + str$(tNow));
+            ChangeStateTo(stateCheckAdvance%,tNow);
+        endif
         
     '----////----\\\\----////----\\\\----////----\\\\--State Break!!--////----\\\\----////----\\\\----////----\\\\
         
@@ -3752,8 +3776,9 @@ func IdleProcessing%()
             tLast := tStateStart;  'This may not make a big difference, actually
             LogStatus("WaitForBlank", "Began waiting for blank screen at about " + str$(tNow));
         endif
-        
-        if View(DataWindow%).FindFallingEdge%(StimChannel%, tLast, tTrigger) = 1 then
+    
+        'Need to check for either Stim or Fixpoint down because it is possible to break fixation before the Stim is up!
+        if View(DataWindow%).FindFallingEdge%(StimChannel%, tLast, tTrigger) = 1 or View(DataWindow%).FindFallingEdge%(FixPointChannel%, tLast, tTrigger) = 1 then
             'Stimulus is down
             'tLastTrigger := tTrigger;  'unused
             LogStatus("WaitForBlank", "Blank screen at exactly " + str$(tTrigger));
@@ -3810,8 +3835,7 @@ func IdleProcessing%()
         
         'Then put up a message indicating the issue
         Message("Unknown state (Value is " + str$(iState%) + "), Quitting!");
-        
-        halt;
+        Stop%();
         
     endcase;
     
@@ -5101,9 +5125,12 @@ end
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Stop%()
-    
-	' Disable idle process func
-	ToolbarSet(0,"");
+	
+    ToolbarSet(0,"");  'Disable idle process function
+    ToolbarEnable(1,0);  'Make sure Start is disabled
+    ToolbarEnable(2,0);  'Disable Stop Sampling
+    ToolbarEnable(3,1);  'I guess allow Juice to be enabled, maybe the animal is just sitting there
+    ToolbarEnable(4,1);  'Enable Quit so we can close out
     
     'If the eyetracker is recording an output file, stop recording and close the file
     if RecordEyeTrackerOutputFile% = 1 then
@@ -5131,11 +5158,13 @@ func Stop%()
     
     '	ProgRun(bin$ + "\\ClearTrigger",0);
     
-	' Increment daily totals and save then
+	' Increment daily totals and save them
 	TotalTrials% += nTrialsStarted%;
 	TotalRewards% += nTrialsSuccess%;
 	SaveDailyTotals();
-    
+
+    return 1; 'stay in toolbar
+
 end;
 
 
@@ -5832,7 +5861,7 @@ end
 proc UpdateToolbarText()   'This is very simplistic but it seems fine
     var s$;
     
-    s$ := Print$("nTrialsStarted/Success/Fail/Abort %d/%d/%d/%d", nTrialsStarted%, nTrialsSuccess%, nTrialsFail%, nTrialsAbort%);
+    s$ := Print$("nTrialsStarted=%d, Success=%d, Fail=%d, Abort=%d", nTrialsStarted%, nTrialsSuccess%, nTrialsFail%, nTrialsAbort%);
     ToolbarText(s$);
     return;
 end
