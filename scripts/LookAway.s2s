@@ -1151,6 +1151,8 @@ func Start%()
     var n%;  'For looping through nRepeats
     var s;
     var colonOrNot$;
+    var F$, FC$;
+    var FR%, FG%, FB%;
     'Variables to encode the possible gratings
     var g1a$;    'Grating 1a - the JAWS field grating
     var g1b$;    'Grating 1b - the non-JAWS field S1 grating
@@ -1191,7 +1193,7 @@ func Start%()
     var numGratings%;
     
     'We do not currently use the fixpt parameter values
-    'GetFixationPointParameterValues(fpx, fpy, fpd, fpr);  'It may be useful to know where the fixpt is for setting up locations 1 and 2
+    'GetFixationPointParameterValues(fpx, fpy, fpd, fpr);  'In one case we will change the color of the fixation point
     
     'Set idle loop control variables based on experiment type
     StartSetExptVariables(laExperimentType%,laTrainingStageSSGNG%,laTrainingStageSSMicro%,laTrainingStageDS2S1%,laTrainingStageDS2S2%);
@@ -2373,6 +2375,36 @@ func Start%()
         if numGratings% = 0 then
             Print("BKGD | ");  'If no grating is present, print a blank page
         else
+            'On page 2 for expt=0 training step=0 we will use laLoc2bXDeg (it's a float!) as a fixpt fade
+            if laExperimentType% = 0 and laTrainingStageSSGNG% = 0 then  'If we are fading the fixation point, we will put that first and ASSUME there is a grating on the page
+                'We can use a basically standard fixation point spec 
+                GetFixationPointParameters();  'Use this to fill FixationX, FixationY, etc. - all the values used below will be populated
+                F$ := str$(FixationX) + "," + str$(FixationY) + "," + str$(FixationDiameter) + ",";
+                'But we need to update the fixation color
+                docase  'start by getting the fixation color
+                case iFixationColor% = 0 then  
+                    FR% := 255;
+                    FG% := 0;
+                    FB% := 0;
+                case iFixationColor% = 1 then  
+                    FR% := 0;
+                    FG% := 255;
+                    FB% := 0;
+                case iFixationColor% = 2 then  
+                    FR% := 0;
+                    FG% := 0;
+                    FB% := 255;
+                else
+                    FR% := FixationR%;
+                    FG% := FixationG%;
+                    FB% := FixationB%;
+                endcase;
+                FR% := FR%*laLoc2bXDeg/100;  'laLoc2bXDeg is just the value we are using as the factor!
+                FG% := FG%*laLoc2bXDeg/100;
+                FB% := FB%*laLoc2bXDeg/100;
+                FC$ := "(" + Str$(FR%) + "/" + Str$(FG%) + "/" + Str$(FB%) + ")";
+                Print("F %s%s : ",F$,FC$);  'Fixpt spec always has a colon, there will be a grating
+            endif
             if loc1ap% = 1 then  'If location 1a is present
                 numGratings% -= 1;  'Decrement number of gratings
                 if numGratings% > 0 then
@@ -2568,8 +2600,8 @@ func Start%()
     printlog("A total of %d trials required %f seconds to create and write to text file!\n",nTrials%,Seconds()-s);
     
     'Halt for testing, file write has been basically verified
-    'message("Testing!  Halting after writing .txt!");
-    'halt;
+    message("Testing!  Halting after writing .txt!");
+    halt;
     
     'Start sampling *after* building the big text file - not that it should take any appreciable time
     
@@ -4220,7 +4252,7 @@ func LookAwayScriptDialog%()
     DlgInteger(laDlgContrastFade%,wNum%,0,100,c33%+1,sTarg%+1);  hContrastFade% := DlgText(labelContrastFade$,c33%+wNum%+2,sTarg%+1,wTxt%);
     DlgReal(laDlgLoc1bXDeg%,wNum%,-30,30,c1%+1,sTarg%+2);  hLoc1bXDeg% := DlgText(labelLoc1bXDeg$,c1%+wNum%+2,sTarg%+2,wTxt%);
     DlgReal(laDlgLoc2aXDeg%,wNum%,-30,30,c23%+1,sTarg%+2);  hLoc2aXDeg% := DlgText(labelLoc2aXDeg$,c23%+wNum%+2,sTarg%+2,wTxt%);
-    DlgReal(laDlgLoc2bXDeg%,wNum%,-30,30,c33%+1,sTarg%+2);  hLoc2bXDeg% := DlgText(labelLoc2bXDeg$,c33%+wNum%+2,sTarg%+2,wTxt%);
+    DlgReal(laDlgLoc2bXDeg%,wNum%,-30,100,c33%+1,sTarg%+2);  hLoc2bXDeg% := DlgText(labelLoc2bXDeg$,c33%+wNum%+2,sTarg%+2,wTxt%);  'We are hijacking loc2bXDeg for the fixpt fade in one specific single-saccade training step, have to allow up to 100
     DlgReal(laDlgLoc1bYDeg%,wNum%,-30,30,c1%+1,sTarg%+3);  hLoc1bYDeg% := DlgText(labelLoc1bYDeg$,c1%+wNum%+2,sTarg%+3,wTxt%);
     DlgReal(laDlgLoc2aYDeg%,wNum%,-30,30,c23%+1,sTarg%+3);  hLoc2aYDeg% := DlgText(labelLoc2aYDeg$,c23%+wNum%+2,sTarg%+3,wTxt%);
     DlgReal(laDlgLoc2bYDeg%,wNum%,-30,30,c33%+1,sTarg%+3);  hLoc2bYDeg% := DlgText(labelLoc2bYDeg$,c33%+wNum%+2,sTarg%+3,wTxt%);
@@ -4424,7 +4456,7 @@ func LookAwayScriptDialogChanged%(item%)
         docase
         'Single-Saccade GNG Experiment    
         case DlgValue(laDlgExperimentType%) = 0 and DlgValue(laDlgTrainingStageSSGNG%) = 0 then
-            UpdateLookAwayScriptDialogEnable(0,0,1, 1,0,0, 1,0,0, 0,0,0 ,0);
+            UpdateLookAwayScriptDialogEnable(0,0,1, 1,0,2, 1,0,0, 0,0,0 ,0);
         case DlgValue(laDlgExperimentType%) = 0 and DlgValue(laDlgTrainingStageSSGNG%) = 1 then
             UpdateLookAwayScriptDialogEnable(0,0,0, 1,0,0, 1,0,0, 0,0,0 ,0);
         case DlgValue(laDlgExperimentType%) = 0 and DlgValue(laDlgTrainingStageSSGNG%) = 2 then
@@ -4636,10 +4668,9 @@ proc UpdateLookAwayScriptDialogLabels(expt%,SSGNG%,SSMicro%,DS2S1%,DS2S2%,update
     labelLoc2aYDeg$ := "N/A";
     labelLoc2bXDeg$ := "N/A";
     labelLoc2bYDeg$ := "N/A";
-    'if expt% = 0 and SSGNG% >= 3 then  'Killing this during an update, because "distractor" is simply located in the JF-Away location
-    '    labelLoc2aXDeg$ := "X Loc, Dist (deg)";  
-    '    labelLoc2aYDeg$ := "Y Loc, Dist (deg)";
-    'endif
+    if expt% = 0 and SSGNG% = 0 then  'Hijacking loc2bXDeg for a fixpt fade in this step only
+        labelLoc2bXDeg$ := "Fade-out FixPt Contrast (0-100)";
+    endif
     if expt% = 1 then  'IFs are going to be easier here, as should become obvious below
         labelLoc1bXDeg$ := "X Loc, Target 1 (deg)";  'Now allowing two different locations for the single-saccade target in the microstim task
         labelLoc1bYDeg$ := "Y Loc, Target 1 (deg)";  'Note that NEITHER location is at the JF, that is where the microstim saccade is expected to go
@@ -4854,7 +4885,7 @@ proc UpdateLookAwayScriptDialogEnable(v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13
     '4  Loc1bYDeg%
     '5  Loc2aXDeg%
     '5  Loc2aYDeg%
-    '6  Loc2bXDeg%
+    '6  Loc2bXDeg%  - can be independently turned on with a 2
     '6  Loc2bYDeg%
     
     '7  Page2DurationMin%    'Page 1 is now definitely used in every case, in a slight but appropriate change of logic
@@ -4901,10 +4932,18 @@ proc UpdateLookAwayScriptDialogEnable(v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13
     DlgEnable(v5,laDlgLoc2aYDeg%);
     DlgEnable(v5,hLoc2aYDeg%);
     
-    DlgEnable(v6,laDlgLoc2bXDeg%);
-    DlgEnable(v6,hLoc2bXDeg%);
-    DlgEnable(v6,laDlgLoc2bYDeg%);
-    DlgEnable(v6,hLoc2bYDeg%);
+    if v6 = 2 then
+        DlgEnable(1,laDlgLoc2bXDeg%);
+        DlgEnable(1,hLoc2bXDeg%);
+        DlgEnable(0,laDlgLoc2bYDeg%);
+        DlgEnable(0,hLoc2bYDeg%);
+    else
+        DlgEnable(v6,laDlgLoc2bXDeg%);
+        DlgEnable(v6,hLoc2bXDeg%);
+        DlgEnable(v6,laDlgLoc2bYDeg%);
+        DlgEnable(v6,hLoc2bYDeg%);
+    endif
+    
     
     DlgEnable(v7,laDlgPage2DurationMin%);
     DlgEnable(v7,hPage2DurationMin%);
@@ -5307,6 +5346,9 @@ proc WriteParameterFile()
         Print("N Repeats Two Saccades     : %d\n", laNRepeatsLoc1Loc2%);
     endif
     Print("Fade-in/Fade-out Contrast  : %d\n", laContrastFade%);
+    if laExperimentType% = 0 and laTrainingStageSSGNG% = 0 then
+        Print("Fade-out Fixation Contrast : %d\n", laLoc2bXDeg);  'Should be able to print out float as an integer
+    endif
     Print("Answer Window Diam (deg)   : %f\n", laAnswerWindowDiameter);
     Print("Fix Acquisition Time (s)   : %f\n", laFixAcquisitionTime);
     Print("Fixation Time min (s)      : %f\n", laFixationDurationMin);
