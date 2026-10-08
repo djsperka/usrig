@@ -2381,7 +2381,7 @@ func Start%()
                 GetFixationPointParameters();  'Use this to fill FixationX, FixationY, etc. - all the values used below will be populated
                 F$ := str$(FixationX) + "," + str$(FixationY) + "," + str$(FixationDiameter) + ",";
                 'But we need to update the fixation color
-                docase  'start by getting the fixation color
+                docase  'start by getting the fixation color, subtract out BG
                 case iFixationColor% = 0 then  
                     FR% := 255;
                     FG% := 0;
@@ -2399,9 +2399,13 @@ func Start%()
                     FG% := FixationG%;
                     FB% := FixationB%;
                 endcase;
-                FR% := FR%*laLoc2bXDeg/100;  'laLoc2bXDeg is just the value we are using as the factor!
-                FG% := FG%*laLoc2bXDeg/100;
-                FB% := FB%*laLoc2bXDeg/100;
+                'Background is hardcoded at gray (128/128/128)
+                FR% := FR% - 128;
+                FG% := FG% - 128;
+                FB% := FB% - 128;
+                FR% := 128 + (FR%*laLoc2bXDeg/100);  'laLoc2bXDeg is just the value we are using as the factor!
+                FG% := 128 + (FG%*laLoc2bXDeg/100);
+                FB% := 128 + (FB%*laLoc2bXDeg/100);
                 FC$ := "(" + Str$(FR%) + "/" + Str$(FG%) + "/" + Str$(FB%) + ")";
                 Print("F %s%s : ",F$,FC$);  'Fixpt spec always has a colon, there will be a grating
             endif
