@@ -179,6 +179,7 @@ var colorIndexAtRF%[ctMaxTrials%];   'Color index (0,1) of the primary location 
 var validity%[ctMaxTrials%];       'Validity on each trial, -1 = no change, 0 = invalid, 1 = valid (what if cueDotPct is 50?)
 var whichLocChange%[ctMaxTrials%]; '0 = no change, 1 = location 1 changes, 2 = location 2 changes
 var flankerIsH%;                   '-1 = no flanker; 0 = flanker vertical; 1 = flanker horizontal; cue box shrinks if flankers are off
+var blockID%[ctMaxTrials%];        'For blocking, this will indicate which "block group" this trial belongs to
 
 var samp1Contrast%[ctMaxTrials%];
 var samp2Contrast%[ctMaxTrials%];
@@ -278,6 +279,7 @@ var ctFlatInvalidRate;
 var ctDropFixpt%;
 var ctTargetAcqTime;
 var ctNoSideSwapping%;
+var ctBlockSize%;
 
 'Variables that allow us to build the allowed tunable values from strings
 var ctDotPct[100];  '100 possible values is way too many
@@ -354,6 +356,8 @@ var ctDlgFlatInvalidRate% := 53;
 var ctDlgDropFixpt% := 54;
 var ctDlgTargetAcqTime% := 55;
 var ctDlgNoSideSwapping% := 56;
+var ctDlgBlockSize% := 57;
+
 
 var ctDlgTotalTrials%;  'This just holds a pointer to the total trials text so we can update the text value
 var ctTotalTrialsText$;
@@ -413,6 +417,8 @@ var ctTxtFlankerUncuedCont%;
 var ctTxtCueRectCuedCont%;
 var ctTxtCueRectUncuedCont%;
 var ctTxtTargetAcqTime%;
+var ctTxtBlockSize%;
+
 
 
 var screenXDeg := 12.5;  'Manually setting screen degrees - we might want to calculate this based on manual screen cm or have degrees/cm in main dialog, but for now...
@@ -583,6 +589,7 @@ proc GetConteTaskParameters()
     ctDropFixpt% := GetIntRegistryValue%(key$, "DropFixpt", ctDropFixpt%);
     ctTargetAcqTime := GetFloatRegistryValue(key$, "TargetAcqTime", ctTargetAcqTime);
     ctNoSideSwapping% := GetIntRegistryValue%(key$, "NoSideSwapping", ctNoSideSwapping%);
+    ctBlockSize% := GetIntRegistryValue%(key$, "BlockSize", ctBlockSize%);
     
 end;
 
@@ -643,6 +650,7 @@ proc SaveConteTaskParameters()
     SetIntRegistryValue(key$, "DropFixpt", ctDropFixpt%);
     SetFloatRegistryValue(key$, "TargetAcqTime", ctTargetAcqTime);
     SetIntRegistryValue(key$, "NoSideSwapping", ctNoSideSwapping%);
+    SetIntRegistryValue(key$, "BlockSize", ctBlockSize%);   
     
 end;
 
@@ -664,6 +672,7 @@ func ConteTaskDialog%()
     var threeStrings$[3];
     var fourFloats[4];
     var sixInts%[6]; 
+    var twoInts%[2];  'LOL
     
     GetConteTaskParameters();
     
@@ -692,7 +701,7 @@ func ConteTaskDialog%()
     ctPatchDurText$ := "Patch duration (s) = " + Str$(ctRefreshPerPF%*ctPFsPerPatch%/dataScreenHz,4,-3);  'in seconds, three decimal places
     
     
-    'Pack sixFloats[], sixPlusOneInts%[], sevenFloats[], sevenInts%[], threeStrings$[], eightInts%[]
+    'Pack sixFloats[], sixPlusOneInts%[], sevenFloats[], sevenInts%[], threeStrings$[], eightInts%[], twoInts%[]
     tenFloats[0] := ctFixCrossWidthPixels;
     tenFloats[1] := ctPatchOnsetDelay;
     tenFloats[2] := ctPatchToSampleDelayMin;
@@ -736,12 +745,15 @@ func ConteTaskDialog%()
     fourFloats[2] := ctFAPenalty;
     fourFloats[3] := ctMissPenalty;
     
-    sixInts%[0] :=  ctGaborCuedCont%;
-    sixInts%[1] :=  ctGaborUncuedCont%;
-    sixInts%[2] :=  ctFlankerCuedCont%;
-    sixInts%[3] :=  ctFlankerUncuedCont%;
-    sixInts%[4] :=  ctCueRectCuedCont%;
-    sixInts%[5] :=  ctCueRectUncuedCont%;
+    sixInts%[0] := ctGaborCuedCont%;
+    sixInts%[1] := ctGaborUncuedCont%;
+    sixInts%[2] := ctFlankerCuedCont%;
+    sixInts%[3] := ctFlankerUncuedCont%;
+    sixInts%[4] := ctCueRectCuedCont%;
+    sixInts%[5] := ctCueRectUncuedCont%;
+    
+    twoInts%[0] := ctNoSideSwapping%;
+    twoInts%[1] := ctBlockSize%;
     
     'Create variables for dialog layout
     var wDlg% := 111;  '108+3
@@ -785,7 +797,7 @@ func ConteTaskDialog%()
     DlgInteger(ctDlgNDistractorOff%,wNum%,0,100,c23%+1,sTrSpec%+6);  ctTxtNDistractorOff% := DlgText("No-Distractor trials/data point",c23%+wNum%+2,sTrSpec%+6);
     DlgCheck(ctDlgContrastMatches%, "L/R Sample Contrasts match",c33%,sTrSpec%+6);
     DlgCheck(ctDlgNoSideSwapping%, "Do Not Swap Sides",c1%,sTrSpec%+7);
-    
+    DlgInteger(ctDlgBlockSize%,wNum%,0,100,c23%+1,sTrSpec%+7);  ctTxtBlockSize% := DlgText("Block size (0=random)",c23%+wNum%+2,sTrSpec%+7);    
     
     DlgGroup("Fixation Options",1,sFix%,wDlg%-2,hFix%);
     DlgCheck(ctDlgAlwaysLooking%,"Always Looking?",c1%,sFix%+1);
@@ -854,7 +866,7 @@ func ConteTaskDialog%()
                   ctAdditionalWindowRadius,tenFloats[],sixPlusOneInts%[],ctPatchRadiusDeg,
                   ctRefreshPerPF%,ctPFsPerPatch%,sixFloats[],sevenInts%[],threeStrings$[],fourFloats[],
                   sixInts%[],ctAdditionalTargetRadius,ctFlatInvalidRate,ctDropFixpt%,ctTargetAcqTime,
-                  ctNoSideSwapping%);  'Now at 20!
+                  twoInts%[]);  'Now at 20!
     
 
     if i% = 1 then        
@@ -909,6 +921,9 @@ func ConteTaskDialog%()
         ctFlankerUncuedCont% := sixInts%[3];
         ctCueRectCuedCont% := sixInts%[4];
         ctCueRectUncuedCont% := sixInts%[5];
+        
+        ctNoSideSwapping% := twoInts%[0];
+        ctBlockSize% := twoInts%[1];
         
         'Once everything is unpacked, save parameters, we will manipulate some of them below
         SaveConteTaskParameters();
@@ -970,6 +985,13 @@ func ConteTaskDialog%()
         'Get final value of patch duration - this value is only used once in the idle loop??
         ctPatchDur := ctRefreshPerPF%*ctPFsPerPatch%/dataScreenHz;  'in seconds, three decimal places
         
+        'Override block size value if we have ANY full trials, because it's not clear how to block them
+        'This is also true if we have both types of training simultaneous; in this latter case we may
+        'eventually want to merely block training type...things could get messy if trial counts were not equal
+        'but other than that would be easy enough
+        if ctCountFull% > 0 or (ctCountTrainCueRect% > 0 and ctCountTrainGrating% > 0) then
+            ctBlockSize% := 0;
+        endif
         
         
         return 1;
@@ -1130,6 +1152,9 @@ func ConteTaskDialogChanged%(item%)
     endif
     
     
+    
+    
+    
     'If there are any full trials, enable sample-to-test and test duration, min invalid rate 
     if DlgValue(ctDlgCountFull%) > 0 then
         'DlgEnable(1,ctDlgSampleDurationMin%,ctTxtSampleDurationMin%);
@@ -1138,12 +1163,24 @@ func ConteTaskDialogChanged%(item%)
         DlgEnable(1,ctDlgTargetDuration%,ctTxtTargetDuration%);
         'DlgEnable(1,ctDlgMinInvalidRate%,ctTxtMinInvalidRate%);  'MIN REPLACED BY FLAT
         DlgEnable(1,ctDlgFlatInvalidRate%,ctTxtFlatInvalidRate%);
+        
+        'But disable blocking if there are full trials
+        DlgEnable(0,ctDlgBlockSize%,ctTxtBlockSize%);
     else  'Do not disable sample-to-test and test duration as they may be needed for grating training)
         'DlgEnable(0,ctDlgSampleDurationVar%,ctTxtSampleDurationVar%);
         'DlgEnable(0,ctDlgSampleToTargetDelay%,ctTxtSampleToTargetDelay%);
         'DlgEnable(0,ctDlgTargetDuration%,ctTxtTargetDuration%);
         'DlgEnable(0,ctDlgMinInvalidRate%,ctTxtMinInvalidRate%);  'but do disable this!  MIN REPLACED BY FLAT
         DlgEnable(0,ctDlgFlatInvalidRate%,ctTxtFlatInvalidRate%);  'but do disable this!
+        
+        'If there are BOTH train-cue-dots and train-grating trials, also disable blocking for now
+        if DlgValue(ctDlgCountTrainCueRect%) > 0 and DlgValue(ctDlgCountTrainGrating%) > 0 then
+            'Disable blocking if there are both training types
+            DlgEnable(0,ctDlgBlockSize%,ctTxtBlockSize%);
+        else
+            'Otherwise enable blocking
+            DlgEnable(1,ctDlgBlockSize%,ctTxtBlockSize%);
+        endif
     endif
     
     
@@ -2479,6 +2516,7 @@ func Start%()
     var sampleOri;
     var contCued%;
     var contUncued%;  'The uncued contrast can either match the one presented or be randomly selected
+    var blockInc%;  'This value is used to increment the block indicator when we go from one experiment type to the next
     
     'Variables used for doing the massive counterbalance
     'Count variables hold the number of (not necessarily different) states used for the counterbalance
@@ -2544,8 +2582,7 @@ func Start%()
     
     
     'Write out the variables that hold the counterbalance
-    'Put random indices into ctTrialOrder%[], easy when you write a function to do it!
-    ArrRandIndices(ctTrialOrder%[0:nTrials%]);
+    
     
     printlog("Performing counterbalance: nRepeats = %d, nCueDotPct = %d, nCont = %d, nContChange = %d, ",n%,nCueDotPct%,nCont%,nCh%);
     printlog("nDistractor = %d, nTrainType = %d, total trials = %d\n",nDist%,nTrainType%,nTrials%);
@@ -2576,6 +2613,7 @@ func Start%()
                 colorIndexAtRF%[count%] := q%;  'If 0, first color listed (index 0) is at RF
                 stimTrainType%[count%] := 1;  '1 = train-cue-rect trials
                 validity%[count%] := 1;  'Train-cue-rect trials are always valid
+                blockID%[count%] := j%;  'Block by cue-dot percentage
                 
                 'Set contrast of cue rects and which location is rewarded - Train-cue-rect trials are always valid
                 if (cueDotPct[count%] > 50) or ((cueDotPct[count%] = 50) and (round(rand()) = 1)) then  'Dot pct should never be == 50% by convention, but just in case
@@ -2620,7 +2658,7 @@ func Start%()
             next
         next
     next
-    
+    blockInc% := nCueDotPct%;  'This makes it easy to block train-grating trials separately from train-cue-dot trials
 
 'loop through n, Cont, ContCh, Dist, side - this is for train-grating trials
     for i% := 1 to (n%*ctCountTrainGrating%) do  'i% is not used as an index, just for getting correct count of trials
@@ -2689,7 +2727,9 @@ func Start%()
                         patchToSampleDelay[count%] := 0;
                         sampleDuration[count%] := (ctSampleDurationMin+rand(ctSampleDurationVar,0))*1000;
                         sampleToTargetDelay[count%] := ctSampleToTargetDelay*1000;
-                        targetDuration[count%] := ctTargetDuration*1000;                        
+                        targetDuration[count%] := ctTargetDuration*1000;
+                        
+                        blockID%[count%] := q%+blockInc%;  'Block by change-at-RF or change-away-RF 
                         
                         count% += 1;  'increment counter                                
                     next
@@ -2697,7 +2737,6 @@ func Start%()
             next
         next
     next
-    
     
     
     'loop through n, CuePct, Cont, ContCh, Dist, side - this is for full trials
@@ -2973,6 +3012,7 @@ func Start%()
                             sampleToTargetDelay[count%] := ctSampleToTargetDelay*1000;
                             targetDuration[count%] := ctTargetDuration*1000;
                             
+                            blockID%[count%] := -1;  'Does it even make sense to block full trials?  For now, will disable blockID% if there are full trials 
   
                             count% += 1;  'increment counter                                
                         next
@@ -2982,8 +3022,19 @@ func Start%()
         next
     next
     
+    'Randomization/blocking of trials
+    if ctBlockSize% = 0 then
+        'Put random indices into ctTrialOrder%[], easy when you write a function to do it!
+        ArrRandIndices(ctTrialOrder%[0:nTrials%]);
+    else
+        'Block trials based on requested block size
+        BlockByCategory(ctTrialOrder%[0:nTrials%],BlockID%[0:nTrials%],ctBlockSize%,1,1);
+        'First 1 = randomize block order stepwise (e.g. [1,3,2, 1,2,3, 3,1,2, 2,3,1, 1,2,3, 3,1,2, etc])
+        'Second 1 = randomize trials within each block type
+    endif
+    
     'We have now filled the following variables, for use in creating the CSV/binary file and beyond
-    '   ctTrialOrder%[];   'Will be shuffled indices, to randomize trial order 
+    '   ctTrialOrder%[];   'Will be shuffled indices, to randomize (or block) trial order 
     '   cueDotPct[];       'Percentage of cue dots on each trial
     '   validity%[];       'Validity on each trial, -1 = no change, 0 = invalid, 1 = valid (if cueDotPct is 50, validity value is not updated, but side 1/2 is randomly selected)
     '   whichOriChange%[]; '0 = no change, 1 = side 1 changes, 2 = side 2 changes
@@ -3393,6 +3444,7 @@ proc WriteParameterFile()
 
     Print("Always looking?                          : %d\n", ctAlwaysLooking%);
     Print("Number of trials                         : %d\n", nTrials%);
+    Print("Block size                               : %d\n", ctBlockSize%);
 '    'Print("Reward Delay (s)                         : %f\n", mainRewardDelay);  'never enabled
 	Print("Inter-trial interval                     : %f\n", ctITI);
     Print("Fixation cross width (pixels)            : %f\n", ctFixCrossWidthPixels%);
