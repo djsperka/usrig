@@ -1062,6 +1062,44 @@ end
 
 
 
+'****f* Spike2Util/MiscUtilities/ArrFindAll%
+' NAME
+' count% = ArrFindAll%(myIndices%[],myArray%[],item%)
+' SYNOPSIS
+' An honest-to-goodness FIND function for Spike2 INTEGER arrays
+' Like I don't know why they don't have one of these, FIND is a
+' quintessential function
+' INPUTS
+' myIndices%[] - an array to be filled with indices matching item%
+' myArray%[] - an integer array to match against item%
+' item% - the value to find in the array
+' Returns count%, the number of indices found
+'****
+
+
+func ArrFindAll%(myIndices%[],myArray%[],item%)
+    'places the indices of item% from myArray%[] in myIndices%[]
+    'returns number of indices found or 0 if myArray%[] doesn't contain item%
+    var count% := 0;
+    var tempArray%[Len(myArray%[])];
+    var i%;
+    
+    ArrConst(tempArray%[],myArray%[]);
+    ArrSub(tempArray%[],item%);
+
+    for i% := 0 to Len(myArray%[])-1 do
+        if tempArray%[i%] = 0 then
+            myIndices%[count%] := i%;
+            count% += 1;
+        endif
+    next
+ 
+    return count%;
+end
+
+
+
+
 '
 '
 '===== ArrUnique%() =====
@@ -1192,6 +1230,131 @@ end
 '
 
 
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'
+' BlockByCategory - This function is designed to take a set of categorical markers (e.g. 1 = 
+' Up trial, 2 = Down trial, 3 = Charmed trial, etc.) and fill a trial-order variable with
+' indices to the categorical marker variable, in blocks of size N.
+'
+' Inputs: result%[]       - A vector that will be filled with blocked trial indices
+'         category%[]     - An input vector with integer category labels, maximum of 100
+'                           unique categories
+'         blockSize%      - Number of trials in a block
+'         blockOrderRand% - If 1, randomize the block order
+'         trialOrderRand% - If 1, randomize the trial order within each block (really this 
+'                           should be the way to go)
+'
+' Returns: 1 on success, -1 on failure
+'
+' If the number of trials in any given category is not divisible by the block size, the final
+' block of that category will contain only the trials remaining, any further requested blocks
+' (e.g. if the number of stimuli in each category is uneven) will be skipped
+'
+'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+func BlockByCategory(&result%[],category%[],blockSize%,blockOrderRand%,trialOrderRand%)
+    
+    var i%;
+    var nCat%;  'number of unique categories present
+    var uCat%[100];  'list of unique categories, this is more blocks than can possibly be desired 
+    
+    if blockSize% < 1 then  'if blocksize is 0 or less we would get stuck in the WHILE below
+        message("Block size must be greater than 0!");
+        return -1;
+    endif        
+    
+    'Get list of unique categories and count of total unique categories
+    nCat% := ArrUnique%(category%[],uCat%[]);
+    if nCat% > 100 then
+        message("More than 100 unique categories is not allowed!  You may have passed indices?"); 
+        return -1;
+    endif
+    
+    
+    'Fill catCount%[], get countMax%, nBlockCeil%
+    var catCount%[nCat%];  'hold how many stimuli are in each category
+    var count%;
+    var tempArray%[Len(category%[])];  'Just need to be big enough to ensure success
+    var maxInd%;
+    var countMax%;
+    var nBlockCeil%;  'The maximum number of blocks needed for any category
+    var countMaxFloat;  'I hate float/integer math issues
+    var blockSizeFloat := blockSize%;  'I hate float/integer math issues
+    for i% := 0 to nCat%-1 do
+        count% := ArrFindAll%(tempArray%[],category%[],uCat%[i%]);
+        catCount%[i%] := count%;
+    next
+    maxInd% := max(catCount%[]);
+    countMax% := catCount%[maxInd%];
+    countMaxFloat := countMax%;
+    nBlockCeil% := ceil(countMaxFloat/blockSizeFloat);
+    
+    
+    'Collect indices for each category - by doing this twice we can avoid making catIndices%[][] any
+    'larger than it has to be while making sure it's not too small
+    var catIndices%[nCat%][countMax%];
+    for i% := 0 to nCat%-1 do
+        count% := ArrFindAll%(catIndices%[i%][0:catCount%[i%]],category%[],uCat%[i%]);
+        'Scramble indices, if requested (seems likely!)
+        if trialOrderRand% > 0 then
+            ShuffleList%(catIndices%[i%][0:catCount%[i%]]);
+        endif
+        'printlog("Indices for category %d are %d\n",uCat%[i%],catIndices%[i%][0:catCount%[i%]]);  'Sanity check passed!
+    next
+    
+    
+    'Determine block sizes
+    var blockSizePerCat%[nCat%][nBlockCeil%];  'How many trials are in each block?
+    var totBlocks% := nCat%*nBlockCeil%;  'Even a block with 0 trials is a block, it just gets skipped
+    var tempCount%;
+    for i% := 0 to nCat%-1 do
+        count% := 0;
+        tempCount% := catCount%[i%];
+        while tempCount% > 0 do
+            if tempCount% >= blockSize% then
+                blockSizePerCat%[i%][count%] := blockSize%;
+                tempCount% := tempCount% - blockSize%;
+                count% += 1;
+            else
+                blockSizePerCat%[i%][count%] := tempCount%;
+                tempCount% := 0;
+            endif
+        wend
+        'printlog("Block sizes for category %d are %d\n",uCat%[i%],blockSizePerCat%[i%][0:nBlockCeil%]);  'sanity check passed!
+    next
+    
+    
+    'Create generic block order
+    var blockOrder%[nCat%];
+    for i% := 0 to nCat%-1 do
+        blockOrder%[i%] := i%;  'Seriously, I don't think there's a way to do this
+    next
+    
+    
+    'Make blocks
+    var j%;
+    var currentBlockCount%[nCat%];  'What's the current count in each block?
+    count% := 0;
+    for i% := 0 to nBlockCeil%-1 do
+        'Scramble block order if requested
+        if blockOrderRand% > 0 then
+            ShuffleList%(blockOrder%[]);
+        endif;
+        'Fill result
+        for j% := 0 to nCat%-1 do
+            tempCount% := blockSizePerCat%[j%][i%];
+            if tempCount% > 0 then
+                ArrConst(result%[count%:tempCount%],catIndices%[blockOrder%[j%]][currentBlockCount%[j%]:tempCount%]);
+                currentBlockCount%[j%] := currentBlockCount%[j%] + tempCount%;
+                count% := count% + tempCount%;
+            endif
+        next
+    next
+    
+    return 1;
+    
+end
 
 
 
