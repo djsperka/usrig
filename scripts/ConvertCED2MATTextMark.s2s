@@ -1,0 +1,189 @@
+'Modeled off of ConvertCED2Mat (A Recanzone Function™)
+
+'This function is designed to do a very simple conversion of a CED file to a Matlab file, grabbing
+'ONLY the Textmark Channel.  Kind of an ad-hoc thing for Melissa.
+
+var ConvertSaveDir$ := "None Selected";
+var ConvertSaveFileName$ := "";
+var SaveName$;
+var Text1%;
+var datawindow%;
+var chanToExport%[100];
+var nChanFound%;
+var i%;
+
+#include "../util/UsreyUtil.s2s"
+
+
+'Run dialog to select save location for .mat file
+SaveLocationDialog();
+
+'Select and open desired .smr file
+datawindow% := FileOpen("*.smr*",0,9);
+
+'Determine save name, based on current .smr file, if not specified
+if ConvertSaveFileName$ = "" then  'use filename from just-opened file
+    SaveName$ := ConvertSaveDir$ + FileName$(3) + FileName$(4) + ".mat";  'also use FileName$(4) because the file may end in a number
+    printlog("save name is %s\n",SaveName$);
+else  'use filename from dialog
+    SaveName$ := ConvertSaveDir$ + ConvertSaveFileName$  + ".mat";
+    printlog("save name is %s\n",SaveName$);
+endif;
+
+
+ChanTitle$(30,"TextMark");  'Sometimes, it's "untitled", change to "TextMark"
+AddChanIfPresent(30);  'Textmark channel (may list as "untitled")
+
+
+chanToExport%[0] := nChanFound%;  'AddChanIfPresent takes care of incrementing nChanFound%, first element in
+                                  'the channel specifier must be the number of channels
+
+ExportChanList();  'clear ExportChanList options, necessary step!
+ExportChanList(0,view(datawindow%).maxtime(),chanToExport%[]);  'set channel list for export of all channels at times 0 to maxtime()
+FileSaveAs(SaveName$,100,0,"",0,"UseSName=0|UseCName=1|WaveData=1");  'flag of 1 in position three forces overwrite without asking user, WaveData=1 forces data into "single" to save space
+
+
+'Close file
+FileClose();  'close the file we just opened
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+'================ Script Complete ================
+
+
+'
+'
+'===== AddChanIfPresent =====
+proc AddChanIfPresent(chan%)
+    if ChanTitle$(chan%) <> "" then
+        nChanFound% += 1;
+        chanToExport%[nChanFound%] := chan%;
+    endif; 
+end
+'===== End AddChanIfPresent =====
+'
+'
+
+
+
+
+
+
+
+
+'
+'
+'===== SaveLocationDialog =====
+
+'A simple dialog box which allows us to select the location/filename of the file to write
+proc SaveLocationDialog()
+    var i%;
+    var key$;
+    
+    
+    key$:="Reclab\\ConvertCED2MAT";
+    
+    ConvertSaveDir$ := GetStringRegistryValue$(key$, "SaveDir", ConvertSaveDir$);
+    
+    DlgCreate("Select Save Location");
+    
+    Text1% := DlgText( "Last Save Directory: " + ConvertSaveDir$,2,1,100);
+    DlgButton(2, "Select New Save Directory",SelectSaveDir%,2,2);
+    
+    DlgString(1,"File save name (if different than filename)",25,"",0,4);
+    
+    DlgButton(1, "Select Data File", 0);
+    
+    i% := DlgShow(ConvertSaveFileName$);
+    
+    if i% = 1 then  'if user hit "Select Data File"
+        printlog("Save directory is %s and file name is %s\n",ConvertSaveDir$,ConvertSaveFileName$);
+    
+        SetStringRegistryValue(key$, "SaveDir", ConvertSaveDir$);
+    else
+        halt;
+    endif;
+    
+    
+end
+
+
+'===== End SaveLocationDialog =====
+'
+'
+
+
+
+
+'
+'
+'===== SelectSaveDir =====
+
+func SelectSaveDir%()
+
+    ConvertSaveDir$ := SelectDirectory$();  'This will have the ending slash
+    DlgValue$(Text1%,ConvertSaveDir$);  'update value in calling dialog
+    
+	return 1;  'return 1 so calling dialog doesn't close
+    
+end;
+
+'===== End SelectSaveDir =====
+'
+'
+
+
+
+
+'We don't have access to recfuncs.s2s™ in the Sutter repository so we're going to just grab the one function we need.
+'Honestly someday we should just make a sutterfuncs.s2s™ file but it is not this day
+'
+'
+'===== SelectDirectory$ =====
+
+'Spike2 does not have a built in function that allows you to select a folder from a GUI.
+'This function finds a way around that, and returns the full path of the folder selected
+'from the GUI.  It is possible to create a new folder.
+func SelectDirectory$()
+    
+    var currentPath$;
+    var tempPath$;
+    var result%;
+
+    currentPath$ := FilePath$(0);  'Get current directory
+    result% := FilePathSet("",0,"Select a directory",1);  'Cannot use "make" capability in Spike6, changed by Spike8
+    'result% := FilePathSet("",0,"Select a directory");  'Allow user to select a directory
+    if result% < 0 then 
+        message("There has been an error, please see log window");
+        printlog("There has been an error attempting to select a directory, error is %s\n",Error$(result%));
+        tempPath$ := "";
+    else
+        tempPath$ := FilePath$(0);  'Get the path that was just selected in the dialog
+    endif;
+    
+    FilePathSet(currentPath$);  'Set the file path for new Spike2 data files back to what it was, regardless of success
+    
+    return tempPath$;
+
+end
+
+
+'===== End SelectDirectory$ =====
+'
+'
