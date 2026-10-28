@@ -571,15 +571,9 @@ end;
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 func Start%()
 	var CommandLine$;
-	'var FixationPoint$;
-    'var DualTrigger$ := "";
 	var Extras$;
-    'var GrParams$;
-	'var Distractors$ := "";
-    'var DistractorFlag$ := " -g ";  ' -k for fixstim/remote
-    'var DistractorFixstimFlag$ := "";
     var Invocation$;                ' initialized below
-    'var x, y;
+    var sTmp$;
     
 	SampleStart(0); 'Start sampling
     
@@ -607,8 +601,13 @@ func Start%()
     else
         ' Tell the shlub to connect to outlets - one should go to fixstim, the other will go to the DPI cal process.
         ' There isn't a way to check the success of this command! 
+        ' Also send degrees per volt (taken from the current config).
         SerialWrite(iPort%, "connect;calstart;");
         Yield(0.1);
+        sTmp$ := Print$("DEGPERVOLT %f,%f;", DegreesPerVoltXPurkinje, DegreesPerVoltYPurkinje);
+        SerialWrite(iPort%, sTmp$);
+        Yield(0.1);
+        
     endif
 
     
